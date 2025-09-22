@@ -88,6 +88,43 @@ export function AuthHelper() {
     }
   }
 
+  async function fixSession() {
+    setStatus("Fixing session...");
+    try {
+      // Get email and password from localStorage or prompt user
+      const email = localStorage.getItem('testEmail') || prompt('Enter your email:');
+      const password = localStorage.getItem('testPassword') || prompt('Enter your password:');
+      
+      if (!email || !password) {
+        setStatus("Email and password required");
+        return;
+      }
+
+      // Store credentials for future use
+      localStorage.setItem('testEmail', email);
+      localStorage.setItem('testPassword', password);
+
+      const response = await fetch('/api/auth/fix-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        setStatus(`Session Fixed: ${data.user.email}`);
+        setUser(data.user);
+        // Reload the page to refresh the session
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        setStatus(`Fix Error: ${data.message}`);
+      }
+    } catch (error: any) {
+      setStatus(`Fix Error: ${error.message}`);
+    }
+  }
+
   return (
     <div style={{
       position: 'fixed',
@@ -106,7 +143,7 @@ export function AuthHelper() {
       {user && (
         <div><strong>User:</strong> {user.email}</div>
       )}
-      <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+      <div style={{ display: 'flex', gap: '4px', marginTop: '8px', flexWrap: 'wrap' }}>
         <button 
           onClick={forceRefresh}
           style={{
@@ -134,6 +171,20 @@ export function AuthHelper() {
           }}
         >
           Test Session
+        </button>
+        <button 
+          onClick={fixSession}
+          style={{
+            padding: '4px 8px',
+            fontSize: '11px',
+            background: '#dc3545',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Fix Session
         </button>
       </div>
     </div>
