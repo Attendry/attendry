@@ -4,33 +4,109 @@
 
 "use client";
 
-import { Auth } from "@supabase/auth-ui-react";
-import { ThemeSupa } from "@supabase/auth-ui-shared";
+import { useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [usePassword, setUsePassword] = useState(false);
   const supabase = supabaseBrowser();
 
-  // Use window.origin so this works in dev and prod
-  const redirectTo =
-    typeof window !== "undefined"
-      ? `${window.location.origin}/auth/callback?next=/events`
-      : undefined;
-
   async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=/events`,
-      },
-    });
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?next=/events`,
+        },
+      });
+      if (error) throw error;
+    } catch (error: any) {
+      setMessage(`Google sign-in error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
-  async function sendMagicLink(email: string) {
-    await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/events` },
-    });
+  async function sendMagicLink() {
+    if (!email) {
+      setMessage("Please enter your email address");
+      return;
+    }
+    
+    setIsLoading(true);
+    setMessage("");
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { 
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=/events` 
+        },
+      });
+      if (error) throw error;
+      setMessage("Magic link sent! Check your email and click the link to sign in.");
+    } catch (error: any) {
+      setMessage(`Magic link error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function signInWithPassword() {
+    if (!email || !password) {
+      setMessage("Please enter both email and password");
+      return;
+    }
+    
+    setIsLoading(true);
+    setMessage("");
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
+      
+      // Redirect to events page on success
+      window.location.href = "/events";
+    } catch (error: any) {
+      setMessage(`Sign-in error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function createTestUser() {
+    if (!email || !password) {
+      setMessage("Please enter both email and password");
+      return;
+    }
+    
+    setIsLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch('/api/auth/create-test-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        setMessage("Test user created! You can now sign in with your email and password.");
+      } else {
+        setMessage(`Error: ${data.message}`);
+      }
+    } catch (error: any) {
+      setMessage(`Error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   return (
@@ -117,38 +193,149 @@ export default function LoginPage() {
           <span style={{ padding: "0 1rem" }}>or</span>
           <div style={{ flex: 1, height: "1px", backgroundColor: "var(--border)" }}></div>
         </div>
-        
-        <Auth
-          supabaseClient={supabaseBrowser()}
-          appearance={{ 
-            theme: ThemeSupa,
-            variables: {
-              default: {
-                colors: {
-                  brand: 'var(--primary)',
-                  brandAccent: 'var(--accent)',
-                },
-                space: {
-                  spaceSmall: '0.5rem',
-                  spaceMedium: '1rem',
-                  spaceLarge: '1.5rem',
-                },
-                fontSizes: {
-                  baseBodySize: '0.875rem',
-                  baseInputSize: '0.875rem',
-                },
-                radii: {
-                  borderRadiusButton: 'var(--radius)',
-                  buttonBorderRadius: 'var(--radius)',
-                  inputBorderRadius: 'var(--radius)',
-                }
-              }
-            }
-          }}
-          view="magic_link"
-          showLinks={false}
-          redirectTo={redirectTo}
-        />
+
+        {/* Email Input */}
+        <div style={{ marginBottom: "1rem" }}>
+          <input
+            type="email"
+            placeholder="Enter your email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "0.75rem 1rem",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              fontSize: "0.875rem",
+              backgroundColor: "var(--background)",
+              color: "var(--foreground)",
+              outline: "none",
+              transition: "border-color 0.2s ease"
+            }}
+            onFocus={(e) => e.currentTarget.style.borderColor = "var(--primary)"}
+            onBlur={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+          />
+        </div>
+
+        {/* Password Input (conditional) */}
+        {usePassword && (
+          <div style={{ marginBottom: "1rem" }}>
+            <input
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.75rem 1rem",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                fontSize: "0.875rem",
+                backgroundColor: "var(--background)",
+                color: "var(--foreground)",
+                outline: "none",
+                transition: "border-color 0.2s ease"
+              }}
+              onFocus={(e) => e.currentTarget.style.borderColor = "var(--primary)"}
+              onBlur={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+            />
+          </div>
+        )}
+
+        {/* Sign In Buttons */}
+        <div style={{ marginBottom: "1rem" }}>
+          {usePassword ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <button
+                onClick={signInWithPassword}
+                disabled={isLoading}
+                style={{
+                  width: "100%",
+                  padding: "0.75rem 1rem",
+                  backgroundColor: isLoading ? "var(--muted)" : "var(--primary)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "var(--radius)",
+                  fontSize: "0.875rem",
+                  fontWeight: "500",
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                  transition: "background-color 0.2s ease"
+                }}
+              >
+                {isLoading ? "Signing in..." : "Sign in with Password"}
+              </button>
+              <button
+                onClick={createTestUser}
+                disabled={isLoading}
+                style={{
+                  width: "100%",
+                  padding: "0.75rem 1rem",
+                  backgroundColor: isLoading ? "var(--muted)" : "#10b981",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "var(--radius)",
+                  fontSize: "0.875rem",
+                  fontWeight: "500",
+                  cursor: isLoading ? "not-allowed" : "pointer",
+                  transition: "background-color 0.2s ease"
+                }}
+              >
+                {isLoading ? "Creating..." : "Create Test User"}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={sendMagicLink}
+              disabled={isLoading}
+              style={{
+                width: "100%",
+                padding: "0.75rem 1rem",
+                backgroundColor: isLoading ? "var(--muted)" : "var(--primary)",
+                color: "white",
+                border: "none",
+                borderRadius: "var(--radius)",
+                fontSize: "0.875rem",
+                fontWeight: "500",
+                cursor: isLoading ? "not-allowed" : "pointer",
+                transition: "background-color 0.2s ease"
+              }}
+            >
+              {isLoading ? "Sending..." : "Send Magic Link"}
+            </button>
+          )}
+        </div>
+
+        {/* Toggle between magic link and password */}
+        <div style={{ textAlign: "center", marginBottom: "1rem" }}>
+          <button
+            onClick={() => setUsePassword(!usePassword)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--primary)",
+              fontSize: "0.875rem",
+              cursor: "pointer",
+              textDecoration: "underline"
+            }}
+          >
+            {usePassword ? "Use Magic Link instead" : "Use Password instead"}
+          </button>
+        </div>
+
+        {/* Message Display */}
+        {message && (
+          <div style={{
+            padding: "0.75rem 1rem",
+            borderRadius: "var(--radius)",
+            fontSize: "0.875rem",
+            marginBottom: "1rem",
+            backgroundColor: message.includes("error") || message.includes("Error") ? "#fef2f2" : "#f0f9ff",
+            color: message.includes("error") || message.includes("Error") ? "#dc2626" : "#0369a1",
+            border: `1px solid ${message.includes("error") || message.includes("Error") ? "#fecaca" : "#bae6fd"}`
+          }}>
+            {message}
+          </div>
+        )}
         
         <p style={{ 
           fontSize: "0.875rem", 
@@ -157,7 +344,10 @@ export default function LoginPage() {
           textAlign: "center",
           lineHeight: "1.5"
         }}>
-          We'll email you a secure link. No password needed.
+          {usePassword 
+            ? "Sign in with your email and password" 
+            : "We'll email you a secure link. No password needed."
+          }
         </p>
       </div>
     </main>
