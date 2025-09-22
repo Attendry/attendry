@@ -67,6 +67,27 @@ export function AuthHelper() {
     }
   }
 
+  async function testSessionPersistence() {
+    setStatus("Testing session...");
+    try {
+      const response = await fetch('/api/auth/test-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        setStatus(`Session OK: ${data.user.email}`);
+        setUser(data.user);
+      } else {
+        setStatus(`Session Error: ${data.message}`);
+      }
+    } catch (error: any) {
+      setStatus(`Test Error: ${error.message}`);
+    }
+  }
+
   return (
     <div style={{
       position: 'fixed',
@@ -85,21 +106,36 @@ export function AuthHelper() {
       {user && (
         <div><strong>User:</strong> {user.email}</div>
       )}
-      <button 
-        onClick={forceRefresh}
-        style={{
-          marginTop: '8px',
-          padding: '4px 8px',
-          fontSize: '11px',
-          background: '#007bff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: 'pointer'
-        }}
-      >
-        Force Refresh Session
-      </button>
+      <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+        <button 
+          onClick={forceRefresh}
+          style={{
+            padding: '4px 8px',
+            fontSize: '11px',
+            background: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Force Refresh
+        </button>
+        <button 
+          onClick={testSessionPersistence}
+          style={{
+            padding: '4px 8px',
+            fontSize: '11px',
+            background: '#28a745',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Test Session
+        </button>
+      </div>
     </div>
   );
 }

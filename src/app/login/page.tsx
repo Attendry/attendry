@@ -86,8 +86,18 @@ export default function LoginPage() {
       
       console.log('Sign-in successful:', data.user?.email);
       
-      // Redirect to events page on success
-      window.location.href = "/events";
+      // Force a session refresh to ensure cookies are set
+      try {
+        await supabase.auth.refreshSession();
+        console.log('Session refreshed after sign-in');
+      } catch (refreshError) {
+        console.error('Session refresh error:', refreshError);
+      }
+      
+      // Small delay to ensure cookies are set before redirect
+      setTimeout(() => {
+        window.location.href = "/events";
+      }, 500);
     } catch (error: any) {
       console.error('Unexpected sign-in error:', error);
       setMessage(`Unexpected error: ${error.message}`);
