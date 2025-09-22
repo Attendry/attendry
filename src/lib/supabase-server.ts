@@ -28,7 +28,8 @@ export async function supabaseServer() {
           httpOnly: false, // Allow client-side access
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
-          path: '/'
+          path: '/',
+          domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
         }); 
       },
       remove(name: string, opts: CookieOptions) { 
@@ -38,7 +39,8 @@ export async function supabaseServer() {
           httpOnly: false,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
-          path: '/'
+          path: '/',
+          domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
         }); 
       },
     },

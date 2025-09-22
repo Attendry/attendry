@@ -17,13 +17,30 @@ export function supabaseBrowser() {
         },
         set(name: string, value: string, options: any) {
           if (typeof document === 'undefined') return;
-          document.cookie = `${name}=${value}; ${Object.entries(options)
+          const cookieOptions = {
+            ...options,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
+          };
+          document.cookie = `${name}=${value}; ${Object.entries(cookieOptions)
+            .filter(([_, val]) => val !== undefined)
             .map(([key, val]) => `${key}=${val}`)
             .join('; ')}`;
         },
         remove(name: string, options: any) {
           if (typeof document === 'undefined') return;
-          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; ${Object.entries(options)
+          const cookieOptions = {
+            ...options,
+            maxAge: 0,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
+          };
+          document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; ${Object.entries(cookieOptions)
+            .filter(([_, val]) => val !== undefined)
             .map(([key, val]) => `${key}=${val}`)
             .join('; ')}`;
         }
