@@ -125,6 +125,29 @@ export function AuthHelper() {
     }
   }
 
+  async function analyzeCookies() {
+    setStatus("Analyzing cookies...");
+    try {
+      const response = await fetch('/api/debug/cookie-deep');
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        const cookieCount = data.cookies.total;
+        const supabaseCookies = data.cookies.supabaseCookies.length;
+        const sessionExists = data.session.exists;
+        
+        setStatus(`Cookies: ${cookieCount} total, ${supabaseCookies} Supabase, Session: ${sessionExists ? 'OK' : 'Missing'}`);
+        
+        // Log detailed info to console
+        console.log('Deep Cookie Analysis:', data);
+      } else {
+        setStatus(`Analysis Error: ${data.message}`);
+      }
+    } catch (error: any) {
+      setStatus(`Analysis Error: ${error.message}`);
+    }
+  }
+
   return (
     <div style={{
       position: 'fixed',
@@ -185,6 +208,20 @@ export function AuthHelper() {
           }}
         >
           Fix Session
+        </button>
+        <button 
+          onClick={analyzeCookies}
+          style={{
+            padding: '4px 8px',
+            fontSize: '11px',
+            background: '#6f42c1',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Analyze Cookies
         </button>
       </div>
     </div>
