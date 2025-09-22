@@ -148,6 +148,39 @@ export function AuthHelper() {
     }
   }
 
+  async function setCookiesManually() {
+    setStatus("Setting cookies manually...");
+    try {
+      // Get email and password from localStorage or prompt user
+      const email = localStorage.getItem('testEmail') || prompt('Enter your email:');
+      const password = localStorage.getItem('testPassword') || prompt('Enter your password:');
+      
+      if (!email || !password) {
+        setStatus("Email and password required");
+        return;
+      }
+
+      const response = await fetch('/api/auth/set-cookies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        setStatus(`Cookies Set: ${data.user.email}`);
+        setUser(data.user);
+        // Reload the page to refresh the session
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        setStatus(`Set Cookies Error: ${data.message}`);
+      }
+    } catch (error: any) {
+      setStatus(`Set Cookies Error: ${error.message}`);
+    }
+  }
+
   return (
     <div style={{
       position: 'fixed',
@@ -222,6 +255,20 @@ export function AuthHelper() {
           }}
         >
           Analyze Cookies
+        </button>
+        <button 
+          onClick={setCookiesManually}
+          style={{
+            padding: '4px 8px',
+            fontSize: '11px',
+            background: '#fd7e14',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Set Cookies
         </button>
       </div>
     </div>
