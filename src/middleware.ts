@@ -20,8 +20,8 @@ export async function middleware(req: NextRequest) {
             httpOnly: false, // Allow client-side access
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            path: '/',
-            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
+            path: '/'
+            // Remove domain restriction - let browser handle it
           });
         },
         remove(name: string, options: CookieOptions) {
@@ -31,8 +31,8 @@ export async function middleware(req: NextRequest) {
             httpOnly: false,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            path: '/',
-            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
+            path: '/'
+            // Remove domain restriction - let browser handle it
           });
         },
       },

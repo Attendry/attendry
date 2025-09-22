@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax' as const,
       path: '/',
-      domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined,
       maxAge: 60 * 60 * 24 * 7 // 7 days
+      // Remove domain restriction - let browser handle it
     };
 
     // Set access token cookie

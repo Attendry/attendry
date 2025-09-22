@@ -171,6 +171,28 @@ export function AuthHelper() {
     }
   }
 
+  async function analyzeSessionTimeline() {
+    setStatus("Analyzing session timeline...");
+    try {
+      const response = await fetch('/api/debug/session-timeline');
+      const data = await response.json();
+      
+      if (data.status === 'success') {
+        console.log('Session Timeline Analysis:', data);
+        setStatus(`Timeline: ${data.summary.successfulSteps}/${data.summary.totalSteps} steps successful`);
+        
+        // Log detailed timeline to console
+        data.timeline.forEach((step: any) => {
+          console.log(`Step ${step.step}: ${step.action} - ${step.status}`, step.details);
+        });
+      } else {
+        setStatus(`Timeline Error: ${data.message}`);
+      }
+    } catch (error: any) {
+      setStatus(`Timeline Error: ${error.message}`);
+    }
+  }
+
   return (
     <div style={{
       position: 'fixed',
@@ -259,6 +281,20 @@ export function AuthHelper() {
           }}
         >
           Set Cookies
+        </button>
+        <button 
+          onClick={analyzeSessionTimeline}
+          style={{
+            padding: '4px 8px',
+            fontSize: '11px',
+            background: '#20c997',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Timeline
         </button>
       </div>
     </div>

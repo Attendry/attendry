@@ -21,8 +21,8 @@ export function supabaseBrowser() {
             ...options,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            path: '/',
-            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
+            path: '/'
+            // Remove domain restriction - let browser handle it
           };
           document.cookie = `${name}=${value}; ${Object.entries(cookieOptions)
             .filter(([_, val]) => val !== undefined)
@@ -36,8 +36,8 @@ export function supabaseBrowser() {
             maxAge: 0,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            path: '/',
-            domain: process.env.NODE_ENV === 'production' ? '.vercel.app' : undefined
+            path: '/'
+            // Remove domain restriction - let browser handle it
           };
           document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; ${Object.entries(cookieOptions)
             .filter(([_, val]) => val !== undefined)
