@@ -128,7 +128,12 @@ export async function POST(req: NextRequest) {
 
     // Ensure logged in
     const { data: me, error: meErr } = await supabase.auth.getUser();
-    if (meErr || !me?.user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (meErr || !me?.user) {
+      console.error('Authentication error:', meErr);
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    console.log('User authenticated:', me.user.id);
 
     const {
       name,
@@ -145,11 +150,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Name and industry are required" }, { status: 400 });
     }
 
+    console.log('Saving configuration:', { name, industry, isActive });
+
     // Deactivate current configuration
-    await supabase
+    const { error: deactivateError } = await supabase
       .from("search_configurations")
       .update({ is_active: false })
       .eq("is_active", true);
+
+    if (deactivateError) {
+      console.error('Error deactivating current config:', deactivateError);
+      // Continue anyway, this might be the first config
+    }
 
     // Create new configuration
     const { data, error } = await supabase
@@ -168,11 +180,22 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: "Failed to save configuration" }, { status: 500 });
+      console.error('Database error:', error);
+      return NextResponse.json({ 
+        error: "Failed to save configuration", 
+        details: error.message,
+        code: error.code 
+      }, { status: 500 });
     }
 
+    console.log('Configuration saved successfully:', data);
     return NextResponse.json({ config: data });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Unexpected error:', error);
+    return NextResponse.json({ 
+      error: "Failed to save configuration", 
+      details: errorMessage 
+    }, { status: 500 });
   }
 }
