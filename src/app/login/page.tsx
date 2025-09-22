@@ -65,16 +65,32 @@ export default function LoginPage() {
     setIsLoading(true);
     setMessage("");
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      if (error) throw error;
+      
+      if (error) {
+        console.error('Sign-in error:', error);
+        
+        // Provide more specific error messages
+        if (error.message.includes('Invalid login credentials')) {
+          setMessage("Invalid email or password. Make sure you've created an account and confirmed your email.");
+        } else if (error.message.includes('Email not confirmed')) {
+          setMessage("Please check your email and click the confirmation link before signing in.");
+        } else {
+          setMessage(`Sign-in error: ${error.message}`);
+        }
+        return;
+      }
+      
+      console.log('Sign-in successful:', data.user?.email);
       
       // Redirect to events page on success
       window.location.href = "/events";
     } catch (error: any) {
-      setMessage(`Sign-in error: ${error.message}`);
+      console.error('Unexpected sign-in error:', error);
+      setMessage(`Unexpected error: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
