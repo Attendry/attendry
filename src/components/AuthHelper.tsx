@@ -26,16 +26,6 @@ export function AuthHelper() {
       if (session) {
         setUser(session.user);
         setStatus(`Authenticated as: ${session.user.email}`);
-        
-        // Try to force refresh the session
-        try {
-          await supabase.auth.refreshSession({
-            refresh_token: session.refresh_token
-          });
-          setStatus(`Session refreshed for: ${session.user.email}`);
-        } catch (refreshError) {
-          console.error('Refresh error:', refreshError);
-        }
       } else {
         setStatus("Not authenticated");
       }

@@ -222,7 +222,12 @@ export default function LoginPage() {
 
         {/* Email Input */}
         <div style={{ marginBottom: "1rem" }}>
+          <label htmlFor="email" style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: "500", color: "var(--foreground)" }}>
+            Email Address
+          </label>
           <input
+            id="email"
+            name="email"
             type="email"
             placeholder="Enter your email"
             value={email}
@@ -246,7 +251,12 @@ export default function LoginPage() {
         {/* Password Input (conditional) */}
         {usePassword && (
           <div style={{ marginBottom: "1rem" }}>
+            <label htmlFor="password" style={{ display: "block", marginBottom: "0.5rem", fontSize: "0.875rem", fontWeight: "500", color: "var(--foreground)" }}>
+              Password
+            </label>
             <input
+              id="password"
+              name="password"
               type="password"
               placeholder="Enter your password"
               value={password}
