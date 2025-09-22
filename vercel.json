@@ -1,0 +1,13 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/collect-events",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/collect-events?type=deep",
+      "schedule": "0 3 * * 0"
+    }
+  ]
+}
+
