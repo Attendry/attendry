@@ -48,7 +48,7 @@ export default function LoginPage() {
         },
       });
       if (error) throw error;
-      setMessage("Magic link sent! Check your email and click the link to sign in.");
+      setMessage("Magic link sent! Check your email and click the link to sign in. After clicking the link, you may need to use the 'Fix Session' button in the AuthHelper widget to ensure cookies are set properly.");
     } catch (error: any) {
       setMessage(`Magic link error: ${error.message}`);
     } finally {
@@ -86,18 +86,36 @@ export default function LoginPage() {
       
       console.log('Sign-in successful:', data.user?.email);
       
-      // Force a session refresh to ensure cookies are set
-      try {
-        await supabase.auth.refreshSession();
-        console.log('Session refreshed after sign-in');
-      } catch (refreshError) {
-        console.error('Session refresh error:', refreshError);
-      }
-      
-      // Small delay to ensure cookies are set before redirect
-      setTimeout(() => {
-        window.location.href = "/events";
-      }, 500);
+          // Force a session refresh to ensure cookies are set
+          try {
+            await supabase.auth.refreshSession();
+            console.log('Session refreshed after sign-in');
+          } catch (refreshError) {
+            console.error('Session refresh error:', refreshError);
+          }
+          
+          // Use the same manual cookie setting logic as the Fix Session button
+          try {
+            const response = await fetch('/api/auth/set-cookies', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, password })
+            });
+            
+            const data = await response.json();
+            if (data.status === 'success') {
+              console.log('Cookies set successfully after login');
+            } else {
+              console.warn('Failed to set cookies after login:', data.message);
+            }
+          } catch (cookieError) {
+            console.warn('Cookie setting failed after login:', cookieError);
+          }
+          
+          // Small delay to ensure cookies are set before redirect
+          setTimeout(() => {
+            window.location.href = "/events";
+          }, 1000);
     } catch (error: any) {
       console.error('Unexpected sign-in error:', error);
       setMessage(`Unexpected error: ${error.message}`);
