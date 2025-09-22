@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 type ChipProps = { text: string; onRemove?: () => void };
@@ -48,7 +48,7 @@ type IndustryTemplate = {
   };
 };
 
-export default function AdminPage() {
+function AdminContent() {
   const searchParams = useSearchParams();
   
   // User Profile State
@@ -78,8 +78,11 @@ export default function AdminPage() {
   const [newIcpTerm, setNewIcpTerm] = useState("");
   
   // Collection Management State
-  const [collectionStatus, setCollectionStatus] = useState<any>(null);
-  const [collectionHistory, setCollectionHistory] = useState<any[]>([]);
+  const [collectionStatus, setCollectionStatus] = useState<{
+    eventCount?: number;
+    coverage?: { coveredDays?: number };
+    lastUpdated?: string;
+  } | null>(null);
   const [collectionConfig, setCollectionConfig] = useState({
     industries: ['legal-compliance', 'fintech', 'healthcare'],
     countries: ['de', 'fr', 'uk', 'us'],
@@ -116,8 +119,9 @@ export default function AdminPage() {
         setIndustryTerms(json.profile.industry_terms || []);
         setUseBasic(json.profile.use_in_basic_search ?? true);
       }
-    } catch (e: any) {
-      setMsg(e.message);
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e.message : 'Unknown error';
+      setMsg(error);
     }
   }
 
@@ -144,8 +148,9 @@ export default function AdminPage() {
       if (json.templates) {
         setIndustryTemplates(json.templates);
       }
-    } catch (e: any) {
-      setMsg(e.message);
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e.message : 'Unknown error';
+      setMsg(error);
     }
   }
 
@@ -170,8 +175,9 @@ export default function AdminPage() {
       setIcpTerms(json.icp_terms || []);
       setIndustryTerms(json.industry_terms || []);
       setMsg("Generated profile terms");
-    } catch (e: any) {
-      setMsg(e.message);
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e.message : 'Unknown error';
+      setMsg(error);
     } finally { 
       setBusy(false); 
     }
@@ -196,8 +202,9 @@ export default function AdminPage() {
       const json = await r.json();
       if (!r.ok) throw new Error(json.error || "Failed to save");
       setMsg("Saved profile");
-    } catch (e: any) { 
-      setMsg(e.message); 
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e.message : 'Unknown error';
+      setMsg(error);
     } finally { 
       setBusy(false); 
     }
@@ -293,8 +300,9 @@ export default function AdminPage() {
       
       // Clear the saved status after 3 seconds
       setTimeout(() => setSaveStatus("idle"), 3000);
-    } catch (e: any) {
-      setMsg(e.message);
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e.message : 'Unknown error';
+      setMsg(error);
       setSaveStatus("error");
     } finally {
       setBusy(false);
@@ -307,8 +315,9 @@ export default function AdminPage() {
       const r = await fetch("/api/events/collect?industry=legal-compliance&country=de");
       const json = await r.json();
       setCollectionStatus(json);
-    } catch (e: any) {
-      console.error("Failed to load collection status:", e);
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e.message : 'Unknown error';
+      console.error("Failed to load collection status:", error);
     }
   }
 
@@ -331,8 +340,9 @@ export default function AdminPage() {
       
       setMsg(`Collection started: ${json.eventsFound} events found, ${json.eventsStored} stored`);
       await loadCollectionStatus(); // Refresh status
-    } catch (e: any) {
-      setMsg(e.message);
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e.message : 'Unknown error';
+      setMsg(error);
     } finally {
       setBusy(false);
     }
@@ -351,8 +361,9 @@ export default function AdminPage() {
       
       setMsg(`Full collection started: ${json.summary.totalEventsCollected} total events collected`);
       await loadCollectionStatus(); // Refresh status
-    } catch (e: any) {
-      setMsg(e.message);
+    } catch (e: unknown) {
+      const error = e instanceof Error ? e.message : 'Unknown error';
+      setMsg(error);
     } finally {
       setBusy(false);
     }
@@ -821,5 +832,18 @@ export default function AdminPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading admin dashboard...</p>
+      </div>
+    </div>}>
+      <AdminContent />
+    </Suspense>
   );
 }

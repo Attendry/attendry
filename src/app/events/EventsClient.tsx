@@ -87,7 +87,7 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
       setDebug(data);
-      setEvents((data.events || data.items || []).map((e: any) => ({
+      setEvents((data.events || data.items || []).map((e: EventRec) => ({
         source_url: e.source_url || e.link,
         title: e.title || e.source_url || "Untitled",
         starts_at: e.starts_at ?? null,
@@ -96,8 +96,9 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
         country: e.country ?? null,
         organizer: e.organizer ?? null,
       })));
-    } catch (err: any) {
-      setErr(err.message || "Search failed");
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      setErr(error || "Search failed");
     } finally {
       setLoading(false);
     }
@@ -331,7 +332,7 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
             {/* Helpful Tips */}
             <div className="mt-4 text-xs text-slate-500 space-y-1">
               <p>💡 Works even without API keys (returns demo events)</p>
-              <p>📍 Current location: "{country || "All Europe"}"</p>
+              <p>📍 Current location: &quot;{country || "All Europe"}&quot;</p>
             </div>
           </div>
         </form>
@@ -422,7 +423,7 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
                 </div>
               </div>
               <div className="grid gap-6">
-                {events.map((ev: any) => (
+                {events.map((ev: EventRec) => (
                   <EventCard key={ev.source_url} ev={ev} initiallySaved={initialSavedSet.has(ev.source_url)} />
                 ))}
               </div>
