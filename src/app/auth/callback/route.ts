@@ -11,5 +11,7 @@ export async function GET(req: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code);
   }
   // After this, cookies are set on the response and the server will see your session.
-  return NextResponse.redirect(new URL(next, req.nextUrl.origin));
+  // Use the request origin, but fallback to environment variable if needed
+  const baseUrl = req.nextUrl.origin || process.env.NEXT_PUBLIC_SITE_URL || 'https://attendry-6o26.vercel.app';
+  return NextResponse.redirect(new URL(next, baseUrl));
 }
