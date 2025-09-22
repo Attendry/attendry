@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { AuthHelper } from "@/components/AuthHelper";
 
 type ChipProps = { text: string; onRemove?: () => void };
 function Chip({ text, onRemove }: ChipProps) {
@@ -371,6 +372,7 @@ function AdminContent() {
 
   return (
     <div className="space-y-6">
+      <AuthHelper />
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
         
