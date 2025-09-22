@@ -11,5 +11,5 @@ export async function GET(req: NextRequest) {
     await supabase.auth.exchangeCodeForSession(code);
   }
   // After this, cookies are set on the response and the server will see your session.
-  return NextResponse.redirect(new URL(next, process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:4000"));
+  return NextResponse.redirect(new URL(next, req.nextUrl.origin));
 }
