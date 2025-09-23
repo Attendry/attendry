@@ -626,7 +626,7 @@ function parseEnhancedLocation(text: string, hostCountry: string | null) {
           'training', 'education', 'certification', 'accreditation', 'assessment'
         ];
         
-        if (invalidCityTerms.some(term => city.toLowerCase().includes(term.toLowerCase()))) {
+        if (city && invalidCityTerms.some(term => city.toLowerCase().includes(term.toLowerCase()))) {
           city = null;
         }
       }
@@ -656,7 +656,7 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
       .select("payload")
       .eq("url_normalized", norm)
       .maybeSingle();
-    if (data?.payload) {
+    if (data && data.payload) {
       trace.push({ url, step: "cache", hit: true });
       console.log(JSON.stringify({ at: "extract", cache: "hit", url: norm }));
       return data.payload;
