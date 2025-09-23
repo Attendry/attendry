@@ -83,19 +83,47 @@ export async function GET(req: NextRequest) {
       console.warn('Database not available for search config, using default:', dbError);
     }
 
-    // Return current config or default
-    const currentConfig = config || {
-      id: "default",
-      name: "Default Configuration",
-      industry: "legal-compliance",
-      baseQuery: INDUSTRY_TEMPLATES["legal-compliance"].baseQuery,
-      excludeTerms: INDUSTRY_TEMPLATES["legal-compliance"].excludeTerms,
-      industryTerms: INDUSTRY_TEMPLATES["legal-compliance"].industryTerms,
-      icpTerms: INDUSTRY_TEMPLATES["legal-compliance"].icpTerms,
-      speakerPrompts: INDUSTRY_TEMPLATES["legal-compliance"].speakerPrompts,
-      is_active: true,
-      created_at: new Date().toISOString()
-    };
+    // Build normalized camelCase config; include snake_case for admin compatibility
+    let currentConfig: any;
+    if (config) {
+      const normalized = {
+        id: config.id,
+        name: config.name,
+        industry: config.industry,
+        baseQuery: config.base_query,
+        excludeTerms: config.exclude_terms,
+        industryTerms: config.industry_terms || [],
+        icpTerms: config.icp_terms || [],
+        speakerPrompts: config.speaker_prompts || {},
+        is_active: config.is_active,
+        created_at: config.created_at,
+        updated_at: config.updated_at,
+      };
+      // expose both key styles so existing admin UI (snake_case) and search API (camelCase) both work
+      currentConfig = { ...config, ...normalized };
+    } else {
+      const def = {
+        id: "default",
+        name: "Default Configuration",
+        industry: "legal-compliance",
+        baseQuery: INDUSTRY_TEMPLATES["legal-compliance"].baseQuery,
+        excludeTerms: INDUSTRY_TEMPLATES["legal-compliance"].excludeTerms,
+        industryTerms: INDUSTRY_TEMPLATES["legal-compliance"].industryTerms,
+        icpTerms: INDUSTRY_TEMPLATES["legal-compliance"].icpTerms,
+        speakerPrompts: INDUSTRY_TEMPLATES["legal-compliance"].speakerPrompts,
+        is_active: true,
+        created_at: new Date().toISOString()
+      };
+      currentConfig = {
+        ...def,
+        // add snake_case mirrors for admin UI
+        base_query: def.baseQuery,
+        exclude_terms: def.excludeTerms,
+        industry_terms: def.industryTerms,
+        icp_terms: def.icpTerms,
+        speaker_prompts: def.speakerPrompts,
+      };
+    }
 
     return NextResponse.json({
       config: currentConfig,
