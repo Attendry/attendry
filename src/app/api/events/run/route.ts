@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
     // Build absolute URLs for internal API calls
     // This ensures the API calls work correctly regardless of deployment environment
     const origin = req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || "http://127.0.0.1:4000";
-    const url = (p: string) => p; // use relative paths to avoid cross-domain issues
+    const url = (p: string) => new URL(p, origin).toString();
     const forwardHeaders: HeadersInit = {
       Cookie: req.headers.get('cookie') || ''
     };
@@ -273,7 +273,7 @@ export async function POST(req: NextRequest) {
     
     // Helper function to call the search endpoint
     async function doSearch(query: string) {
-      const res = await fetch("/api/events/search", {
+      const res = await fetch(url("/api/events/search"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...forwardHeaders },
         cache: "no-store",
@@ -330,7 +330,7 @@ export async function POST(req: NextRequest) {
     // ============================================================================
     
     // Call the extraction endpoint to get detailed event information from URLs
-    const extractRes = await fetch("/api/events/extract", {
+    const extractRes = await fetch(url("/api/events/extract"), {
       method: "POST",
       headers: { "Content-Type": "application/json", ...forwardHeaders },
       cache: "no-store",
