@@ -285,7 +285,7 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json", ...forwardHeaders },
         cache: "no-store",
-        body: JSON.stringify({ q: query, country, from, to, provider }),
+        body: JSON.stringify({ q: query, country, from, to, provider, num: 50, rerank: true, topK: 50 }),
       });
       const json = await res.json().catch(() => ({}));
       const items: { title: string; link: string }[] = json.items || [];
@@ -342,7 +342,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: { "Content-Type": "application/json", ...forwardHeaders },
       cache: "no-store",
-      body: JSON.stringify({ urls: urls.slice(0, 20), locale: country || "" }), // Limit to 20 URLs for performance
+      body: JSON.stringify({ urls: urls.slice(0, 20), locale: country || "", crawl: { depth: 3, allowlist: true } }), // Limit to 20 URLs for performance
     });
     const extractJson = await extractRes.json().catch(() => ({}));
     let { events = [], version: extractVersion, trace = [] } = extractJson;

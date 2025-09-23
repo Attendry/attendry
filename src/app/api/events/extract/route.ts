@@ -645,7 +645,7 @@ function parseEnhancedLocation(text: string, hostCountry: string | null) {
 }
 
 // --- Extract one URL (NEVER returns undefined)
-async function extractOne(url: string, key: string, locale: string, trace: any[], origin?: string) {
+async function extractOne(url: string, key: string, locale: string, trace: any[], origin?: string, crawl?: any) {
   const hostCountry = guessCountryFromHost(url);
   const context = await getExtractionContext(origin);
 
@@ -771,7 +771,15 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
             languages: ["de-DE","en-GB","fr-FR","it-IT","es-ES","nl-NL","pt-PT","pl-PL"] 
           },
           blockAds: true,
-          removeBase64Images: true
+          removeBase64Images: true,
+          crawlerOptions: {
+            maxDepth: Math.min(3, (crawl?.depth ?? 3)),
+            maxPagesToCrawl: 12,
+            allowSubdomains: true,
+            includePatterns: [
+              "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
+            ]
+          }
         },
         ignoreInvalidURLs: true
       })
@@ -865,7 +873,7 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
 
 export async function POST(req: NextRequest) {
   try {
-    const { urls, locale = "" } = await req.json();
+    const { urls, locale = "", crawl } = await req.json();
     if (!Array.isArray(urls) || urls.length === 0) {
       return NextResponse.json({ version: "extract_v5", events: [], trace: [], note: "urls[] required" }, { status: 400 });
     }
@@ -893,7 +901,7 @@ export async function POST(req: NextRequest) {
       const wait = Math.max(0, last + gapMs - Date.now());
       if (wait > 0) await new Promise(r => setTimeout(r, wait));
       hostLast[host] = Date.now();
-      const ev = await extractOne(u, key, locale, trace, req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000');
+      const ev = await extractOne(u, key, locale, trace, req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000', crawl);
       results.push(ev);
     }
 

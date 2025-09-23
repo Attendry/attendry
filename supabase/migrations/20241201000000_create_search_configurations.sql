@@ -47,7 +47,7 @@ INSERT INTO search_configurations (
 ) VALUES (
   'Default Legal & Compliance',
   'legal-compliance',
-  '(legal OR compliance OR investigation OR "e-discovery" OR ediscovery)',
+  '(legal OR compliance OR investigation OR "e-discovery" OR ediscovery OR "legal tech" OR "legal technology" OR "regulatory" OR "governance" OR "risk management" OR "audit" OR "whistleblowing" OR "data protection" OR "GDPR" OR "privacy" OR "cybersecurity" OR "regtech" OR "ESG") (conference OR summit OR forum OR "trade show" OR exhibition OR convention OR "industry event" OR "business event" OR konferenz OR kongress OR symposium OR veranstaltung OR workshop OR seminar OR webinar OR "training" OR "certification") (2025 OR "next year" OR upcoming OR "this year" OR "25. September" OR "September 2025" OR "Oktober 2025" OR "November 2025" OR "Dezember 2025" OR "Q1 2025" OR "Q2 2025" OR "Q3 2025" OR "Q4 2025")',
   'reddit Mumsnet "legal advice" forum',
   '["compliance", "investigations", "regtech", "ESG", "sanctions", "governance", "legal ops", "risk", "audit", "whistleblow"]'::jsonb,
   '["general counsel", "chief compliance officer", "investigations lead", "compliance manager", "legal operations"]'::jsonb,

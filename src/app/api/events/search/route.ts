@@ -815,7 +815,7 @@ function filterEventsByDate(events: EventItem[], from?: string, to?: string): Ev
 export async function POST(req: NextRequest) {
   try {
     // Parse request parameters with defaults
-    const { q = "", country = "", from, to, provider = "cse", num = 10 } = await req.json();
+    const { q = "", country = "", from, to, provider = "cse", num = 10, rerank = false, topK = 50 } = await req.json();
 
     // Check cache first to avoid unnecessary API calls
     const cacheKey = getCacheKey(q, country, from, to);
@@ -890,7 +890,7 @@ export async function POST(req: NextRequest) {
     const enhancedQuery = buildEnhancedQuery(q || "", searchConfig, country, from, to);
     
     const params = new URLSearchParams({
-      q: enhancedQuery, key, cx, num: String(num), safe: "off",
+      q: enhancedQuery, key, cx, num: String(Math.max(num, rerank ? Math.min(50, topK || 50) : num)), safe: "off",
       // explicitly set interface language to stabilize ranking
       hl: "en",
       filter: "1",
@@ -953,7 +953,31 @@ export async function POST(req: NextRequest) {
 
     // Use Gemini AI for intelligent event filtering
     // This provides much more accurate filtering than regex-based approaches
-    const filteredItems = await filterWithGemini(items, DROP_TITLE, BAN_HOSTS, searchConfig);
+    let filteredItems = await filterWithGemini(items, DROP_TITLE, BAN_HOSTS, searchConfig);
+
+    // Optional: rerank topK using Gemini context if requested
+    if (rerank && filteredItems.length > 0 && process.env.GEMINI_API_KEY) {
+      try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const rankedPrompt = `Rerank these URLs by likelihood of being high-quality industry event pages (conferences/summits/trade shows) for ${searchConfig.industry || 'legal-compliance'}. Return a JSON array of indices in best-to-worst order.\n\nItems:\n${filteredItems.map((it, i) => `${i}: ${it.title} | ${it.link} | ${it.snippet}`).join('\n')}\n\nReturn ONLY a JSON array of indices.`;
+        const result = await model.generateContent(rankedPrompt);
+        let text = (await result.response).text().trim();
+        if (text.startsWith('```')) text = text.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/,'');
+        const order: number[] = JSON.parse(text);
+        const seen = new Set<number>();
+        const reranked: SearchItem[] = [];
+        for (const idx of order) {
+          if (typeof idx === 'number' && idx >=0 && idx < filteredItems.length && !seen.has(idx)) {
+            seen.add(idx);
+            reranked.push(filteredItems[idx]);
+          }
+        }
+        // append any not included
+        for (let i = 0; i < filteredItems.length; i++) if (!seen.has(i)) reranked.push(filteredItems[i]);
+        filteredItems = reranked.slice(0, Math.min(topK || 50, 50));
+      } catch {}
+    }
 
     items = filteredItems;
 
