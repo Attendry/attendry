@@ -186,13 +186,13 @@ function cleanCityText(s?: string | null): string | null {
     'training', 'education', 'certification', 'accreditation', 'assessment'
   ];
   
-  if (invalidCityTerms.some(term => cleaned.toLowerCase().includes(term.toLowerCase()))) {
+  if (invalidCityTerms.some(term => (cleaned || '').toLowerCase().includes((term || '').toLowerCase()))) {
     return null;
   }
   
   // Check if it's a known German city (case-insensitive)
-  const knownCities = DE_CITIES.map(city => city.toLowerCase());
-  if (!knownCities.includes(cleaned.toLowerCase())) {
+  const knownCities = DE_CITIES.map(city => (city || '').toLowerCase());
+  if (!knownCities.includes((cleaned || '').toLowerCase())) {
     // If it's not a known city, be more strict - only allow if it looks like a proper city name
     if (!/^[A-Za-zäöüÄÖÜß\s-]+$/.test(cleaned) || cleaned.length < 3) {
       return null;
@@ -239,10 +239,10 @@ function calculateEventConfidence(event: any): number {
   const title = event.title || "";
   if (title.length >= 10) confidence += 0.1;
   if (title.length >= 20) confidence += 0.1;
-  if (!title.toLowerCase().includes('untitled') && !title.toLowerCase().includes('event')) confidence += 0.1;
+  if (!((title || '').toLowerCase().includes('untitled')) && !((title || '').toLowerCase().includes('event'))) confidence += 0.1;
   
   // Penalize generic titles
-  if (title.toLowerCase() === 'event' || title.toLowerCase() === 'untitled event') {
+  if ((title || '').toLowerCase() === 'event' || (title || '').toLowerCase() === 'untitled event') {
     confidence -= 0.2;
   }
   
@@ -275,9 +275,9 @@ function calculateEventConfidence(event: any): number {
   if (event.speakers && event.speakers.length > 0) confidence += 0.1;
   
   // Penalize obviously invalid events
-  if (title.toLowerCase().includes('404') || 
-      title.toLowerCase().includes('not found') ||
-      title.toLowerCase().includes('error') ||
+  if ((title || '').toLowerCase().includes('404') || 
+      (title || '').toLowerCase().includes('not found') ||
+      (title || '').toLowerCase().includes('error') ||
       title.length < 3) {
     confidence = 0.1;
   }
@@ -417,7 +417,7 @@ function parseDates(text: string) {
   let m = text.match(/\b(\d{1,2})\.\s*([a-zA-ZäöüÄÖÜ]+)\s+(\d{4})\b/i);
   if (m) {
     const day = pad2(m[1]);
-    const monthName = m[2].toLowerCase();
+    const monthName = (m[2] || '').toLowerCase();
     const year = m[3];
     const month = germanMonths[monthName as keyof typeof germanMonths];
     if (month) {
@@ -429,7 +429,7 @@ function parseDates(text: string) {
   m = text.match(/\b(\d{1,2})\.\s*([a-zA-ZäöüÄÖÜ]+)\b/i);
   if (m) {
     const day = pad2(m[1]);
-    const monthName = m[2].toLowerCase();
+    const monthName = (m[2] || '').toLowerCase();
     const month = germanMonths[monthName as keyof typeof germanMonths];
     if (month) {
       const currentYear = new Date().getFullYear();
@@ -459,14 +459,14 @@ function parseDates(text: string) {
   m = text.match(/\b(\d{1,2})\.\s*bis\s*(\d{1,2})\.\s*([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/i);
   if (m) {
     const d1 = pad2(m[1]), d2 = pad2(m[2]);
-    const mon = m[3].toLowerCase().replace(/\./g,""); const mm = MONTHS[mon];
+    const mon = (m[3] || '').toLowerCase().replace(/\./g,""); const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[4]}-${mm}-${d1}`, ends_at: `${m[4]}-${mm}-${d2}` };
   }
   // dd Month yyyy  (de/en)  e.g., 12 März 2026 / 12 Sep 2025
   m = text.match(/\b(\d{1,2})\s+([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/);
   if (m) {
     const d = pad2(m[1]);
-    const mon = m[2].toLowerCase().replace(/\./g,"");
+    const mon = (m[2] || '').toLowerCase().replace(/\./g,"");
     const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[3]}-${mm}-${d}`, ends_at: null };
   }
@@ -474,7 +474,7 @@ function parseDates(text: string) {
   m = text.match(/\b(\d{1,2})\s*[–-]\s*(\d{1,2})\s+([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/);
   if (m) {
     const d1 = pad2(m[1]), d2 = pad2(m[2]);
-    const mon = m[3].toLowerCase().replace(/\./g,"");
+    const mon = (m[3] || '').toLowerCase().replace(/\./g,"");
     const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[4]}-${mm}-${d1}`, ends_at: `${m[4]}-${mm}-${d2}` };
   }
@@ -626,7 +626,7 @@ function parseEnhancedLocation(text: string, hostCountry: string | null) {
           'training', 'education', 'certification', 'accreditation', 'assessment'
         ];
         
-        if (city && invalidCityTerms.some(term => city.toLowerCase().includes(term.toLowerCase()))) {
+        if (city && invalidCityTerms.some(term => (city || '').toLowerCase().includes((term || '').toLowerCase()))) {
           city = null;
         }
       }
@@ -908,7 +908,7 @@ export async function POST(req: NextRequest) {
         
         // Exclude events with very low confidence or generic titles
         if (confidence < 0.3) return false;
-        if (title.toLowerCase() === 'event' || title.toLowerCase() === 'untitled event') return false;
+        if ((title || '').toLowerCase() === 'event' || (title || '').toLowerCase() === 'untitled event') return false;
         
         return true;
       })
