@@ -144,6 +144,7 @@ CREATE TRIGGER calculate_data_completeness_trigger
 CREATE OR REPLACE FUNCTION upsert_event(p JSONB)
 RETURNS UUID
 LANGUAGE plpgsql
+SECURITY DEFINER
 AS $$
 DECLARE
   v_id UUID;

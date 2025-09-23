@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 /**
  * POST /api/events/collect
@@ -97,8 +98,8 @@ export async function POST(req: NextRequest) {
 async function storeEventsInDatabase(events: any[], metadata: any) {
   try {
     // Import Supabase client
-    const { supabaseServer } = await import('@/lib/supabase-server');
-    const supabase = await supabaseServer();
+    // Use admin client for background writes to bypass RLS
+    const supabase = supabaseAdmin();
     
     if (!supabase) {
       console.log('[COLLECT] No Supabase connection, skipping database storage');

@@ -381,6 +381,7 @@ export async function POST(req: NextRequest) {
     // Apply country-based filtering
     const { kept, reasons } = postExtractFilter(events, country);
     events = kept;
+    const undatedCandidates: EventRec[] = [];
     
     // Determine if we should allow undated items (demo/minimal extraction modes)
     const allowUndated = !!(debug as any)?.synthesizedFromSearch ||
@@ -389,17 +390,23 @@ export async function POST(req: NextRequest) {
 
     // Apply date range filtering
     if (debugEnabled) debug.dateFiltering = { from, to, beforeCount: events.length, allowUndated };
+    const toleranceDays = 7;
+    const toleranceMs = toleranceDays * 24 * 60 * 60 * 1000;
+    const rangeStartMs = new Date(from + "T00:00:00Z").getTime();
+    const rangeEndMs = new Date(to + "T23:59:59Z").getTime();
     events = events.filter((e: EventRec) => {
       // If no dates, keep the event when relaxed modes are active
       if (!e.starts_at && !e.ends_at) {
         if (allowUndated) return true;
+        undatedCandidates.push(e);
         if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'no_dates', title: e.title }); }
         return false;
       }
       
       // If only start date, check if it's in range
       if (e.starts_at && !e.ends_at) {
-        const isInRange = inRange(e.starts_at, from, to);
+        const startMs = new Date(e.starts_at).getTime();
+        const isInRange = startMs >= (rangeStartMs - toleranceMs) && startMs <= (rangeEndMs + toleranceMs);
         if (!isInRange) {
           if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'start_date_out_of_range', title: e.title, starts_at: e.starts_at }); }
         }
@@ -408,7 +415,8 @@ export async function POST(req: NextRequest) {
       
       // If only end date, check if it's in range
       if (!e.starts_at && e.ends_at) {
-        const isInRange = inRange(e.ends_at, from, to);
+        const endMs = new Date(e.ends_at).getTime();
+        const isInRange = endMs >= (rangeStartMs - toleranceMs) && endMs <= (rangeEndMs + toleranceMs);
         if (!isInRange) {
           if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'end_date_out_of_range', title: e.title, ends_at: e.ends_at }); }
         }
@@ -419,8 +427,8 @@ export async function POST(req: NextRequest) {
       if (e.starts_at && e.ends_at) {
         const eventStart = new Date(e.starts_at).getTime();
         const eventEnd = new Date(e.ends_at).getTime();
-        const rangeStart = new Date(from + "T00:00:00Z").getTime();
-        const rangeEnd = new Date(to + "T23:59:59Z").getTime();
+        const rangeStart = rangeStartMs - toleranceMs;
+        const rangeEnd = rangeEndMs + toleranceMs;
         
         // Event overlaps if: event starts before range ends AND event ends after range starts
         const overlaps = eventStart <= rangeEnd && eventEnd >= rangeStart;
@@ -442,6 +450,13 @@ export async function POST(req: NextRequest) {
       return false;
     });
     if (debugEnabled) debug.dateFiltering.afterCount = events.length;
+    if (events.length === 0 && undatedCandidates.length > 0) {
+      events = undatedCandidates.slice(0, 5);
+      if (debugEnabled) {
+        debug.dateFiltering.fallbackUndatedUsed = true;
+        debug.dateFiltering.undatedKept = events.length;
+      }
+    }
     
     // ============================================================================
     // STEP 8: FINAL DATA SANITIZATION
