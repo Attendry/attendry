@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // Default industry templates
 const INDUSTRY_TEMPLATES = {
@@ -59,17 +60,14 @@ export async function GET(req: NextRequest) {
     let config = null;
     
     try {
-      const supabase = await supabaseServer();
-      // Get current active search configuration (no auth required if RLS allows anon read)
-      const { data, error } = await supabase
+      // Admin client to bypass RLS/read issues for global config
+      const admin = supabaseAdmin();
+      const { data, error } = await admin
         .from("search_configurations")
         .select("*")
         .eq("is_active", true)
         .single();
-
-      if (!error && data) {
-        config = data as any;
-      }
+      if (!error && data) config = data as any;
     } catch (dbError) {
       // Database not available or table doesn't exist - use default
       console.warn('Database not available for search config, using default:', dbError);
