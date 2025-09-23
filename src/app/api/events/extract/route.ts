@@ -51,6 +51,7 @@ const EVENT_SCHEMA = {
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari";
 
 // --- Small helpers
+function lc(v: unknown): string { try { return (v ?? '').toString().toLowerCase(); } catch { return ''; } }
 function decodeEntities(s?: string | null) {
   if (!s) return s ?? null;
   return s
@@ -191,8 +192,8 @@ function cleanCityText(s?: string | null): string | null {
   }
   
   // Check if it's a known German city (case-insensitive)
-  const knownCities = DE_CITIES.map(city => (city || '').toLowerCase());
-  if (!knownCities.includes((cleaned || '').toLowerCase())) {
+  const knownCities = DE_CITIES.map(city => lc(city));
+  if (!knownCities.includes(lc(cleaned))) {
     // If it's not a known city, be more strict - only allow if it looks like a proper city name
     if (!/^[A-Za-zäöüÄÖÜß\s-]+$/.test(cleaned) || cleaned.length < 3) {
       return null;
@@ -229,7 +230,7 @@ const EU_TLD_COUNTRY: Record<string,string> = {
   fi:"Finland", no:"Norway", pt:"Portugal", cz:"Czechia", ie:"Ireland", uk:"United Kingdom", gb:"United Kingdom"
 };
 function guessCountryFromHost(u: string): string | null {
-  try { const host = new URL(u).hostname.toLowerCase(); const tld = host.split(".").pop()!; return EU_TLD_COUNTRY[tld] || null; } catch { return null; }
+  try { const host = lc(new URL(u).hostname); const tld = host.split(".").pop()!; return EU_TLD_COUNTRY[tld] || null; } catch { return null; }
 }
 // Enhanced event quality scoring
 function calculateEventConfidence(event: any): number {
@@ -239,10 +240,10 @@ function calculateEventConfidence(event: any): number {
   const title = event.title || "";
   if (title.length >= 10) confidence += 0.1;
   if (title.length >= 20) confidence += 0.1;
-  if (!((title || '').toLowerCase().includes('untitled')) && !((title || '').toLowerCase().includes('event'))) confidence += 0.1;
+  if (!(lc(title).includes('untitled')) && !(lc(title).includes('event'))) confidence += 0.1;
   
   // Penalize generic titles
-  if ((title || '').toLowerCase() === 'event' || (title || '').toLowerCase() === 'untitled event') {
+  if (lc(title) === 'event' || lc(title) === 'untitled event') {
     confidence -= 0.2;
   }
   
@@ -275,9 +276,9 @@ function calculateEventConfidence(event: any): number {
   if (event.speakers && event.speakers.length > 0) confidence += 0.1;
   
   // Penalize obviously invalid events
-  if ((title || '').toLowerCase().includes('404') || 
-      (title || '').toLowerCase().includes('not found') ||
-      (title || '').toLowerCase().includes('error') ||
+  if (lc(title).includes('404') || 
+      lc(title).includes('not found') ||
+      lc(title).includes('error') ||
       title.length < 3) {
     confidence = 0.1;
   }
@@ -369,7 +370,7 @@ function parseJsonLd(html: string) {
       const json = JSON.parse(m[1]);
       const arr = Array.isArray(json) ? json : [json];
       for (const node of arr) {
-        const t = (node["@type"] || node.type || "").toString().toLowerCase();
+        const t = lc((node["@type"] || node.type || "").toString());
         if (!t.includes("event")) continue;
         const ev = node, loc = ev.location || {}, addr = loc.address || {};
         const country = addr.addressCountry || addr.country || null;
@@ -417,7 +418,7 @@ function parseDates(text: string) {
   let m = text.match(/\b(\d{1,2})\.\s*([a-zA-ZäöüÄÖÜ]+)\s+(\d{4})\b/i);
   if (m) {
     const day = pad2(m[1]);
-    const monthName = (m[2] || '').toLowerCase();
+    const monthName = lc(m[2]);
     const year = m[3];
     const month = germanMonths[monthName as keyof typeof germanMonths];
     if (month) {
@@ -429,7 +430,7 @@ function parseDates(text: string) {
   m = text.match(/\b(\d{1,2})\.\s*([a-zA-ZäöüÄÖÜ]+)\b/i);
   if (m) {
     const day = pad2(m[1]);
-    const monthName = (m[2] || '').toLowerCase();
+    const monthName = lc(m[2]);
     const month = germanMonths[monthName as keyof typeof germanMonths];
     if (month) {
       const currentYear = new Date().getFullYear();
@@ -459,14 +460,14 @@ function parseDates(text: string) {
   m = text.match(/\b(\d{1,2})\.\s*bis\s*(\d{1,2})\.\s*([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/i);
   if (m) {
     const d1 = pad2(m[1]), d2 = pad2(m[2]);
-    const mon = (m[3] || '').toLowerCase().replace(/\./g,""); const mm = MONTHS[mon];
+    const mon = lc(m[3]).replace(/\./g,""); const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[4]}-${mm}-${d1}`, ends_at: `${m[4]}-${mm}-${d2}` };
   }
   // dd Month yyyy  (de/en)  e.g., 12 März 2026 / 12 Sep 2025
   m = text.match(/\b(\d{1,2})\s+([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/);
   if (m) {
     const d = pad2(m[1]);
-    const mon = (m[2] || '').toLowerCase().replace(/\./g,"");
+    const mon = lc(m[2]).replace(/\./g,"");
     const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[3]}-${mm}-${d}`, ends_at: null };
   }
@@ -474,7 +475,7 @@ function parseDates(text: string) {
   m = text.match(/\b(\d{1,2})\s*[–-]\s*(\d{1,2})\s+([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/);
   if (m) {
     const d1 = pad2(m[1]), d2 = pad2(m[2]);
-    const mon = (m[3] || '').toLowerCase().replace(/\./g,"");
+    const mon = lc(m[3]).replace(/\./g,"");
     const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[4]}-${mm}-${d1}`, ends_at: `${m[4]}-${mm}-${d2}` };
   }
@@ -626,7 +627,7 @@ function parseEnhancedLocation(text: string, hostCountry: string | null) {
           'training', 'education', 'certification', 'accreditation', 'assessment'
         ];
         
-        if (city && invalidCityTerms.some(term => (city || '').toLowerCase().includes((term || '').toLowerCase()))) {
+        if (city && invalidCityTerms.some(term => lc(city).includes(lc(term)))) {
           city = null;
         }
       }
@@ -667,9 +668,11 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
   // Fetch HTML (many sites block default UA)
   let html = "";
   try {
+    // main extraction flow wrapped to avoid bubbling unexpected errors
+    try {
     const res = await fetchWithRetry(url, { headers: { "User-Agent": UA }, cache: "no-store", redirect: "follow", timeoutMs: 8000, retries: 2 });
     if (res.ok) html = await res.text();
-  } catch {}
+    } catch {}
 
   // 1) JSON-LD
   if (html) {
@@ -852,6 +855,11 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
     await supabase.from("url_extractions").upsert({ url_normalized: normalizeUrl(url), payload: ev, confidence: ev.confidence ?? null, schema_version: 1 });
   } catch {}
   return ev;
+  } catch (err: any) {
+    // Hard fallback on unexpected errors
+    trace.push({ url, step: "exception", message: err?.message || String(err) });
+    return shape(url, { title: null, country: hostCountry });
+  }
 }
 
 export async function POST(req: NextRequest) {
