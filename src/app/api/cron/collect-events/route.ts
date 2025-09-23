@@ -48,13 +48,9 @@ export async function POST(req: NextRequest) {
     // TTL sweep: purge expired durable caches (best-effort, non-user-facing)
     try {
       const supabase = await supabaseServer();
-      const { error } = await supabase.rpc("exec_sql", { sql: "delete from search_cache where ttl_at < now();" });
-      if (error) {
-        // Fallback if RPC is not available: ignore silently
-        console.warn("TTL sweep RPC not available or failed");
-      } else {
-        console.log(JSON.stringify({ at: "cron", action: "ttl_sweep_done" }));
-      }
+      // direct delete via RPC-less approach (requires policy allowing delete or service key)
+      const { error } = await supabase.from('search_cache').delete().lt('ttl_at', new Date().toISOString());
+      if (!error) console.log(JSON.stringify({ at: "cron", action: "ttl_sweep_done" }));
     } catch {
       // ignore; does not impact user collection
     }

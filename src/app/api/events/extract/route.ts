@@ -515,9 +515,10 @@ function normalizeUrl(u: string) {
 }
 
 // Load industry-specific extraction context
-async function getExtractionContext() {
+async function getExtractionContext(origin?: string) {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:3000'}/api/config/search`);
+    const base = origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000';
+    const res = await fetch(new URL('/api/config/search', base).toString());
     const data = await res.json();
     return {
       industry: data.config?.industry || 'general',
@@ -644,9 +645,9 @@ function parseEnhancedLocation(text: string, hostCountry: string | null) {
 }
 
 // --- Extract one URL (NEVER returns undefined)
-async function extractOne(url: string, key: string, locale: string, trace: any[]) {
+async function extractOne(url: string, key: string, locale: string, trace: any[], origin?: string) {
   const hostCountry = guessCountryFromHost(url);
-  const context = await getExtractionContext();
+  const context = await getExtractionContext(origin);
 
   // Durable cache lookup (best-effort)
   try {
@@ -892,7 +893,7 @@ export async function POST(req: NextRequest) {
       const wait = Math.max(0, last + gapMs - Date.now());
       if (wait > 0) await new Promise(r => setTimeout(r, wait));
       hostLast[host] = Date.now();
-      const ev = await extractOne(u, key, locale, trace);
+      const ev = await extractOne(u, key, locale, trace, req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000');
       results.push(ev);
     }
 

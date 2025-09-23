@@ -12,11 +12,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 # Google Custom Search (Required for event discovery)
-GOOGLE_CSE_ID=your_google_custom_search_engine_id
-GOOGLE_API_KEY=your_google_api_key
+GOOGLE_CSE_CX=your_google_custom_search_engine_id
+GOOGLE_CSE_KEY=your_google_api_key
 
 # Firecrawl (Required for event extraction)
-FIRECRAWL_API_KEY=your_firecrawl_api_key
+FIRECRAWL_KEY=your_firecrawl_key
 
 # Cron Security (Required for cron jobs)
 CRON_SECRET=your_secure_random_token_here

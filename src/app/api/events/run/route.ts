@@ -230,22 +230,29 @@ export async function POST(req: NextRequest) {
     // STEP 2: GET USER PROFILE FOR PERSONALIZED SEARCH
     // ============================================================================
     
-    // Attempt to get authenticated user for personalized search
-    const supabase = await supabaseServer();
-    let uid: string | null = null;
+    // Attempt to get authenticated user for personalized search (tolerate missing Supabase)
+    let supabase: any = null;
     try {
-      const auth: any = (supabase as any)?.auth;
-      if (auth && typeof auth.getUser === "function") {
-        const { data } = await auth.getUser();
-        uid = data?.user?.id ?? null;
-      }
+      supabase = await supabaseServer();
     } catch {
-      // No session or mismatched versions; proceed without profile bias
-      uid = null;
+      supabase = null;
+    }
+    let uid: string | null = null;
+    if (supabase) {
+      try {
+        const auth: any = (supabase as any)?.auth;
+        if (auth && typeof auth.getUser === "function") {
+          const { data } = await auth.getUser();
+          uid = data?.user?.id ?? null;
+        }
+      } catch {
+        // No session or mismatched versions; proceed without profile bias
+        uid = null;
+      }
     }
 
     let profile: any = null;
-    if (uid) {
+    if (uid && supabase) {
       const { data } = await supabase
         .from("user_profiles")
         .select("competitors, icp_terms, industry_terms, use_in_basic_search")
@@ -375,12 +382,18 @@ export async function POST(req: NextRequest) {
     const { kept, reasons } = postExtractFilter(events, country);
     events = kept;
     
+    // Determine if we should allow undated items (demo/minimal extraction modes)
+    const allowUndated = !!(debug as any)?.synthesizedFromSearch ||
+      (typeof (search as any)?.provider === 'string' && (((search as any).provider || '').includes('demo')) ) ||
+      (typeof (extractJson as any)?.note === 'string' && (extractJson as any).note.includes('no FIRECRAWL_KEY'));
+
     // Apply date range filtering
-    if (debugEnabled) debug.dateFiltering = { from, to, beforeCount: events.length };
+    if (debugEnabled) debug.dateFiltering = { from, to, beforeCount: events.length, allowUndated };
     events = events.filter((e: EventRec) => {
-      // If no dates, filter out the event (we need dates for proper filtering)
+      // If no dates, keep the event when relaxed modes are active
       if (!e.starts_at && !e.ends_at) {
-          if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'no_dates', title: e.title }); }
+        if (allowUndated) return true;
+        if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'no_dates', title: e.title }); }
         return false;
       }
       
@@ -449,6 +462,7 @@ export async function POST(req: NextRequest) {
     
     // Check if database is available for saving events
     const canDb =
+      !!supabase &&
       !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
       !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 

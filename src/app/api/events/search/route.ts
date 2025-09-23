@@ -829,7 +829,8 @@ export async function POST(req: NextRequest) {
     // Load search configuration for enhanced query building
     let searchConfig = { industryTerms: [], baseQuery: "", excludeTerms: "" } as any;
     try {
-      const configRes = await fetch(`/api/config/search`, { headers: { Cookie: req.headers.get('cookie') || '' } });
+      const origin = req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || "http://127.0.0.1:4000";
+      const configRes = await fetch(new URL('/api/config/search', origin).toString(), { headers: { Cookie: req.headers.get('cookie') || '' } });
       if (configRes.ok) {
         const configData = await configRes.json();
         const c = configData.config || {};

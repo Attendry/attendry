@@ -16,12 +16,12 @@
 ### Google Custom Search API
 - **Purpose**: Find event websites
 - **Setup**: https://developers.google.com/custom-search/v1/introduction
-- **Environment Variable**: `GOOGLE_CSE_ID` and `GOOGLE_API_KEY`
+- **Environment Variable**: `GOOGLE_CSE_CX` and `GOOGLE_CSE_KEY`
 
 ### Firecrawl API
 - **Purpose**: Extract event details from websites
 - **Setup**: https://firecrawl.dev/
-- **Environment Variable**: `FIRECRAWL_API_KEY`
+- **Environment Variable**: `FIRECRAWL_KEY`
 
 ## Quick Test:
 
