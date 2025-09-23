@@ -129,23 +129,26 @@ function inRange(iso: string | null | undefined, from: string, to: string) {
 
 // Load search configuration
 async function loadSearchConfig() {
+  const defaults = {
+    baseQuery: '(conference OR summit OR forum OR congress OR symposium OR "industry event" OR "annual meeting") (legal OR compliance OR investigation OR "e-discovery" OR ediscovery)',
+    excludeTerms: 'reddit Mumsnet "legal advice" forum',
+    industryTerms: ['compliance', 'investigations', 'regtech', 'ESG', 'sanctions'],
+    icpTerms: ['general counsel', 'chief compliance officer', 'investigations lead']
+  };
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:3000'}/api/config/search`);
-    const data = await res.json();
-    return data.config || {
-      baseQuery: '(conference OR summit OR forum OR congress OR symposium OR "industry event" OR "annual meeting") (legal OR compliance OR investigation OR "e-discovery" OR ediscovery)',
-      excludeTerms: 'reddit Mumsnet "legal advice" forum',
-      industryTerms: ['compliance', 'investigations', 'regtech', 'ESG', 'sanctions'],
-      icpTerms: ['general counsel', 'chief compliance officer', 'investigations lead']
+    const res = await fetch('/api/config/search', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    const c = data?.config || {};
+    return {
+      baseQuery: c.baseQuery || c.base_query || defaults.baseQuery,
+      excludeTerms: c.excludeTerms || c.exclude_terms || defaults.excludeTerms,
+      industryTerms: c.industryTerms || c.industry_terms || defaults.industryTerms,
+      icpTerms: c.icpTerms || c.icp_terms || defaults.icpTerms,
+      industry: c.industry || 'general'
     };
   } catch (error) {
     console.warn('Failed to load search config, using defaults:', error);
-    return {
-      baseQuery: '(conference OR summit OR forum OR congress OR symposium OR "industry event" OR "annual meeting") (legal OR compliance OR investigation OR "e-discovery" OR ediscovery)',
-      excludeTerms: 'reddit Mumsnet "legal advice" forum',
-      industryTerms: ['compliance', 'investigations', 'regtech', 'ESG', 'sanctions'],
-      icpTerms: ['general counsel', 'chief compliance officer', 'investigations lead']
-    };
+    return defaults as any;
   }
 }
 
