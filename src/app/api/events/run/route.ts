@@ -198,6 +198,7 @@ export async function POST(req: NextRequest) {
   try {
     // Parse request parameters with validation
     const { q = "", country = "", from, to, provider = "cse" } = await req.json();
+    const debugEnabled = req.nextUrl?.searchParams?.get("debug") === "1" || process.env.NODE_ENV !== 'production';
     if (!from || !to) return NextResponse.json({ error: "from/to required", events: [] }, { status: 400 });
     
     // Build absolute URLs for internal API calls
@@ -206,7 +207,7 @@ export async function POST(req: NextRequest) {
     const url = (p: string) => new URL(p, origin).toString();
 
     // Initialize debug object for troubleshooting and monitoring
-    const debug: any = { marker: "RUN_V4", country, provider };
+    const debug: any = debugEnabled ? { marker: "RUN_V4", country, provider } : {};
 
     // ============================================================================
     // STEP 1: LOAD SEARCH CONFIGURATION
@@ -214,7 +215,7 @@ export async function POST(req: NextRequest) {
     
     // Load search configuration based on user profile and industry settings
     const searchConfig = await loadSearchConfig();
-    debug.searchConfig = { industry: searchConfig.industry, baseQuery: searchConfig.baseQuery };
+    if (debugEnabled) debug.searchConfig = { industry: searchConfig.industry, baseQuery: searchConfig.baseQuery };
 
     // ============================================================================
     // STEP 2: GET USER PROFILE FOR PERSONALIZED SEARCH
@@ -256,7 +257,7 @@ export async function POST(req: NextRequest) {
       if (blocks) effectiveQ = `${effectiveQ} (${blocks})`;
     }
 
-    debug.effectiveQ = effectiveQ;
+    if (debugEnabled) debug.effectiveQ = effectiveQ;
 
     // ============================================================================
     // STEP 3: EXECUTE SEARCH WITH FALLBACK STRATEGY
@@ -283,8 +284,7 @@ export async function POST(req: NextRequest) {
     if ((search.items?.length || 0) === 0 && effectiveQ !== searchConfig.baseQuery) {
       const retryQ = searchConfig.baseQuery;
       search = await doSearch(retryQ);
-      debug.searchRetriedWithBase = true;
-      debug.effectiveQ = retryQ; // reflect the retry
+      if (debugEnabled) { debug.searchRetriedWithBase = true; debug.effectiveQ = retryQ; }
     }
     
     // Additional fallback: try with broader industry terms if still few results
@@ -292,7 +292,7 @@ export async function POST(req: NextRequest) {
       const industryTerms = searchConfig.industryTerms || [];
       const broaderQuery = `(${industryTerms.slice(0, 5).join(' OR ')}) (conference OR summit OR forum OR event OR veranstaltung) (2025 OR upcoming)`;
       const broaderResult = await doSearch(broaderQuery);
-      debug.broader = { query: broaderQuery, status: broaderResult.status, items: broaderResult.items.length };
+      if (debugEnabled) debug.broader = { query: broaderQuery, status: broaderResult.status, items: broaderResult.items.length };
       if (broaderResult.items.length > 0) {
         // Merge results, avoiding duplicates
         const existingUrls = new Set(search.items.map(item => item.link));
@@ -301,7 +301,7 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    debug.search = { status: search.status, provider: search.provider, items: search.items.length };
+    if (debugEnabled) debug.search = { status: search.status, provider: search.provider, items: search.items.length };
 
     // ============================================================================
     // STEP 4: PREPARE URLS FOR EXTRACTION
@@ -315,7 +315,7 @@ export async function POST(req: NextRequest) {
       urls = ["https://example.com/demo1", "https://example.com/demo2"];
       debug.seededDemoUrls = true;
     }
-    debug.urls = { unique: urls.length, sample: urls.slice(0, 3) };
+    if (debugEnabled) debug.urls = { unique: urls.length, sample: urls.slice(0, 3) };
 
     // ============================================================================
     // STEP 5: EXTRACT DETAILED EVENT INFORMATION
@@ -330,7 +330,7 @@ export async function POST(req: NextRequest) {
     });
     const extractJson = await extractRes.json().catch(() => ({}));
     let { events = [], version: extractVersion, trace = [] } = extractJson;
-    debug.extract = { status: extractRes.status, version: extractVersion, eventsBeforeFilter: events.length, sampleTrace: trace.slice(0,3) };
+    if (debugEnabled) debug.extract = { status: extractRes.status, version: extractVersion, eventsBeforeFilter: events.length, sampleTrace: trace.slice(0,3) };
     events = events as EventRec[];
 
     // if extraction failed hard, synthesize minimal events from search items
@@ -356,7 +356,7 @@ export async function POST(req: NextRequest) {
     
     // Sanitize events (remove 404s, backfill countries, normalize dates)
     events = sanitizeEvents(events);
-    debug.deduped = { count: events.length };
+    if (debugEnabled) debug.deduped = { count: events.length };
 
     // ============================================================================
     // STEP 7: FILTER BY COUNTRY AND DATE
@@ -367,12 +367,11 @@ export async function POST(req: NextRequest) {
     events = kept;
     
     // Apply date range filtering
-    debug.dateFiltering = { from, to, beforeCount: events.length };
+    if (debugEnabled) debug.dateFiltering = { from, to, beforeCount: events.length };
     events = events.filter((e: EventRec) => {
       // If no dates, filter out the event (we need dates for proper filtering)
       if (!e.starts_at && !e.ends_at) {
-        debug.filteredOut = debug.filteredOut || [];
-        debug.filteredOut.push({ reason: 'no_dates', title: e.title });
+          if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'no_dates', title: e.title }); }
         return false;
       }
       
@@ -380,8 +379,7 @@ export async function POST(req: NextRequest) {
       if (e.starts_at && !e.ends_at) {
         const isInRange = inRange(e.starts_at, from, to);
         if (!isInRange) {
-          debug.filteredOut = debug.filteredOut || [];
-          debug.filteredOut.push({ reason: 'start_date_out_of_range', title: e.title, starts_at: e.starts_at });
+          if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'start_date_out_of_range', title: e.title, starts_at: e.starts_at }); }
         }
         return isInRange;
       }
@@ -390,8 +388,7 @@ export async function POST(req: NextRequest) {
       if (!e.starts_at && e.ends_at) {
         const isInRange = inRange(e.ends_at, from, to);
         if (!isInRange) {
-          debug.filteredOut = debug.filteredOut || [];
-          debug.filteredOut.push({ reason: 'end_date_out_of_range', title: e.title, ends_at: e.ends_at });
+          if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'end_date_out_of_range', title: e.title, ends_at: e.ends_at }); }
         }
         return isInRange;
       }
@@ -406,8 +403,7 @@ export async function POST(req: NextRequest) {
         // Event overlaps if: event starts before range ends AND event ends after range starts
         const overlaps = eventStart <= rangeEnd && eventEnd >= rangeStart;
         if (!overlaps) {
-          debug.filteredOut = debug.filteredOut || [];
-          debug.filteredOut.push({ 
+          if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ 
             reason: 'event_outside_range', 
             title: e.title, 
             starts_at: e.starts_at, 
@@ -416,14 +412,14 @@ export async function POST(req: NextRequest) {
             eventEnd: new Date(eventEnd).toISOString(),
             rangeStart: new Date(rangeStart).toISOString(),
             rangeEnd: new Date(rangeEnd).toISOString()
-          });
+          }); }
         }
         return overlaps;
       }
       
       return false;
     });
-    debug.dateFiltering.afterCount = events.length;
+    if (debugEnabled) debug.dateFiltering.afterCount = events.length;
     
     // ============================================================================
     // STEP 8: FINAL DATA SANITIZATION
@@ -436,7 +432,7 @@ export async function POST(req: NextRequest) {
       if (e.title) e.title = e.title.replace(/\s+/g, " ").trim();
     }
     
-    debug.filter = { kept: events.length, reasons };
+    if (debugEnabled) debug.filter = { kept: events.length, reasons };
 
     // ============================================================================
     // STEP 9: SAVE TO DATABASE (BEST-EFFORT)
@@ -454,16 +450,18 @@ export async function POST(req: NextRequest) {
         const { data, error } = await supabase.rpc("upsert_event", { p: ev as any });
         if (!error && data) saved.push(String(data));
       }
-      debug.upsert = { saved: saved.length };
+      if (debugEnabled) debug.upsert = { saved: saved.length };
     } else {
-      debug.upsert = { skipped: true, reason: "no supabase env" };
+      if (debugEnabled) debug.upsert = { skipped: true, reason: "no supabase env" };
     }
 
     // ============================================================================
     // RETURN FINAL RESPONSE
     // ============================================================================
     
-    return NextResponse.json({ ...debug, count: events.length, saved, events });
+    const payload = { count: events.length, saved, events } as any;
+    if (debugEnabled) Object.assign(payload, debug);
+    return NextResponse.json(payload);
   } catch (e: any) {
     // Return error response with empty events array
     // We return status 200 to avoid breaking the UI

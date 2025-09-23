@@ -25,22 +25,20 @@ export async function supabaseServer() {
       set(name: string, value: string, opts: CookieOptions) { 
         jar.set(name, value, {
           ...opts,
-          httpOnly: false, // Allow client-side access
+          httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
           path: '/'
-          // Remove domain restriction - let browser handle it
         }); 
       },
       remove(name: string, opts: CookieOptions) { 
         jar.set(name, "", { 
           ...opts, 
           maxAge: 0,
-          httpOnly: false,
+          httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'lax',
           path: '/'
-          // Remove domain restriction - let browser handle it
         }); 
       },
     },

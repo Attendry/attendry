@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseServer } from "@/lib/supabase-server";
 
 /**
  * POST /api/cron/collect-events
@@ -42,6 +43,20 @@ export async function POST(req: NextRequest) {
       industries = ['legal-compliance', 'fintech', 'healthcare'];
       countries = ['de', 'fr', 'uk', 'us'];
       monthsAhead = 6; // 6 months ahead for standard collection
+    }
+
+    // TTL sweep: purge expired durable caches (best-effort, non-user-facing)
+    try {
+      const supabase = await supabaseServer();
+      const { error } = await supabase.rpc("exec_sql", { sql: "delete from search_cache where ttl_at < now();" });
+      if (error) {
+        // Fallback if RPC is not available: ignore silently
+        console.warn("TTL sweep RPC not available or failed");
+      } else {
+        console.log(JSON.stringify({ at: "cron", action: "ttl_sweep_done" }));
+      }
+    } catch {
+      // ignore; does not impact user collection
     }
 
     // Run comprehensive searches for each industry/country combination

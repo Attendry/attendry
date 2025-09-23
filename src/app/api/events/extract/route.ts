@@ -1,5 +1,7 @@
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
+import { supabaseServer } from "@/lib/supabase-server";
+import { fetchWithRetry } from "@/lib/http";
 
 // --- Enhanced schema with organization types
 const EVENT_SCHEMA = {
@@ -485,7 +487,7 @@ async function pollExtract(id: string, key: string) {
   const headers = { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
   const start = Date.now(), timeout = 15000, step = 800;
   while (Date.now() - start < timeout) {
-    const r = await fetch(`${base}/${id}`, { headers, cache: "no-store" });
+    const r = await fetchWithRetry(`${base}/${id}`, { headers, cache: "no-store", timeoutMs: 10000, retries: 2 });
     const j = await r.json().catch(() => ({}));
     if (j?.status === "completed") return j?.data ?? null;
     if (j?.status === "failed" || j?.status === "cancelled") break;
@@ -498,6 +500,17 @@ function pickData(d: any) {
   if (Array.isArray(d)) return d[0] ?? null;
   if (d?.results?.length) return d.results[0].data ?? d.results[0];
   return d;
+}
+
+function normalizeUrl(u: string) {
+  try {
+    const url = new URL(u);
+    url.hash = "";
+    url.search = "";
+    let path = url.pathname.replace(/\/+$/, "");
+    if (!path) path = "/";
+    return `${url.hostname.toLowerCase()}${path}`;
+  } catch { return u; }
 }
 
 // Load industry-specific extraction context
@@ -634,10 +647,27 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
   const hostCountry = guessCountryFromHost(url);
   const context = await getExtractionContext();
 
+  // Durable cache lookup (best-effort)
+  try {
+    const supabase = await supabaseServer();
+    const norm = normalizeUrl(url);
+    const { data } = await supabase
+      .from("url_extractions")
+      .select("payload")
+      .eq("url_normalized", norm)
+      .maybeSingle();
+    if (data?.payload) {
+      trace.push({ url, step: "cache", hit: true });
+      console.log(JSON.stringify({ at: "extract", cache: "hit", url: norm }));
+      return data.payload;
+    }
+    console.log(JSON.stringify({ at: "extract", cache: "miss", url: norm }));
+  } catch {}
+
   // Fetch HTML (many sites block default UA)
   let html = "";
   try {
-    const res = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store", redirect: "follow" });
+    const res = await fetchWithRetry(url, { headers: { "User-Agent": UA }, cache: "no-store", redirect: "follow", timeoutMs: 8000, retries: 2 });
     if (res.ok) html = await res.text();
   } catch {}
 
@@ -665,7 +695,6 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
     const industryContext = context.industryTerms.length > 0 
       ? ` Focus on ${context.industry} industry events. Key terms: ${context.industryTerms.slice(0, 5).join(', ')}.`
       : '';
-    
     const enhancedPrompt = `Extract comprehensive event information from this page with high precision. Normalize dates to YYYY-MM-DD format.${industryContext}
     
     CRITICAL EXTRACTION GUIDELINES:
@@ -720,7 +749,7 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
     Locale: ${locale || hostCountry || "DE"}
     Return structured JSON matching the schema exactly.`;
 
-    const kicked = await fetch("https://api.firecrawl.dev/v2/extract", {
+    const kicked = await fetchWithRetry("https://api.firecrawl.dev/v2/extract", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -741,7 +770,7 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
           removeBase64Images: true
         },
         ignoreInvalidURLs: true
-      }),
+      })
     }).then(r => r.json());
 
     if (kicked?.id) {
@@ -751,6 +780,10 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
         const ev = shape(url, picked);
         const rich = ev.starts_at || ev.city || ev.country;
         trace.push({ url, step: "firecrawl", rich: !!rich });
+        try {
+          const supabase = await supabaseServer();
+          await supabase.from("url_extractions").upsert({ url_normalized: normalizeUrl(url), payload: ev, confidence: ev.confidence ?? null, schema_version: 1 });
+        } catch {}
         if (rich) return ev;
       } else {
         trace.push({ url, step: "firecrawl", rich: false });
@@ -804,12 +837,21 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
     });
     const rich = ev.starts_at || ev.city || ev.country || ev.venue;
     trace.push({ url, step: "regex", rich: !!rich });
+    try {
+      const supabase = await supabaseServer();
+      await supabase.from("url_extractions").upsert({ url_normalized: normalizeUrl(url), payload: ev, confidence: ev.confidence ?? null, schema_version: 1 });
+    } catch {}
     if (rich || ev.title !== "Untitled Event") return ev;
   }
 
   // 4) Last resort (never return undefined)
   trace.push({ url, step: "stub", rich: false });
-  return shape(url, { title: null, country: hostCountry });
+  const ev = shape(url, { title: null, country: hostCountry });
+  try {
+    const supabase = await supabaseServer();
+    await supabase.from("url_extractions").upsert({ url_normalized: normalizeUrl(url), payload: ev, confidence: ev.confidence ?? null, schema_version: 1 });
+  } catch {}
+  return ev;
 }
 
 export async function POST(req: NextRequest) {
@@ -828,11 +870,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ version: "extract_v5", events: out, trace, note: "no FIRECRAWL_KEY" });
     }
 
-    const out: any[] = [];
-    for (const u of urls.slice(0, 15)) {
-      // eslint-disable-next-line no-await-in-loop
-      out.push(await extractOne(u, key, locale, trace));
+    const targets = urls.slice(0, 15);
+    // Simple bounded concurrency (limit 4) with per-host throttle map
+    const inFlight = new Set<Promise<any>>();
+    const results: any[] = [];
+    const limit = 4;
+    const hostLast: Record<string, number> = {};
+    const gapMs = 250; // min gap per host
+
+    async function runOne(u: string) {
+      const host = (() => { try { return new URL(u).hostname; } catch { return ""; } })();
+      const last = hostLast[host] || 0;
+      const wait = Math.max(0, last + gapMs - Date.now());
+      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      hostLast[host] = Date.now();
+      const ev = await extractOne(u, key, locale, trace);
+      results.push(ev);
     }
+
+    for (const u of targets) {
+      const p = runOne(u);
+      inFlight.add(p);
+      p.finally(() => inFlight.delete(p));
+      if (inFlight.size >= limit) {
+        await Promise.race(inFlight);
+      }
+    }
+    await Promise.all(Array.from(inFlight));
+    const out: any[] = results;
     
     // Filter and sort events by quality
     const filteredEvents = out

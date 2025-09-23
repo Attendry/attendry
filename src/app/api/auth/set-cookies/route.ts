@@ -48,15 +48,14 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // Manually set Supabase cookies
+    // Manually set Supabase cookies (HttpOnly for security)
     const cookieOptions = {
-      httpOnly: false,
+      httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax' as const,
       path: '/',
       maxAge: 60 * 60 * 24 * 7 // 7 days
-      // Remove domain restriction - let browser handle it
-    };
+    } as const;
 
     // Set access token cookie
     if (data.session.access_token) {
@@ -68,16 +67,7 @@ export async function POST(req: NextRequest) {
       response.cookies.set('sb-refresh-token', data.session.refresh_token, cookieOptions);
     }
 
-    // Set session cookie
-    response.cookies.set('sb-session', JSON.stringify({
-      access_token: data.session.access_token,
-      refresh_token: data.session.refresh_token,
-      expires_at: data.session.expires_at,
-      user: {
-        id: data.user?.id,
-        email: data.user?.email
-      }
-    }), cookieOptions);
+    // Avoid storing session JSON in a cookie; rely on Supabase cookies
 
     return response;
 

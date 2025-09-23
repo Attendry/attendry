@@ -20,6 +20,8 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { fetchWithRetry } from "@/lib/http";
+import { createHash } from "crypto";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -156,6 +158,7 @@ function buildGeographicContext(country: string): string {
  */
 const searchCache = new Map<string, { data: unknown; timestamp: number }>();
 const CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+const DB_CACHE_TTL_HOURS = 6;
 
 /**
  * Generates a unique cache key based on search parameters.
@@ -207,6 +210,40 @@ function setCachedResult(key: string, data: unknown) {
   searchCache.set(key, { data, timestamp: Date.now() });
 }
 
+// Durable cache helpers (Supabase)
+async function readSearchCacheDB(cacheKey: string) {
+  try {
+    const supabase = await supabaseServer();
+    const { data, error } = await supabase
+      .from("search_cache")
+      .select("payload, ttl_at")
+      .eq("cache_key", cacheKey)
+      .maybeSingle();
+    if (error || !data) return null;
+    if (data.ttl_at && new Date(data.ttl_at).getTime() > Date.now()) {
+      return data.payload;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+async function writeSearchCacheDB(cacheKey: string, provider: string, payload: any) {
+  try {
+    const supabase = await supabaseServer();
+    const ttlAt = new Date(Date.now() + DB_CACHE_TTL_HOURS * 3600 * 1000).toISOString();
+    await supabase
+      .from("search_cache")
+      .upsert({ cache_key: cacheKey, provider, payload, schema_version: 1, ttl_at: ttlAt }, { onConflict: "cache_key" });
+  } catch {
+    // best-effort
+  }
+}
+
+function hashItem(title: string, link: string) {
+  return createHash("sha256").update(`${(title||"").trim()}|${(link||"").trim()}`).digest("hex");
+}
+
 // ============================================================================
 // AI-POWERED EVENT FILTERING
 // ============================================================================
@@ -232,10 +269,36 @@ function setCachedResult(key: string, data: unknown) {
  */
 async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, banHosts: Set<string>, searchConfig: any = {}): Promise<SearchItem[]> {
   const geminiKey = process.env.GEMINI_API_KEY;
-  
+  // Attempt to reuse AI decisions from DB
+  let decided: Record<string, { isEvent: boolean; confidence?: number }> = {};
+  try {
+    const supabase = await supabaseServer();
+    const hashes = items.map(it => hashItem(it.title, it.link));
+    const { data } = await supabase
+      .from("ai_decisions")
+      .select("item_hash, is_event, confidence")
+      .in("item_hash", hashes);
+    for (const row of data || []) decided[row.item_hash] = { isEvent: !!row.is_event, confidence: row.confidence };
+  } catch {}
+
+  const preApproved: SearchItem[] = [];
+  const undecided: { item: SearchItem; idx: number; hash: string }[] = [];
+  items.forEach((item, idx) => {
+    const key = hashItem(item.title, item.link);
+    if (decided[key]?.isEvent) {
+      const text = `${item.title || ""} ${item.snippet || ""}`;
+      try {
+        const h = new URL(item.link).hostname.toLowerCase();
+        if (!banHosts.has(h) && !dropTitleRegex.test(text)) preApproved.push(item);
+      } catch {}
+    } else if (decided[key] === undefined) {
+      undecided.push({ item, idx, hash: key });
+    }
+  });
+
   // Fallback to regex filtering when Gemini API key is not available
   if (!geminiKey) {
-    return items.filter((item: SearchItem) => {
+    const base = items.filter((item: SearchItem) => {
       const text = `${item.title || ""} ${item.snippet || ""}`;
       
       // Filter out obvious non-events (404 pages, error pages)
@@ -259,19 +322,31 @@ async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, ban
       const hasEventHint = EVENT_HINT_FALLBACK.test(text);
       return hasEventHint;
     });
+    return [...preApproved, ...base];
   }
 
   try {
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const filteredItems: SearchItem[] = [];
+    const filteredItems: SearchItem[] = preApproved.slice();
     
     // Process items in batches to avoid token limits and improve reliability
     // Gemini has token limits, so we process search results in small batches
     const batchSize = 5;
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
+      // Skip batch fully decided
+      const needLLMIdx: number[] = [];
+      const needLLM: SearchItem[] = [];
+      batch.forEach((it, j) => {
+        const key = hashItem(it.title, it.link);
+        if (decided[key] === undefined) {
+          needLLM.push(it);
+          needLLMIdx.push(i + j);
+        }
+      });
+      if (needLLM.length === 0) continue;
       
       // Create a detailed prompt for Gemini to analyze each search result
       // The prompt is designed to help the AI distinguish between actual events
@@ -289,7 +364,7 @@ Return a JSON array with objects containing:
 - "confidence": number between 0-1 indicating your confidence in this decision
 
 Search results to analyze:
-${batch.map((item, idx) => `${i + idx}: Title: "${item.title}" | Snippet: "${item.snippet}" | URL: "${item.link}"`).join('\n')}
+${needLLM.map((item, idx) => `${needLLMIdx[idx]}: Title: "${item.title}" | Snippet: "${item.snippet}" | URL: "${item.link}"`).join('\n')}
 
 EXAMPLES OF GOOD EVENTS (mark as true):
 ✅ "Legal Tech Summit 2025 - Berlin, March 15-17" → Conference with dates and location
@@ -364,6 +439,7 @@ Return ONLY the JSON array, nothing else.`;
         }
         
         // Process each decision from Gemini
+        const upserts: any[] = [];
         for (const decision of decisions) {
           // Validate decision object structure
           if (!decision || typeof decision.index !== 'number' || typeof decision.isEvent !== 'boolean') {
@@ -393,6 +469,20 @@ Return ONLY the JSON array, nothing else.`;
           if (decision.isEvent) {
             filteredItems.push(originalItem);
           }
+
+          // persist decision
+          try {
+            const supabase = await supabaseServer();
+            const h = hashItem(originalItem.title, originalItem.link);
+            upserts.push({ item_hash: h, url: originalItem.link, title: originalItem.title, is_event: !!decision.isEvent, confidence: (decision as any).confidence ?? null, schema_version: 1 });
+            if (upserts.length >= 10) {
+              await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" });
+              upserts.length = 0;
+            }
+          } catch {}
+        }
+        if (upserts.length) {
+          try { const supabase = await supabaseServer(); await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" }); } catch {}
         }
       } catch (parseError) {
         // Fallback to regex for this batch when Gemini response parsing fails
@@ -729,10 +819,12 @@ export async function POST(req: NextRequest) {
 
     // Check cache first to avoid unnecessary API calls
     const cacheKey = getCacheKey(q, country, from, to);
-    const cachedResult = getCachedResult(cacheKey);
+    const cachedResult = getCachedResult(cacheKey) || await readSearchCacheDB(cacheKey);
     if (cachedResult) {
+      console.log(JSON.stringify({ at: "search", cache: "hit", key: cacheKey }));
       return NextResponse.json({ ...cachedResult, cached: true });
     }
+    console.log(JSON.stringify({ at: "search", cache: "miss", key: cacheKey }));
 
     // Load search configuration for enhanced query building
     let searchConfig = { industryTerms: [], baseQuery: "" };
@@ -771,7 +863,7 @@ export async function POST(req: NextRequest) {
         q: "test", key, cx, num: "1", safe: "off", hl: "en", filter: "1"
       });
       const testUrl = `https://www.googleapis.com/customsearch/v1?${testParams}`;
-      const testRes = await fetch(testUrl, { cache: "no-store" });
+      const testRes = await fetchWithRetry(testUrl, { cache: "no-store", timeoutMs: 8000, retries: 1 });
       
       
       if (testRes.status === 429) {
@@ -824,7 +916,7 @@ export async function POST(req: NextRequest) {
 
     // Make the actual search request to Google Custom Search API
     const url = `https://www.googleapis.com/customsearch/v1?${params}`;
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetchWithRetry(url, { cache: "no-store", timeoutMs: 10000, retries: 2 });
     const data = await res.json();
 
     // Transform Google's response into our standardized format
@@ -863,6 +955,7 @@ export async function POST(req: NextRequest) {
     
     // Cache the result for future requests
     setCachedResult(cacheKey, result);
+    writeSearchCacheDB(cacheKey, "cse", result).catch(() => {});
     
     // Save to database for persistence and analytics
     // Note: We don't await this to avoid slowing down the response

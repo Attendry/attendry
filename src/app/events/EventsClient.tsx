@@ -52,6 +52,12 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
   const [debug, setDebug] = useState<any>(null);
+  const showDebug = useMemo(() => {
+    if (typeof window === 'undefined') return process.env.NODE_ENV !== 'production';
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('debug') === '1') return true;
+    return process.env.NODE_ENV !== 'production';
+  }, []);
 
   // Keep dates in sync when advanced is OFF
   useEffect(() => {
@@ -79,7 +85,7 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
     setLoading(true);
     setEvents([]);
     try {
-      const res = await fetch("/api/events/run", {
+      const res = await fetch(`/api/events/run${showDebug ? '?debug=1' : ''}` , {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ q, country, from, to, provider: "cse" }),
@@ -338,7 +344,7 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
         </form>
 
         {/* Debug Info - Collapsible */}
-        {debug && (
+        {showDebug && debug && (
           <div className="max-w-6xl mx-auto mb-8">
             <details className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               <summary className="px-6 py-4 bg-slate-50 border-b border-slate-200 cursor-pointer hover:bg-slate-100 transition-colors duration-200">

@@ -46,3 +46,34 @@ CREATE POLICY "Allow authenticated users to read search results" ON search_resul
 -- Allow authenticated users to insert search results
 CREATE POLICY "Allow authenticated users to insert search results" ON search_results
   FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
+-- Search cache for provider responses (durable cache)
+CREATE TABLE IF NOT EXISTS search_cache (
+  id BIGSERIAL PRIMARY KEY,
+  cache_key TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  schema_version INT NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ttl_at TIMESTAMPTZ NOT NULL
+);
+
+-- URL extraction cache (per normalized URL)
+CREATE TABLE IF NOT EXISTS url_extractions (
+  url_normalized TEXT PRIMARY KEY,
+  payload JSONB NOT NULL,
+  confidence DOUBLE PRECISION,
+  schema_version INT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- AI decision cache for search item classification
+CREATE TABLE IF NOT EXISTS ai_decisions (
+  item_hash TEXT PRIMARY KEY,
+  url TEXT NOT NULL,
+  title TEXT,
+  is_event BOOLEAN NOT NULL,
+  confidence DOUBLE PRECISION,
+  schema_version INT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

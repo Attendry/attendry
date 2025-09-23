@@ -17,22 +17,20 @@ export async function middleware(req: NextRequest) {
           // Use consistent cookie settings across all Supabase clients
           res.cookies.set(name, value, {
             ...options,
-            httpOnly: false, // Allow client-side access
+            httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
             path: '/'
-            // Remove domain restriction - let browser handle it
           });
         },
         remove(name: string, options: CookieOptions) {
           res.cookies.set(name, "", { 
             ...options, 
             maxAge: 0,
-            httpOnly: false,
+            httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
             path: '/'
-            // Remove domain restriction - let browser handle it
           });
         },
       },
