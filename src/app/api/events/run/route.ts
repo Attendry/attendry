@@ -204,7 +204,12 @@ export async function POST(req: NextRequest) {
     // Build absolute URLs for internal API calls
     // This ensures the API calls work correctly regardless of deployment environment
     const origin = req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || "http://127.0.0.1:4000";
-    const url = (p: string) => new URL(p, origin).toString();
+    const url = (p: string) => p; // use relative paths to avoid cross-domain issues
+    const forwardHeaders: HeadersInit = {
+      Cookie: req.headers.get('cookie') || ''
+    };
+    const authHeader = req.headers.get('authorization');
+    if (authHeader) (forwardHeaders as any).Authorization = authHeader;
 
     // Initialize debug object for troubleshooting and monitoring
     const debug: any = debugEnabled ? { marker: "RUN_V4", country, provider } : {};
@@ -265,9 +270,9 @@ export async function POST(req: NextRequest) {
     
     // Helper function to call the search endpoint
     async function doSearch(query: string) {
-      const res = await fetch(url("/api/events/search"), {
+      const res = await fetch("/api/events/search", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...forwardHeaders },
         cache: "no-store",
         body: JSON.stringify({ q: query, country, from, to, provider }),
       });
@@ -322,9 +327,9 @@ export async function POST(req: NextRequest) {
     // ============================================================================
     
     // Call the extraction endpoint to get detailed event information from URLs
-    const extractRes = await fetch(url("/api/events/extract"), {
+    const extractRes = await fetch("/api/events/extract", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...forwardHeaders },
       cache: "no-store",
       body: JSON.stringify({ urls: urls.slice(0, 20), locale: country || "" }), // Limit to 20 URLs for performance
     });

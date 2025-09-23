@@ -146,8 +146,6 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await supabaseServer();
 
-    console.log('User authenticated:', me.user.id);
-
     const {
       name,
       industry,
