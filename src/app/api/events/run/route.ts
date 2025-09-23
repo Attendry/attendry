@@ -128,7 +128,7 @@ function inRange(iso: string | null | undefined, from: string, to: string) {
 }
 
 // Load search configuration
-async function loadSearchConfig() {
+async function loadSearchConfig(origin: string, headers: HeadersInit) {
   const defaults = {
     baseQuery: '(conference OR summit OR forum OR congress OR symposium OR "industry event" OR "annual meeting") (legal OR compliance OR investigation OR "e-discovery" OR ediscovery)',
     excludeTerms: 'reddit Mumsnet "legal advice" forum',
@@ -136,7 +136,8 @@ async function loadSearchConfig() {
     icpTerms: ['general counsel', 'chief compliance officer', 'investigations lead']
   };
   try {
-    const res = await fetch('/api/config/search', { cache: 'no-store' });
+    const abs = new URL('/api/config/search', origin).toString();
+    const res = await fetch(abs, { cache: 'no-store', headers });
     const data = await res.json().catch(() => ({}));
     const c = data?.config || {};
     return {
@@ -222,7 +223,7 @@ export async function POST(req: NextRequest) {
     // ============================================================================
     
     // Load search configuration based on user profile and industry settings
-    const searchConfig = await loadSearchConfig();
+    const searchConfig = await loadSearchConfig(origin, forwardHeaders);
     if (debugEnabled) debug.searchConfig = { industry: searchConfig.industry, baseQuery: searchConfig.baseQuery };
 
     // ============================================================================
