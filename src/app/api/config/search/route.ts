@@ -60,23 +60,15 @@ export async function GET(req: NextRequest) {
     
     try {
       const supabase = await supabaseServer();
-      
-      // Ensure logged in
-      const { data: me, error: meErr } = await supabase.auth.getUser();
-      if (meErr || !me?.user) {
-        // If not authenticated, return default config
-        console.warn('User not authenticated for search config, using default');
-      } else {
-        // Get current search configuration
-        const { data, error } = await supabase
-          .from("search_configurations")
-          .select("*")
-          .eq("is_active", true)
-          .single();
+      // Get current active search configuration (no auth required if RLS allows anon read)
+      const { data, error } = await supabase
+        .from("search_configurations")
+        .select("*")
+        .eq("is_active", true)
+        .single();
 
-        if (!error && data) {
-          config = data;
-        }
+      if (!error && data) {
+        config = data as any;
       }
     } catch (dbError) {
       // Database not available or table doesn't exist - use default
@@ -154,13 +146,6 @@ export async function POST(req: NextRequest) {
   try {
     const supabase = await supabaseServer();
 
-    // Ensure logged in
-    const { data: me, error: meErr } = await supabase.auth.getUser();
-    if (meErr || !me?.user) {
-      console.error('Authentication error:', meErr);
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
     console.log('User authenticated:', me.user.id);
 
     const {
@@ -180,7 +165,7 @@ export async function POST(req: NextRequest) {
 
     console.log('Saving configuration:', { name, industry, isActive });
 
-    // Deactivate current configuration
+    // Deactivate current configuration (no user scoping)
     const { error: deactivateError } = await supabase
       .from("search_configurations")
       .update({ is_active: false })

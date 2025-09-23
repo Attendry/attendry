@@ -827,13 +827,20 @@ export async function POST(req: NextRequest) {
     console.log(JSON.stringify({ at: "search", cache: "miss", key: cacheKey }));
 
     // Load search configuration for enhanced query building
-    let searchConfig = { industryTerms: [], baseQuery: "" };
+    let searchConfig = { industryTerms: [], baseQuery: "", excludeTerms: "" } as any;
     try {
       const origin = req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || "http://127.0.0.1:3000";
       const configRes = await fetch(`${origin}/api/config/search`);
       if (configRes.ok) {
         const configData = await configRes.json();
-        searchConfig = configData.config || searchConfig;
+        const c = configData.config || {};
+        // prefer camelCase but fall back to snake_case
+        searchConfig = {
+          baseQuery: c.baseQuery || c.base_query || "",
+          industryTerms: c.industryTerms || c.industry_terms || [],
+          excludeTerms: c.excludeTerms || c.exclude_terms || "",
+          industry: c.industry || c.industry
+        };
       }
     } catch (error) {
       console.warn('Failed to load search config:', error);
@@ -912,7 +919,7 @@ export async function POST(req: NextRequest) {
     // CONTENT FILTERING: Exclude obvious non-event chatter
     // This helps filter out forums, social media, and general discussion sites
     // This will be configurable in future versions
-    params.set("excludeTerms", "reddit Mumsnet \"legal advice\" forum");
+    params.set("excludeTerms", searchConfig.excludeTerms || "reddit Mumsnet \"legal advice\" forum");
 
     // Make the actual search request to Google Custom Search API
     const url = `https://www.googleapis.com/customsearch/v1?${params}`;
