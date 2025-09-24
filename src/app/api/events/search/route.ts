@@ -88,13 +88,13 @@ function buildEnhancedQuery(userQuery: string, searchConfig: any, country: strin
   // Build geographic context
   const geoContext = buildGeographicContext(country);
   
-  // Combine all elements for maximum relevance
+  // Combine all elements for maximum relevance - simplified to avoid 400 errors
   const queryParts = [
     baseQuery,
     dateContext,
     geoContext,
-    `(${industryTerms.slice(0, 3).join(' OR ')})`, // Top 3 industry terms
-    `(${currentYear} OR ${nextYear} OR upcoming OR "this year" OR "next year")` // Temporal relevance
+    industryTerms.slice(0, 3).join(' OR '), // Top 3 industry terms (no parentheses)
+    `${currentYear} OR ${nextYear} OR upcoming` // Temporal relevance (no parentheses)
   ].filter(Boolean);
   
   return queryParts.join(' ');

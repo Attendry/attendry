@@ -306,7 +306,8 @@ export async function POST(req: NextRequest) {
     // Additional fallback: try with broader industry terms if still few results
     if ((search.items?.length || 0) < 5) {
       const industryTerms = searchConfig.industryTerms || [];
-      const broaderQuery = `(${industryTerms.slice(0, 5).join(' OR ')}) (conference OR summit OR forum OR event OR veranstaltung) (2025 OR upcoming)`;
+      // Simplified query to avoid 400 errors - remove complex parentheses
+      const broaderQuery = `${industryTerms.slice(0, 3).join(' OR ')} conference 2025`;
       const broaderResult = await doSearch(broaderQuery);
       if (debugEnabled) debug.broader = { query: broaderQuery, status: broaderResult.status, items: broaderResult.items.length };
       if (broaderResult.items.length > 0) {
