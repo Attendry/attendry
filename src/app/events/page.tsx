@@ -1,6 +1,9 @@
 import { supabaseServer } from "@/lib/supabase-server";
 import EventsClient from "@/app/events/EventsClient";
 
+// Force dynamic rendering since we use cookies for authentication
+export const dynamic = 'force-dynamic';
+
 export default async function EventsPage() {
   // Fetch user's saved events for initial state
   let savedSet = new Set<string>();
