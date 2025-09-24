@@ -20,7 +20,11 @@ export async function middleware(req: NextRequest) {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            path: '/'
+            path: '/',
+            // Add domain if needed for production
+            ...(process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_SITE_URL ? {
+              domain: new URL(process.env.NEXT_PUBLIC_SITE_URL).hostname
+            } : {})
           });
         },
         remove(name: string, options: CookieOptions) {
@@ -30,7 +34,11 @@ export async function middleware(req: NextRequest) {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            path: '/'
+            path: '/',
+            // Add domain if needed for production
+            ...(process.env.NODE_ENV === 'production' && process.env.NEXT_PUBLIC_SITE_URL ? {
+              domain: new URL(process.env.NEXT_PUBLIC_SITE_URL).hostname
+            } : {})
           });
         },
       },

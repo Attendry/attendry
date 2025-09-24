@@ -86,36 +86,11 @@ export default function LoginPage() {
       
       console.log('Sign-in successful:', data.user?.email);
       
-          // Force a session refresh to ensure cookies are set
-          try {
-            await supabase.auth.refreshSession();
-            console.log('Session refreshed after sign-in');
-          } catch (refreshError) {
-            console.error('Session refresh error:', refreshError);
-          }
-          
-          // Use the same manual cookie setting logic as the Fix Session button
-          try {
-            const response = await fetch('/api/auth/set-cookies', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email, password })
-            });
-            
-            const data = await response.json();
-            if (data.status === 'success') {
-              console.log('Cookies set successfully after login');
-            } else {
-              console.warn('Failed to set cookies after login:', data.message);
-            }
-          } catch (cookieError) {
-            console.warn('Cookie setting failed after login:', cookieError);
-          }
-          
-          // Small delay to ensure cookies are set before redirect
-          setTimeout(() => {
-            window.location.href = "/events";
-          }, 1000);
+      // Let Supabase handle the session naturally - no manual cookie setting needed
+      // The session should persist automatically with the updated browser client config
+      
+      // Redirect immediately - Supabase will handle session persistence
+      window.location.href = "/events";
     } catch (error: any) {
       console.error('Unexpected sign-in error:', error);
       setMessage(`Unexpected error: ${error.message}`);

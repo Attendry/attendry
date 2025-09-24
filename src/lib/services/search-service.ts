@@ -640,11 +640,13 @@ export class SearchService {
    * Poll for extract results using the job ID
    */
   private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
-    const maxAttempts = 30; // 30 seconds max
-    const pollInterval = 1000; // 1 second intervals
+    const maxAttempts = 60; // 60 seconds max
+    const pollInterval = 2000; // 2 second intervals
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
+        console.log(`Polling extract job ${jobId}, attempt ${attempt + 1}/${maxAttempts}`);
+        
         const response = await RetryService.fetchWithRetry(
           "firecrawl",
           "extract_status",
@@ -659,8 +661,10 @@ export class SearchService {
         );
         
         const data = await response.json();
+        console.log(`Extract job ${jobId} status: ${data.status} (attempt ${attempt + 1})`);
         
         if (data.status === "completed") {
+          console.log(`Extract job ${jobId} completed successfully`);
           return data;
         } else if (data.status === "failed" || data.status === "cancelled") {
           console.warn(`Extract job ${jobId} failed with status: ${data.status}`);
@@ -670,8 +674,12 @@ export class SearchService {
         // Still processing, wait and try again
         await new Promise(resolve => setTimeout(resolve, pollInterval));
       } catch (error) {
-        console.warn(`Error polling extract job ${jobId}:`, error);
-        return null;
+        console.warn(`Error polling extract job ${jobId} (attempt ${attempt + 1}):`, error);
+        // Don't return null immediately, try a few more times
+        if (attempt >= 5) {
+          return null;
+        }
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
       }
     }
     

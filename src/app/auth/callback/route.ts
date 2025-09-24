@@ -23,21 +23,8 @@ export async function GET(req: NextRequest) {
       console.log('Auth callback - session exchanged successfully:', data.session ? 'yes' : 'no');
       console.log('Auth callback - user:', data.user?.email || 'no email');
       
-      // Force session refresh to ensure cookies are set
-      if (data.session) {
-        try {
-          const { error: refreshError } = await supabase.auth.refreshSession({
-            refresh_token: data.session.refresh_token
-          });
-          if (refreshError) {
-            console.error('Session refresh error in callback:', refreshError);
-          } else {
-            console.log('Session refreshed successfully in callback');
-          }
-        } catch (refreshErr) {
-          console.error('Session refresh exception in callback:', refreshErr);
-        }
-      }
+      // The session should be automatically set by the supabaseServer() call above
+      // No need for manual session refresh - let Supabase handle it naturally
     }
 
     // After this, cookies are set on the response and the server will see your session.

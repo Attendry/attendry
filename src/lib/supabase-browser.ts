@@ -10,13 +10,8 @@ export function supabaseBrowser() {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true
-      },
-      cookies: {
-        // Disable client-side cookie access to keep tokens HttpOnly-only
-        get() { return undefined; },
-        set() { /* no-op */ },
-        remove() { /* no-op */ }
       }
+      // Remove the cookies override to let Supabase handle cookies normally
     }
   );
 }

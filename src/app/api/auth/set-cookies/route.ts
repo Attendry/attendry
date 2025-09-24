@@ -48,26 +48,8 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // Manually set Supabase cookies (HttpOnly for security)
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax' as const,
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7 // 7 days
-    } as const;
-
-    // Set access token cookie
-    if (data.session.access_token) {
-      response.cookies.set('sb-access-token', data.session.access_token, cookieOptions);
-    }
-
-    // Set refresh token cookie
-    if (data.session.refresh_token) {
-      response.cookies.set('sb-refresh-token', data.session.refresh_token, cookieOptions);
-    }
-
-    // Avoid storing session JSON in a cookie; rely on Supabase cookies
+    // The Supabase server client should have already set the proper cookies
+    // through the supabaseServer() call above. No need to manually set cookies.
 
     return response;
 
