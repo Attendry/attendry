@@ -887,7 +887,8 @@ export async function POST(req: NextRequest) {
       q: cleanQuery, key, cx, num: String(Math.max(num, rerank ? Math.min(50, topK || 50) : num)), safe: "off",
       // explicitly set interface language to stabilize ranking
       hl: "en",
-      filter: "1",
+      // TEMPORARILY DISABLED: filter=1 might be causing 400 errors
+      // filter: "1",
     });
 
     // GEOGRAPHIC FILTERING: TEMPORARILY DISABLED ALL GEO FILTERS
