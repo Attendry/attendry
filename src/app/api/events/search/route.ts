@@ -914,24 +914,9 @@ export async function POST(req: NextRequest) {
       filter: "1",
     });
 
-    // GEOGRAPHIC FILTERING: Configure country-specific search parameters
-    // This helps Google CSE return more relevant results for specific regions
-    if (country && CR[country]) {
-      // TEMPORARILY DISABLED: Hard country restriction was too restrictive
-      // params.set("cr", CR[country]);                   // Hard restrict to specific country
-      if (GL[country]) params.set("gl", GL[country]);  // Boost geolocation relevance
-      // TEMPORARILY DISABLED: Language restriction was too restrictive  
-      // if (LR[country]) params.set("lr", LR[country]);  // Bias toward local language
-      console.log(JSON.stringify({ at: "search", geo_filter: "disabled", country, reason: "too_restrictive" }));
-    } else {
-      // All-Europe: Restrict to a set of European countries in one shot
-      // This is useful when no specific country is requested
-      // TEMPORARILY DISABLED: EU restriction was too restrictive
-      // params.set("cr", EU_CR_OR);
-      // params.set("lr", "lang_en|lang_de|lang_fr|lang_it|lang_es|lang_nl");
-      params.set("gl", "de"); // Neutral EU-ish boost (Germany is a good default)
-      console.log(JSON.stringify({ at: "search", geo_filter: "disabled", reason: "too_restrictive" }));
-    }
+    // GEOGRAPHIC FILTERING: TEMPORARILY DISABLED ALL GEO FILTERS
+    // All geographic filters are causing 400 errors
+    console.log(JSON.stringify({ at: "search", geo_filter: "all_disabled", country, reason: "causing_400_errors" }));
 
     // DATE FILTERING: Only restrict for PAST windows
     // Note: Google CSE cannot filter future events by page publish time
@@ -939,10 +924,9 @@ export async function POST(req: NextRequest) {
     const dr = buildDateRestrict(from, to);
     if (dr) params.set("dateRestrict", dr);
 
-    // CONTENT FILTERING: Exclude obvious non-event chatter
-    // This helps filter out forums, social media, and general discussion sites
-    // This will be configurable in future versions
-    params.set("excludeTerms", searchConfig.excludeTerms || "reddit Mumsnet \"legal advice\" forum");
+    // CONTENT FILTERING: TEMPORARILY DISABLED
+    // excludeTerms might be causing 400 errors
+    // params.set("excludeTerms", searchConfig.excludeTerms || "reddit Mumsnet \"legal advice\" forum");
 
     // Make the actual search request to Google Custom Search API
     const url = `https://www.googleapis.com/customsearch/v1?${params}`;
