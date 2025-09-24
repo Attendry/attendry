@@ -200,6 +200,107 @@ export class SearchService {
   }
 
   /**
+   * Load user profile
+   */
+  static async loadUserProfile(): Promise<any> {
+    try {
+      const supabase = supabaseServer();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error loading user profile:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Build enhanced query using user configuration
+   */
+  static buildEnhancedQuery(
+    baseQuery: string, 
+    searchConfig: any, 
+    userProfile: any, 
+    country: string
+  ): string {
+    let query = baseQuery.trim();
+    
+    // If no base query, use search config base query
+    if (!query && searchConfig?.baseQuery) {
+      query = searchConfig.baseQuery;
+    }
+    
+    // Add industry terms from search config
+    if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
+      const industryTerms = searchConfig.industryTerms.join(' ');
+      if (!query.toLowerCase().includes(industryTerms.toLowerCase())) {
+        query = `${query} ${industryTerms}`;
+      }
+    }
+    
+    // Add ICP terms from search config
+    if (searchConfig?.icpTerms && searchConfig.icpTerms.length > 0) {
+      const icpTerms = searchConfig.icpTerms.join(' ');
+      if (!query.toLowerCase().includes(icpTerms.toLowerCase())) {
+        query = `${query} ${icpTerms}`;
+      }
+    }
+    
+    // Add user profile terms if available and enabled
+    if (userProfile?.use_in_basic_search) {
+      // Add user's industry terms
+      if (userProfile.industry_terms && userProfile.industry_terms.length > 0) {
+        const userIndustryTerms = userProfile.industry_terms.join(' ');
+        if (!query.toLowerCase().includes(userIndustryTerms.toLowerCase())) {
+          query = `${query} ${userIndustryTerms}`;
+        }
+      }
+      
+      // Add user's ICP terms
+      if (userProfile.icp_terms && userProfile.icp_terms.length > 0) {
+        const userIcpTerms = userProfile.icp_terms.join(' ');
+        if (!query.toLowerCase().includes(userIcpTerms.toLowerCase())) {
+          query = `${query} ${userIcpTerms}`;
+        }
+      }
+    }
+    
+    // Add German event keywords for German searches
+    if (country === 'de') {
+      const germanEventKeywords = ['veranstaltung', 'kongress', 'konferenz', 'fachkonferenz'];
+      const hasGermanKeywords = germanEventKeywords.some(keyword => 
+        query.toLowerCase().includes(keyword)
+      );
+      
+      if (!hasGermanKeywords) {
+        query = `${query} veranstaltung`;
+      }
+    }
+    
+    // Clean up the query
+    query = query
+      .replace(/\s+/g, ' ') // Clean up multiple spaces
+      .trim();
+    
+    return query;
+  }
+
+  /**
    * Execute search with Firecrawl primary and Google CSE fallback
    */
   static async executeSearch(params: {
@@ -215,14 +316,23 @@ export class SearchService {
     items: SearchItem[];
     cached: boolean;
   }> {
-    // Try Firecrawl Search first
+    // Try Firecrawl Search first with user configuration
     try {
       console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "primary" }));
+      
+      // Load user configuration to enhance search
+      const searchConfig = await this.loadSearchConfig();
+      const userProfile = await this.loadUserProfile();
+      
+      // Build enhanced query using user configuration
+      const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
+      
       const firecrawlResult = await FirecrawlSearchService.searchEvents({
-        query: params.q,
+        query: enhancedQuery,
         country: params.country,
         from: params.from,
         to: params.to,
+        industry: searchConfig?.industry || "legal-compliance",
         maxResults: params.num || 20
       });
       

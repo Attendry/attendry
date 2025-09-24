@@ -217,11 +217,18 @@ export class FirecrawlSearchService {
         .replace(/\s+/g, ' ') // Clean up multiple spaces
         .trim();
       
-      // Add event keywords if not present
-      if (!searchQuery.toLowerCase().includes('conference') && 
-          !searchQuery.toLowerCase().includes('event') &&
-          !searchQuery.toLowerCase().includes('summit')) {
-        searchQuery += ' conference';
+      // Add event keywords if not present (English and German)
+      const hasEventKeywords = ['conference', 'event', 'summit', 'veranstaltung', 'kongress', 'konferenz'].some(keyword => 
+        searchQuery.toLowerCase().includes(keyword)
+      );
+      
+      if (!hasEventKeywords) {
+        // Add appropriate event keyword based on country
+        if (country === 'de') {
+          searchQuery += ' veranstaltung';
+        } else {
+          searchQuery += ' conference';
+        }
       }
     }
 
@@ -368,10 +375,15 @@ export class FirecrawlSearchService {
    */
   private static isEventRelated(content: string): boolean {
     const eventKeywords = [
+      // English event keywords
       'conference', 'summit', 'event', 'workshop', 'seminar', 'exhibition',
       'trade show', 'convention', 'symposium', 'meeting', 'gathering',
+      'forum', 'expo', 'showcase', 'networking', 'training', 'webinar',
+      // German event keywords
       'veranstaltung', 'kongress', 'fachkonferenz', 'fachkongress',
-      'tagung', 'workshop', 'seminar', 'messe', 'ausstellung'
+      'tagung', 'messe', 'ausstellung', 'seminar', 'workshop',
+      'netzwerk', 'treffen', 'event', 'konferenz', 'symposium',
+      'fachmesse', 'handelsmesse', 'veranstaltungsreihe', 'fortbildung'
     ];
     
     const hasEventKeywords = eventKeywords.some(keyword => 
