@@ -597,7 +597,8 @@ export class SearchService {
               onlyMainContent: true,
               waitFor: 2000,
               blockAds: true,
-              removeBase64Images: true
+              removeBase64Images: true,
+              timeout: 30000
             },
             ignoreInvalidURLs: true
           })
@@ -606,73 +607,17 @@ export class SearchService {
 
       const extractData = await extractResponse.json();
       
-      // Process the extracted data with speaker information
-      const events: EventRec[] = [];
+      // Check if we got a job ID for polling
+      if (extractData.success && extractData.id) {
+        // Poll for results
+        const polledData = await this.pollExtractResults(extractData.id, firecrawlKey);
+        if (polledData) {
+          return this.processExtractResults(polledData, urls);
+        }
+      }
       
-      if (extractData.success && extractData.data?.events) {
-        for (const event of extractData.data.events) {
-          events.push({
-            source_url: urls[0] || "", // Use first URL as source
-            title: event.title || "Event",
-            starts_at: event.eventDate || null,
-            ends_at: null, // Would need more sophisticated parsing for end dates
-            city: event.location || null,
-            country: null, // Would need more sophisticated parsing
-            organizer: event.organizer || null,
-            venue: event.venue || null,
-            speakers: event.speakers || null,
-            confidence: 0.8
-          });
-        }
-      }
-
-      // If no events extracted, try to extract basic info from the raw data
-      if (events.length === 0 && extractData.data) {
-        // Try to extract from raw markdown content
-        for (let i = 0; i < urls.length && i < 10; i++) {
-          const url = urls[i];
-          const rawData = Array.isArray(extractData.data) ? extractData.data[i] : extractData.data;
-          
-          if (rawData && rawData.markdown) {
-            const markdown = rawData.markdown;
-            const title = this.extractTitleFromMarkdown(markdown) || this.extractTitleFromUrl(url);
-            const date = this.extractDateFromMarkdown(markdown);
-            const location = this.extractLocationFromMarkdown(markdown);
-            const organizer = this.extractOrganizerFromMarkdown(markdown);
-            
-            events.push({
-              source_url: url,
-              title: title,
-              starts_at: date,
-              ends_at: null,
-              city: location,
-              country: null,
-              organizer: organizer,
-              speakers: null, // Would need more sophisticated extraction
-              confidence: 0.6
-            });
-          }
-        }
-      }
-
-      // If still no events extracted, create minimal events with better titles
-      if (events.length === 0) {
-        events.push(...urls.slice(0, 10).map(url => ({
-          source_url: url,
-          title: this.extractTitleFromUrl(url),
-          starts_at: null,
-          ends_at: null,
-          city: null,
-          country: null,
-          organizer: null,
-        })));
-      }
-
-      return {
-        events,
-        version: "firecrawl_v2",
-        trace: []
-      };
+      // Fallback: process immediate results if no polling needed
+      return this.processExtractResults(extractData, urls);
     } catch (error) {
       console.error('Firecrawl extraction failed:', error);
       return {
@@ -689,6 +634,125 @@ export class SearchService {
         trace: []
       };
     }
+  }
+
+  /**
+   * Poll for extract results using the job ID
+   */
+  private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
+    const maxAttempts = 30; // 30 seconds max
+    const pollInterval = 1000; // 1 second intervals
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await RetryService.fetchWithRetry(
+          "firecrawl",
+          "extract_status",
+          `https://api.firecrawl.dev/v2/extract/${jobId}`,
+          {
+            method: "GET",
+            headers: {
+              "Authorization": `Bearer ${firecrawlKey}`,
+              "Content-Type": "application/json"
+            }
+          }
+        );
+        
+        const data = await response.json();
+        
+        if (data.status === "completed") {
+          return data;
+        } else if (data.status === "failed" || data.status === "cancelled") {
+          console.warn(`Extract job ${jobId} failed with status: ${data.status}`);
+          return null;
+        }
+        
+        // Still processing, wait and try again
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      } catch (error) {
+        console.warn(`Error polling extract job ${jobId}:`, error);
+        return null;
+      }
+    }
+    
+    console.warn(`Extract job ${jobId} timed out after ${maxAttempts} attempts`);
+    return null;
+  }
+
+  /**
+   * Process extract results into EventRec format
+   */
+  private static processExtractResults(extractData: any, urls: string[]): {
+    events: EventRec[];
+    version: string;
+    trace: any[];
+  } {
+    const events: EventRec[] = [];
+    
+    if (extractData.data?.events) {
+      for (const event of extractData.data.events) {
+        events.push({
+          source_url: urls[0] || "", // Use first URL as source
+          title: event.title || "Event",
+          starts_at: event.eventDate || null,
+          ends_at: null, // Would need more sophisticated parsing for end dates
+          city: event.location || null,
+          country: null, // Would need more sophisticated parsing
+          organizer: event.organizer || null,
+          venue: event.venue || null,
+          speakers: event.speakers || null,
+          confidence: 0.8
+        });
+      }
+    }
+
+    // If no events extracted, try to extract basic info from the raw data
+    if (events.length === 0 && extractData.data) {
+      // Try to extract from raw markdown content
+      for (let i = 0; i < urls.length && i < 10; i++) {
+        const url = urls[i];
+        const rawData = Array.isArray(extractData.data) ? extractData.data[i] : extractData.data;
+        
+        if (rawData && rawData.markdown) {
+          const markdown = rawData.markdown;
+          const title = this.extractTitleFromMarkdown(markdown) || this.extractTitleFromUrl(url);
+          const date = this.extractDateFromMarkdown(markdown);
+          const location = this.extractLocationFromMarkdown(markdown);
+          const organizer = this.extractOrganizerFromMarkdown(markdown);
+          
+          events.push({
+            source_url: url,
+            title: title,
+            starts_at: date,
+            ends_at: null,
+            city: location,
+            country: null,
+            organizer: organizer,
+            speakers: null, // Would need more sophisticated extraction
+            confidence: 0.6
+          });
+        }
+      }
+    }
+
+    // If still no events extracted, create minimal events with better titles
+    if (events.length === 0) {
+      events.push(...urls.slice(0, 10).map(url => ({
+        source_url: url,
+        title: this.extractTitleFromUrl(url),
+        starts_at: null,
+        ends_at: null,
+        city: null,
+        country: null,
+        organizer: null,
+      })));
+    }
+
+    return {
+      events,
+      version: "firecrawl_v2_polled",
+      trace: []
+    };
   }
 
   /**
