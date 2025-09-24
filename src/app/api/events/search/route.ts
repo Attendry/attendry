@@ -872,19 +872,24 @@ export async function POST(req: NextRequest) {
         q: "test", key, cx, num: "1", safe: "off", hl: "en", filter: "1"
       });
       const testUrl = `https://www.googleapis.com/customsearch/v1?${testParams}`;
+      console.log(JSON.stringify({ at: "search", test: "calling_cse_test", url: testUrl }));
       const testRes = await fetchWithRetry(testUrl, { cache: "no-store", timeoutMs: 8000, retries: 1 });
-      
+      console.log(JSON.stringify({ at: "search", test: "cse_test_result", status: testRes.status }));
       
       if (testRes.status === 429) {
         // Quota exceeded, use alternative search
+        console.log(JSON.stringify({ at: "search", test: "quota_exceeded", fallback: "alternative" }));
         return await alternativeSearch(q, country, from, to, num);
       } else if (testRes.status !== 200) {
         // API error, use alternative search
+        console.log(JSON.stringify({ at: "search", test: "api_error", status: testRes.status, fallback: "alternative" }));
         return await alternativeSearch(q, country, from, to, num);
       }
       // API test successful, proceeding with real search
+      console.log(JSON.stringify({ at: "search", test: "success", proceeding: "real_search" }));
     } catch (e) {
       // API test failed, using alternative search
+      console.log(JSON.stringify({ at: "search", test: "exception", error: e instanceof Error ? e.message : "unknown", fallback: "alternative" }));
       return await alternativeSearch(q, country, from, to, num);
     }
 
@@ -925,8 +930,10 @@ export async function POST(req: NextRequest) {
 
     // Make the actual search request to Google Custom Search API
     const url = `https://www.googleapis.com/customsearch/v1?${params}`;
+    console.log(JSON.stringify({ at: "search", real: "calling_cse", query: enhancedQuery, url: url }));
     const res = await fetchWithRetry(url, { cache: "no-store", timeoutMs: 10000, retries: 2 });
     const data = await res.json();
+    console.log(JSON.stringify({ at: "search", real: "cse_result", status: res.status, items: data.items?.length || 0 }));
 
     // Transform Google's response into our standardized format
     let items: SearchItem[] = (data.items || []).map((it: any) => ({
