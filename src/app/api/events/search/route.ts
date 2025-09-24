@@ -906,15 +906,20 @@ export async function POST(req: NextRequest) {
     // GEOGRAPHIC FILTERING: Configure country-specific search parameters
     // This helps Google CSE return more relevant results for specific regions
     if (country && CR[country]) {
-      params.set("cr", CR[country]);                   // Hard restrict to specific country
+      // TEMPORARILY DISABLED: Hard country restriction was too restrictive
+      // params.set("cr", CR[country]);                   // Hard restrict to specific country
       if (GL[country]) params.set("gl", GL[country]);  // Boost geolocation relevance
-      if (LR[country]) params.set("lr", LR[country]);  // Bias toward local language
+      // TEMPORARILY DISABLED: Language restriction was too restrictive  
+      // if (LR[country]) params.set("lr", LR[country]);  // Bias toward local language
+      console.log(JSON.stringify({ at: "search", geo_filter: "disabled", country, reason: "too_restrictive" }));
     } else {
       // All-Europe: Restrict to a set of European countries in one shot
       // This is useful when no specific country is requested
-      params.set("cr", EU_CR_OR);
-      params.set("lr", "lang_en|lang_de|lang_fr|lang_it|lang_es|lang_nl");
+      // TEMPORARILY DISABLED: EU restriction was too restrictive
+      // params.set("cr", EU_CR_OR);
+      // params.set("lr", "lang_en|lang_de|lang_fr|lang_it|lang_es|lang_nl");
       params.set("gl", "de"); // Neutral EU-ish boost (Germany is a good default)
+      console.log(JSON.stringify({ at: "search", geo_filter: "disabled", reason: "too_restrictive" }));
     }
 
     // DATE FILTERING: Only restrict for PAST windows
