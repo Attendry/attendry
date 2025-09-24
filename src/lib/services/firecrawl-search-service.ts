@@ -147,23 +147,33 @@ export class FirecrawlSearchService {
         webResults: data.data?.web?.length || 0 
       }));
 
-      // Transform Firecrawl results to our standard format
+      // Transform Firecrawl results to our standard format with relevance filtering
       const items: SearchItem[] = [];
       
       if (data.success && data.data?.web) {
         for (const result of data.data.web) {
-          items.push({
-            title: result.title || "Event",
-            link: result.url || "",
-            snippet: result.description || result.markdown?.substring(0, 200) || "",
-            extractedData: {
-              eventTitle: result.title,
-              eventDate: this.extractDateFromContent(result.markdown),
-              location: this.extractLocationFromContent(result.markdown),
-              organizer: this.extractOrganizerFromContent(result.markdown),
-              confidence: 0.8
-            }
-          });
+          // Filter for event-related content
+          const content = (result.title + " " + result.description + " " + (result.markdown || "")).toLowerCase();
+          const isEventRelated = this.isEventRelated(content);
+          
+          if (isEventRelated) {
+            const extractedDate = this.extractDateFromContent(result.markdown);
+            const extractedLocation = this.extractLocationFromContent(result.markdown);
+            const extractedOrganizer = this.extractOrganizerFromContent(result.markdown);
+            
+            items.push({
+              title: result.title || "Event",
+              link: result.url || "",
+              snippet: result.description || result.markdown?.substring(0, 200) || "",
+              extractedData: {
+                eventTitle: result.title,
+                eventDate: extractedDate || undefined,
+                location: extractedLocation || undefined,
+                organizer: extractedOrganizer || undefined,
+                confidence: this.calculateRelevanceScore(content, extractedDate, extractedLocation)
+              }
+            });
+          }
         }
       }
 
@@ -173,8 +183,7 @@ export class FirecrawlSearchService {
         cached: false,
         searchMetadata: {
           totalResults: items.length,
-          query: searchQuery,
-          warning: data.warning
+          query: searchQuery
         }
       };
 
@@ -196,39 +205,35 @@ export class FirecrawlSearchService {
   ): string {
     let searchQuery = query.trim();
     
-    // Add industry-specific terms if query is empty or basic
-    if (!searchQuery || searchQuery.length < 10) {
+    // Simplify: Use basic terms instead of complex boolean logic
+    if (!searchQuery || searchQuery.length < 5) {
       const industryTerms = this.getIndustryTerms(industry);
-      searchQuery = `${industryTerms} conference summit event`;
-    }
-
-    // Add event-specific keywords using Firecrawl query operators
-    const eventKeywords = [
-      "conference", "summit", "forum", "workshop", "seminar", 
-      "exhibition", "trade show", "convention", "symposium"
-    ];
-    
-    // Check if event keywords are already present
-    const hasEventKeywords = eventKeywords.some(keyword => 
-      searchQuery.toLowerCase().includes(keyword.toLowerCase())
-    );
-    
-    if (!hasEventKeywords) {
-      searchQuery += ` (conference OR summit OR event)`;
-    }
-
-    // Add date range if specified
-    if (from && to) {
-      searchQuery += ` ${from} ${to} 2025`;
+      searchQuery = `${industryTerms} conference`;
     } else {
-      searchQuery += ` 2025`;
+      // Clean up the query - remove complex boolean operators
+      searchQuery = searchQuery
+        .replace(/\([^)]*\)/g, '') // Remove parentheses
+        .replace(/\b(OR|AND)\b/gi, ' ') // Replace OR/AND with spaces
+        .replace(/\s+/g, ' ') // Clean up multiple spaces
+        .trim();
+      
+      // Add event keywords if not present
+      if (!searchQuery.toLowerCase().includes('conference') && 
+          !searchQuery.toLowerCase().includes('event') &&
+          !searchQuery.toLowerCase().includes('summit')) {
+        searchQuery += ' conference';
+      }
     }
 
-    // Add country-specific terms
+    // Add current year instead of 2025
+    const currentYear = new Date().getFullYear();
+    searchQuery += ` ${currentYear}`;
+
+    // Add country-specific terms (simplified)
     if (country) {
       const countryTerms = this.getCountryTerms(country);
       if (countryTerms) {
-        searchQuery += ` ${countryTerms}`;
+        searchQuery += ` ${countryTerms.split(' ')[0]}`; // Just use first country term
       }
     }
 
@@ -260,6 +265,16 @@ export class FirecrawlSearchService {
       // Custom date range format: cdr:1,cd_min:MM/DD/YYYY,cd_max:MM/DD/YYYY
       const fromDate = new Date(from);
       const toDate = new Date(to);
+      
+      // Fix: Ensure we're not searching for future dates in 2025 when we're in 2024
+      const currentYear = new Date().getFullYear();
+      if (fromDate.getFullYear() > currentYear) {
+        fromDate.setFullYear(currentYear);
+      }
+      if (toDate.getFullYear() > currentYear) {
+        toDate.setFullYear(currentYear);
+      }
+      
       const fromStr = `${(fromDate.getMonth() + 1).toString().padStart(2, '0')}/${fromDate.getDate().toString().padStart(2, '0')}/${fromDate.getFullYear()}`;
       const toStr = `${(toDate.getMonth() + 1).toString().padStart(2, '0')}/${toDate.getDate().toString().padStart(2, '0')}/${toDate.getFullYear()}`;
       return `cdr:1,cd_min:${fromStr},cd_max:${toStr}`;
@@ -273,17 +288,29 @@ export class FirecrawlSearchService {
   private static extractDateFromContent(markdown?: string): string | null {
     if (!markdown) return null;
     
-    // Look for common date patterns
+    // Look for common date patterns (more comprehensive)
     const datePatterns = [
+      // MM/DD/YYYY or DD/MM/YYYY
       /(\d{1,2}\/\d{1,2}\/\d{4})/g,
+      // YYYY-MM-DD
       /(\d{4}-\d{2}-\d{2})/g,
-      /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/gi
+      // Full month names
+      /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/gi,
+      // Abbreviated month names
+      /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/gi,
+      // German month names
+      /(Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s+\d{1,2},?\s+\d{4}/gi,
+      // Event-specific date patterns
+      /(?:Date|Datum|When|Wann):\s*([^\n]+)/i,
+      /(?:Event Date|Veranstaltungsdatum):\s*([^\n]+)/i,
+      // Look for dates near event keywords
+      /(?:conference|event|summit|workshop).*?(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})/gi
     ];
     
     for (const pattern of datePatterns) {
       const match = markdown.match(pattern);
       if (match) {
-        return match[0];
+        return match[0].trim();
       }
     }
     
@@ -322,7 +349,8 @@ export class FirecrawlSearchService {
     // Look for organizer patterns
     const organizerPatterns = [
       /(?:Organizer|Host|Presented by):\s*([^\n]+)/i,
-      /(?:Company|Organization):\s*([^\n]+)/i
+      /(?:Company|Organization):\s*([^\n]+)/i,
+      /(?:Veranstalter|Organisator):\s*([^\n]+)/i
     ];
     
     for (const pattern of organizerPatterns) {
@@ -333,6 +361,52 @@ export class FirecrawlSearchService {
     }
     
     return null;
+  }
+
+  /**
+   * Check if content is event-related
+   */
+  private static isEventRelated(content: string): boolean {
+    const eventKeywords = [
+      'conference', 'summit', 'event', 'workshop', 'seminar', 'exhibition',
+      'trade show', 'convention', 'symposium', 'meeting', 'gathering',
+      'veranstaltung', 'kongress', 'fachkonferenz', 'fachkongress',
+      'tagung', 'workshop', 'seminar', 'messe', 'ausstellung'
+    ];
+    
+    const hasEventKeywords = eventKeywords.some(keyword => 
+      content.includes(keyword)
+    );
+    
+    // Also check for date patterns (events usually have dates)
+    const hasDatePattern = /\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2}|(January|February|March|April|May|June|July|August|September|October|November|December)/i.test(content);
+    
+    return hasEventKeywords || hasDatePattern;
+  }
+
+  /**
+   * Calculate relevance score for search results
+   */
+  private static calculateRelevanceScore(content: string, date?: string | null, location?: string | null): number {
+    let score = 0.5; // Base score
+    
+    // Higher score for having a date
+    if (date) score += 0.2;
+    
+    // Higher score for having a location
+    if (location) score += 0.2;
+    
+    // Higher score for event-specific keywords
+    const eventKeywords = ['conference', 'summit', 'event', 'workshop', 'seminar'];
+    const keywordCount = eventKeywords.filter(keyword => content.includes(keyword)).length;
+    score += Math.min(keywordCount * 0.1, 0.3);
+    
+    // Higher score for professional/industry terms
+    const industryKeywords = ['legal', 'compliance', 'technology', 'business', 'professional'];
+    const industryCount = industryKeywords.filter(keyword => content.includes(keyword)).length;
+    score += Math.min(industryCount * 0.05, 0.2);
+    
+    return Math.min(score, 1.0); // Cap at 1.0
   }
 
   /**
@@ -431,6 +505,14 @@ export class FirecrawlSearchService {
     try {
       // Simple health check - just verify API key format
       const firecrawlKey = process.env.FIRECRAWL_KEY;
+      
+      if (!firecrawlKey) {
+        return {
+          status: 'unhealthy',
+          apiKeyConfigured: false,
+          lastError: 'FIRECRAWL_KEY not configured'
+        };
+      }
       
       // Basic validation - Firecrawl keys typically start with 'fc-'
       if (!firecrawlKey.startsWith('fc-')) {
