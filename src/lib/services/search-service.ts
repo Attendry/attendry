@@ -2,6 +2,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { fetchWithRetry } from "@/lib/http";
 import { RetryService } from "./retry-service";
+import { FirecrawlSearchService } from "./firecrawl-search-service";
 
 /**
  * Shared Search Service
@@ -199,9 +200,49 @@ export class SearchService {
   }
 
   /**
-   * Execute search using Google Custom Search Engine
+   * Execute search with Firecrawl primary and Google CSE fallback
    */
   static async executeSearch(params: {
+    q: string;
+    country: string;
+    from?: string;
+    to?: string;
+    num?: number;
+    rerank?: boolean;
+    topK?: number;
+  }): Promise<{
+    provider: string;
+    items: SearchItem[];
+    cached: boolean;
+  }> {
+    // Try Firecrawl Search first
+    try {
+      console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "primary" }));
+      const firecrawlResult = await FirecrawlSearchService.searchEvents({
+        query: params.q,
+        country: params.country,
+        from: params.from,
+        to: params.to,
+        maxResults: params.num || 20
+      });
+      
+      if (firecrawlResult.items.length > 0) {
+        console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", success: true, items: firecrawlResult.items.length }));
+        return firecrawlResult;
+      }
+    } catch (error) {
+      console.warn('Firecrawl Search failed, falling back to Google CSE:', error);
+    }
+
+    // Fallback to Google CSE
+    console.log(JSON.stringify({ at: "search_service", provider: "google_cse", attempt: "fallback" }));
+    return await this.executeGoogleCSESearch(params);
+  }
+
+  /**
+   * Execute search using Google Custom Search Engine (fallback method)
+   */
+  static async executeGoogleCSESearch(params: {
     q: string;
     country: string;
     from?: string;

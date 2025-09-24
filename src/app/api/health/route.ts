@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GeminiService } from "@/lib/services/gemini-service";
 import { RetryService } from "@/lib/services/retry-service";
+import { FirecrawlSearchService } from "@/lib/services/firecrawl-search-service";
 
 /**
  * Health Check API Route
@@ -15,6 +16,7 @@ export interface HealthStatus {
   services: {
     google_cse: ServiceHealth;
     firecrawl: ServiceHealth;
+    firecrawl_search: ServiceHealth;
     gemini: ServiceHealth;
     database: ServiceHealth;
     retry_service: ServiceHealth;
@@ -46,10 +48,12 @@ export async function GET(req: NextRequest) {
     // Check all services in parallel for better performance
     const [
       geminiHealth,
+      firecrawlSearchHealth,
       retryMetrics,
       databaseHealth
     ] = await Promise.allSettled([
       checkGeminiHealth(),
+      checkFirecrawlSearchHealth(),
       getRetryMetrics(),
       checkDatabaseHealth()
     ]);
@@ -60,6 +64,10 @@ export async function GET(req: NextRequest) {
       services: {
         google_cse: await checkGoogleCSEHealth(),
         firecrawl: await checkFirecrawlHealth(),
+        firecrawl_search: firecrawlSearchHealth.status === 'fulfilled' ? firecrawlSearchHealth.value : {
+          status: 'unhealthy',
+          last_error: firecrawlSearchHealth.status === 'rejected' ? firecrawlSearchHealth.reason?.message : 'Unknown error'
+        },
         gemini: geminiHealth.status === 'fulfilled' ? geminiHealth.value : {
           status: 'unhealthy',
           last_error: geminiHealth.status === 'rejected' ? geminiHealth.reason?.message : 'Unknown error'
@@ -220,6 +228,20 @@ async function checkFirecrawlHealth(): Promise<ServiceHealth> {
     return {
       status: 'unhealthy',
       response_time_ms: Date.now() - startTime,
+      last_error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Check Firecrawl Search API health
+ */
+async function checkFirecrawlSearchHealth(): Promise<ServiceHealth> {
+  try {
+    return await FirecrawlSearchService.getHealthStatus();
+  } catch (error) {
+    return {
+      status: 'unhealthy',
       last_error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
