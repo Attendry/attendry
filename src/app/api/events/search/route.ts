@@ -93,8 +93,9 @@ function buildEnhancedQuery(userQuery: string, searchConfig: any, country: strin
     baseQuery,
     dateContext,
     geoContext,
-    industryTerms.slice(0, 3).join(' OR '), // Top 3 industry terms (no parentheses)
-    `${currentYear} OR ${nextYear} OR upcoming` // Temporal relevance (no parentheses)
+    industryTerms[0] || 'compliance', // Use only first industry term to avoid OR issues
+    'conference',
+    currentYear.toString() // Just the year, no OR
   ].filter(Boolean);
   
   return queryParts.join(' ');
