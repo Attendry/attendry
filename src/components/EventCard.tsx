@@ -398,7 +398,12 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
           {!loadingSpeakers && speakers && speakers.length > 0 && (
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {speakers.map((p, idx) => (
-                <EnhancedSpeakerCard key={p.name + (p.org || "") + idx} speaker={p} />
+                <EnhancedSpeakerCard 
+                  key={p.name + (p.org || "") + idx} 
+                  speaker={p} 
+                  eventTitle={ev.title}
+                  sessionTitle={p.session || p.speech_title}
+                />
               ))}
             </div>
           )}

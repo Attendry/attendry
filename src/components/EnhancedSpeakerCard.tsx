@@ -53,15 +53,19 @@ interface EnhancedSpeaker {
  */
 interface EnhancedSpeakerCardProps {
   speaker: EnhancedSpeaker;        // Speaker data object
+  eventTitle?: string;             // Title of the event this speaker is associated with
+  sessionTitle?: string;           // Title of the specific session (if different from event)
 }
 
 /**
  * Main EnhancedSpeakerCard component
  * 
  * @param speaker - Enhanced speaker data object
+ * @param eventTitle - Title of the event this speaker is associated with
+ * @param sessionTitle - Title of the specific session (if different from event)
  * @returns JSX element representing the speaker card
  */
-export default function EnhancedSpeakerCard({ speaker }: EnhancedSpeakerCardProps) {
+export default function EnhancedSpeakerCard({ speaker, eventTitle, sessionTitle }: EnhancedSpeakerCardProps) {
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -119,6 +123,21 @@ export default function EnhancedSpeakerCard({ speaker }: EnhancedSpeakerCardProp
           {speaker.title && <div className="text-sm text-slate-700">{speaker.title}</div>}
           {speaker.org && <div className="text-sm text-slate-600">{speaker.org}</div>}
           {speaker.location && <div className="text-xs text-slate-500 mt-1">📍 {speaker.location}</div>}
+          
+          {/* Event/Session Title */}
+          {(eventTitle || sessionTitle) && (
+            <div className="mt-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="text-xs font-medium text-blue-800 mb-1">Speaking at:</div>
+              {sessionTitle && (
+                <div className="text-sm font-medium text-blue-900">{sessionTitle}</div>
+              )}
+              {eventTitle && (
+                <div className="text-xs text-blue-700">
+                  {sessionTitle ? `Part of: ${eventTitle}` : eventTitle}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getConfidenceColor(speaker.confidence)}`}>
           Confidence: {(speaker.confidence * 100).toFixed(0)}%
