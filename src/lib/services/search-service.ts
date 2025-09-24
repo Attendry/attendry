@@ -701,6 +701,16 @@ export class SearchService {
   }> {
     const events: EventRec[] = [];
     
+    // Debug: Log the structure of extractData
+    console.log('Extract data structure:', JSON.stringify({
+      hasData: !!extractData.data,
+      dataType: typeof extractData.data,
+      isArray: Array.isArray(extractData.data),
+      hasEvents: !!extractData.data?.events,
+      eventsLength: extractData.data?.events?.length || 0,
+      dataKeys: extractData.data ? Object.keys(extractData.data) : []
+    }, null, 2));
+    
     if (extractData.data?.events) {
       for (const event of extractData.data.events) {
         events.push({
@@ -720,10 +730,14 @@ export class SearchService {
 
     // If no events extracted, try to extract basic info from the raw data
     if (events.length === 0 && extractData.data) {
+      console.log('No events found in structured data, trying fallback extraction from markdown');
       // Try to extract from raw markdown content
       for (let i = 0; i < urls.length && i < 10; i++) {
         const url = urls[i];
         const rawData = Array.isArray(extractData.data) ? extractData.data[i] : extractData.data;
+        
+        console.log(`Processing URL ${i + 1}/${Math.min(urls.length, 10)}: ${url}`);
+        console.log(`Raw data has markdown: ${!!rawData?.markdown}`);
         
         if (rawData && rawData.markdown) {
           const markdown = rawData.markdown;
@@ -749,6 +763,7 @@ export class SearchService {
 
     // If still no events extracted, create minimal events with better titles
     if (events.length === 0) {
+      console.log('No events extracted from any method, creating minimal events from URLs');
       events.push(...urls.slice(0, 10).map(url => ({
         source_url: url,
         title: this.extractTitleFromUrl(url),
@@ -759,6 +774,8 @@ export class SearchService {
         organizer: null,
       })));
     }
+    
+    console.log(`Final events count: ${events.length}`);
 
     // Enhance events with Gemini API for speaker extraction
     const enhancedEvents = await this.enhanceEventsWithGemini(events, extractData);
