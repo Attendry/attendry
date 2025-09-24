@@ -887,8 +887,7 @@ export async function POST(req: NextRequest) {
       q: cleanQuery, key, cx, num: String(Math.max(num, rerank ? Math.min(50, topK || 50) : num)), safe: "off",
       // explicitly set interface language to stabilize ranking
       hl: "en",
-      // TEMPORARILY DISABLED: filter=1 might be causing 400 errors
-      // filter: "1",
+      filter: "1", // Required for this CSE configuration
     });
 
     // GEOGRAPHIC FILTERING: TEMPORARILY DISABLED ALL GEO FILTERS
