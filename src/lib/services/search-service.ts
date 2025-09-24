@@ -542,10 +542,11 @@ export class SearchService {
     }
 
     try {
+      // Use Firecrawl v2 extract with schema for better event extraction
       const extractResponse = await RetryService.fetchWithRetry(
         "firecrawl",
         "extract",
-        "https://api.firecrawl.dev/v1/scrape",
+        "https://api.firecrawl.dev/v2/extract",
         {
           method: "POST",
           headers: {
@@ -553,34 +554,88 @@ export class SearchService {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            urls: urls.slice(0, 20), // Limit to 20 URLs for performance
-            formats: ["markdown"],
-            onlyMainContent: true,
-            crawlerOptions: { 
-              depth: 3, 
-              allowlist: true 
-            }
+            urls: urls.slice(0, 10), // Limit to 10 URLs for performance
+            schema: {
+              type: "object",
+              properties: {
+                events: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      title: { type: "string" },
+                      eventDate: { type: "string" },
+                      location: { type: "string" },
+                      organizer: { type: "string" },
+                      venue: { type: "string" },
+                      speakers: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            name: { type: "string" },
+                            org: { type: "string" },
+                            title: { type: "string" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            prompt: "Extract event information including title, date, location, organizer, venue, and speakers. For speakers, include their name, organization, and job title if available.",
+            showSources: true,
+            scrapeOptions: {
+              formats: ["markdown"],
+              onlyMainContent: true,
+              waitFor: 2000,
+              blockAds: true,
+              removeBase64Images: true
+            },
+            ignoreInvalidURLs: true
           })
         }
       );
 
       const extractData = await extractResponse.json();
       
-      // Process the extracted data (simplified version)
-      const events: EventRec[] = extractData.data?.map((item: any) => ({
-        source_url: item.metadata?.sourceURL || item.url,
-        title: item.metadata?.title || item.url,
-        starts_at: null, // Would need more sophisticated parsing
-        ends_at: null,
-        city: null,
-        country: null,
-        organizer: null,
-        confidence: 0.8
-      })) || [];
+      // Process the extracted data with speaker information
+      const events: EventRec[] = [];
+      
+      if (extractData.success && extractData.data?.events) {
+        for (const event of extractData.data.events) {
+          events.push({
+            source_url: urls[0] || "", // Use first URL as source
+            title: event.title || "Event",
+            starts_at: event.eventDate || null,
+            ends_at: null, // Would need more sophisticated parsing for end dates
+            city: event.location || null,
+            country: null, // Would need more sophisticated parsing
+            organizer: event.organizer || null,
+            venue: event.venue || null,
+            speakers: event.speakers || null,
+            confidence: 0.8
+          });
+        }
+      }
+
+      // If no events extracted, create minimal events from URLs
+      if (events.length === 0) {
+        events.push(...urls.slice(0, 10).map(url => ({
+          source_url: url,
+          title: url,
+          starts_at: null,
+          ends_at: null,
+          city: null,
+          country: null,
+          organizer: null,
+        })));
+      }
 
       return {
         events,
-        version: "firecrawl",
+        version: "firecrawl_v2",
         trace: []
       };
     } catch (error) {
