@@ -898,8 +898,16 @@ export async function POST(req: NextRequest) {
     // Build enhanced search query with multiple strategies
     const enhancedQuery = buildEnhancedQuery(q || "", searchConfig, country, from, to);
     
+    // Clean up the query to avoid 400 errors
+    const cleanQuery = enhancedQuery
+      .replace(/\\"/g, '"')  // Fix escaped quotes
+      .replace(/\s+/g, ' ')  // Normalize whitespace
+      .trim();
+    
+    console.log(JSON.stringify({ at: "search", query_cleanup: { original: enhancedQuery, cleaned: cleanQuery } }));
+    
     const params = new URLSearchParams({
-      q: enhancedQuery, key, cx, num: String(Math.max(num, rerank ? Math.min(50, topK || 50) : num)), safe: "off",
+      q: cleanQuery, key, cx, num: String(Math.max(num, rerank ? Math.min(50, topK || 50) : num)), safe: "off",
       // explicitly set interface language to stabilize ranking
       hl: "en",
       filter: "1",
