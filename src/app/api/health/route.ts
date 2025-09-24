@@ -96,6 +96,10 @@ export async function GET(req: NextRequest) {
         .reduce((sum, m) => sum + m.totalAttempts, 0);
       healthStatus.metrics.retry_failures = Array.from(metrics.values())
         .reduce((sum, m) => sum + m.totalFailures, 0);
+    } else {
+      // Set default values if metrics are not available
+      healthStatus.metrics.retry_attempts = 0;
+      healthStatus.metrics.retry_failures = 0;
     }
 
     const responseTime = Date.now() - startTime;
@@ -195,7 +199,7 @@ async function checkFirecrawlHealth(): Promise<ServiceHealth> {
         formats: ['markdown'],
         onlyMainContent: true
       }),
-      signal: AbortSignal.timeout(10000) // 10 second timeout
+      signal: AbortSignal.timeout(15000) // 15 second timeout
     });
     
     const responseTime = Date.now() - startTime;
@@ -247,7 +251,7 @@ async function checkDatabaseHealth(): Promise<ServiceHealth> {
     
     // Test with a simple query
     const { data, error } = await supabase
-      .from('search_config')
+      .from('search_configurations')
       .select('id')
       .limit(1);
     
