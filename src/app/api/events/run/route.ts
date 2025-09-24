@@ -256,9 +256,9 @@ export async function POST(req: NextRequest) {
     let profile: any = null;
     if (uid && supabase) {
       const { data } = await supabase
-        .from("user_profiles")
+        .from("profiles")
         .select("competitors, icp_terms, industry_terms, use_in_basic_search")
-        .eq("owner", uid)
+        .eq("id", uid)
         .maybeSingle();
       profile = data;
     }

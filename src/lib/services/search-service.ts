@@ -204,7 +204,7 @@ export class SearchService {
    */
   static async loadUserProfile(): Promise<any> {
     try {
-      const supabase = supabaseServer();
+      const supabase = await supabaseServer();
       
       if (!supabase) {
         console.warn('Supabase client not available, skipping user profile');
@@ -220,7 +220,7 @@ export class SearchService {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
       if (userError) {
-        console.warn('Error getting user:', userError);
+        console.warn('Error getting user:', userError.message);
         return null;
       }
       
@@ -236,13 +236,14 @@ export class SearchService {
         .single();
 
       if (error) {
-        console.warn('Error loading user profile:', error);
+        console.warn('Error loading user profile:', error.message);
         return null;
       }
 
+      console.log('User profile loaded successfully for user:', user.email);
       return data;
-    } catch (error) {
-      console.warn('Error loading user profile:', error);
+    } catch (error: any) {
+      console.warn('Error loading user profile:', error.message);
       return null;
     }
   }
@@ -344,7 +345,10 @@ export class SearchService {
       
       // Load user configuration to enhance search
       const searchConfig = await this.loadSearchConfig();
-      const userProfile = await this.loadUserProfile();
+      const userProfile = await this.loadUserProfile().catch(error => {
+        console.warn('Failed to load user profile, continuing without user-specific enhancements:', error.message);
+        return null;
+      });
       
       // Build enhanced query using user configuration
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
