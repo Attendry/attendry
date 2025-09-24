@@ -401,7 +401,6 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
                 <EnhancedSpeakerCard 
                   key={p.name + (p.org || "") + idx} 
                   speaker={p} 
-                  eventTitle={ev.title}
                   sessionTitle={p.session || p.speech_title}
                 />
               ))}

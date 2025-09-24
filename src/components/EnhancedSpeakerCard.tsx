@@ -53,19 +53,17 @@ interface EnhancedSpeaker {
  */
 interface EnhancedSpeakerCardProps {
   speaker: EnhancedSpeaker;        // Speaker data object
-  eventTitle?: string;             // Title of the event this speaker is associated with
-  sessionTitle?: string;           // Title of the specific session (if different from event)
+  sessionTitle?: string;           // Title of the specific session or speech
 }
 
 /**
  * Main EnhancedSpeakerCard component
  * 
  * @param speaker - Enhanced speaker data object
- * @param eventTitle - Title of the event this speaker is associated with
- * @param sessionTitle - Title of the specific session (if different from event)
+ * @param sessionTitle - Title of the specific session or speech
  * @returns JSX element representing the speaker card
  */
-export default function EnhancedSpeakerCard({ speaker, eventTitle, sessionTitle }: EnhancedSpeakerCardProps) {
+export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedSpeakerCardProps) {
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -124,18 +122,11 @@ export default function EnhancedSpeakerCard({ speaker, eventTitle, sessionTitle 
           {speaker.org && <div className="text-sm text-slate-600">{speaker.org}</div>}
           {speaker.location && <div className="text-xs text-slate-500 mt-1">📍 {speaker.location}</div>}
           
-          {/* Event/Session Title */}
-          {(eventTitle || sessionTitle) && (
+          {/* Session/Speech Title */}
+          {sessionTitle && (
             <div className="mt-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-xs font-medium text-blue-800 mb-1">Speaking at:</div>
-              {sessionTitle && (
-                <div className="text-sm font-medium text-blue-900">{sessionTitle}</div>
-              )}
-              {eventTitle && (
-                <div className="text-xs text-blue-700">
-                  {sessionTitle ? `Part of: ${eventTitle}` : eventTitle}
-                </div>
-              )}
+              <div className="text-xs font-medium text-blue-800 mb-1">Speaking on:</div>
+              <div className="text-sm font-medium text-blue-900">{sessionTitle}</div>
             </div>
           )}
         </div>
