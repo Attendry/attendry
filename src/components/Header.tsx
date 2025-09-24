@@ -90,6 +90,20 @@ export function Header() {
       {/* Hide auth controls until we know the session to prevent flicker */}
       {!authReady ? null : user ? (
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+          <Link 
+            href="/admin" 
+            style={{ 
+              fontSize: "0.875rem", 
+              color: "var(--muted-foreground)", 
+              textDecoration: "none",
+              fontWeight: "500",
+              transition: "color 0.2s ease"
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "var(--foreground)"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "var(--muted-foreground)"}
+          >
+            Admin
+          </Link>
           <span style={{ 
             fontSize: "0.875rem", 
             color: "var(--muted-foreground)",
@@ -107,20 +121,6 @@ export function Header() {
         </div>
       ) : (
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-          <Link 
-            href="/admin" 
-            style={{ 
-              fontSize: "0.875rem", 
-              color: "var(--muted-foreground)", 
-              textDecoration: "none",
-              fontWeight: "500",
-              transition: "color 0.2s ease"
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.color = "var(--foreground)"}
-            onMouseLeave={(e) => e.currentTarget.style.color = "var(--muted-foreground)"}
-          >
-            Admin
-          </Link>
           <Link 
             href="/login" 
             className="btn btn-primary"
