@@ -20,8 +20,17 @@ CREATE INDEX IF NOT EXISTS idx_search_cache_ttl ON search_cache(ttl_at);
 ALTER TABLE search_cache ENABLE ROW LEVEL SECURITY;
 
 -- Allow service role to manage cache (for cron jobs and API)
-CREATE POLICY "Service role can manage search cache" ON search_cache
-  FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role can select search cache" ON search_cache
+  FOR SELECT USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can insert search cache" ON search_cache
+  FOR INSERT WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can update search cache" ON search_cache
+  FOR UPDATE USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role can delete search cache" ON search_cache
+  FOR DELETE USING (auth.role() = 'service_role');
 
 -- Allow authenticated users to read cache
 CREATE POLICY "Authenticated users can read search cache" ON search_cache
@@ -29,7 +38,7 @@ CREATE POLICY "Authenticated users can read search cache" ON search_cache
 
 -- Allow authenticated users to write cache (for API endpoints)
 CREATE POLICY "Authenticated users can write search cache" ON search_cache
-  FOR INSERT USING (auth.role() = 'authenticated');
+  FOR INSERT WITH CHECK (auth.role() = 'authenticated');
 
 -- Allow authenticated users to update cache
 CREATE POLICY "Authenticated users can update search cache" ON search_cache
