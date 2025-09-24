@@ -69,36 +69,12 @@ interface EventItem {
  * @returns Enhanced search query string
  */
 function buildEnhancedQuery(userQuery: string, searchConfig: any, country: string, from: string, to: string): string {
-  // If user provided a specific query, use it as base
-  if (userQuery.trim()) {
-    return userQuery;
-  }
-  
-  // Build context-aware query based on search configuration
+  // TEMPORARILY DISABLE COMPLEX QUERIES - always use simple format to avoid 400 errors
   const industryTerms = searchConfig.industryTerms || [];
-  const baseQuery = searchConfig.baseQuery || "";
-  
-  // Get current year for temporal relevance
   const currentYear = new Date().getFullYear();
-  const nextYear = currentYear + 1;
   
-  // Build date context
-  const dateContext = buildDateContext(from, to, currentYear);
-  
-  // Build geographic context
-  const geoContext = buildGeographicContext(country);
-  
-  // Combine all elements for maximum relevance - simplified to avoid 400 errors
-  const queryParts = [
-    baseQuery,
-    dateContext,
-    geoContext,
-    industryTerms[0] || 'compliance', // Use only first industry term to avoid OR issues
-    'conference',
-    currentYear.toString() // Just the year, no OR
-  ].filter(Boolean);
-  
-  return queryParts.join(' ');
+  // Always return simple query format regardless of user input
+  return `${industryTerms[0] || 'compliance'} conference ${currentYear}`;
 }
 
 /**
