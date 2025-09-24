@@ -187,10 +187,10 @@ export class SearchService {
       id: "default",
       name: "Default Configuration",
       industry: "legal-compliance",
-      baseQuery: "(legal OR compliance OR investigation OR \"e-discovery\" OR ediscovery OR \"legal tech\" OR \"legal technology\" OR \"regulatory\" OR \"governance\" OR \"risk management\" OR \"audit\" OR \"whistleblowing\" OR \"data protection\" OR \"GDPR\" OR \"privacy\" OR \"cybersecurity\" OR \"regtech\" OR \"ESG\") (conference OR summit OR forum OR \"trade show\" OR exhibition OR convention OR \"industry event\" OR \"business event\" OR konferenz OR kongress OR symposium OR veranstaltung OR workshop OR seminar OR webinar OR \"training\" OR \"certification\") (2025 OR \"next year\" OR upcoming OR \"this year\" OR \"September 2025\" OR \"Oktober 2025\" OR \"November 2025\" OR \"Dezember 2025\" OR \"Q1 2025\" OR \"Q2 2025\" OR \"Q3 2025\" OR \"Q4 2025\")",
-      excludeTerms: "reddit Mumsnet \"legal advice\" forum",
-      industryTerms: ["compliance", "investigations", "regtech", "ESG", "sanctions", "governance", "legal ops", "risk", "audit", "whistleblow"],
-      icpTerms: ["general counsel", "chief compliance officer", "investigations lead", "compliance manager", "legal operations"],
+      baseQuery: "legal compliance conference",
+      excludeTerms: "reddit forum personal blog",
+      industryTerms: ["compliance", "legal", "investigation"],
+      icpTerms: ["legal counsel", "compliance officer"],
       speakerPrompts: {
         extraction: "Extract ALL speakers on the page(s). For each, return name, organization (org), title/role if present, and profile_url if linked. Look for sections labelled Speakers, Referenten, Referent:innen, Sprecher, Vortragende, Mitwirkende, Panel, Agenda/Programm/Fachprogramm. Do not invent names; only list people visible on the pages.",
         normalization: "You are a data normalizer. Merge duplicate speakers across pages. Return clean JSON with fields: name, org, title, profile_url, source_url (one of the pages), confidence (0-1). Do not invent people. Keep only real names (≥2 tokens)."
@@ -205,9 +205,21 @@ export class SearchService {
   static async loadUserProfile(): Promise<any> {
     try {
       const supabase = supabaseServer();
-      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!supabase) {
+        console.warn('Supabase client not available, skipping user profile');
+        return null;
+      }
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.warn('Error getting user:', userError);
+        return null;
+      }
       
       if (!user) {
+        console.log('No authenticated user, skipping user profile');
         return null;
       }
 
@@ -218,13 +230,13 @@ export class SearchService {
         .single();
 
       if (error) {
-        console.error('Error loading user profile:', error);
+        console.warn('Error loading user profile:', error);
         return null;
       }
 
       return data;
     } catch (error) {
-      console.error('Error loading user profile:', error);
+      console.warn('Error loading user profile:', error);
       return null;
     }
   }
@@ -240,49 +252,42 @@ export class SearchService {
   ): string {
     let query = baseQuery.trim();
     
-    // If no base query, use search config base query
-    if (!query && searchConfig?.baseQuery) {
-      query = searchConfig.baseQuery;
+    // If no base query, use a simple default
+    if (!query) {
+      query = "conference";
     }
     
-    // Add industry terms from search config
-    if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
-      const industryTerms = searchConfig.industryTerms.join(' ');
-      if (!query.toLowerCase().includes(industryTerms.toLowerCase())) {
-        query = `${query} ${industryTerms}`;
-      }
-    }
+    // Limit the query to avoid overly broad searches
+    // Only add a few key terms to keep it focused
+    const maxTerms = 5;
+    let addedTerms = 0;
     
-    // Add ICP terms from search config
-    if (searchConfig?.icpTerms && searchConfig.icpTerms.length > 0) {
-      const icpTerms = searchConfig.icpTerms.join(' ');
-      if (!query.toLowerCase().includes(icpTerms.toLowerCase())) {
-        query = `${query} ${icpTerms}`;
-      }
-    }
-    
-    // Add user profile terms if available and enabled
-    if (userProfile?.use_in_basic_search) {
-      // Add user's industry terms
-      if (userProfile.industry_terms && userProfile.industry_terms.length > 0) {
-        const userIndustryTerms = userProfile.industry_terms.join(' ');
-        if (!query.toLowerCase().includes(userIndustryTerms.toLowerCase())) {
-          query = `${query} ${userIndustryTerms}`;
+    // Add a few key industry terms from search config (limit to 2-3)
+    if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0 && addedTerms < maxTerms) {
+      const keyTerms = searchConfig.industryTerms.slice(0, 2); // Take only first 2 terms
+      for (const term of keyTerms) {
+        if (!query.toLowerCase().includes(term.toLowerCase()) && addedTerms < maxTerms) {
+          query = `${query} ${term}`;
+          addedTerms++;
         }
       }
-      
-      // Add user's ICP terms
-      if (userProfile.icp_terms && userProfile.icp_terms.length > 0) {
-        const userIcpTerms = userProfile.icp_terms.join(' ');
-        if (!query.toLowerCase().includes(userIcpTerms.toLowerCase())) {
-          query = `${query} ${userIcpTerms}`;
+    }
+    
+    // Add user profile terms if available and enabled (limit to 1-2)
+    if (userProfile?.use_in_basic_search && addedTerms < maxTerms) {
+      // Add user's industry terms (limit to 1)
+      if (userProfile.industry_terms && userProfile.industry_terms.length > 0 && addedTerms < maxTerms) {
+        const keyTerm = userProfile.industry_terms[0]; // Take only first term
+        if (!query.toLowerCase().includes(keyTerm.toLowerCase())) {
+          query = `${query} ${keyTerm}`;
+          addedTerms++;
         }
       }
     }
     
     // Add German event keywords for German searches
     if (country === 'de') {
-      const germanEventKeywords = ['veranstaltung', 'kongress', 'konferenz', 'fachkonferenz'];
+      const germanEventKeywords = ['veranstaltung', 'kongress', 'konferenz'];
       const hasGermanKeywords = germanEventKeywords.some(keyword => 
         query.toLowerCase().includes(keyword)
       );
@@ -290,12 +295,23 @@ export class SearchService {
       if (!hasGermanKeywords) {
         query = `${query} veranstaltung`;
       }
+    } else {
+      // Add English event keyword if not present
+      if (!query.toLowerCase().includes('conference') && !query.toLowerCase().includes('event')) {
+        query = `${query} conference`;
+      }
     }
     
-    // Clean up the query
+    // Clean up the query and limit length
     query = query
       .replace(/\s+/g, ' ') // Clean up multiple spaces
       .trim();
+    
+    // Limit query length to prevent overly broad searches
+    if (query.length > 100) {
+      const words = query.split(' ');
+      query = words.slice(0, 8).join(' '); // Limit to 8 words
+    }
     
     return query;
   }
