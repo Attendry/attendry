@@ -22,6 +22,7 @@ import { supabaseServer } from "@/lib/supabase-server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { fetchWithRetry } from "@/lib/http";
 import { createHash } from "crypto";
+import { GeminiService } from "@/lib/services/gemini-service";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -150,9 +151,8 @@ const DB_CACHE_TTL_HOURS = 6;
  * @returns Unique cache key string
  */
 function getCacheKey(q: string, country: string, from?: string, to?: string): string {
-  // TEMPORARILY DISABLE CACHING to force fresh API calls
-  const timestamp = Date.now();
-  return `${q}|${country}|${from}|${to}|${timestamp}`;
+  // Generate consistent cache key without timestamp to enable proper caching
+  return `${q}|${country}|${from || ''}|${to || ''}`;
 }
 
 /**
@@ -163,8 +163,16 @@ function getCacheKey(q: string, country: string, from?: string, to?: string): st
  */
 function getCachedResult(key: string) {
   const cached = searchCache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    return cached.data;
+  if (cached) {
+    const age = Date.now() - cached.timestamp;
+    if (age < CACHE_DURATION) {
+      console.log(JSON.stringify({ at: "cache", hit: true, key, age: Math.round(age / 1000) + 's' }));
+      return cached.data;
+    } else {
+      // Remove expired entry
+      searchCache.delete(key);
+      console.log(JSON.stringify({ at: "cache", expired: true, key, age: Math.round(age / 1000) + 's' }));
+    }
   }
   return null;
 }
@@ -182,13 +190,21 @@ function setCachedResult(key: string, data: unknown) {
   // Clean up old entries to prevent memory leaks
   if (searchCache.size > 100) {
     const now = Date.now();
+    let cleaned = 0;
     for (const [k, v] of searchCache.entries()) {
       if (now - v.timestamp > CACHE_DURATION) {
         searchCache.delete(k);
+        cleaned++;
       }
     }
+    if (cleaned > 0) {
+      console.log(JSON.stringify({ at: "cache", cleanup: true, cleaned, remaining: searchCache.size }));
+    }
   }
-  searchCache.set(key, { data, timestamp: Date.now() });
+  
+  const timestamp = Date.now();
+  searchCache.set(key, { data, timestamp });
+  console.log(JSON.stringify({ at: "cache", stored: true, key, size: searchCache.size }));
 }
 
 // Durable cache helpers (Supabase)
@@ -200,12 +216,29 @@ async function readSearchCacheDB(cacheKey: string) {
       .select("payload, ttl_at")
       .eq("cache_key", cacheKey)
       .maybeSingle();
-    if (error || !data) return null;
-    if (data.ttl_at && new Date(data.ttl_at).getTime() > Date.now()) {
-      return data.payload;
+    
+    if (error) {
+      console.log(JSON.stringify({ at: "cache_db", error: error.message, key: cacheKey }));
+      return null;
     }
-    return null;
-  } catch {
+    
+    if (!data) {
+      return null;
+    }
+    
+    const now = Date.now();
+    const ttlTime = new Date(data.ttl_at).getTime();
+    
+    if (ttlTime > now) {
+      const age = Math.round((now - (ttlTime - DB_CACHE_TTL_HOURS * 3600 * 1000)) / 1000);
+      console.log(JSON.stringify({ at: "cache_db", hit: true, key: cacheKey, age: age + 's' }));
+      return data.payload;
+    } else {
+      console.log(JSON.stringify({ at: "cache_db", expired: true, key: cacheKey }));
+      return null;
+    }
+  } catch (error) {
+    console.log(JSON.stringify({ at: "cache_db", exception: error instanceof Error ? error.message : 'unknown', key: cacheKey }));
     return null;
   }
 }
@@ -213,11 +246,17 @@ async function writeSearchCacheDB(cacheKey: string, provider: string, payload: a
   try {
     const supabase = await supabaseServer();
     const ttlAt = new Date(Date.now() + DB_CACHE_TTL_HOURS * 3600 * 1000).toISOString();
-    await supabase
+    const { error } = await supabase
       .from("search_cache")
       .upsert({ cache_key: cacheKey, provider, payload, schema_version: 1, ttl_at: ttlAt }, { onConflict: "cache_key" });
-  } catch {
-    // best-effort
+    
+    if (error) {
+      console.log(JSON.stringify({ at: "cache_db", write_error: error.message, key: cacheKey }));
+    } else {
+      console.log(JSON.stringify({ at: "cache_db", stored: true, key: cacheKey, ttl: DB_CACHE_TTL_HOURS + 'h' }));
+    }
+  } catch (error) {
+    console.log(JSON.stringify({ at: "cache_db", write_exception: error instanceof Error ? error.message : 'unknown', key: cacheKey }));
   }
 }
 
@@ -249,7 +288,6 @@ function hashItem(title: string, link: string) {
  * @returns Filtered array of search results that are likely events
  */
 async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, banHosts: Set<string>, searchConfig: any = {}): Promise<SearchItem[]> {
-  const geminiKey = process.env.GEMINI_API_KEY;
   // Attempt to reuse AI decisions from DB
   let decided: Record<string, { isEvent: boolean; confidence?: number }> = {};
   try {
@@ -278,7 +316,7 @@ async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, ban
   });
 
   // Fallback to regex filtering when Gemini API key is not available
-  if (!geminiKey) {
+  if (!process.env.GEMINI_API_KEY) {
     const base = items.filter((item: SearchItem) => {
       const text = `${item.title || ""} ${item.snippet || ""}`;
       
@@ -307,181 +345,40 @@ async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, ban
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // Use the new Gemini service with retry logic
+    const result = await GeminiService.filterWithGemini({
+      items,
+      dropTitleRegex,
+      banHosts,
+      searchConfig
+    });
 
-    const filteredItems: SearchItem[] = preApproved.slice();
-    
-    // Process items in batches to avoid token limits and improve reliability
-    // Gemini has token limits, so we process search results in small batches
-    const batchSize = 5;
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
-      // Skip batch fully decided
-      const needLLMIdx: number[] = [];
-      const needLLM: SearchItem[] = [];
-      batch.forEach((it, j) => {
-        const key = hashItem(it.title, it.link);
-        if (decided[key] === undefined) {
-          needLLM.push(it);
-          needLLMIdx.push(i + j);
-        }
+    // Store new decisions in the database for future reuse
+    const upserts: any[] = [];
+    for (const decision of result.decisions) {
+      const originalItem = items[decision.index];
+      const itemHash = hashItem(originalItem.title, originalItem.link);
+      upserts.push({
+        item_hash: itemHash,
+        is_event: decision.isEvent,
+        confidence: 0.8, // Default confidence for Gemini decisions
+        reason: decision.reason || "AI decision",
+        created_at: new Date().toISOString()
       });
-      if (needLLM.length === 0) continue;
-      
-      // Create a detailed prompt for Gemini to analyze each search result
-      // The prompt is designed to help the AI distinguish between actual events
-      // and general content about topics
-      const prompt = `You are an expert at identifying high-quality industry event pages. For each search result, determine if it represents a significant industry event (conference, summit, trade show, exhibition, convention) or just general content/webinars.
-
-CONTEXT: We're searching for ${searchConfig.industry || 'legal-compliance'} industry events. Key terms: ${(searchConfig.industryTerms || []).slice(0, 5).join(', ')}.
-
-IMPORTANT: Return ONLY a valid JSON array. Do not include any markdown formatting, code blocks, or explanatory text.
-
-Return a JSON array with objects containing:
-- "index": the original index (0-based)
-- "isEvent": boolean - true if this is a significant industry event, false if it's just general content
-- "reason": brief explanation of your decision
-- "confidence": number between 0-1 indicating your confidence in this decision
-
-Search results to analyze:
-${needLLM.map((item, idx) => `${needLLMIdx[idx]}: Title: "${item.title}" | Snippet: "${item.snippet}" | URL: "${item.link}"`).join('\n')}
-
-EXAMPLES OF GOOD EVENTS (mark as true):
-✅ "Legal Tech Summit 2025 - Berlin, March 15-17" → Conference with dates and location
-✅ "Compliance Forum Europe - Early Bird Registration Open" → Professional event with registration
-✅ "E-Discovery Conference & Exhibition - London" → Industry conference with exhibition
-✅ "Data Privacy Summit 2025 - Call for Papers" → Academic/professional conference
-✅ "RegTech Innovation Forum - Munich, Germany" → Industry-specific event
-
-EXAMPLES OF BAD RESULTS (mark as false):
-❌ "Free Webinar: Introduction to Compliance" → Single webinar, not a conference
-❌ "Company Training: Legal Updates 2025" → Internal company training
-❌ "News: New Compliance Regulations Announced" → News article, not an event
-❌ "Legal Advice Forum - General Discussion" → Forum discussion, not an event
-❌ "Product Launch: New Legal Software" → Product announcement
-
-PRIORITIZE these event types (mark as true):
-- Industry conferences and summits with specific dates and venues
-- Trade shows and exhibitions with clear event dates
-- Professional conventions with registration information
-- Business networking events with venue details
-- Multi-day industry gatherings with agendas
-- Events with multiple speakers/panels and schedules
-- Events with registration fees or tickets
-- Academic conferences with call for papers
-- Industry forums with multiple sessions
-
-DEPRIORITIZE these (mark as false):
-- Single webinars or online seminars
-- Free online training sessions
-- Company-specific internal events
-- General articles about topics
-- Product launches or announcements
-- News articles or blog posts
-- Educational courses or tutorials
-- Events without clear dates or venue information
-- Past events (2024 or earlier) unless specifically relevant
-- Forum discussions or Q&A sessions
-- Job postings or career events
-
-Event indicators to look for: specific dates, venues, speakers, agendas, registration, tickets, schedules, multiple sessions, call for papers, early bird pricing
-
-Return ONLY the JSON array, nothing else.`;
-
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      try {
-        // Clean the response text
-        let cleanText = text.trim();
-        
-        // Remove markdown code blocks if present
-        if (cleanText.startsWith('```json')) {
-          cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-        } else if (cleanText.startsWith('```')) {
-          cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-        }
-        
-        // Remove any leading/trailing text that's not JSON
-        const jsonStart = cleanText.indexOf('[');
-        const jsonEnd = cleanText.lastIndexOf(']') + 1;
-        if (jsonStart !== -1 && jsonEnd > jsonStart) {
-          cleanText = cleanText.substring(jsonStart, jsonEnd);
-        }
-        
-        
-        const decisions: GeminiDecision[] = JSON.parse(cleanText);
-        
-        // Validate the parsed decisions - ensure we got a proper array
-        if (!Array.isArray(decisions)) {
-          throw new Error("Response is not an array");
-        }
-        
-        // Process each decision from Gemini
-        const upserts: any[] = [];
-        for (const decision of decisions) {
-          // Validate decision object structure
-          if (!decision || typeof decision.index !== 'number' || typeof decision.isEvent !== 'boolean') {
-            continue; // Skip invalid decisions
-          }
-          
-          const originalItem = items[decision.index];
-          const text = `${originalItem.title || ""} ${originalItem.snippet || ""}`;
-          
-          // Still apply basic safety filters even for AI-approved items
-          // This provides an extra layer of protection against edge cases
-          if (dropTitleRegex.test(text)) {
-            continue; // Filter out 404/error pages
-          }
-          
-          // Check against banned hosts (forums, social media, etc.)
-          try {
-            const h = new URL(originalItem.link).hostname.toLowerCase();
-            if (banHosts.has(h)) {
-              continue; // Filter out banned hosts
-            }
-          } catch { 
-            continue; // Filter out invalid URLs
-          }
-          
-          // If Gemini says it's an event and it passes safety filters, include it
-          if (decision.isEvent) {
-            filteredItems.push(originalItem);
-          }
-
-          // persist decision
-          try {
-            const supabase = await supabaseServer();
-            const h = hashItem(originalItem.title, originalItem.link);
-            upserts.push({ item_hash: h, url: originalItem.link, title: originalItem.title, is_event: !!decision.isEvent, confidence: (decision as any).confidence ?? null, schema_version: 1 });
-            if (upserts.length >= 10) {
-              await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" });
-              upserts.length = 0;
-            }
-          } catch {}
-        }
-        if (upserts.length) {
-          try { const supabase = await supabaseServer(); await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" }); } catch {}
-        }
-      } catch (parseError) {
-        // Fallback to regex for this batch when Gemini response parsing fails
-        // This ensures we don't lose all results if there's a parsing issue
-        const EVENT_HINT_FALLBACK = /\b(agenda|programm|program|anmeldung|register|speakers?|konferenz|kongress|symposium|conference|summit|forum|veranstaltung|event|termin|schedule|meeting|workshop|seminar|training|webinar|exhibition|trade show|expo|convention|gathering|networking|roundtable|panel|keynote|presentation|session|breakout|track|day|2024|2025|january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
-        for (const item of batch) {
-          const text = `${item.title || ""} ${item.snippet || ""}`;
-          // Apply regex filtering as fallback
-          if (!dropTitleRegex.test(text) && EVENT_HINT_FALLBACK.test(text)) {
-            filteredItems.push(item);
-          }
-        }
-      }
     }
     
-    return filteredItems;
+    if (upserts.length) {
+      try { 
+        const supabase = await supabaseServer(); 
+        await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" }); 
+      } catch {}
+    }
+
+    return result.filteredItems;
     
   } catch (error) {
+    console.error("Gemini filtering failed, falling back to regex:", error);
+    
     // Fallback to regex filtering when Gemini API fails completely
     // This ensures the system continues to work even if AI services are down
     const EVENT_HINT_FALLBACK = /\b(agenda|programm|program|anmeldung|register|speakers?|konferenz|kongress|symposium|conference|summit|forum|veranstaltung|event|termin|schedule|meeting|workshop|seminar|training|webinar|exhibition|trade show|expo|convention|gathering|networking|roundtable|panel|keynote|presentation|session|breakout|track|day|2024|2025|january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;

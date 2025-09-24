@@ -1,4 +1,12 @@
-export type FetchOptions = RequestInit & { timeoutMs?: number; retries?: number; retryDelayMs?: number };
+import { RetryService } from "./services/retry-service";
+
+export type FetchOptions = RequestInit & { 
+  timeoutMs?: number; 
+  retries?: number; 
+  retryDelayMs?: number;
+  service?: string;
+  operation?: string;
+};
 
 function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
@@ -9,32 +17,32 @@ export async function fetchWithRetry(url: string, opts: FetchOptions = {}): Prom
     timeoutMs = 10000,
     retries = 2,
     retryDelayMs = 300,
+    service = "generic",
+    operation = "fetch",
     ...init
   } = opts;
 
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...init, signal: controller.signal });
-      clearTimeout(t);
-      // Retry on 429/5xx
-      if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
-        lastErr = new Error(`HTTP ${res.status}`);
-      } else {
-        return res;
-      }
-    } catch (err) {
-      clearTimeout(t);
-      lastErr = err;
+  // Use the new retry service for better monitoring and configuration
+  return RetryService.fetchWithRetry(
+    service,
+    operation,
+    url,
+    {
+      ...init,
+      signal: (() => {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), timeoutMs);
+        return controller.signal;
+      })()
+    },
+    {
+      maxRetries: retries,
+      baseDelayMs: retryDelayMs,
+      maxDelayMs: 10000,
+      backoffMultiplier: 2,
+      jitterMs: 150
     }
-
-    // backoff with jitter
-    const jitter = Math.floor(Math.random() * 150);
-    await sleep(retryDelayMs + attempt * 200 + jitter);
-  }
-  throw lastErr instanceof Error ? lastErr : new Error("fetch failed");
+  );
 }
 
 export async function fetchJson<T = any>(url: string, opts: FetchOptions = {}): Promise<{ response: Response; data: T | null }> {

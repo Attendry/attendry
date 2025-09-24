@@ -1,7 +1,36 @@
-import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { ConfigService } from "@/lib/services/config-service";
+
+/**
+ * Configuration Service
+ * 
+ * Handles loading and caching of application configurations
+ */
+
+export interface UserProfile {
+  id?: string;
+  full_name?: string;
+  company?: string;
+  competitors?: string[];
+  icp_terms?: string[];
+  industry_terms?: string[];
+  use_in_basic_search?: boolean;
+}
+
+export interface SearchConfig {
+  id?: string;
+  name: string;
+  industry: string;
+  baseQuery: string;
+  excludeTerms: string;
+  industryTerms: string[];
+  icpTerms: string[];
+  speakerPrompts: {
+    extraction: string;
+    normalization: string;
+  };
+  is_active?: boolean;
+}
 
 // Default industry templates
 const INDUSTRY_TEMPLATES = {
@@ -55,137 +84,207 @@ const INDUSTRY_TEMPLATES = {
   }
 };
 
-export async function GET(req: NextRequest) {
-  try {
-    // Try to get configuration from database, but fallback to default if it fails
-    let config = null;
-    
+/**
+ * Configuration Service Class
+ */
+export class ConfigService {
+  private static configCache: SearchConfig | null = null;
+  private static configCacheTime: number = 0;
+  private static readonly CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  /**
+   * Get search configuration with caching
+   */
+  static async getSearchConfig(): Promise<{
+    config: SearchConfig;
+    templates: typeof INDUSTRY_TEMPLATES;
+  }> {
+    // Check cache first
+    const now = Date.now();
+    if (this.configCache && (now - this.configCacheTime) < this.CONFIG_CACHE_TTL) {
+      return {
+        config: this.configCache,
+        templates: INDUSTRY_TEMPLATES
+      };
+    }
+
     try {
-      // Admin client to bypass RLS/read issues for global config
+      // Try to get configuration from database
       const admin = supabaseAdmin();
       const { data, error } = await admin
         .from("search_configurations")
         .select("*")
         .eq("is_active", true)
         .single();
-      if (!error && data) config = data as any;
+      
+      if (!error && data) {
+        const config: SearchConfig = {
+          id: data.id,
+          name: data.name,
+          industry: data.industry,
+          baseQuery: data.base_query,
+          excludeTerms: data.exclude_terms,
+          industryTerms: data.industry_terms || [],
+          icpTerms: data.icp_terms || [],
+          speakerPrompts: data.speaker_prompts || {
+            extraction: "",
+            normalization: ""
+          },
+          is_active: data.is_active,
+          created_at: data.created_at,
+          updated_at: data.updated_at,
+        };
+
+        // Cache the config
+        this.configCache = config;
+        this.configCacheTime = now;
+
+        return {
+          config,
+          templates: INDUSTRY_TEMPLATES
+        };
+      }
     } catch (dbError) {
-      // Database not available or table doesn't exist - use default
       console.warn('Database not available for search config, using default:', dbError);
     }
 
-    // Build normalized camelCase config; include snake_case for admin compatibility
-    let currentConfig: any;
-    if (config) {
-      const normalized = {
-        id: config.id,
-        name: config.name,
-        industry: config.industry,
-        baseQuery: config.base_query,
-        excludeTerms: config.exclude_terms,
-        industryTerms: config.industry_terms || [],
-        icpTerms: config.icp_terms || [],
-        speakerPrompts: config.speaker_prompts || {},
-        is_active: config.is_active,
-        created_at: config.created_at,
-        updated_at: config.updated_at,
-      };
-      // expose both key styles so existing admin UI (snake_case) and search API (camelCase) both work
-      currentConfig = { ...config, ...normalized };
-    } else {
-      const def = {
-        id: "default",
-        name: "Default Configuration",
-        industry: "legal-compliance",
-        baseQuery: INDUSTRY_TEMPLATES["legal-compliance"].baseQuery,
-        excludeTerms: INDUSTRY_TEMPLATES["legal-compliance"].excludeTerms,
-        industryTerms: INDUSTRY_TEMPLATES["legal-compliance"].industryTerms,
-        icpTerms: INDUSTRY_TEMPLATES["legal-compliance"].icpTerms,
-        speakerPrompts: INDUSTRY_TEMPLATES["legal-compliance"].speakerPrompts,
-        is_active: true,
-        created_at: new Date().toISOString()
-      };
-      currentConfig = {
-        ...def,
-        // add snake_case mirrors for admin UI
-        base_query: def.baseQuery,
-        exclude_terms: def.excludeTerms,
-        industry_terms: def.industryTerms,
-        icp_terms: def.icpTerms,
-        speaker_prompts: def.speakerPrompts,
-      };
-    }
+    // Return default configuration
+    const defaultConfig: SearchConfig = {
+      id: "default",
+      name: "Default Configuration",
+      industry: "legal-compliance",
+      baseQuery: INDUSTRY_TEMPLATES["legal-compliance"].baseQuery,
+      excludeTerms: INDUSTRY_TEMPLATES["legal-compliance"].excludeTerms,
+      industryTerms: INDUSTRY_TEMPLATES["legal-compliance"].industryTerms,
+      icpTerms: INDUSTRY_TEMPLATES["legal-compliance"].icpTerms,
+      speakerPrompts: INDUSTRY_TEMPLATES["legal-compliance"].speakerPrompts,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
 
-    return NextResponse.json({
-      config: currentConfig,
+    // Cache the default config
+    this.configCache = defaultConfig;
+    this.configCacheTime = now;
+
+    return {
+      config: defaultConfig,
       templates: INDUSTRY_TEMPLATES
-    });
-  } catch (error: any) {
-    // Ultimate fallback - return default configuration
-    console.error('Search config API error:', error);
-    return NextResponse.json({
-      config: {
-        id: "fallback",
-        name: "Fallback Configuration",
-        industry: "legal-compliance",
-        baseQuery: INDUSTRY_TEMPLATES["legal-compliance"].baseQuery,
-        excludeTerms: INDUSTRY_TEMPLATES["legal-compliance"].excludeTerms,
-        industryTerms: INDUSTRY_TEMPLATES["legal-compliance"].industryTerms,
-        icpTerms: INDUSTRY_TEMPLATES["legal-compliance"].icpTerms,
-        speakerPrompts: INDUSTRY_TEMPLATES["legal-compliance"].speakerPrompts,
-        is_active: true,
-        created_at: new Date().toISOString()
-      },
-      templates: INDUSTRY_TEMPLATES
-    });
+    };
   }
-}
 
-export async function POST(req: NextRequest) {
-  try {
-    const {
-      name,
-      industry,
-      baseQuery,
-      excludeTerms,
-      industryTerms,
-      icpTerms,
-      speakerPrompts,
-      isActive = true
-    } = await req.json();
+  /**
+   * Get user profile
+   */
+  static async getUserProfile(): Promise<UserProfile | null> {
+    try {
+      const supabase = await supabaseServer();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        return null;
+      }
 
-    if (!name || !industry) {
-      return NextResponse.json({ error: "Name and industry are required" }, { status: 400 });
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profile) {
+        return null;
+      }
+
+      return {
+        id: profile.id,
+        full_name: profile.full_name,
+        company: profile.company,
+        competitors: profile.competitors || [],
+        icp_terms: profile.icp_terms || [],
+        industry_terms: profile.industry_terms || [],
+        use_in_basic_search: profile.use_in_basic_search ?? true
+      };
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      return null;
     }
+  }
 
-    console.log('Saving configuration:', { name, industry, isActive });
+  /**
+   * Save user profile
+   */
+  static async saveUserProfile(profile: Omit<UserProfile, 'id'>): Promise<boolean> {
+    try {
+      const supabase = await supabaseServer();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user) {
+        return false;
+      }
 
-    // Use shared configuration service
-    const success = await ConfigService.saveSearchConfig({
-      name,
-      industry,
-      baseQuery,
-      excludeTerms,
-      industryTerms,
-      icpTerms,
-      speakerPrompts,
-      is_active: isActive
-    });
+      const { error } = await supabase
+        .from("profiles")
+        .upsert({
+          id: user.id,
+          full_name: profile.full_name,
+          company: profile.company,
+          competitors: profile.competitors,
+          icp_terms: profile.icp_terms,
+          industry_terms: profile.industry_terms,
+          use_in_basic_search: profile.use_in_basic_search
+        });
 
-    if (!success) {
-      return NextResponse.json({ 
-        error: "Failed to save configuration"
-      }, { status: 500 });
+      return !error;
+    } catch (error) {
+      console.error('Error saving user profile:', error);
+      return false;
     }
+  }
 
-    console.log('Configuration saved successfully');
-    return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Unexpected error:', error);
-    return NextResponse.json({ 
-      error: "Failed to save configuration", 
-      details: errorMessage 
-    }, { status: 500 });
+  /**
+   * Save search configuration
+   */
+  static async saveSearchConfig(config: Omit<SearchConfig, 'id' | 'created_at' | 'updated_at'>): Promise<boolean> {
+    try {
+      const supabase = await supabaseServer();
+
+      // Deactivate current configuration
+      await supabase
+        .from("search_configurations")
+        .update({ is_active: false })
+        .eq("is_active", true);
+
+      // Create new configuration
+      const { error } = await supabase
+        .from("search_configurations")
+        .insert({
+          name: config.name,
+          industry: config.industry,
+          base_query: config.baseQuery,
+          exclude_terms: config.excludeTerms,
+          industry_terms: config.industryTerms,
+          icp_terms: config.icpTerms,
+          speaker_prompts: config.speakerPrompts,
+          is_active: config.is_active
+        });
+
+      if (!error) {
+        // Clear cache to force reload
+        this.configCache = null;
+        this.configCacheTime = 0;
+      }
+
+      return !error;
+    } catch (error) {
+      console.error('Error saving search configuration:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Clear configuration cache
+   */
+  static clearCache(): void {
+    this.configCache = null;
+    this.configCacheTime = 0;
   }
 }

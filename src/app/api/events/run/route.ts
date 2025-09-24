@@ -24,6 +24,8 @@
 
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
+import { SearchService } from "@/lib/services/search-service";
+import { ConfigService } from "@/lib/services/config-service";
 import { supabaseServer } from "@/lib/supabase-server";
 
 type EventRec = {
@@ -222,8 +224,8 @@ export async function POST(req: NextRequest) {
     // STEP 1: LOAD SEARCH CONFIGURATION
     // ============================================================================
     
-    // Load search configuration based on user profile and industry settings
-    const searchConfig = await loadSearchConfig(origin, forwardHeaders);
+    // Load search configuration using shared service
+    const { config: searchConfig } = await ConfigService.getSearchConfig();
     if (debugEnabled) debug.searchConfig = { industry: searchConfig.industry, baseQuery: searchConfig.baseQuery };
 
     // ============================================================================
@@ -279,17 +281,22 @@ export async function POST(req: NextRequest) {
     // STEP 3: EXECUTE SEARCH WITH FALLBACK STRATEGY
     // ============================================================================
     
-    // Helper function to call the search endpoint
+    // Helper function to execute search using shared service
     async function doSearch(query: string) {
-      const res = await fetch(url("/api/events/search"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...forwardHeaders },
-        cache: "no-store",
-        body: JSON.stringify({ q: query, country, from, to, provider, num: 50, rerank: true, topK: 50 }),
+      const result = await SearchService.executeSearch({
+        q: query,
+        country,
+        from,
+        to,
+        num: 50,
+        rerank: true,
+        topK: 50
       });
-      const json = await res.json().catch(() => ({}));
-      const items: { title: string; link: string }[] = json.items || [];
-      return { status: res.status, provider: json.provider, items };
+      return { 
+        status: 200, 
+        provider: result.provider, 
+        items: result.items.map(item => ({ title: item.title, link: item.link }))
+      };
     }
 
     // Execute search with personalized query
@@ -338,16 +345,10 @@ export async function POST(req: NextRequest) {
     // STEP 5: EXTRACT DETAILED EVENT INFORMATION
     // ============================================================================
     
-    // Call the extraction endpoint to get detailed event information from URLs
-    const extractRes = await fetch(url("/api/events/extract"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...forwardHeaders },
-      cache: "no-store",
-      body: JSON.stringify({ urls: urls.slice(0, 20), locale: country || "", crawl: { depth: 3, allowlist: true } }), // Limit to 20 URLs for performance
-    });
-    const extractJson = await extractRes.json().catch(() => ({}));
-    let { events = [], version: extractVersion, trace = [] } = extractJson;
-    if (debugEnabled) debug.extract = { status: extractRes.status, version: extractVersion, eventsBeforeFilter: events.length, sampleTrace: trace.slice(0,3) };
+    // Extract detailed event information using shared service
+    const extractResult = await SearchService.extractEvents(urls.slice(0, 20)); // Limit to 20 URLs for performance
+    let { events = [], version: extractVersion, trace = [] } = extractResult;
+    if (debugEnabled) debug.extract = { status: 200, version: extractVersion, eventsBeforeFilter: events.length, sampleTrace: trace.slice(0,3) };
     events = events as EventRec[];
 
     // if extraction failed hard, synthesize minimal events from search items

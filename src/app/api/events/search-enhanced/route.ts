@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
+import { SearchService } from "@/lib/services/search-service";
 
 /**
  * POST /api/events/search-enhanced
@@ -22,14 +23,14 @@ export async function POST(req: NextRequest) {
 
     console.log(`[ENHANCED] Searching for ${q} in ${country} from ${from} to ${to}`);
 
-    // Step 1: Run real-time search for immediate results
-    const realtimeResponse = await fetch(`${req.nextUrl.origin}/api/events/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ q, country, from, to, provider })
+    // Step 1: Run real-time search for immediate results using shared service
+    const realtimeData = await SearchService.runEventDiscovery({
+      q,
+      country,
+      from,
+      to,
+      provider: provider || "cse"
     });
-
-    const realtimeData = await realtimeResponse.json();
     const realtimeEvents = realtimeData.events || [];
 
     // Step 2: Get pre-collected data from database for broader context

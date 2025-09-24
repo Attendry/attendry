@@ -1,64 +1,287 @@
-import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { NextRequest, NextResponse } from "next/server";
+import { GeminiService } from "@/lib/services/gemini-service";
+import { RetryService } from "@/lib/services/retry-service";
 
-export async function GET() {
+/**
+ * Health Check API Route
+ * 
+ * Provides comprehensive health status for all external dependencies
+ * including Google CSE, Firecrawl, Gemini AI, and internal services.
+ */
+
+export interface HealthStatus {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  timestamp: string;
+  services: {
+    google_cse: ServiceHealth;
+    firecrawl: ServiceHealth;
+    gemini: ServiceHealth;
+    database: ServiceHealth;
+    retry_service: ServiceHealth;
+  };
+  metrics: {
+    retry_attempts: number;
+    retry_failures: number;
+    cache_hits: number;
+    cache_misses: number;
+  };
+}
+
+export interface ServiceHealth {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  response_time_ms?: number;
+  last_error?: string;
+  details?: any;
+}
+
+/**
+ * GET /api/health
+ * 
+ * Returns comprehensive health status for all services
+ */
+export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+  
   try {
-    const health = {
+    // Check all services in parallel for better performance
+    const [
+      geminiHealth,
+      retryMetrics,
+      databaseHealth
+    ] = await Promise.allSettled([
+      checkGeminiHealth(),
+      getRetryMetrics(),
+      checkDatabaseHealth()
+    ]);
+
+    const healthStatus: HealthStatus = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {
-        api: 'healthy',
-        database: 'unknown',
-        cron: 'unknown'
+        google_cse: await checkGoogleCSEHealth(),
+        firecrawl: await checkFirecrawlHealth(),
+        gemini: geminiHealth.status === 'fulfilled' ? geminiHealth.value : {
+          status: 'unhealthy',
+          last_error: geminiHealth.status === 'rejected' ? geminiHealth.reason?.message : 'Unknown error'
+        },
+        database: databaseHealth.status === 'fulfilled' ? databaseHealth.value : {
+          status: 'unhealthy',
+          last_error: databaseHealth.status === 'rejected' ? databaseHealth.reason?.message : 'Unknown error'
+        },
+        retry_service: {
+          status: 'healthy',
+          details: retryMetrics.status === 'fulfilled' ? retryMetrics.value : {}
+        }
+      },
+      metrics: {
+        retry_attempts: 0,
+        retry_failures: 0,
+        cache_hits: 0,
+        cache_misses: 0
       }
     };
 
-    // Test database connectivity
-    try {
-      const supabase = await supabaseServer();
-      if (supabase) {
-        const { data, error } = await supabase
-          .from('collected_events')
-          .select('count', { count: 'exact', head: true });
-        
-        if (!error) {
-          health.services.database = 'healthy';
-          health.database = {
-            connected: true,
-            eventCount: data?.length || 0
-          };
-        } else {
-          health.services.database = 'error';
-          health.database = { connected: false, error: error.message };
-        }
-      }
-    } catch (dbError: any) {
-      health.services.database = 'error';
-      health.database = { connected: false, error: dbError.message };
+    // Calculate overall status
+    const serviceStatuses = Object.values(healthStatus.services).map(s => s.status);
+    if (serviceStatuses.includes('unhealthy')) {
+      healthStatus.status = 'unhealthy';
+    } else if (serviceStatuses.includes('degraded')) {
+      healthStatus.status = 'degraded';
     }
 
-    // Check if cron secret is configured
-    if (process.env.CRON_SECRET) {
-      health.services.cron = 'configured';
-    } else {
-      health.services.cron = 'not_configured';
+    // Add retry metrics if available
+    if (retryMetrics.status === 'fulfilled') {
+      const metrics = retryMetrics.value;
+      healthStatus.metrics.retry_attempts = Array.from(metrics.values())
+        .reduce((sum, m) => sum + m.totalAttempts, 0);
+      healthStatus.metrics.retry_failures = Array.from(metrics.values())
+        .reduce((sum, m) => sum + m.totalFailures, 0);
     }
 
-    // Determine overall health
-    const allHealthy = Object.values(health.services).every(status => 
-      status === 'healthy' || status === 'configured'
-    );
+    const responseTime = Date.now() - startTime;
     
-    health.status = allHealthy ? 'healthy' : 'degraded';
-
-    return NextResponse.json(health, { 
-      status: allHealthy ? 200 : 503 
-    });
-  } catch (error: any) {
     return NextResponse.json({
-      status: 'error',
+      ...healthStatus,
+      response_time_ms: responseTime
+    }, { 
+      status: healthStatus.status === 'unhealthy' ? 503 : 200 
+    });
+
+  } catch (error) {
+    console.error("Health check failed:", error);
+    
+    return NextResponse.json({
+      status: 'unhealthy',
       timestamp: new Date().toISOString(),
-      error: error.message
-    }, { status: 500 });
+      error: error instanceof Error ? error.message : 'Unknown error',
+      response_time_ms: Date.now() - startTime
+    }, { status: 503 });
+  }
+}
+
+/**
+ * Check Google CSE API health
+ */
+async function checkGoogleCSEHealth(): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  
+  try {
+    const key = process.env.GOOGLE_CSE_KEY;
+    const cx = process.env.GOOGLE_CSE_CX;
+    
+    if (!key || !cx) {
+      return {
+        status: 'unhealthy',
+        last_error: 'GOOGLE_CSE_KEY or GOOGLE_CSE_CX not configured'
+      };
+    }
+
+    // Test with a simple search
+    const testUrl = `https://www.googleapis.com/customsearch/v1?q=test&key=${key}&cx=${cx}&num=1`;
+    
+    const response = await fetch(testUrl, { 
+      method: 'GET',
+      signal: AbortSignal.timeout(5000) // 5 second timeout
+    });
+    
+    const responseTime = Date.now() - startTime;
+    
+    if (response.ok) {
+      return {
+        status: 'healthy',
+        response_time_ms: responseTime
+      };
+    } else {
+      return {
+        status: 'unhealthy',
+        response_time_ms: responseTime,
+        last_error: `HTTP ${response.status}: ${response.statusText}`
+      };
+    }
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      response_time_ms: Date.now() - startTime,
+      last_error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Check Firecrawl API health
+ */
+async function checkFirecrawlHealth(): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  
+  try {
+    const firecrawlKey = process.env.FIRECRAWL_KEY;
+    
+    if (!firecrawlKey) {
+      return {
+        status: 'unhealthy',
+        last_error: 'FIRECRAWL_KEY not configured'
+      };
+    }
+
+    // Test with a simple scrape request
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${firecrawlKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url: 'https://example.com',
+        formats: ['markdown'],
+        onlyMainContent: true
+      }),
+      signal: AbortSignal.timeout(10000) // 10 second timeout
+    });
+    
+    const responseTime = Date.now() - startTime;
+    
+    if (response.ok) {
+      return {
+        status: 'healthy',
+        response_time_ms: responseTime
+      };
+    } else {
+      return {
+        status: 'unhealthy',
+        response_time_ms: responseTime,
+        last_error: `HTTP ${response.status}: ${response.statusText}`
+      };
+    }
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      response_time_ms: Date.now() - startTime,
+      last_error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Check Gemini AI API health
+ */
+async function checkGeminiHealth(): Promise<ServiceHealth> {
+  try {
+    return await GeminiService.getHealthStatus();
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      last_error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Check database health
+ */
+async function checkDatabaseHealth(): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  
+  try {
+    const { supabaseServer } = await import("@/lib/supabase-server");
+    const supabase = await supabaseServer();
+    
+    // Test with a simple query
+    const { data, error } = await supabase
+      .from('search_config')
+      .select('id')
+      .limit(1);
+    
+    const responseTime = Date.now() - startTime;
+    
+    if (error) {
+      return {
+        status: 'unhealthy',
+        response_time_ms: responseTime,
+        last_error: error.message
+      };
+    }
+    
+    return {
+      status: 'healthy',
+      response_time_ms: responseTime
+    };
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      response_time_ms: Date.now() - startTime,
+      last_error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Get retry service metrics
+ */
+async function getRetryMetrics(): Promise<Map<string, { totalAttempts: number; totalRetries: number; totalFailures: number }>> {
+  try {
+    return RetryService.getMetrics();
+  } catch (error) {
+    console.error("Failed to get retry metrics:", error);
+    return new Map();
   }
 }

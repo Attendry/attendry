@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { SearchService } from "@/lib/services/search-service";
 
 /**
  * POST /api/events/collect
@@ -38,24 +39,14 @@ export async function POST(req: NextRequest) {
       // If data exists and is less than 24 hours old, skip collection
     }
 
-    // Run comprehensive search using the existing run endpoint
-    const searchResponse = await fetch(`${req.nextUrl.origin}/api/events/run`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        q: "", // Use default query from search config
-        country,
-        from,
-        to,
-        provider: "cse"
-      })
+    // Run comprehensive search using shared service
+    const searchData = await SearchService.runEventDiscovery({
+      q: "", // Use default query from search config
+      country,
+      from,
+      to,
+      provider: "cse"
     });
-
-    if (!searchResponse.ok) {
-      throw new Error(`Search failed: ${searchResponse.statusText}`);
-    }
-
-    const searchData = await searchResponse.json();
     const events = searchData.events || [];
 
     console.log(`[COLLECT] Found ${events.length} events for ${industry} in ${country}`);
