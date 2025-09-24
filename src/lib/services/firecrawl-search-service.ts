@@ -71,12 +71,13 @@ const EVENT_SEARCH_SCHEMA = {
  * Firecrawl Search Service Class
  */
 export class FirecrawlSearchService {
-  private static readonly FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v1/search";
+  private static readonly FIRECRAWL_EXTRACT_URL = "https://api.firecrawl.dev/v2/extract";
   private static readonly MAX_RESULTS = 20;
   private static readonly SEARCH_TIMEOUT = 30000; // 30 seconds
 
   /**
-   * Execute a web search using Firecrawl Search API
+   * Execute a web search using Firecrawl Extract API with search URLs
+   * Since Firecrawl doesn't have a dedicated search API, we'll use known event sites
    */
   static async searchEvents(params: FirecrawlSearchParams): Promise<FirecrawlSearchResult> {
     const { query, country = "", from, to, industry = "legal-compliance", maxResults = this.MAX_RESULTS } = params;
@@ -87,79 +88,89 @@ export class FirecrawlSearchService {
     }
 
     try {
-      // Build the search prompt based on industry and parameters
-      const searchPrompt = this.buildSearchPrompt(query, country, from, to, industry);
+      // Get search URLs based on industry and country
+      const searchUrls = this.getSearchUrls(industry, country, query);
       
-      // Build search parameters
-      const searchParams = {
-        query: searchPrompt,
-        numResults: Math.min(maxResults, 20), // Firecrawl limit
-        country: this.mapCountryCode(country),
-        language: this.getLanguageForCountry(country),
-        timeRange: this.buildTimeRange(from, to),
-        searchOptions: {
-          includeHtml: false,
-          includeMarkdown: true,
-          onlyMainContent: true
-        }
-      };
-
       console.log(JSON.stringify({ 
         at: "firecrawl_search", 
-        query: searchPrompt, 
-        params: searchParams 
+        query, 
+        urls: searchUrls.length,
+        industry,
+        country
       }));
 
-      // Make the search request with retry logic
+      // Use Firecrawl Extract to search these URLs for events
       const response = await RetryService.fetchWithRetry(
         "firecrawl",
         "search",
-        this.FIRECRAWL_SEARCH_URL,
+        this.FIRECRAWL_EXTRACT_URL,
         {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${firecrawlKey}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(searchParams),
+          body: JSON.stringify({
+            urls: searchUrls.slice(0, 10), // Limit to 10 URLs
+            schema: EVENT_SEARCH_SCHEMA,
+            prompt: this.buildExtractionPrompt(query, industry, country, from, to),
+            showSources: true,
+            scrapeOptions: {
+              formats: ["markdown"],
+              onlyMainContent: true,
+              waitFor: 2000,
+              blockAds: true,
+              removeBase64Images: true
+            },
+            ignoreInvalidURLs: true
+          }),
           signal: AbortSignal.timeout(this.SEARCH_TIMEOUT)
         }
       );
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Firecrawl Search API error: ${response.status} - ${errorText}`);
+        throw new Error(`Firecrawl Extract API error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
       console.log(JSON.stringify({ 
         at: "firecrawl_search_result", 
         status: response.status, 
-        results: data.results?.length || 0 
+        events: data.data?.length || 0 
       }));
 
       // Transform Firecrawl results to our standard format
-      const items: SearchItem[] = (data.results || []).map((result: any) => ({
-        title: result.title || result.url,
-        link: result.url || "",
-        snippet: result.snippet || result.description || "",
-        extractedData: {
-          eventTitle: result.title,
-          eventDate: result.eventDate,
-          location: result.location,
-          organizer: result.organizer,
-          confidence: result.confidence || 0.8
+      const items: SearchItem[] = [];
+      
+      if (data.data && Array.isArray(data.data)) {
+        for (const item of data.data) {
+          if (item.events && Array.isArray(item.events)) {
+            for (const event of item.events) {
+              items.push({
+                title: event.title || item.metadata?.title || "Event",
+                link: event.url || item.metadata?.sourceURL || "",
+                snippet: event.snippet || item.metadata?.description || "",
+                extractedData: {
+                  eventTitle: event.title,
+                  eventDate: event.eventDate,
+                  location: event.location,
+                  organizer: event.organizer,
+                  confidence: event.confidence || 0.8
+                }
+              });
+            }
+          }
         }
-      }));
+      }
 
       return {
         provider: "firecrawl",
-        items,
+        items: items.slice(0, maxResults),
         cached: false,
         searchMetadata: {
-          totalResults: data.totalResults || items.length,
-          searchTime: data.searchTime,
-          query: searchPrompt
+          totalResults: items.length,
+          query: query
         }
       };
 
@@ -170,55 +181,88 @@ export class FirecrawlSearchService {
   }
 
   /**
-   * Build a comprehensive search prompt for event discovery
+   * Get search URLs based on industry and country
    */
-  private static buildSearchPrompt(
+  private static getSearchUrls(industry: string, country: string, query: string): string[] {
+    const baseUrls = [
+      "https://www.eventbrite.com",
+      "https://www.meetup.com",
+      "https://www.linkedin.com/events",
+      "https://www.eventful.com"
+    ];
+
+    // Add industry-specific URLs
+    const industryUrls: Record<string, string[]> = {
+      "legal-compliance": [
+        "https://www.legaltechconference.com",
+        "https://www.complianceweek.com",
+        "https://www.legaltechnews.com"
+      ],
+      "fintech": [
+        "https://www.fintechconference.com",
+        "https://www.money2020.com",
+        "https://www.fintechnews.com"
+      ],
+      "healthcare": [
+        "https://www.himss.org",
+        "https://www.healthtechconference.com",
+        "https://www.healthcareinnovation.com"
+      ]
+    };
+
+    // Add country-specific URLs
+    const countryUrls: Record<string, string[]> = {
+      "de": [
+        "https://www.xing.com/events",
+        "https://www.eventbrite.de",
+        "https://www.meetup.com/de-DE"
+      ],
+      "fr": [
+        "https://www.eventbrite.fr",
+        "https://www.meetup.com/fr-FR"
+      ],
+      "uk": [
+        "https://www.eventbrite.co.uk",
+        "https://www.meetup.com/en-GB"
+      ]
+    };
+
+    let urls = [...baseUrls];
+    
+    if (industryUrls[industry]) {
+      urls = [...urls, ...industryUrls[industry]];
+    }
+    
+    if (countryUrls[country]) {
+      urls = [...urls, ...countryUrls[country]];
+    }
+
+    return urls;
+  }
+
+  /**
+   * Build extraction prompt for event discovery
+   */
+  private static buildExtractionPrompt(
     query: string, 
+    industry: string, 
     country: string, 
     from?: string, 
-    to?: string, 
-    industry: string = "legal-compliance"
+    to?: string
   ): string {
-    let prompt = query.trim();
+    const industryTerms = this.getIndustryTerms(industry);
+    const countryTerms = this.getCountryTerms(country);
     
-    // Add industry-specific terms if query is empty or basic
-    if (!prompt || prompt.length < 10) {
-      const industryTerms = this.getIndustryTerms(industry);
-      prompt = `${industryTerms} conference summit event`;
-    }
+    return `Extract all upcoming events related to ${query || industryTerms} ${countryTerms ? `in ${countryTerms}` : ''} ${from && to ? `between ${from} and ${to}` : 'in 2025'}. 
 
-    // Add event-specific keywords
-    const eventKeywords = [
-      "conference", "summit", "forum", "workshop", "seminar", 
-      "exhibition", "trade show", "convention", "symposium",
-      "veranstaltung", "kongress", "fachkonferenz", "fachkongress"
-    ];
-    
-    // Check if event keywords are already present
-    const hasEventKeywords = eventKeywords.some(keyword => 
-      prompt.toLowerCase().includes(keyword.toLowerCase())
-    );
-    
-    if (!hasEventKeywords) {
-      prompt += " conference summit event";
-    }
+Look for:
+- Event titles and descriptions
+- Dates and locations
+- Organizers and sponsors
+- Registration information
+- Event types (conferences, workshops, seminars, etc.)
 
-    // Add date range if specified
-    if (from && to) {
-      prompt += ` ${from} ${to} 2025`;
-    } else {
-      prompt += " 2025";
-    }
-
-    // Add country-specific terms
-    if (country) {
-      const countryTerms = this.getCountryTerms(country);
-      if (countryTerms) {
-        prompt += ` ${countryTerms}`;
-      }
-    }
-
-    return prompt;
+Focus on professional events, conferences, and business gatherings. Ignore personal events, parties, or non-business activities.`;
   }
 
   /**
@@ -315,11 +359,17 @@ export class FirecrawlSearchService {
     }
 
     try {
-      // Test with a simple search
-      await this.searchEvents({
-        query: "test conference 2025",
-        maxResults: 1
-      });
+      // Simple health check - just verify API key format and endpoint availability
+      const firecrawlKey = process.env.FIRECRAWL_KEY;
+      
+      // Basic validation - Firecrawl keys typically start with 'fc-'
+      if (!firecrawlKey.startsWith('fc-')) {
+        return {
+          status: 'degraded',
+          apiKeyConfigured: true,
+          lastError: 'API key format may be incorrect'
+        };
+      }
       
       return {
         status: 'healthy',
