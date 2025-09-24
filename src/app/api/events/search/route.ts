@@ -173,7 +173,9 @@ const DB_CACHE_TTL_HOURS = 6;
  * @returns Unique cache key string
  */
 function getCacheKey(q: string, country: string, from?: string, to?: string): string {
-  return `${q}|${country}|${from}|${to}`;
+  // TEMPORARILY DISABLE CACHING to force fresh API calls
+  const timestamp = Date.now();
+  return `${q}|${country}|${from}|${to}|${timestamp}`;
 }
 
 /**
