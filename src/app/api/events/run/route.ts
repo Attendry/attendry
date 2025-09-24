@@ -389,7 +389,7 @@ export async function POST(req: NextRequest) {
     // Determine if we should allow undated items (demo/minimal extraction modes)
     const allowUndated = !!(debug as any)?.synthesizedFromSearch ||
       (typeof (search as any)?.provider === 'string' && (((search as any).provider || '').includes('demo')) ) ||
-      (typeof (extractJson as any)?.note === 'string' && (extractJson as any).note.includes('no FIRECRAWL_KEY'));
+      (typeof (extract as any)?.note === 'string' && (extract as any).note.includes('no FIRECRAWL_KEY'));
 
     // Apply date range filtering
     if (debugEnabled) debug.dateFiltering = { from, to, beforeCount: events.length, allowUndated };
