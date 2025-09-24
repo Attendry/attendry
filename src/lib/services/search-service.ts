@@ -253,17 +253,29 @@ export class SearchService {
       return result;
     }
 
-    // Build enhanced query
+    // Build enhanced query - simplified to avoid Google CSE 400 errors
     let enhancedQuery = q;
     if (searchConfig.baseQuery && !q.trim()) {
       enhancedQuery = searchConfig.baseQuery;
     } else if (searchConfig.baseQuery && q.trim()) {
-      enhancedQuery = `(${q}) AND (${searchConfig.baseQuery})`;
+      // Avoid double AND clauses that cause 400 errors
+      // If the query already contains the base query, don't add it again
+      if (!q.includes(searchConfig.baseQuery.substring(0, 50))) {
+        enhancedQuery = `(${q}) AND (${searchConfig.baseQuery})`;
+      } else {
+        enhancedQuery = q;
+      }
     }
 
     // Add exclude terms
     if (searchConfig.excludeTerms) {
       enhancedQuery += ` -(${searchConfig.excludeTerms})`;
+    }
+
+    // Limit query length to prevent 400 errors
+    if (enhancedQuery.length > 2000) {
+      console.warn('Query too long, truncating to prevent 400 error:', enhancedQuery.length);
+      enhancedQuery = enhancedQuery.substring(0, 2000);
     }
 
     // Build search parameters
@@ -448,12 +460,23 @@ export class SearchService {
     // Step 1: Load search configuration
     const searchConfig = await this.loadSearchConfig();
 
-    // Step 2: Build effective query
+    // Step 2: Build effective query - simplified to avoid Google CSE 400 errors
     let effectiveQ = q;
     if (searchConfig.baseQuery && !q.trim()) {
       effectiveQ = searchConfig.baseQuery;
     } else if (searchConfig.baseQuery && q.trim()) {
-      effectiveQ = `(${q}) AND (${searchConfig.baseQuery})`;
+      // Avoid double AND clauses that cause 400 errors
+      if (!q.includes(searchConfig.baseQuery.substring(0, 50))) {
+        effectiveQ = `(${q}) AND (${searchConfig.baseQuery})`;
+      } else {
+        effectiveQ = q;
+      }
+    }
+
+    // Limit query length to prevent 400 errors
+    if (effectiveQ.length > 2000) {
+      console.warn('Query too long, truncating to prevent 400 error:', effectiveQ.length);
+      effectiveQ = effectiveQ.substring(0, 2000);
     }
 
     // Step 3: Execute search

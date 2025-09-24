@@ -266,13 +266,14 @@ export async function POST(req: NextRequest) {
     const base = (q || "").trim() || searchConfig.baseQuery;
     let effectiveQ = base;
 
-    if (profile?.use_in_basic_search !== false) {
-      const comp = (profile?.competitors || []).slice(0, 8).map((s: string) => `"${s}"`).join(" OR ");
-      const terms = [...(profile?.icp_terms || []), ...(profile?.industry_terms || [])]
-        .slice(0, 12)
-        .join(" OR ");
-      const blocks = [comp && `(${comp})`, terms && `(${terms})`].filter(Boolean).join(" OR ");
-      if (blocks) effectiveQ = `${effectiveQ} (${blocks})`;
+    // Simplified query building to avoid Google CSE 400 errors
+    // Instead of embedding all profile data, use a simpler approach
+    if (profile?.use_in_basic_search !== false && profile?.industry_terms?.length) {
+      // Use only the first few industry terms to keep query manageable
+      const keyTerms = profile.industry_terms.slice(0, 3).join(" OR ");
+      if (keyTerms) {
+        effectiveQ = `${effectiveQ} (${keyTerms})`;
+      }
     }
 
     if (debugEnabled) debug.effectiveQ = effectiveQ;
