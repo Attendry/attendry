@@ -71,13 +71,12 @@ const EVENT_SEARCH_SCHEMA = {
  * Firecrawl Search Service Class
  */
 export class FirecrawlSearchService {
-  private static readonly FIRECRAWL_EXTRACT_URL = "https://api.firecrawl.dev/v2/extract";
+  private static readonly FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search";
   private static readonly MAX_RESULTS = 20;
-  private static readonly SEARCH_TIMEOUT = 30000; // 30 seconds
+  private static readonly SEARCH_TIMEOUT = 60000; // 60 seconds (as per docs)
 
   /**
-   * Execute a web search using Firecrawl Extract API with search URLs
-   * Since Firecrawl doesn't have a dedicated search API, we'll use known event sites
+   * Execute a web search using Firecrawl Search API v2
    */
   static async searchEvents(params: FirecrawlSearchParams): Promise<FirecrawlSearchResult> {
     const { query, country = "", from, to, industry = "legal-compliance", maxResults = this.MAX_RESULTS } = params;
@@ -88,79 +87,83 @@ export class FirecrawlSearchService {
     }
 
     try {
-      // Get search URLs based on industry and country
-      const searchUrls = this.getSearchUrls(industry, country, query);
+      // Build the search query with event-specific terms
+      const searchQuery = this.buildSearchQuery(query, industry, country, from, to);
       
+      // Build search parameters according to Firecrawl v2 API docs
+      const searchParams = {
+        query: searchQuery,
+        limit: Math.min(maxResults, 100), // Firecrawl limit is 100
+        sources: ["web"], // Focus on web results for events
+        location: this.mapCountryToLocation(country),
+        tbs: this.buildTimeBasedSearch(from, to),
+        timeout: this.SEARCH_TIMEOUT,
+        ignoreInvalidURLs: true,
+        scrapeOptions: {
+          formats: ["markdown"],
+          onlyMainContent: true,
+          waitFor: 2000,
+          blockAds: true,
+          removeBase64Images: true,
+          location: {
+            country: this.mapCountryCode(country),
+            languages: [this.getLanguageForCountry(country)]
+          }
+        }
+      };
+
       console.log(JSON.stringify({ 
         at: "firecrawl_search", 
-        query, 
-        urls: searchUrls.length,
-        industry,
-        country
+        query: searchQuery, 
+        params: searchParams 
       }));
 
-      // Use Firecrawl Extract to search these URLs for events
+      // Make the search request with retry logic
       const response = await RetryService.fetchWithRetry(
         "firecrawl",
         "search",
-        this.FIRECRAWL_EXTRACT_URL,
+        this.FIRECRAWL_SEARCH_URL,
         {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${firecrawlKey}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({
-            urls: searchUrls.slice(0, 10), // Limit to 10 URLs
-            schema: EVENT_SEARCH_SCHEMA,
-            prompt: this.buildExtractionPrompt(query, industry, country, from, to),
-            showSources: true,
-            scrapeOptions: {
-              formats: ["markdown"],
-              onlyMainContent: true,
-              waitFor: 2000,
-              blockAds: true,
-              removeBase64Images: true
-            },
-            ignoreInvalidURLs: true
-          }),
+          body: JSON.stringify(searchParams),
           signal: AbortSignal.timeout(this.SEARCH_TIMEOUT)
         }
       );
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Firecrawl Extract API error: ${response.status} - ${errorText}`);
+        throw new Error(`Firecrawl Search API error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
       console.log(JSON.stringify({ 
         at: "firecrawl_search_result", 
         status: response.status, 
-        events: data.data?.length || 0 
+        success: data.success,
+        webResults: data.data?.web?.length || 0 
       }));
 
       // Transform Firecrawl results to our standard format
       const items: SearchItem[] = [];
       
-      if (data.data && Array.isArray(data.data)) {
-        for (const item of data.data) {
-          if (item.events && Array.isArray(item.events)) {
-            for (const event of item.events) {
-              items.push({
-                title: event.title || item.metadata?.title || "Event",
-                link: event.url || item.metadata?.sourceURL || "",
-                snippet: event.snippet || item.metadata?.description || "",
-                extractedData: {
-                  eventTitle: event.title,
-                  eventDate: event.eventDate,
-                  location: event.location,
-                  organizer: event.organizer,
-                  confidence: event.confidence || 0.8
-                }
-              });
+      if (data.success && data.data?.web) {
+        for (const result of data.data.web) {
+          items.push({
+            title: result.title || "Event",
+            link: result.url || "",
+            snippet: result.description || result.markdown?.substring(0, 200) || "",
+            extractedData: {
+              eventTitle: result.title,
+              eventDate: this.extractDateFromContent(result.markdown),
+              location: this.extractLocationFromContent(result.markdown),
+              organizer: this.extractOrganizerFromContent(result.markdown),
+              confidence: 0.8
             }
-          }
+          });
         }
       }
 
@@ -170,7 +173,8 @@ export class FirecrawlSearchService {
         cached: false,
         searchMetadata: {
           totalResults: items.length,
-          query: query
+          query: searchQuery,
+          warning: data.warning
         }
       };
 
@@ -181,88 +185,154 @@ export class FirecrawlSearchService {
   }
 
   /**
-   * Get search URLs based on industry and country
+   * Build search query with event-specific terms
    */
-  private static getSearchUrls(industry: string, country: string, query: string): string[] {
-    const baseUrls = [
-      "https://www.eventbrite.com",
-      "https://www.meetup.com",
-      "https://www.linkedin.com/events",
-      "https://www.eventful.com"
-    ];
-
-    // Add industry-specific URLs
-    const industryUrls: Record<string, string[]> = {
-      "legal-compliance": [
-        "https://www.legaltechconference.com",
-        "https://www.complianceweek.com",
-        "https://www.legaltechnews.com"
-      ],
-      "fintech": [
-        "https://www.fintechconference.com",
-        "https://www.money2020.com",
-        "https://www.fintechnews.com"
-      ],
-      "healthcare": [
-        "https://www.himss.org",
-        "https://www.healthtechconference.com",
-        "https://www.healthcareinnovation.com"
-      ]
-    };
-
-    // Add country-specific URLs
-    const countryUrls: Record<string, string[]> = {
-      "de": [
-        "https://www.xing.com/events",
-        "https://www.eventbrite.de",
-        "https://www.meetup.com/de-DE"
-      ],
-      "fr": [
-        "https://www.eventbrite.fr",
-        "https://www.meetup.com/fr-FR"
-      ],
-      "uk": [
-        "https://www.eventbrite.co.uk",
-        "https://www.meetup.com/en-GB"
-      ]
-    };
-
-    let urls = [...baseUrls];
-    
-    if (industryUrls[industry]) {
-      urls = [...urls, ...industryUrls[industry]];
-    }
-    
-    if (countryUrls[country]) {
-      urls = [...urls, ...countryUrls[country]];
-    }
-
-    return urls;
-  }
-
-  /**
-   * Build extraction prompt for event discovery
-   */
-  private static buildExtractionPrompt(
+  private static buildSearchQuery(
     query: string, 
     industry: string, 
     country: string, 
     from?: string, 
     to?: string
   ): string {
-    const industryTerms = this.getIndustryTerms(industry);
-    const countryTerms = this.getCountryTerms(country);
+    let searchQuery = query.trim();
     
-    return `Extract all upcoming events related to ${query || industryTerms} ${countryTerms ? `in ${countryTerms}` : ''} ${from && to ? `between ${from} and ${to}` : 'in 2025'}. 
+    // Add industry-specific terms if query is empty or basic
+    if (!searchQuery || searchQuery.length < 10) {
+      const industryTerms = this.getIndustryTerms(industry);
+      searchQuery = `${industryTerms} conference summit event`;
+    }
 
-Look for:
-- Event titles and descriptions
-- Dates and locations
-- Organizers and sponsors
-- Registration information
-- Event types (conferences, workshops, seminars, etc.)
+    // Add event-specific keywords using Firecrawl query operators
+    const eventKeywords = [
+      "conference", "summit", "forum", "workshop", "seminar", 
+      "exhibition", "trade show", "convention", "symposium"
+    ];
+    
+    // Check if event keywords are already present
+    const hasEventKeywords = eventKeywords.some(keyword => 
+      searchQuery.toLowerCase().includes(keyword.toLowerCase())
+    );
+    
+    if (!hasEventKeywords) {
+      searchQuery += ` (conference OR summit OR event)`;
+    }
 
-Focus on professional events, conferences, and business gatherings. Ignore personal events, parties, or non-business activities.`;
+    // Add date range if specified
+    if (from && to) {
+      searchQuery += ` ${from} ${to} 2025`;
+    } else {
+      searchQuery += ` 2025`;
+    }
+
+    // Add country-specific terms
+    if (country) {
+      const countryTerms = this.getCountryTerms(country);
+      if (countryTerms) {
+        searchQuery += ` ${countryTerms}`;
+      }
+    }
+
+    return searchQuery;
+  }
+
+  /**
+   * Map country code to Firecrawl location format
+   */
+  private static mapCountryToLocation(country: string): string {
+    const locationMap: Record<string, string> = {
+      "de": "Germany",
+      "fr": "France", 
+      "uk": "United Kingdom",
+      "us": "United States",
+      "nl": "Netherlands",
+      "it": "Italy",
+      "es": "Spain"
+    };
+    
+    return locationMap[country.toLowerCase()] || "Germany";
+  }
+
+  /**
+   * Build time-based search parameter
+   */
+  private static buildTimeBasedSearch(from?: string, to?: string): string {
+    if (from && to) {
+      // Custom date range format: cdr:1,cd_min:MM/DD/YYYY,cd_max:MM/DD/YYYY
+      const fromDate = new Date(from);
+      const toDate = new Date(to);
+      const fromStr = `${(fromDate.getMonth() + 1).toString().padStart(2, '0')}/${fromDate.getDate().toString().padStart(2, '0')}/${fromDate.getFullYear()}`;
+      const toStr = `${(toDate.getMonth() + 1).toString().padStart(2, '0')}/${toDate.getDate().toString().padStart(2, '0')}/${toDate.getFullYear()}`;
+      return `cdr:1,cd_min:${fromStr},cd_max:${toStr}`;
+    }
+    return "qdr:y"; // Past year
+  }
+
+  /**
+   * Extract date from markdown content
+   */
+  private static extractDateFromContent(markdown?: string): string | null {
+    if (!markdown) return null;
+    
+    // Look for common date patterns
+    const datePatterns = [
+      /(\d{1,2}\/\d{1,2}\/\d{4})/g,
+      /(\d{4}-\d{2}-\d{2})/g,
+      /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/gi
+    ];
+    
+    for (const pattern of datePatterns) {
+      const match = markdown.match(pattern);
+      if (match) {
+        return match[0];
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract location from markdown content
+   */
+  private static extractLocationFromContent(markdown?: string): string | null {
+    if (!markdown) return null;
+    
+    // Look for location patterns
+    const locationPatterns = [
+      /(?:Location|Venue|Where):\s*([^\n]+)/i,
+      /(?:Address):\s*([^\n]+)/i,
+      /(?:City|Town):\s*([^\n]+)/i
+    ];
+    
+    for (const pattern of locationPatterns) {
+      const match = markdown.match(pattern);
+      if (match) {
+        return match[1].trim();
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract organizer from markdown content
+   */
+  private static extractOrganizerFromContent(markdown?: string): string | null {
+    if (!markdown) return null;
+    
+    // Look for organizer patterns
+    const organizerPatterns = [
+      /(?:Organizer|Host|Presented by):\s*([^\n]+)/i,
+      /(?:Company|Organization):\s*([^\n]+)/i
+    ];
+    
+    for (const pattern of organizerPatterns) {
+      const match = markdown.match(pattern);
+      if (match) {
+        return match[1].trim();
+      }
+    }
+    
+    return null;
   }
 
   /**
@@ -359,7 +429,7 @@ Focus on professional events, conferences, and business gatherings. Ignore perso
     }
 
     try {
-      // Simple health check - just verify API key format and endpoint availability
+      // Simple health check - just verify API key format
       const firecrawlKey = process.env.FIRECRAWL_KEY;
       
       // Basic validation - Firecrawl keys typically start with 'fc-'
