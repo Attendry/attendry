@@ -211,6 +211,12 @@ export class SearchService {
         return null;
       }
 
+      // Check if auth object exists and has getUser method
+      if (!supabase.auth || typeof supabase.auth.getUser !== 'function') {
+        console.warn('Supabase auth not available, skipping user profile');
+        return null;
+      }
+
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       
       if (userError) {
@@ -620,11 +626,40 @@ export class SearchService {
         }
       }
 
-      // If no events extracted, create minimal events from URLs
+      // If no events extracted, try to extract basic info from the raw data
+      if (events.length === 0 && extractData.data) {
+        // Try to extract from raw markdown content
+        for (let i = 0; i < urls.length && i < 10; i++) {
+          const url = urls[i];
+          const rawData = Array.isArray(extractData.data) ? extractData.data[i] : extractData.data;
+          
+          if (rawData && rawData.markdown) {
+            const markdown = rawData.markdown;
+            const title = this.extractTitleFromMarkdown(markdown) || this.extractTitleFromUrl(url);
+            const date = this.extractDateFromMarkdown(markdown);
+            const location = this.extractLocationFromMarkdown(markdown);
+            const organizer = this.extractOrganizerFromMarkdown(markdown);
+            
+            events.push({
+              source_url: url,
+              title: title,
+              starts_at: date,
+              ends_at: null,
+              city: location,
+              country: null,
+              organizer: organizer,
+              speakers: null, // Would need more sophisticated extraction
+              confidence: 0.6
+            });
+          }
+        }
+      }
+
+      // If still no events extracted, create minimal events with better titles
       if (events.length === 0) {
         events.push(...urls.slice(0, 10).map(url => ({
           source_url: url,
-          title: url,
+          title: this.extractTitleFromUrl(url),
           starts_at: null,
           ends_at: null,
           city: null,
@@ -654,6 +689,130 @@ export class SearchService {
         trace: []
       };
     }
+  }
+
+  /**
+   * Extract title from markdown content
+   */
+  private static extractTitleFromMarkdown(markdown: string): string | null {
+    if (!markdown) return null;
+    
+    // Look for the first heading (# or ##)
+    const headingMatch = markdown.match(/^#+\s*(.+)$/m);
+    if (headingMatch) {
+      return headingMatch[1].trim();
+    }
+    
+    // Look for title in the first few lines
+    const lines = markdown.split('\n').slice(0, 5);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.length > 10 && trimmed.length < 200) {
+        return trimmed;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract title from URL
+   */
+  private static extractTitleFromUrl(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      
+      // Extract meaningful parts from the URL path
+      const segments = pathname.split('/').filter(segment => 
+        segment && 
+        segment.length > 2 && 
+        !segment.match(/^\d+$/) && // Not just numbers
+        !segment.match(/^(page|event|conference|summit)$/i) // Skip generic words
+      );
+      
+      if (segments.length > 0) {
+        // Take the last meaningful segment and format it
+        const lastSegment = segments[segments.length - 1];
+        return lastSegment
+          .replace(/[-_]/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase())
+          .trim();
+      }
+      
+      // Fallback to hostname
+      return urlObj.hostname.replace('www.', '');
+    } catch {
+      return url;
+    }
+  }
+
+  /**
+   * Extract date from markdown content
+   */
+  private static extractDateFromMarkdown(markdown: string): string | null {
+    if (!markdown) return null;
+    
+    // Look for various date patterns
+    const datePatterns = [
+      /(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/g,
+      /(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2})/g,
+      /(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+\d{4}/gi,
+      /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2},?\s+\d{4}/gi
+    ];
+    
+    for (const pattern of datePatterns) {
+      const match = markdown.match(pattern);
+      if (match) {
+        return match[0];
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract location from markdown content
+   */
+  private static extractLocationFromMarkdown(markdown: string): string | null {
+    if (!markdown) return null;
+    
+    // Look for location patterns
+    const locationPatterns = [
+      /(?:location|venue|where|ort|veranstaltungsort):\s*([^\n]+)/gi,
+      /(?:in|at|@)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g
+    ];
+    
+    for (const pattern of locationPatterns) {
+      const match = markdown.match(pattern);
+      if (match) {
+        return match[1]?.trim() || null;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract organizer from markdown content
+   */
+  private static extractOrganizerFromMarkdown(markdown: string): string | null {
+    if (!markdown) return null;
+    
+    // Look for organizer patterns
+    const organizerPatterns = [
+      /(?:organizer|organised by|hosted by|veranstalter):\s*([^\n]+)/gi,
+      /(?:by|von)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g
+    ];
+    
+    for (const pattern of organizerPatterns) {
+      const match = markdown.match(pattern);
+      if (match) {
+        return match[1]?.trim() || null;
+      }
+    }
+    
+    return null;
   }
 
   /**
