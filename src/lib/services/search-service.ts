@@ -612,12 +612,12 @@ export class SearchService {
         // Poll for results
         const polledData = await this.pollExtractResults(extractData.id, firecrawlKey);
         if (polledData) {
-          return this.processExtractResults(polledData, urls);
+          return await this.processExtractResults(polledData, urls);
         }
       }
       
       // Fallback: process immediate results if no polling needed
-      return this.processExtractResults(extractData, urls);
+      return await this.processExtractResults(extractData, urls);
     } catch (error) {
       console.error('Firecrawl extraction failed:', error);
       return {
@@ -682,11 +682,11 @@ export class SearchService {
   /**
    * Process extract results into EventRec format
    */
-  private static processExtractResults(extractData: any, urls: string[]): {
+  private static async processExtractResults(extractData: any, urls: string[]): Promise<{
     events: EventRec[];
     version: string;
     trace: any[];
-  } {
+  }> {
     const events: EventRec[] = [];
     
     if (extractData.data?.events) {
@@ -728,7 +728,7 @@ export class SearchService {
             city: location,
             country: null,
             organizer: organizer,
-            speakers: null, // Would need more sophisticated extraction
+            speakers: null, // Will be enhanced with Gemini
             confidence: 0.6
           });
         }
@@ -748,11 +748,108 @@ export class SearchService {
       })));
     }
 
+    // Enhance events with Gemini API for speaker extraction
+    const enhancedEvents = await this.enhanceEventsWithGemini(events, extractData);
+
     return {
-      events,
-      version: "firecrawl_v2_polled",
+      events: enhancedEvents,
+      version: "firecrawl_v2_polled_gemini",
       trace: []
     };
+  }
+
+  /**
+   * Enhance events with Gemini API for speaker extraction
+   */
+  private static async enhanceEventsWithGemini(events: EventRec[], extractData: any): Promise<EventRec[]> {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    
+    if (!geminiKey || events.length === 0) {
+      return events;
+    }
+
+    try {
+      const { GoogleGenerativeAI } = await import("@google/generative-ai");
+      const genai = new GoogleGenerativeAI(geminiKey);
+      const model = genai.getGenerativeModel({ model: "gemini-1.5-pro" });
+
+      // Collect all markdown content for processing
+      const markdownContent: string[] = [];
+      if (extractData.data) {
+        const rawData = Array.isArray(extractData.data) ? extractData.data : [extractData.data];
+        for (const data of rawData) {
+          if (data?.markdown) {
+            markdownContent.push(data.markdown);
+          }
+        }
+      }
+
+      if (markdownContent.length === 0) {
+        return events;
+      }
+
+      const prompt = `You are an expert at extracting speaker information from event content. Analyze the following event content and extract all speakers, presenters, panelists, and keynotes.
+
+For each speaker found, return:
+- name: Full name (first and last name)
+- org: Organization/company they work for
+- title: Job title or role (if mentioned)
+- speech_title: Title of their presentation/speech (if mentioned)
+- session: Session name or track (if mentioned)
+
+Look for sections with these labels in multiple languages:
+English: Speakers, Presenters, Panelists, Keynotes, Moderators, Hosts, Faculty, Instructors
+German: Referenten, Referent:innen, Sprecher, Vortragende, Mitwirkende, Moderatoren, Gastgeber
+French: Conférenciers, Présentateurs, Panélistes, Intervenants, Modérateurs
+Spanish: Ponentes, Presentadores, Panelistas, Oradores, Moderadores
+Italian: Relatori, Presentatori, Panelisti, Ospiti, Moderatori
+Dutch: Sprekers, Presentatoren, Panelleden, Gasten, Moderators
+
+Also check: Agenda, Program, Schedule, Programme, Fachprogramm, Programme détaillé
+
+IMPORTANT: 
+- Only extract people who are clearly identified as speakers/presenters
+- Do not invent names or information
+- Skip generic entries like "TBA", "To be announced", "Speaker TBD"
+- Focus on real people with actual names and organizations
+- If a person appears multiple times, include them only once with the most complete information
+
+Return a JSON array of speaker objects. If no speakers are found, return an empty array.`;
+
+      const response = await model.generateContent(`${prompt}\n\nContent to analyze:\n${markdownContent.join('\n\n---\n\n')}`);
+      const text = response.response.text();
+      
+      if (!text) return events;
+
+      // Clean and parse the response
+      let cleanText = text.trim();
+      if (cleanText.startsWith('```json')) {
+        cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanText.startsWith('```')) {
+        cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      const jsonStart = cleanText.indexOf('[');
+      const jsonEnd = cleanText.lastIndexOf(']') + 1;
+      if (jsonStart !== -1 && jsonEnd > jsonStart) {
+        cleanText = cleanText.substring(jsonStart, jsonEnd);
+      }
+      
+      const speakers = JSON.parse(cleanText);
+      if (!Array.isArray(speakers)) return events;
+
+      // Add speakers to the first event (or distribute among events if multiple)
+      const enhancedEvents = [...events];
+      if (enhancedEvents.length > 0 && speakers.length > 0) {
+        enhancedEvents[0].speakers = speakers;
+        enhancedEvents[0].confidence = Math.min((enhancedEvents[0].confidence || 0.5) + 0.2, 1.0);
+      }
+
+      return enhancedEvents;
+    } catch (error) {
+      console.warn('Gemini speaker enhancement failed:', error);
+      return events;
+    }
   }
 
   /**
