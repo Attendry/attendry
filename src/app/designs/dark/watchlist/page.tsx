@@ -71,46 +71,73 @@ export default function DarkWatchlistPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#0B0F14", color: "#E6EDF3" }}>
-      {/* Dark top bar with golden accents */}
-      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "rgba(11,15,20,0.8)", borderColor: "#1F2733", backdropFilter: "blur(12px)" as any }}>
-        <div className="h-16 px-4 lg:px-6 flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+      {/* Modern glassmorphism header */}
+      <header className="sticky top-0 z-50 border-b border-slate-800/50 bg-slate-900/80 backdrop-blur-xl">
+        <div className="h-16 px-4 lg:px-8 flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <Link href="/" className="text-lg font-bold transition-colors duration-300 hover:text-yellow-400" style={{ color: "#E6EDF3" }}>Attendry</Link>
-            <nav className="hidden md:flex items-center gap-6 text-sm">
-              <Link href="/designs/dark" className="transition-colors duration-300 hover:text-yellow-400" style={{ color: "#A9B4C0" }}>Home</Link>
-              <Link href="/designs/dark/events" className="transition-colors duration-300 hover:text-yellow-400" style={{ color: "#A9B4C0" }}>Events</Link>
-              <Link href="/designs/dark/watchlist" className="transition-colors duration-300 hover:text-yellow-400" style={{ color: "#E6EDF3" }}>Watchlist</Link>
+            <Link href="/" className="text-xl font-bold bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 bg-clip-text text-transparent hover:from-amber-300 hover:to-yellow-400 transition-all duration-500">
+              Attendry
+            </Link>
+            <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
+              <Link href="/designs/dark" className="relative text-slate-400 hover:text-amber-400 transition-colors duration-300 after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-amber-400 after:to-yellow-500 after:scale-x-0 hover:after:scale-x-100 after:origin-left after:transition-transform after:duration-300">
+                Home
+              </Link>
+              <Link href="/designs/dark/events" className="relative text-slate-400 hover:text-amber-400 transition-colors duration-300 after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-amber-400 after:to-yellow-500 after:scale-x-0 hover:after:scale-x-100 after:origin-left after:transition-transform after:duration-300">
+                Events
+              </Link>
+              <Link href="/designs/dark/watchlist" className="relative text-slate-100 hover:text-amber-400 transition-colors duration-300 after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-amber-400 after:to-yellow-500 after:scale-x-100 after:origin-left after:transition-transform after:duration-300">
+                Watchlist
+              </Link>
             </nav>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href="/login" className="px-3 py-2 text-sm rounded-lg transition-all duration-300 hover:shadow-lg hover:shadow-yellow-500/20" style={{ backgroundColor: "#3A77FF", color: "#FFFFFF" }}>Sign in</Link>
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="px-4 py-2 text-sm font-medium rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-500 hover:to-blue-600 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/25 hover:scale-105">
+              Sign in
+            </Link>
           </div>
         </div>
       </header>
 
       <div className="flex">
-        {/* Action dock on the left */}
-        <aside className="hidden xl:block w-16 pl-6">
-          <div className="sticky top-24 flex flex-col items-center gap-3">
+        {/* Modern floating action dock */}
+        <aside className="hidden xl:block w-20 pl-8">
+          <div className="sticky top-28 flex flex-col items-center gap-4">
             {[
-              { icon: "+", label: "Add Event", href: "/designs/dark/events" },
+              { icon: "🎯", label: "Add Event", href: "/designs/dark/events" },
               { icon: "⭐", label: "Watchlist", href: "/designs/dark/watchlist", active: true },
               { icon: "⚙️", label: "Settings", href: "/admin" }
             ].map((item, i) => (
               <Link key={i} href={item.href} title={item.label} className="group">
-                <button className={`w-12 h-12 rounded-full transition-all duration-300 hover:scale-110 hover:shadow-lg hover:shadow-yellow-500/30 ${item.active ? 'ring-2 ring-yellow-400' : ''}`} style={{ backgroundColor: "#121821", border: "1px solid #1F2733", color: "#E6EDF3" }}>
-                  <span className="group-hover:text-yellow-400 transition-colors duration-300">{item.icon}</span>
-                </button>
+                <div className="relative">
+                  <div className={`w-14 h-14 rounded-2xl backdrop-blur-sm border flex items-center justify-center transition-all duration-500 hover:scale-110 hover:shadow-xl hover:shadow-amber-500/20 group-hover:rotate-3 ${
+                    item.active 
+                      ? 'bg-amber-500/20 border-amber-500/50 shadow-lg shadow-amber-500/20' 
+                      : 'bg-slate-800/60 border-slate-700/50 hover:bg-slate-700/60 hover:border-amber-500/50'
+                  }`}>
+                    <span className={`text-lg transition-colors duration-300 ${
+                      item.active ? 'text-amber-400' : 'group-hover:text-amber-400'
+                    }`}>{item.icon}</span>
+                  </div>
+                  <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-amber-400 to-yellow-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </div>
               </Link>
             ))}
           </div>
         </aside>
 
-        <main className="flex-1 p-6 lg:p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">My Watchlist</h1>
-            <p className="text-lg max-w-2xl" style={{ color: "#A9B4C0" }}>Keep track of events and people you're interested in. Never miss an opportunity.</p>
+        <main className="flex-1 p-8 lg:p-12">
+          <div className="mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm font-medium mb-4">
+              <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+              Personal Watchlist
+            </div>
+            <h1 className="text-4xl lg:text-5xl font-bold mb-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 bg-clip-text text-transparent leading-tight">
+              My Watchlist
+            </h1>
+            <p className="text-xl text-slate-300 max-w-3xl leading-relaxed">
+              Keep track of events and people you're interested in. Never miss an opportunity to connect and learn.
+            </p>
           </div>
 
           {/* Add Item Form */}

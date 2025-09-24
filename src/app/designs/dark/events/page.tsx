@@ -92,131 +92,142 @@ export default function DarkEventsPage() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#0B0F14", color: "#E6EDF3" }}>
-      {/* Dark top bar with golden accents */}
-      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "rgba(11,15,20,0.8)", borderColor: "#1F2733", backdropFilter: "blur(12px)" as any }}>
-        <div className="h-16 px-4 lg:px-6 flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+      {/* Modern glassmorphism header */}
+      <header className="sticky top-0 z-50 border-b border-slate-800/50 bg-slate-900/80 backdrop-blur-xl">
+        <div className="h-16 px-4 lg:px-8 flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <Link href="/" className="text-lg font-bold transition-colors duration-300 hover:text-yellow-400" style={{ color: "#E6EDF3" }}>Attendry</Link>
-            <nav className="hidden md:flex items-center gap-6 text-sm">
-              <Link href="/designs/dark" className="transition-colors duration-300 hover:text-yellow-400" style={{ color: "#A9B4C0" }}>Home</Link>
-              <Link href="/designs/dark/events" className="transition-colors duration-300 hover:text-yellow-400" style={{ color: "#E6EDF3" }}>Events</Link>
-              <Link href="/designs/dark/watchlist" className="transition-colors duration-300 hover:text-yellow-400" style={{ color: "#A9B4C0" }}>Watchlist</Link>
+            <Link href="/" className="text-xl font-bold bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 bg-clip-text text-transparent hover:from-amber-300 hover:to-yellow-400 transition-all duration-500">
+              Attendry
+            </Link>
+            <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
+              <Link href="/designs/dark" className="relative text-slate-400 hover:text-amber-400 transition-colors duration-300 after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-amber-400 after:to-yellow-500 after:scale-x-0 hover:after:scale-x-100 after:origin-left after:transition-transform after:duration-300">
+                Home
+              </Link>
+              <Link href="/designs/dark/events" className="relative text-slate-100 hover:text-amber-400 transition-colors duration-300 after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-amber-400 after:to-yellow-500 after:scale-x-100 after:origin-left after:transition-transform after:duration-300">
+                Events
+              </Link>
+              <Link href="/designs/dark/watchlist" className="relative text-slate-400 hover:text-amber-400 transition-colors duration-300 after:absolute after:bottom-0 after:left-0 after:w-full after:h-0.5 after:bg-gradient-to-r after:from-amber-400 after:to-yellow-500 after:scale-x-0 hover:after:scale-x-100 after:origin-left after:transition-transform after:duration-300">
+                Watchlist
+              </Link>
             </nav>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href="/login" className="px-3 py-2 text-sm rounded-lg transition-all duration-300 hover:shadow-lg hover:shadow-yellow-500/20" style={{ backgroundColor: "#3A77FF", color: "#FFFFFF" }}>Sign in</Link>
+          <div className="flex items-center gap-3">
+            <Link href="/login" className="px-4 py-2 text-sm font-medium rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-500 hover:to-blue-600 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/25 hover:scale-105">
+              Sign in
+            </Link>
           </div>
         </div>
       </header>
 
       <div className="flex">
-        {/* Action dock on the left */}
-        <aside className="hidden xl:block w-16 pl-6">
-          <div className="sticky top-24 flex flex-col items-center gap-3">
+        {/* Modern floating action dock */}
+        <aside className="hidden xl:block w-20 pl-8">
+          <div className="sticky top-28 flex flex-col items-center gap-4">
             {[
-              { icon: "+", label: "Add Event", href: "/designs/dark/events", active: true },
+              { icon: "🎯", label: "Add Event", href: "/designs/dark/events", active: true },
               { icon: "⭐", label: "Watchlist", href: "/designs/dark/watchlist" },
               { icon: "⚙️", label: "Settings", href: "/admin" }
             ].map((item, i) => (
               <Link key={i} href={item.href} title={item.label} className="group">
-                <button className={`w-12 h-12 rounded-full transition-all duration-300 hover:scale-110 hover:shadow-lg hover:shadow-yellow-500/30 ${item.active ? 'ring-2 ring-yellow-400' : ''}`} style={{ backgroundColor: "#121821", border: "1px solid #1F2733", color: "#E6EDF3" }}>
-                  <span className="group-hover:text-yellow-400 transition-colors duration-300">{item.icon}</span>
-                </button>
+                <div className="relative">
+                  <div className={`w-14 h-14 rounded-2xl backdrop-blur-sm border flex items-center justify-center transition-all duration-500 hover:scale-110 hover:shadow-xl hover:shadow-amber-500/20 group-hover:rotate-3 ${
+                    item.active 
+                      ? 'bg-amber-500/20 border-amber-500/50 shadow-lg shadow-amber-500/20' 
+                      : 'bg-slate-800/60 border-slate-700/50 hover:bg-slate-700/60 hover:border-amber-500/50'
+                  }`}>
+                    <span className={`text-lg transition-colors duration-300 ${
+                      item.active ? 'text-amber-400' : 'group-hover:text-amber-400'
+                    }`}>{item.icon}</span>
+                  </div>
+                  <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-amber-400 to-yellow-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </div>
               </Link>
             ))}
           </div>
         </aside>
 
-        <main className="flex-1 p-6 lg:p-8">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-yellow-400 to-yellow-600 bg-clip-text text-transparent">Discover Events</h1>
-            <p className="text-lg max-w-2xl" style={{ color: "#A9B4C0" }}>Find conferences, meetups, and networking opportunities with our enhanced search.</p>
+        <main className="flex-1 p-8 lg:p-12">
+          <div className="mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm font-medium mb-4">
+              <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></div>
+              Event Discovery
+            </div>
+            <h1 className="text-4xl lg:text-5xl font-bold mb-4 bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 bg-clip-text text-transparent leading-tight">
+              Discover Events
+            </h1>
+            <p className="text-xl text-slate-300 max-w-3xl leading-relaxed">
+              Find conferences, meetups, and networking opportunities with our intelligent search engine.
+            </p>
           </div>
 
-          {/* Search Form */}
-          <form onSubmit={handleSearch} className="mb-8">
-            <div className="rounded-xl overflow-hidden" style={{ backgroundColor: "#121821", border: "1px solid #1F2733" }}>
-              <div className="p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#1F2733" }}>
-                    <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Modern Search Form */}
+          <form onSubmit={handleSearch} className="mb-12">
+            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-slate-800/80 to-slate-900/80 backdrop-blur-sm border border-slate-700/50">
+              <div className="p-8">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500/20 to-yellow-500/20 border border-amber-500/30 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
-                  <h2 className="text-xl font-semibold" style={{ color: "#E6EDF3" }}>Search Events</h2>
+                  <h2 className="text-2xl font-bold text-slate-100">Smart Event Search</h2>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: "#E6EDF3" }}>Location</label>
+                    <label className="block text-sm font-semibold mb-3 text-slate-200">Location</label>
                     <select
                       value={selectedCountry}
                       onChange={(e) => setSelectedCountry(e.target.value)}
-                      className="w-full px-4 py-3 rounded-lg transition-all duration-300 focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                      style={{ backgroundColor: "#1F2733", border: "1px solid #2A3441", color: "#E6EDF3" }}
+                      className="w-full px-4 py-4 rounded-xl bg-slate-800/60 border border-slate-600/50 text-slate-100 transition-all duration-300 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 focus:bg-slate-700/60 hover:border-slate-500/50"
                     >
                       {countries.map((c) => (
-                        <option key={c.code || "all"} value={c.code}>
+                        <option key={c.code || "all"} value={c.code} className="bg-slate-800 text-slate-100">
                           {c.name}
                         </option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: "#E6EDF3" }}>Time Range</label>
-                    <div className="space-y-3">
+                    <label className="block text-sm font-semibold mb-3 text-slate-200">Time Range</label>
+                    <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           type="button"
                           onClick={() => setTimeRange("next")}
-                          className={`px-4 py-3 text-sm font-medium rounded-lg transition-all duration-300 ${
+                          className={`px-4 py-3 text-sm font-semibold rounded-xl transition-all duration-300 ${
                             timeRange === "next" 
-                              ? "text-white shadow-lg shadow-yellow-500/30" 
-                              : "hover:bg-yellow-400/10"
+                              ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-500/25" 
+                              : "bg-slate-800/60 border border-slate-600/50 text-slate-300 hover:bg-slate-700/60 hover:border-amber-500/50"
                           }`}
-                          style={{ 
-                            backgroundColor: timeRange === "next" ? "#3A77FF" : "#1F2733",
-                            border: "1px solid #2A3441",
-                            color: timeRange === "next" ? "#FFFFFF" : "#A9B4C0"
-                          }}
                         >
                           Next {days} days
                         </button>
                         <button
                           type="button"
                           onClick={() => setTimeRange("past")}
-                          className={`px-4 py-3 text-sm font-medium rounded-lg transition-all duration-300 ${
+                          className={`px-4 py-3 text-sm font-semibold rounded-xl transition-all duration-300 ${
                             timeRange === "past" 
-                              ? "text-white shadow-lg shadow-yellow-500/30" 
-                              : "hover:bg-yellow-400/10"
+                              ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg shadow-blue-500/25" 
+                              : "bg-slate-800/60 border border-slate-600/50 text-slate-300 hover:bg-slate-700/60 hover:border-amber-500/50"
                           }`}
-                          style={{ 
-                            backgroundColor: timeRange === "past" ? "#3A77FF" : "#1F2733",
-                            border: "1px solid #2A3441",
-                            color: timeRange === "past" ? "#FFFFFF" : "#A9B4C0"
-                          }}
                         >
                           Past {days} days
                         </button>
                       </div>
                       
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-3 gap-3">
                         {[7, 14, 30].map((day) => (
                           <button
                             key={day}
                             type="button"
                             onClick={() => setDays(day as 7 | 14 | 30)}
-                            className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-300 ${
+                            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all duration-300 ${
                               days === day 
-                                ? "text-white shadow-lg shadow-yellow-500/30" 
-                                : "hover:bg-yellow-400/10"
+                                ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25" 
+                                : "bg-slate-800/60 border border-slate-600/50 text-slate-300 hover:bg-slate-700/60 hover:border-amber-500/50"
                             }`}
-                            style={{ 
-                              backgroundColor: days === day ? "#3A77FF" : "#1F2733",
-                              border: "1px solid #2A3441",
-                              color: days === day ? "#FFFFFF" : "#A9B4C0"
-                            }}
                           >
                             {day} days
                           </button>
@@ -226,38 +237,36 @@ export default function DarkEventsPage() {
                   </div>
                 </div>
 
-                <div className="mb-6">
-                  <label className="block text-sm font-medium mb-2" style={{ color: "#E6EDF3" }}>Keywords</label>
+                <div className="mb-8">
+                  <label className="block text-sm font-semibold mb-3 text-slate-200">Keywords</label>
                   <input 
                     type="text" 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="e.g. AI, blockchain, networking, startup"
-                    className="w-full px-4 py-3 rounded-lg transition-all duration-300 focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                    style={{ backgroundColor: "#1F2733", border: "1px solid #2A3441", color: "#E6EDF3" }}
+                    className="w-full px-4 py-4 rounded-xl bg-slate-800/60 border border-slate-600/50 text-slate-100 placeholder-slate-400 transition-all duration-300 focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500/50 focus:bg-slate-700/60 hover:border-slate-500/50"
                   />
                 </div>
 
                 <button 
                   type="submit" 
                   disabled={loading}
-                  className="w-full px-6 py-3 rounded-lg font-medium transition-all duration-300 hover:shadow-lg hover:shadow-yellow-500/30 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: "#3A77FF", color: "#FFFFFF" }}
+                  className="w-full px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/25 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-blue-600 to-blue-700 text-white"
                 >
                   {loading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <div className="flex items-center justify-center gap-3">
+                      <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Searching...
+                      <span>Searching Events...</span>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="flex items-center justify-center gap-3">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
-                      Search Events
+                      <span>Search Events</span>
                     </div>
                   )}
                 </button>
