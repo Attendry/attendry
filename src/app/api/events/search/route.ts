@@ -157,6 +157,8 @@ function buildGeographicContext(country: string): string {
  * cache for better scalability and persistence across server restarts.
  */
 const searchCache = new Map<string, { data: unknown; timestamp: number }>();
+// Expose cache globally for debug endpoints
+(global as any).searchCache = searchCache;
 const CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
 const DB_CACHE_TTL_HOURS = 6;
 
