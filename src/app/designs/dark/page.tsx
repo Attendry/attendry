@@ -14,7 +14,15 @@ export default function DarkDesign() {
       </header>
 
       <div className="flex">
-        {/* Action dock on the right */}
+        {/* Action dock on the left */}
+        <aside className="hidden xl:block w-16 pl-6">
+          <div className="sticky top-24 flex flex-col items-center gap-3">
+            {["+","⭐","⚙️"].map((x, i) => (
+              <button key={i} className="w-12 h-12 rounded-full" style={{ backgroundColor: "#121821", border: "1px solid #1F2733", color: "#E6EDF3" }}>{x}</button>
+            ))}
+          </div>
+        </aside>
+
         <main className="flex-1 p-6 lg:p-8">
           <h1 className="text-xl font-semibold mb-2" style={{ color: "#E6EDF3" }}>Action Dock (Dark Mode)</h1>
           <p className="mb-6 max-w-2xl" style={{ color: "#A9B4C0" }}>Comfortable dark palette with low-contrast dividers and soft shadows. Primary action emphasis via saturated blue.</p>
@@ -34,14 +42,6 @@ export default function DarkDesign() {
             ))}
           </div>
         </main>
-
-        <aside className="hidden xl:block w-16 pr-6">
-          <div className="sticky top-24 flex flex-col items-center gap-3">
-            {["+","⭐","⚙️"].map((x, i) => (
-              <button key={i} className="w-12 h-12 rounded-full" style={{ backgroundColor: "#121821", border: "1px solid #1F2733", color: "#E6EDF3" }}>{x}</button>
-            ))}
-          </div>
-        </aside>
       </div>
     </div>
   );
