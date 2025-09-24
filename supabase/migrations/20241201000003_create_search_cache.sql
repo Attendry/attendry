@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS search_cache (
 CREATE INDEX IF NOT EXISTS idx_search_cache_key ON search_cache(cache_key);
 CREATE INDEX IF NOT EXISTS idx_search_cache_ttl ON search_cache(ttl_at);
 
--- Create index for efficient TTL cleanup
-CREATE INDEX IF NOT EXISTS idx_search_cache_cleanup ON search_cache(ttl_at) WHERE ttl_at < NOW();
+-- Note: TTL cleanup index removed due to NOW() not being immutable
+-- Cleanup will be handled by the cron job using WHERE ttl_at < NOW()
 
 -- Add RLS (Row Level Security) policies
 ALTER TABLE search_cache ENABLE ROW LEVEL SECURITY;
