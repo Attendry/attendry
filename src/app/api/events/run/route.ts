@@ -96,18 +96,34 @@ function postExtractFilter(events: any[], country: string) {
     // explicit country match (exact)
     if (e.country && wantName && e.country === wantName) { reasons.kept++; return true; }
 
+    // Get all location-related text for analysis
+    const locationText = `${e.city || ''} ${e.country || ''} ${e.location || ''} ${e.venue || ''}`.toLowerCase();
+    
+    // Define non-target country indicators for each country
+    const nonTargetIndicators: Record<string, string[]> = {
+      de: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'toronto', 'orlando', 'florida', 'fl', 'ca', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
+      fr: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
+      nl: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london'],
+      gb: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'netherlands', 'amsterdam'],
+      es: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
+      it: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'uk', 'london', 'netherlands', 'amsterdam'],
+      se: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
+      pl: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
+      be: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
+      ch: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam']
+    };
+
+    // First, check if event is clearly in a non-target location (exclude these)
+    const indicators = nonTargetIndicators[want] || [];
+    for (const indicator of indicators) {
+      if (locationText.includes(indicator)) { 
+        reasons.wrongCountry = (reasons.wrongCountry||0) + 1; 
+        return false; 
+      }
+    }
+
     // For Germany, check various location indicators
     if (want === "de") {
-      // First, check if event is clearly in a non-German location (exclude these)
-      const locationText = `${e.city || ''} ${e.country || ''} ${e.location || ''} ${e.venue || ''}`.toLowerCase();
-      const nonGermanIndicators = ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'toronto', 'orlando', 'florida', 'fl', 'ca', 'virtual', 'online', 'webinar'];
-      for (const indicator of nonGermanIndicators) {
-        if (locationText.includes(indicator)) { 
-          reasons.wrongCountry = (reasons.wrongCountry||0) + 1; 
-          return false; 
-        }
-      }
-      
       // Check city in expanded German cities list
       if (e.city && DE_CITIES.has(e.city)) { reasons.kept++; return true; }
       
@@ -115,24 +131,47 @@ function postExtractFilter(events: any[], country: string) {
       for (const indicator of DE_LOCATION_INDICATORS) {
         if (locationText.includes(indicator.toLowerCase())) { reasons.kept++; return true; }
       }
+    }
+
+    // For other countries, check if city contains country name or major cities
+    if (want !== "de") {
+      // Check if city contains country name
+      if (e.city && wantName && e.city.toLowerCase().includes(wantName.toLowerCase())) { 
+        reasons.kept++; 
+        return true; 
+      }
       
-      // Only check title/description if we don't have clear location data
-      if (!e.city && !e.country && !e.location && !e.venue) {
-        const contentText = `${e.title || ''} ${e.description || ''}`.toLowerCase();
-        for (const indicator of DE_LOCATION_INDICATORS) {
-          if (contentText.includes(indicator.toLowerCase())) { reasons.kept++; return true; }
-        }
+      // Check for major cities of the target country
+      const majorCities: Record<string, string[]> = {
+        fr: ['paris', 'lyon', 'marseille', 'toulouse', 'nice', 'nantes', 'strasbourg', 'montpellier', 'bordeaux', 'lille'],
+        nl: ['amsterdam', 'rotterdam', 'the hague', 'utrecht', 'eindhoven', 'tilburg', 'groningen', 'almere', 'breda', 'nijmegen'],
+        gb: ['london', 'birmingham', 'manchester', 'glasgow', 'liverpool', 'leeds', 'sheffield', 'edinburgh', 'bristol', 'leicester'],
+        es: ['madrid', 'barcelona', 'valencia', 'seville', 'zaragoza', 'málaga', 'murcia', 'palma', 'las palmas', 'bilbao'],
+        it: ['rome', 'milan', 'naples', 'turin', 'palermo', 'genoa', 'bologna', 'florence', 'bari', 'catania'],
+        se: ['stockholm', 'gothenburg', 'malmö', 'uppsala', 'västerås', 'örebro', 'linköping', 'helsingborg', 'jönköping', 'norrköping'],
+        pl: ['warsaw', 'krakow', 'lodz', 'wroclaw', 'poznan', 'gdansk', 'szczecin', 'bydgoszcz', 'lublin', 'katowice'],
+        be: ['brussels', 'antwerp', 'ghent', 'charleroi', 'liège', 'bruges', 'namur', 'leuven', 'mons', 'aalst'],
+        ch: ['zurich', 'geneva', 'basel', 'bern', 'lausanne', 'winterthur', 'lucerne', 'st. gallen', 'lugano', 'biel']
+      };
+      
+      const cities = majorCities[want] || [];
+      if (e.city && cities.some(city => e.city.toLowerCase().includes(city))) {
+        reasons.kept++;
+        return true;
       }
     }
 
-    // TLD-based fallback (optional - not required for Germany)
+    // TLD-based fallback
     const tld = tldCountry(e.source_url);
     if (tld && wantName && tld === wantName) { reasons.kept++; return true; }
 
-    // For other countries, use original logic
-    if (want !== "de") {
-      // city-based acceptance for other countries
-      if (e.city && wantName && e.city.toLowerCase().includes(wantName.toLowerCase())) { reasons.kept++; return true; }
+    // Only check title/description if we don't have clear location data
+    if (!e.city && !e.country && !e.location && !e.venue) {
+      const contentText = `${e.title || ''} ${e.description || ''}`.toLowerCase();
+      if (contentText.includes(wantName.toLowerCase())) { 
+        reasons.kept++; 
+        return true; 
+      }
     }
 
     // otherwise drop

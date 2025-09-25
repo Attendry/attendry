@@ -231,9 +231,27 @@ export class FirecrawlSearchService {
         }
       }
       
-      // For Germany, add location specificity to reduce international results
-      if (country === 'de' && !searchQuery.toLowerCase().includes('germany') && !searchQuery.toLowerCase().includes('deutschland')) {
-        searchQuery += ' Germany';
+      // Add location specificity to reduce international results for all countries
+      const countryNames: Record<string, string[]> = {
+        de: ['germany', 'deutschland'],
+        fr: ['france', 'french'],
+        nl: ['netherlands', 'dutch', 'holland'],
+        gb: ['uk', 'united kingdom', 'britain', 'british'],
+        es: ['spain', 'spanish', 'españa'],
+        it: ['italy', 'italian', 'italia'],
+        se: ['sweden', 'swedish', 'sverige'],
+        pl: ['poland', 'polish', 'polska'],
+        be: ['belgium', 'belgian', 'belgique'],
+        ch: ['switzerland', 'swiss', 'schweiz']
+      };
+      
+      const names = countryNames[country] || [];
+      const hasCountryName = names.some(name => searchQuery.toLowerCase().includes(name));
+      
+      if (!hasCountryName && country !== '') {
+        // Add the primary country name to the search
+        const primaryName = names[0] || country;
+        searchQuery += ` ${primaryName}`;
       }
     }
 
