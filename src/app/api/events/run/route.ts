@@ -98,19 +98,30 @@ function postExtractFilter(events: any[], country: string) {
 
     // For Germany, check various location indicators
     if (want === "de") {
+      // First, check if event is clearly in a non-German location (exclude these)
+      const locationText = `${e.city || ''} ${e.country || ''} ${e.location || ''} ${e.venue || ''}`.toLowerCase();
+      const nonGermanIndicators = ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'toronto', 'orlando', 'florida', 'fl', 'ca', 'virtual', 'online', 'webinar'];
+      for (const indicator of nonGermanIndicators) {
+        if (locationText.includes(indicator)) { 
+          reasons.wrongCountry = (reasons.wrongCountry||0) + 1; 
+          return false; 
+        }
+      }
+      
       // Check city in expanded German cities list
       if (e.city && DE_CITIES.has(e.city)) { reasons.kept++; return true; }
       
       // Check if any location field contains German indicators
-      const locationText = `${e.city || ''} ${e.country || ''} ${e.location || ''} ${e.venue || ''}`.toLowerCase();
       for (const indicator of DE_LOCATION_INDICATORS) {
         if (locationText.includes(indicator.toLowerCase())) { reasons.kept++; return true; }
       }
       
-      // Check if title/description mentions German locations
-      const contentText = `${e.title || ''} ${e.description || ''}`.toLowerCase();
-      for (const indicator of DE_LOCATION_INDICATORS) {
-        if (contentText.includes(indicator.toLowerCase())) { reasons.kept++; return true; }
+      // Only check title/description if we don't have clear location data
+      if (!e.city && !e.country && !e.location && !e.venue) {
+        const contentText = `${e.title || ''} ${e.description || ''}`.toLowerCase();
+        for (const indicator of DE_LOCATION_INDICATORS) {
+          if (contentText.includes(indicator.toLowerCase())) { reasons.kept++; return true; }
+        }
       }
     }
 

@@ -230,6 +230,11 @@ export class FirecrawlSearchService {
           searchQuery += ' conference';
         }
       }
+      
+      // For Germany, add location specificity to reduce international results
+      if (country === 'de' && !searchQuery.toLowerCase().includes('germany') && !searchQuery.toLowerCase().includes('deutschland')) {
+        searchQuery += ' Germany';
+      }
     }
 
     // Add current year instead of 2025
