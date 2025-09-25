@@ -325,16 +325,44 @@ Please provide a structured response in JSON format. Be precise and only extract
   } {
     try {
       const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      
+      // Try to find JSON in the response - look for multiple patterns
+      let jsonMatch = text.match(/\{[\s\S]*\}/);
+      
+      // If no JSON found, try to find array format
+      if (!jsonMatch) {
+        jsonMatch = text.match(/\[[\s\S]*\]/);
+      }
+      
+      // If still no JSON, try to extract content between ```json and ```
+      if (!jsonMatch) {
+        const codeBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+        if (codeBlockMatch) {
+          jsonMatch = [codeBlockMatch[1]];
+        }
+      }
       
       if (!jsonMatch) {
+        console.warn("No JSON found in Gemini response, returning raw text");
         return {
-          result: { text },
-          confidence: 0.5
+          result: { text, speakers: [] },
+          confidence: 0.3
         };
       }
       
-      const parsed = JSON.parse(jsonMatch[0]);
+      // Clean up the JSON string
+      let jsonStr = jsonMatch[0].trim();
+      
+      // Remove any trailing text after the JSON
+      const lastBrace = jsonStr.lastIndexOf('}');
+      const lastBracket = jsonStr.lastIndexOf(']');
+      const lastJsonChar = Math.max(lastBrace, lastBracket);
+      
+      if (lastJsonChar > 0) {
+        jsonStr = jsonStr.substring(0, lastJsonChar + 1);
+      }
+      
+      const parsed = JSON.parse(jsonStr);
       
       return {
         result: parsed,
@@ -342,9 +370,10 @@ Please provide a structured response in JSON format. Be precise and only extract
       };
     } catch (error) {
       console.error("Error parsing Gemini extraction response:", error);
+      console.error("Raw response text:", response.candidates[0].content.parts[0].text);
       
       return {
-        result: { error: "Failed to parse response", raw: response.candidates[0].content.parts[0].text },
+        result: { speakers: [], error: "Failed to parse response" },
         confidence: 0.1
       };
     }

@@ -352,7 +352,14 @@ export class SearchService {
     // Limit query length to prevent API errors but allow comprehensive queries
     if (query.length > 1000) {
       console.warn('Query too long, truncating:', query.length);
-      query = query.substring(0, 1000).trim();
+      // Try to truncate at word boundaries to avoid cutting off words
+      const truncated = query.substring(0, 1000);
+      const lastSpace = truncated.lastIndexOf(' ');
+      if (lastSpace > 800) { // Only use word boundary if it's not too far back
+        query = truncated.substring(0, lastSpace).trim();
+      } else {
+        query = truncated.trim();
+      }
     }
     
     return query;
@@ -430,7 +437,14 @@ export class SearchService {
     // Limit query length to prevent API errors
     if (query.length > 200) {
       console.warn('Query too long, truncating:', query.length);
-      query = query.substring(0, 200).trim();
+      // Try to truncate at word boundaries to avoid cutting off words
+      const truncated = query.substring(0, 200);
+      const lastSpace = truncated.lastIndexOf(' ');
+      if (lastSpace > 150) { // Only use word boundary if it's not too far back
+        query = truncated.substring(0, lastSpace).trim();
+      } else {
+        query = truncated.trim();
+      }
     }
     
     return query;
@@ -873,10 +887,10 @@ export class SearchService {
             scrapeOptions: {
               formats: ["markdown"],
               onlyMainContent: true,
-              waitFor: 2000,
+              waitFor: 1000, // Reduced from 2000ms
               blockAds: true,
               removeBase64Images: true,
-              timeout: 30000
+              timeout: 15000 // Reduced from 30000ms
             },
             ignoreInvalidURLs: true
           })
@@ -918,8 +932,8 @@ export class SearchService {
    * Poll for extract results using the job ID
    */
   private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
-    const maxAttempts = 60; // 60 seconds max
-    const pollInterval = 2000; // 2 second intervals
+    const maxAttempts = 20; // 20 seconds max (reduced from 60)
+    const pollInterval = 1000; // 1 second intervals (reduced from 2)
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -1187,7 +1201,194 @@ export class SearchService {
   }
 
   /**
-   * Run the complete event discovery pipeline
+   * Prioritize URLs using Gemini AI before expensive extraction
+   */
+  static async prioritizeUrlsWithGemini(searchResults: Array<{
+    title: string;
+    link: string;
+    snippet: string;
+  }>, searchConfig: any, country: string): Promise<{
+    prioritizedUrls: string[];
+    prioritizationStats: {
+      total: number;
+      prioritized: number;
+      reasons: Array<{ url: string; score: number; reason: string }>;
+    };
+  }> {
+    try {
+      const geminiKey = process.env.GEMINI_API_KEY;
+      if (!geminiKey) {
+        console.warn('No Gemini API key, returning all URLs without prioritization');
+        return {
+          prioritizedUrls: searchResults.map(item => item.link),
+          prioritizationStats: {
+            total: searchResults.length,
+            prioritized: searchResults.length,
+            reasons: []
+          }
+        };
+      }
+
+      // Build prioritization prompt
+      const prompt = this.buildUrlPrioritizationPrompt(searchResults, searchConfig, country);
+      
+      const response = await RetryService.fetchWithRetry(
+        "gemini",
+        "prioritize_urls",
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 2048
+            }
+          })
+        }
+      );
+
+      const data = await response.json();
+      const parsed = this.parseUrlPrioritizationResponse(data, searchResults);
+      
+      console.log(`Gemini URL prioritization: ${parsed.prioritizedUrls.length}/${searchResults.length} URLs selected for extraction`);
+      
+      return parsed;
+    } catch (error: any) {
+      console.warn('Gemini URL prioritization failed:', error.message);
+      // Fallback: return top 15 URLs based on simple heuristics
+      const fallbackUrls = searchResults
+        .slice(0, 15)
+        .map(item => item.link);
+      
+      return {
+        prioritizedUrls: fallbackUrls,
+        prioritizationStats: {
+          total: searchResults.length,
+          prioritized: fallbackUrls.length,
+          reasons: []
+        }
+      };
+    }
+  }
+
+  /**
+   * Build URL prioritization prompt for Gemini
+   */
+  private static buildUrlPrioritizationPrompt(
+    searchResults: Array<{ title: string; link: string; snippet: string }>,
+    searchConfig: any,
+    country: string
+  ): string {
+    const resultsJson = JSON.stringify(searchResults, null, 2);
+    const industry = searchConfig?.industry || 'business';
+    const countryName = country === 'de' ? 'Germany' : country === 'us' ? 'United States' : country;
+    
+    return `You are an expert event discovery assistant. Your task is to prioritize URLs for event extraction based on their likelihood of containing actual business events.
+
+SEARCH CONTEXT:
+- Industry: ${industry}
+- Country: ${countryName}
+- Looking for: Conferences, summits, workshops, seminars, webinars, trade shows, professional events
+
+PRIORITIZATION CRITERIA (in order of importance):
+1. **Event Pages**: Direct event pages, conference websites, event listings
+2. **Event Aggregators**: Sites that list multiple events (Eventbrite, Meetup, etc.)
+3. **Company Event Pages**: Corporate event calendars, conference pages
+4. **Industry Associations**: Professional organization event pages
+5. **Venue Websites**: Conference centers, hotels with event listings
+6. **Academic Events**: University conferences, research symposiums
+
+EXCLUDE:
+- News articles about events (not the events themselves)
+- Job postings or career pages
+- General company pages without events
+- Blog posts or articles
+- Social media content
+- Generic directory pages
+- Pages with no clear event information
+
+SEARCH RESULTS TO PRIORITIZE:
+${resultsJson}
+
+Please analyze each URL and return a JSON response with this exact structure:
+{
+  "prioritizedUrls": [
+    "https://example.com/event1",
+    "https://example.com/event2"
+  ],
+  "reasons": [
+    {
+      "url": "https://example.com/event1",
+      "score": 0.9,
+      "reason": "Direct conference page with agenda and speakers"
+    }
+  ]
+}
+
+Return only the top 15 most promising URLs for event extraction. Focus on quality over quantity.`;
+  }
+
+  /**
+   * Parse Gemini URL prioritization response
+   */
+  private static parseUrlPrioritizationResponse(
+    response: any,
+    originalResults: Array<{ title: string; link: string; snippet: string }>
+  ): {
+    prioritizedUrls: string[];
+    prioritizationStats: {
+      total: number;
+      prioritized: number;
+      reasons: Array<{ url: string; score: number; reason: string }>;
+    };
+  } {
+    try {
+      const text = response.candidates[0].content.parts[0].text;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      
+      if (!jsonMatch) {
+        throw new Error("No JSON found in Gemini response");
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      return {
+        prioritizedUrls: parsed.prioritizedUrls || [],
+        prioritizationStats: {
+          total: originalResults.length,
+          prioritized: parsed.prioritizedUrls?.length || 0,
+          reasons: parsed.reasons || []
+        }
+      };
+    } catch (error) {
+      console.error("Error parsing Gemini prioritization response:", error);
+      
+      // Fallback: return top 10 URLs based on simple heuristics
+      const fallbackUrls = originalResults
+        .slice(0, 10)
+        .map(item => item.link);
+      
+      return {
+        prioritizedUrls: fallbackUrls,
+        prioritizationStats: {
+          total: originalResults.length,
+          prioritized: fallbackUrls.length,
+          reasons: []
+        }
+      };
+    }
+  }
+
+  /**
+   * Run the complete event discovery pipeline with optimized workflow
    */
   static async runEventDiscovery(params: {
     q: string;
@@ -1198,6 +1399,7 @@ export class SearchService {
   }): Promise<{
     events: EventRec[];
     search: any;
+    prioritization?: any;
     extract: any;
     deduped: any;
     enhancement?: any;
@@ -1218,7 +1420,7 @@ export class SearchService {
       country
     );
 
-    // Step 4: Execute search
+    // Step 4: Execute search (Firecrawl primary, CSE fallback)
     const search = await this.executeSearch({
       q: effectiveQ,
       country,
@@ -1229,11 +1431,17 @@ export class SearchService {
       topK: 50
     });
 
-    // Step 5: Extract events from URLs
-    const urls = search.items.map(item => item.link);
-    const extract = await this.extractEvents(urls);
+    // Step 5: NEW - Prioritize URLs with Gemini AI before expensive extraction
+    const prioritization = await this.prioritizeUrlsWithGemini(
+      search.items,
+      searchConfig,
+      country
+    );
 
-    // Step 6: Process and deduplicate events
+    // Step 6: Extract events from prioritized URLs only
+    const extract = await this.extractEvents(prioritization.prioritizedUrls);
+
+    // Step 7: Process and deduplicate events
     let events = extract.events;
     
     // Basic deduplication by URL
@@ -1246,16 +1454,30 @@ export class SearchService {
       return true;
     });
 
-    // Step 6: Filter by country and date (simplified)
+    // Step 8: Filter by country and date with improved logic
     const filteredEvents = events.filter(event => {
+      // Skip events with poor quality indicators
+      if (!event.title || event.title.length < 3) {
+        return false;
+      }
+      
+      // Skip events that are just URLs or generic titles
+      if (event.title === event.source_url || 
+          event.title.toLowerCase().includes('.html') ||
+          event.title.toLowerCase().includes('.aspx') ||
+          event.title.toLowerCase().includes('.php')) {
+        return false;
+      }
+      
       // Basic country filtering
       if (country && event.country && event.country.toLowerCase() !== country.toLowerCase()) {
         return false;
       }
+      
       return true;
     });
 
-    // Step 7: Enhance events with Gemini AI for speaker extraction
+    // Step 9: Enhance events with Gemini AI for speaker extraction
     const { enhancedEvents, enhancementStats } = await this.enhanceEventsWithGemini(filteredEvents);
 
     return {
@@ -1264,6 +1486,11 @@ export class SearchService {
         status: 200,
         provider: search.provider,
         items: search.items
+      },
+      prioritization: {
+        total: prioritization.prioritizationStats.total,
+        selected: prioritization.prioritizationStats.prioritized,
+        reasons: prioritization.prioritizationStats.reasons.slice(0, 5) // Show top 5 reasons
       },
       extract: {
         status: 200,
