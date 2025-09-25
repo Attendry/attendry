@@ -934,10 +934,10 @@ export class SearchService {
             scrapeOptions: {
               formats: ["markdown"],
               onlyMainContent: true,
-              waitFor: 1000, // Reduced from 2000ms
+              waitFor: 500, // Further reduced from 1000ms
               blockAds: true,
               removeBase64Images: true,
-              timeout: 15000 // Reduced from 30000ms
+              timeout: 10000 // Further reduced from 15000ms
             },
             ignoreInvalidURLs: true
           })
@@ -979,8 +979,8 @@ export class SearchService {
    * Poll for extract results using the job ID
    */
   private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
-    const maxAttempts = 20; // 20 seconds max (reduced from 60)
-    const pollInterval = 1000; // 1 second intervals (reduced from 2)
+    const maxAttempts = 10; // 10 seconds max (further reduced from 20)
+    const pollInterval = 1000; // 1 second intervals
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -1282,7 +1282,7 @@ export class SearchService {
       const response = await RetryService.fetchWithRetry(
         "gemini",
         "prioritize_urls",
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-002:generateContent?key=${geminiKey}`,
         {
           method: "POST",
           headers: {
@@ -1453,11 +1453,12 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
       console.error("Error parsing Gemini prioritization response:", error);
       console.error("Full response:", JSON.stringify(response, null, 2));
       
-      // Fallback: return URLs based on simple heuristics, filtering out obvious non-events
+      // Fallback: return URLs based on enhanced heuristics, filtering out obvious non-events
       const fallbackUrls = originalResults
         .filter(item => {
           const title = item.title.toLowerCase();
           const link = item.link.toLowerCase();
+          const snippet = (item.snippet || '').toLowerCase();
           
           // Filter out obvious non-events
           if (title.includes('job') || title.includes('career') || title.includes('hiring')) {
@@ -1473,9 +1474,41 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
             return false;
           }
           
-          return true;
+          // Enhanced filtering for better quality
+          if (title.includes('season') && title.includes('episode')) {
+            return false; // Podcast episodes, not events
+          }
+          if (title.includes('how to') || title.includes('guide') || title.includes('tutorial')) {
+            return false; // How-to articles, not events
+          }
+          if (link.includes('thought-leadership') || link.includes('insights')) {
+            return false; // Thought leadership content
+          }
+          if (title.includes('outcome tree') || title.includes('product decisions')) {
+            return false; // Product management content
+          }
+          
+          // Prefer URLs that look like events
+          const hasEventKeywords = title.includes('event') || title.includes('conference') || 
+                                 title.includes('summit') || title.includes('webinar') ||
+                                 title.includes('workshop') || title.includes('seminar') ||
+                                 title.includes('veranstaltung') || title.includes('kongress');
+          
+          // Prefer URLs with specific event indicators
+          const hasEventIndicators = snippet.includes('register') || snippet.includes('ticket') ||
+                                   snippet.includes('agenda') || snippet.includes('speaker') ||
+                                   snippet.includes('venue') || snippet.includes('date');
+          
+          // Score based on event likelihood
+          let score = 0;
+          if (hasEventKeywords) score += 2;
+          if (hasEventIndicators) score += 1;
+          if (link.includes('event') || link.includes('conference')) score += 1;
+          if (title.length > 10 && title.length < 100) score += 1; // Reasonable title length
+          
+          return score >= 1; // Only keep URLs with some event indicators
         })
-        .slice(0, 8) // Limit to 8 URLs for fallback
+        .slice(0, 5) // Limit to 5 URLs for fallback (reduced from 8)
         .map(item => item.link);
       
       return {
