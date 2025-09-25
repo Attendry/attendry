@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { SearchService } from "@/lib/services/search-service";
 
 /**
@@ -68,21 +69,35 @@ export async function POST(req: NextRequest) {
           const to = new Date(today.getFullYear(), today.getMonth() + monthsAhead, today.getDate())
             .toISOString().split('T')[0];
 
-          // Run comprehensive search using shared service
+          // Run comprehensive search using shared service with Firecrawl
           const searchData = await SearchService.runEventDiscovery({
             q: "", // Use default query from search config
             country,
             from,
             to,
-            provider: "cse"
+            provider: "firecrawl" // Use Firecrawl for better results
           });
+
+          // Store events in database
+          let eventsStored = 0;
+          if (searchData.events.length > 0) {
+            eventsStored = await storeEventsInDatabase(searchData.events, {
+              industry,
+              country,
+              from,
+              to,
+              collectedAt: new Date().toISOString(),
+              source: 'cron_firecrawl'
+            });
+          }
 
           results.push({
             industry,
             country,
             success: true,
             eventsFound: searchData.events.length,
-            eventsStored: searchData.events.length // Simplified for now
+            eventsStored: eventsStored,
+            enhancement: searchData.enhancement
           });
         } catch (error: any) {
           console.error(`[CRON] Error collecting ${industry}/${country}:`, error);
@@ -147,6 +162,63 @@ export async function GET(req: NextRequest) {
       { error: error.message },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Store events in the database with metadata
+ */
+async function storeEventsInDatabase(events: any[], metadata: any): Promise<number> {
+  try {
+    const supabase = await supabaseAdmin();
+    if (!supabase) {
+      throw new Error('Supabase client not available');
+    }
+
+    // Prepare events for database insertion
+    const eventsToInsert = events.map(event => ({
+      title: event.title,
+      description: event.description,
+      starts_at: event.starts_at,
+      ends_at: event.ends_at,
+      city: event.city,
+      country: event.country,
+      location: event.location,
+      venue: event.venue,
+      organizer: event.organizer,
+      source_url: event.source_url,
+      speakers: event.speakers || [],
+      confidence: event.confidence || 0.5,
+      collected_at: new Date().toISOString(),
+      collection_metadata: {
+        source: metadata.source,
+        industry: metadata.industry,
+        country: metadata.country,
+        from: metadata.from,
+        to: metadata.to,
+        collectedAt: metadata.collectedAt
+      }
+    }));
+
+    // Insert events (upsert to avoid duplicates)
+    const { data, error } = await supabase
+      .from('collected_events')
+      .upsert(eventsToInsert, { 
+        onConflict: 'source_url',
+        ignoreDuplicates: false 
+      });
+
+    if (error) {
+      console.error('Database insertion error:', error);
+      throw error;
+    }
+
+    console.log(`[CRON] Stored ${eventsToInsert.length} events in database for ${metadata.country}/${metadata.industry}`);
+    return eventsToInsert.length;
+
+  } catch (error: any) {
+    console.error('[CRON] Failed to store events in database:', error.message);
+    return 0; // Return 0 instead of throwing to not break the cron job
   }
 }
 

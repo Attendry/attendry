@@ -105,7 +105,6 @@ export class FirecrawlSearchService {
           waitFor: 2000,
           blockAds: true,
           removeBase64Images: true,
-          maxConcurrentBrowsers: 5,
           location: {
             country: this.mapCountryCode(country),
             languages: [this.getLanguageForCountry(country)]

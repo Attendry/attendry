@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { fetchWithRetry } from "@/lib/http";
 import { RetryService } from "./retry-service";
 import { FirecrawlSearchService } from "./firecrawl-search-service";
+import { GeminiService } from "./gemini-service";
 
 /**
  * Shared Search Service
@@ -36,10 +37,12 @@ export interface SearchConfig {
 export interface EventRec {
   source_url: string;
   title?: string;
+  description?: string;
   starts_at?: string | null;
   ends_at?: string | null;
   city?: string | null;
   country?: string | null;
+  location?: string | null;
   venue?: string | null;
   organizer?: string | null;
   topics?: string[] | null;
@@ -182,7 +185,8 @@ export class SearchService {
       console.warn('Database not available for search config, using default:', dbError);
     }
 
-    // Return default configuration with localized base queries
+    // Return default configuration with localized base queries  
+    
     return {
       id: "default",
       name: "Default Configuration",
@@ -250,6 +254,9 @@ export class SearchService {
 
   /**
    * Build enhanced query using user configuration
+   */
+  /**
+   * Build comprehensive query for Firecrawl (can handle complex queries)
    */
   static buildEnhancedQuery(
     baseQuery: string, 
@@ -342,17 +349,162 @@ export class SearchService {
       .replace(/\s+/g, ' ') // Clean up multiple spaces
       .trim();
     
-      // Limit query length to prevent API errors but allow comprehensive queries
-      if (query.length > 1000) {
-        console.warn('Query too long, truncating:', query.length);
-        query = query.substring(0, 1000).trim();
-      }
+    // Limit query length to prevent API errors but allow comprehensive queries
+    if (query.length > 1000) {
+      console.warn('Query too long, truncating:', query.length);
+      query = query.substring(0, 1000).trim();
+    }
     
     return query;
   }
 
   /**
-   * Execute search with Firecrawl primary and Google CSE fallback
+   * Build simplified query for Google CSE (avoids 400 errors)
+   */
+  static buildSimpleQuery(
+    baseQuery: string, 
+    searchConfig: any, 
+    userProfile: any, 
+    country: string
+  ): string {
+    let query = baseQuery.trim();
+    
+    // If no base query, use a simple default
+    if (!query) {
+      query = "conference";
+    }
+    
+    // Simplify query building to avoid Google CSE 400 errors
+    // Use space-separated terms instead of complex OR clauses
+    
+    // Add key industry terms (max 3 to avoid complexity)
+    if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
+      const keyTerms = searchConfig.industryTerms
+        .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
+        .slice(0, 3); // Limit to 3 key terms
+      
+      if (keyTerms.length > 0) {
+        query = `${query} ${keyTerms.join(' ')}`;
+      }
+    }
+    
+    // Add user profile terms (max 2 to avoid complexity)
+    if (userProfile?.use_in_basic_search !== false) {
+      if (userProfile.industry_terms && userProfile.industry_terms.length > 0) {
+        const userTerms = userProfile.industry_terms
+          .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
+          .slice(0, 2); // Limit to 2 user terms
+        
+        if (userTerms.length > 0) {
+          query = `${query} ${userTerms.join(' ')}`;
+        }
+      }
+    }
+    
+    // Add country-specific event keywords
+    if (country === 'de') {
+      if (!query.toLowerCase().includes('veranstaltung')) {
+        query = `${query} veranstaltung`;
+      }
+      if (!query.toLowerCase().includes('deutschland')) {
+        query = `${query} deutschland`;
+      }
+    } else {
+      // Add English event keyword if not present
+      if (!query.toLowerCase().includes('conference') && !query.toLowerCase().includes('event')) {
+        query = `${query} conference`;
+      }
+    }
+    
+    // Add current year
+    const currentYear = new Date().getFullYear();
+    if (!query.includes(currentYear.toString())) {
+      query = `${query} ${currentYear}`;
+    }
+    
+    // Clean up the query and limit length
+    query = query
+      .replace(/\s+/g, ' ') // Clean up multiple spaces
+      .trim();
+    
+    // Limit query length to prevent API errors
+    if (query.length > 200) {
+      console.warn('Query too long, truncating:', query.length);
+      query = query.substring(0, 200).trim();
+    }
+    
+    return query;
+  }
+
+  /**
+   * Check database for existing events before making API calls
+   */
+  static async checkDatabaseForEvents(params: {
+    q: string;
+    country: string;
+    from?: string;
+    to?: string;
+  }): Promise<{
+    found: boolean;
+    events: EventRec[];
+    count: number;
+  }> {
+    try {
+      const supabase = await supabaseAdmin();
+      if (!supabase) {
+        return { found: false, events: [], count: 0 };
+      }
+
+      // Build date range query
+      const dateFilter: any = {};
+      if (params.from) {
+        dateFilter.gte = params.from;
+      }
+      if (params.to) {
+        dateFilter.lte = params.to;
+      }
+
+      // Query collected events table
+      let query = supabase
+        .from('collected_events')
+        .select('*')
+        .eq('country', params.country)
+        .limit(50);
+
+      // Add date filtering if provided
+      if (params.from || params.to) {
+        query = query.gte('starts_at', params.from || '1900-01-01')
+                     .lte('starts_at', params.to || '2100-12-31');
+      }
+
+      // Add text search if query provided
+      if (params.q && params.q.trim()) {
+        query = query.or(`title.ilike.%${params.q}%,description.ilike.%${params.q}%,organizer.ilike.%${params.q}%`);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.warn('Database query error:', error.message);
+        return { found: false, events: [], count: 0 };
+      }
+
+      const events = data || [];
+      console.log(`Database check: Found ${events.length} events for ${params.country} ${params.from}-${params.to}`);
+
+      return {
+        found: events.length > 0,
+        events: events,
+        count: events.length
+      };
+    } catch (error: any) {
+      console.warn('Error checking database for events:', error.message);
+      return { found: false, events: [], count: 0 };
+    }
+  }
+
+  /**
+   * Execute search with database-first approach, then Firecrawl primary and Google CSE fallback
    */
   static async executeSearch(params: {
     q: string;
@@ -367,7 +519,32 @@ export class SearchService {
     items: SearchItem[];
     cached: boolean;
   }> {
-    // Try Firecrawl Search first with user configuration
+    // Step 1: Check database first to avoid duplicate API calls
+    const dbResult = await this.checkDatabaseForEvents({
+      q: params.q,
+      country: params.country,
+      from: params.from,
+      to: params.to
+    });
+
+    if (dbResult.found && dbResult.events.length > 0) {
+      console.log(JSON.stringify({ at: "search_service", provider: "database", found: dbResult.count, cached: true }));
+      
+      // Convert database events to SearchItem format
+      const items: SearchItem[] = dbResult.events.map(event => ({
+        title: event.title || "Event",
+        link: event.source_url || "",
+        snippet: event.description || event.title || "Event details"
+      }));
+
+      return {
+        provider: "database",
+        items: items.slice(0, params.num || 20),
+        cached: true
+      };
+    }
+
+    // Step 2: Try Firecrawl Search with user configuration
     try {
       console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "primary" }));
       
@@ -398,7 +575,7 @@ export class SearchService {
       console.warn('Firecrawl Search failed, falling back to Google CSE:', error);
     }
 
-    // Fallback to Google CSE
+    // Step 3: Fallback to Google CSE
     console.log(JSON.stringify({ at: "search_service", provider: "google_cse", attempt: "fallback" }));
     return await this.executeGoogleCSESearch(params);
   }
@@ -458,31 +635,14 @@ export class SearchService {
       return result;
     }
 
-    // Build enhanced query - ultra simplified to avoid Google CSE 400 errors
-    let enhancedQuery = q;
+    // Load user profile for query building
+    const userProfile = await this.loadUserProfile().catch(error => {
+      console.warn('Failed to load user profile for Google CSE, continuing without user-specific enhancements:', error.message);
+      return null;
+    });
     
-    // Use localized base query based on country
-    let simpleBaseQuery = "conference 2025";
-    if (country === "de") {
-      simpleBaseQuery = "(veranstaltung OR konferenz OR kongress OR workshop OR panel) deutschland 2025";
-    } else if (country === "fr") {
-      simpleBaseQuery = "(conférence OR congrès OR atelier OR panel) france 2025";
-    } else if (country === "nl") {
-      simpleBaseQuery = "(conferentie OR congres OR workshop OR panel) nederland 2025";
-    }
-    
-    if (!q.trim()) {
-      enhancedQuery = simpleBaseQuery;
-    } else if (q.trim()) {
-      // Use simple space separation instead of AND to avoid issues
-      enhancedQuery = `${q} ${simpleBaseQuery}`;
-    }
-
-    // Limit query length to prevent 400 errors
-    if (enhancedQuery.length > 200) {
-      console.warn('Query too long, truncating to prevent 400 error:', enhancedQuery.length);
-      enhancedQuery = enhancedQuery.substring(0, 200);
-    }
+    // Build simplified query for Google CSE to avoid 400 errors
+    const enhancedQuery = this.buildSimpleQuery(q, searchConfig, userProfile, country);
 
     // Build search parameters
     const searchParams = new URLSearchParams({
@@ -569,6 +729,76 @@ export class SearchService {
   }
 
   /**
+   * Enhance events with Gemini AI for speaker extraction and additional information
+   */
+  static async enhanceEventsWithGemini(events: EventRec[]): Promise<{
+    enhancedEvents: EventRec[];
+    enhancementStats: {
+      processed: number;
+      enhanced: number;
+      speakersFound: number;
+    };
+  }> {
+    const stats = {
+      processed: 0,
+      enhanced: 0,
+      speakersFound: 0
+    };
+
+    const enhancedEvents: EventRec[] = [];
+
+    for (const event of events) {
+      stats.processed++;
+      
+      try {
+        // Skip if event already has speakers
+        if (event.speakers && event.speakers.length > 0) {
+          enhancedEvents.push(event);
+          continue;
+        }
+
+        // Use Gemini to extract speakers and enhance event information
+        const enhancementResult = await GeminiService.extractWithGemini({
+          content: event.description || event.title || "",
+          prompt: `Extract speaker information from this event description. Look for:
+          - Speaker names
+          - Their organizations/companies
+          - Job titles/roles
+          - Session titles or topics they're speaking about
+          
+          Return a JSON array of speakers with fields: name, org, title, session_title, confidence (0-1)`,
+          context: {
+            eventTitle: event.title,
+            eventDate: event.starts_at,
+            eventLocation: event.location || event.city
+          }
+        });
+
+        if (enhancementResult.result?.speakers) {
+          const speakers = enhancementResult.result.speakers;
+          if (speakers.length > 0) {
+            event.speakers = speakers;
+            stats.speakersFound += speakers.length;
+            stats.enhanced++;
+          }
+        }
+
+        enhancedEvents.push(event);
+      } catch (error: any) {
+        console.warn(`Failed to enhance event "${event.title}" with Gemini:`, error.message);
+        enhancedEvents.push(event); // Add original event even if enhancement fails
+      }
+    }
+
+    console.log(`Gemini enhancement complete: ${stats.enhanced}/${stats.processed} events enhanced, ${stats.speakersFound} speakers found`);
+
+    return {
+      enhancedEvents,
+      enhancementStats: stats
+    };
+  }
+
+  /**
    * Extract event details from URLs using Firecrawl
    */
   static async extractEvents(urls: string[]): Promise<{
@@ -646,7 +876,6 @@ export class SearchService {
               waitFor: 2000,
               blockAds: true,
               removeBase64Images: true,
-              maxConcurrentBrowsers: 5,
               timeout: 30000
             },
             ignoreInvalidURLs: true
@@ -823,7 +1052,7 @@ export class SearchService {
     console.log(`Final events count: ${events.length}`);
 
     // Enhance events with Gemini API for speaker extraction
-    const enhancedEvents = await this.enhanceEventsWithGemini(events, extractData);
+    const { enhancedEvents } = await this.enhanceEventsWithGemini(events);
 
     return {
       events: enhancedEvents,
@@ -832,99 +1061,6 @@ export class SearchService {
     };
   }
 
-  /**
-   * Enhance events with Gemini API for speaker extraction
-   */
-  private static async enhanceEventsWithGemini(events: EventRec[], extractData: any): Promise<EventRec[]> {
-    const geminiKey = process.env.GEMINI_API_KEY;
-    
-    if (!geminiKey || events.length === 0) {
-      return events;
-    }
-
-    try {
-      const { GoogleGenerativeAI } = await import("@google/generative-ai");
-      const genai = new GoogleGenerativeAI(geminiKey);
-      const model = genai.getGenerativeModel({ model: "gemini-1.5-pro" });
-
-      // Collect all markdown content for processing
-      const markdownContent: string[] = [];
-      if (extractData.data) {
-        const rawData = Array.isArray(extractData.data) ? extractData.data : [extractData.data];
-        for (const data of rawData) {
-          if (data?.markdown) {
-            markdownContent.push(data.markdown);
-          }
-        }
-      }
-
-      if (markdownContent.length === 0) {
-        return events;
-      }
-
-      const prompt = `You are an expert at extracting speaker information from event content. Analyze the following event content and extract all speakers, presenters, panelists, and keynotes.
-
-For each speaker found, return:
-- name: Full name (first and last name)
-- org: Organization/company they work for
-- title: Job title or role (if mentioned)
-- speech_title: Title of their presentation/speech (if mentioned)
-- session: Session name or track (if mentioned)
-
-Look for sections with these labels in multiple languages:
-English: Speakers, Presenters, Panelists, Keynotes, Moderators, Hosts, Faculty, Instructors
-German: Referenten, Referent:innen, Sprecher, Vortragende, Mitwirkende, Moderatoren, Gastgeber
-French: Conférenciers, Présentateurs, Panélistes, Intervenants, Modérateurs
-Spanish: Ponentes, Presentadores, Panelistas, Oradores, Moderadores
-Italian: Relatori, Presentatori, Panelisti, Ospiti, Moderatori
-Dutch: Sprekers, Presentatoren, Panelleden, Gasten, Moderators
-
-Also check: Agenda, Program, Schedule, Programme, Fachprogramm, Programme détaillé
-
-IMPORTANT: 
-- Only extract people who are clearly identified as speakers/presenters
-- Do not invent names or information
-- Skip generic entries like "TBA", "To be announced", "Speaker TBD"
-- Focus on real people with actual names and organizations
-- If a person appears multiple times, include them only once with the most complete information
-
-Return a JSON array of speaker objects. If no speakers are found, return an empty array.`;
-
-      const response = await model.generateContent(`${prompt}\n\nContent to analyze:\n${markdownContent.join('\n\n---\n\n')}`);
-      const text = response.response.text();
-      
-      if (!text) return events;
-
-      // Clean and parse the response
-      let cleanText = text.trim();
-      if (cleanText.startsWith('```json')) {
-        cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanText.startsWith('```')) {
-        cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
-      const jsonStart = cleanText.indexOf('[');
-      const jsonEnd = cleanText.lastIndexOf(']') + 1;
-      if (jsonStart !== -1 && jsonEnd > jsonStart) {
-        cleanText = cleanText.substring(jsonStart, jsonEnd);
-      }
-      
-      const speakers = JSON.parse(cleanText);
-      if (!Array.isArray(speakers)) return events;
-
-      // Add speakers to the first event (or distribute among events if multiple)
-      const enhancedEvents = [...events];
-      if (enhancedEvents.length > 0 && speakers.length > 0) {
-        enhancedEvents[0].speakers = speakers;
-        enhancedEvents[0].confidence = Math.min((enhancedEvents[0].confidence || 0.5) + 0.2, 1.0);
-      }
-
-      return enhancedEvents;
-    } catch (error) {
-      console.warn('Gemini speaker enhancement failed:', error);
-      return events;
-    }
-  }
 
   /**
    * Extract title from markdown content
@@ -1064,6 +1200,7 @@ Return a JSON array of speaker objects. If no speakers are found, return an empt
     search: any;
     extract: any;
     deduped: any;
+    enhancement?: any;
   }> {
     const { q = "", country = "", from, to, provider = "cse" } = params;
 
@@ -1118,8 +1255,11 @@ Return a JSON array of speaker objects. If no speakers are found, return an empt
       return true;
     });
 
+    // Step 7: Enhance events with Gemini AI for speaker extraction
+    const { enhancedEvents, enhancementStats } = await this.enhanceEventsWithGemini(filteredEvents);
+
     return {
-      events: filteredEvents,
+      events: enhancedEvents,
       search: {
         status: 200,
         provider: search.provider,
@@ -1133,6 +1273,11 @@ Return a JSON array of speaker objects. If no speakers are found, return an empt
       },
       deduped: {
         count: filteredEvents.length
+      },
+      enhancement: {
+        processed: enhancementStats.processed,
+        enhanced: enhancementStats.enhanced,
+        speakersFound: enhancementStats.speakersFound
       }
     };
   }
