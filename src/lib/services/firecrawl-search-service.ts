@@ -152,6 +152,23 @@ export class FirecrawlSearchService {
       
       if (data.success && data.data?.web) {
         for (const result of data.data.web) {
+          // Filter out social media and other non-event domains
+          const url = result.url || "";
+          const hostname = new URL(url).hostname.toLowerCase();
+          const socialMediaDomains = [
+            "instagram.com", "www.instagram.com",
+            "facebook.com", "www.facebook.com", 
+            "twitter.com", "www.twitter.com", "x.com", "www.x.com",
+            "linkedin.com", "www.linkedin.com",
+            "youtube.com", "www.youtube.com",
+            "tiktok.com", "www.tiktok.com",
+            "reddit.com", "www.reddit.com"
+          ];
+          
+          if (socialMediaDomains.includes(hostname)) {
+            continue; // Skip social media results
+          }
+          
           // Filter for event-related content
           const content = (result.title + " " + result.description + " " + (result.markdown || "")).toLowerCase();
           const isEventRelated = this.isEventRelated(content);

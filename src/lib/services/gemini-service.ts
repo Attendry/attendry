@@ -211,7 +211,8 @@ FILTERING RULES:
    - Job postings or career pages
    - General company pages
    - Blog posts or articles
-   - Social media posts
+   - Social media posts (Instagram, Facebook, Twitter, LinkedIn, YouTube, TikTok)
+   - Social media content (reels, posts, stories, videos)
    - Pages from banned hosts: ${banHostsList}
    - Items with titles matching: ${dropTitleRegex.source}
 

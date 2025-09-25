@@ -188,7 +188,7 @@ export class SearchService {
       name: "Default Configuration",
       industry: "legal-compliance",
       baseQuery: "compliance veranstaltung OR compliance konferenz OR compliance kongress OR compliance panel OR compliance workshop OR datenschutz veranstaltung OR dsgvo konferenz OR compliance summit deutschland",
-      excludeTerms: "reddit forum personal blog international global usa america",
+      excludeTerms: "reddit forum personal blog international global usa america instagram facebook twitter linkedin social media reel post",
       industryTerms: ["compliance", "legal", "investigation", "datenschutz", "dsgvo", "recht", "regulierung", "audit", "risk management", "governance"],
       icpTerms: ["legal counsel", "compliance officer", "datenschutzbeauftragter", "compliance manager"],
       speakerPrompts: {
@@ -536,8 +536,17 @@ export class SearchService {
         return false;
       }
       
-      // Filter out banned hosts
-      const bannedHosts = ["reddit.com", "www.reddit.com", "mumsnet.com", "www.mumsnet.com"];
+      // Filter out banned hosts (social media, forums, etc.)
+      const bannedHosts = [
+        "reddit.com", "www.reddit.com", 
+        "mumsnet.com", "www.mumsnet.com",
+        "instagram.com", "www.instagram.com",
+        "facebook.com", "www.facebook.com",
+        "twitter.com", "www.twitter.com", "x.com", "www.x.com",
+        "linkedin.com", "www.linkedin.com",
+        "youtube.com", "www.youtube.com",
+        "tiktok.com", "www.tiktok.com"
+      ];
       const hostname = new URL(item.link).hostname.toLowerCase();
       if (bannedHosts.includes(hostname)) {
         return false;

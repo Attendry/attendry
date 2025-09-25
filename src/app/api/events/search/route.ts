@@ -869,6 +869,12 @@ export async function POST(req: NextRequest) {
     const BAN_HOSTS = new Set([
       "reddit.com","www.reddit.com",
       "mumsnet.com","www.mumsnet.com",
+      "instagram.com","www.instagram.com",
+      "facebook.com","www.facebook.com",
+      "twitter.com","www.twitter.com","x.com","www.x.com",
+      "linkedin.com","www.linkedin.com",
+      "youtube.com","www.youtube.com",
+      "tiktok.com","www.tiktok.com"
     ]);
 
     // Use Gemini AI for intelligent event filtering
