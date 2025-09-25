@@ -475,10 +475,20 @@ export async function POST(req: NextRequest) {
       beforeCount: events.length,
       afterCount: kept.length,
       reasons: reasons,
-      sampleEvents: events.slice(0, 3).map(e => ({
+      sampleEvents: events.slice(0, 5).map(e => ({
         title: e.title,
         country: e.country,
         city: e.city,
+        location: e.location,
+        venue: e.venue,
+        source_url: e.source_url
+      })),
+      allEvents: events.map(e => ({
+        title: e.title,
+        country: e.country,
+        city: e.city,
+        location: e.location,
+        venue: e.venue,
         source_url: e.source_url
       }))
     });

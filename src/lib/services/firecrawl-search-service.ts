@@ -93,7 +93,7 @@ export class FirecrawlSearchService {
       // Build search parameters according to Firecrawl v2 API docs
       const searchParams = {
         query: searchQuery,
-        limit: Math.min(maxResults, 100), // Firecrawl limit is 100
+        limit: Math.min(maxResults, 50), // Reduce limit to focus on quality
         sources: ["web"], // Focus on web results for events
         location: this.mapCountryToLocation(country),
         tbs: this.buildTimeBasedSearch(from, to),
@@ -252,6 +252,18 @@ export class FirecrawlSearchService {
         // Add the primary country name to the search
         const primaryName = names[0] || country;
         searchQuery += ` ${primaryName}`;
+      }
+      
+      // For Germany, add more specific location terms to reduce global results
+      if (country === 'de') {
+        // Add German city names to make search more specific
+        const germanCities = ['berlin', 'munich', 'hamburg', 'cologne', 'frankfurt', 'stuttgart'];
+        const hasGermanCity = germanCities.some(city => searchQuery.toLowerCase().includes(city));
+        
+        if (!hasGermanCity) {
+          // Add a major German city to focus the search
+          searchQuery += ' berlin';
+        }
       }
     }
 
