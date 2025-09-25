@@ -48,7 +48,24 @@ const DROP_TITLE = /\b(404|page not found|nicht gefunden|fehler\s*404)\b/i;
 const DE_CITIES = new Set([
   "Berlin","München","Munich","Hamburg","Köln","Cologne","Frankfurt","Stuttgart","Düsseldorf",
   "Leipzig","Bremen","Dresden","Hannover","Nürnberg","Nuremberg","Heidelberg","Freiburg",
-  "Aachen","Bonn","Münster","Mainz","Wiesbaden"
+  "Aachen","Bonn","Münster","Mainz","Wiesbaden","Mannheim","Karlsruhe","Augsburg","Bielefeld",
+  "Bochum","Wuppertal","Essen","Duisburg","Mönchengladbach","Gelsenkirchen","Braunschweig",
+  "Chemnitz","Kiel","Halle","Magdeburg","Freiburg im Breisgau","Krefeld","Lübeck","Oberhausen",
+  "Erfurt","Rostock","Kassel","Hagen","Hamm","Saarbrücken","Mülheim","Potsdam","Ludwigshafen",
+  "Oldenburg","Leverkusen","Osnabrück","Solingen","Heidelberg","Herne","Neuss","Darmstadt",
+  "Paderborn","Regensburg","Ingolstadt","Würzburg","Fürth","Wolfsburg","Offenbach","Ulm",
+  "Heilbronn","Pforzheim","Göttingen","Bottrop","Trier","Recklinghausen","Reutlingen","Bremerhaven",
+  "Koblenz","Bergisch Gladbach","Jena","Remscheid","Erlangen","Moers","Siegen","Hildesheim",
+  "Salzgitter"
+]);
+
+// German location indicators (cities, states, regions)
+const DE_LOCATION_INDICATORS = new Set([
+  "Baden-Württemberg", "Bayern", "Bavaria", "Berlin", "Brandenburg", "Bremen", "Hamburg",
+  "Hessen", "Hesse", "Mecklenburg-Vorpommern", "Niedersachsen", "Lower Saxony", "Nordrhein-Westfalen",
+  "North Rhine-Westphalia", "Rheinland-Pfalz", "Rhineland-Palatinate", "Saarland", "Sachsen",
+  "Saxony", "Sachsen-Anhalt", "Saxony-Anhalt", "Schleswig-Holstein", "Thüringen", "Thuringia",
+  "Deutschland", "Germany", "Deutsch", "German"
 ]);
 
 function tldCountry(u: string): string | null {
@@ -76,15 +93,36 @@ function postExtractFilter(events: any[], country: string) {
   const reasons: Record<string, number> = { kept:0, wrongCountry:0, ambiguous:0 };
 
   const kept = events.filter((e) => {
-    // explicit country match
+    // explicit country match (exact)
     if (e.country && wantName && e.country === wantName) { reasons.kept++; return true; }
 
-    // city-based acceptance (Germany selection only here)
-    if (want === "de" && e.city && DE_CITIES.has(e.city)) { reasons.kept++; return true; }
+    // For Germany, check various location indicators
+    if (want === "de") {
+      // Check city in expanded German cities list
+      if (e.city && DE_CITIES.has(e.city)) { reasons.kept++; return true; }
+      
+      // Check if any location field contains German indicators
+      const locationText = `${e.city || ''} ${e.country || ''} ${e.location || ''} ${e.venue || ''}`.toLowerCase();
+      for (const indicator of DE_LOCATION_INDICATORS) {
+        if (locationText.includes(indicator.toLowerCase())) { reasons.kept++; return true; }
+      }
+      
+      // Check if title/description mentions German locations
+      const contentText = `${e.title || ''} ${e.description || ''}`.toLowerCase();
+      for (const indicator of DE_LOCATION_INDICATORS) {
+        if (contentText.includes(indicator.toLowerCase())) { reasons.kept++; return true; }
+      }
+    }
 
-    // TLD-based fallback
+    // TLD-based fallback (optional - not required for Germany)
     const tld = tldCountry(e.source_url);
     if (tld && wantName && tld === wantName) { reasons.kept++; return true; }
+
+    // For other countries, use original logic
+    if (want !== "de") {
+      // city-based acceptance for other countries
+      if (e.city && wantName && e.city.toLowerCase().includes(wantName.toLowerCase())) { reasons.kept++; return true; }
+    }
 
     // otherwise drop
     if (e.country || e.city || tld) reasons.wrongCountry = (reasons.wrongCountry||0) + 1;
@@ -383,13 +421,26 @@ export async function POST(req: NextRequest) {
     
     // Apply country-based filtering
     const { kept, reasons } = postExtractFilter(events, country);
+    console.log(`Country filtering for ${country}:`, {
+      beforeCount: events.length,
+      afterCount: kept.length,
+      reasons: reasons,
+      sampleEvents: events.slice(0, 3).map(e => ({
+        title: e.title,
+        country: e.country,
+        city: e.city,
+        source_url: e.source_url
+      }))
+    });
     events = kept;
     const undatedCandidates: EventRec[] = [];
     
     // Determine if we should allow undated items (demo/minimal extraction modes)
+    // Also allow undated items if we have good country matches (events are likely relevant)
     const allowUndated = !!(debug as any)?.synthesizedFromSearch ||
       (typeof (search as any)?.provider === 'string' && (((search as any).provider || '').includes('demo')) ) ||
-      (typeof (extractResult as any)?.note === 'string' && (extractResult as any).note.includes('no FIRECRAWL_KEY'));
+      (typeof (extractResult as any)?.note === 'string' && (extractResult as any).note.includes('no FIRECRAWL_KEY')) ||
+      (events.length > 0 && events.some(e => e.country || e.city)); // Allow if we have location info
 
     // Apply date range filtering
     if (debugEnabled) debug.dateFiltering = { from, to, beforeCount: events.length, allowUndated };
@@ -397,6 +448,20 @@ export async function POST(req: NextRequest) {
     const toleranceMs = toleranceDays * 24 * 60 * 60 * 1000;
     const rangeStartMs = new Date(from + "T00:00:00Z").getTime();
     const rangeEndMs = new Date(to + "T23:59:59Z").getTime();
+    
+    console.log(`Date filtering:`, {
+      from, to,
+      beforeCount: events.length,
+      allowUndated,
+      rangeStartMs: new Date(rangeStartMs).toISOString(),
+      rangeEndMs: new Date(rangeEndMs).toISOString(),
+      sampleEvents: events.slice(0, 3).map(e => ({
+        title: e.title,
+        starts_at: e.starts_at,
+        hasDate: !!e.starts_at
+      }))
+    });
+    
     events = events.filter((e: EventRec) => {
       // If no dates, keep the event when relaxed modes are active
       if (!e.starts_at && !e.ends_at) {
@@ -452,6 +517,12 @@ export async function POST(req: NextRequest) {
       
       return false;
     });
+    
+    console.log(`After date filtering:`, {
+      afterCount: events.length,
+      undatedCandidates: undatedCandidates.length
+    });
+    
     if (debugEnabled) debug.dateFiltering.afterCount = events.length;
     if (events.length === 0 && undatedCandidates.length > 0) {
       events = undatedCandidates.slice(0, 5);
