@@ -583,7 +583,33 @@ export class SearchService {
       
       if (firecrawlResult.items.length > 0) {
         console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", success: true, items: firecrawlResult.items.length }));
-        return firecrawlResult;
+        
+        // NEW: Add Gemini prioritization before returning results
+        try {
+          console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization", items: firecrawlResult.items.length }));
+          const prioritization = await this.prioritizeUrlsWithGemini(firecrawlResult.items, searchConfig, params.country);
+          
+          // Return only prioritized URLs as search items
+          const prioritizedItems = firecrawlResult.items.filter(item => 
+            prioritization.prioritizedUrls.includes(item.link)
+          );
+          
+          console.log(JSON.stringify({ 
+            at: "search_service", 
+            step: "prioritization_complete", 
+            original: firecrawlResult.items.length, 
+            prioritized: prioritizedItems.length 
+          }));
+          
+          return {
+            provider: firecrawlResult.provider,
+            items: prioritizedItems,
+            cached: false
+          };
+        } catch (error: any) {
+          console.warn('Gemini prioritization failed, returning all results:', error.message);
+          return firecrawlResult;
+        }
       }
     } catch (error) {
       console.warn('Firecrawl Search failed, falling back to Google CSE:', error);
@@ -729,9 +755,30 @@ export class SearchService {
       return true;
     });
 
+    // Apply Gemini prioritization to Google CSE results as well
+    let finalItems = filteredItems;
+    try {
+      console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization_cse", items: filteredItems.length }));
+      const prioritization = await this.prioritizeUrlsWithGemini(filteredItems, searchConfig, country);
+      
+      // Return only prioritized URLs
+      finalItems = filteredItems.filter(item => 
+        prioritization.prioritizedUrls.includes(item.link)
+      );
+      
+      console.log(JSON.stringify({ 
+        at: "search_service", 
+        step: "prioritization_complete_cse", 
+        original: filteredItems.length, 
+        prioritized: finalItems.length 
+      }));
+    } catch (error: any) {
+      console.warn('Gemini prioritization failed for CSE results, returning all filtered results:', error.message);
+    }
+
     const result = {
       provider: "cse",
-      items: filteredItems,
+      items: finalItems,
       cached: false
     };
 
@@ -1299,21 +1346,32 @@ SEARCH CONTEXT:
 - Looking for: Conferences, summits, workshops, seminars, webinars, trade shows, professional events
 
 PRIORITIZATION CRITERIA (in order of importance):
-1. **Event Pages**: Direct event pages, conference websites, event listings
+1. **Event Pages**: Direct event pages with specific dates, venues, and agendas
 2. **Event Aggregators**: Sites that list multiple events (Eventbrite, Meetup, etc.)
-3. **Company Event Pages**: Corporate event calendars, conference pages
-4. **Industry Associations**: Professional organization event pages
-5. **Venue Websites**: Conference centers, hotels with event listings
-6. **Academic Events**: University conferences, research symposiums
+3. **Conference Websites**: Dedicated conference or summit websites
+4. **Company Event Pages**: Corporate event calendars with specific events
+5. **Industry Associations**: Professional organization event pages
+6. **Venue Websites**: Conference centers, hotels with event listings
+7. **Academic Events**: University conferences, research symposiums
 
-EXCLUDE:
+SCORING GUIDELINES:
+- Score 0.9-1.0: Direct event pages with clear dates, venues, speakers
+- Score 0.7-0.8: Event aggregators or conference websites
+- Score 0.5-0.6: Company event calendars or industry association pages
+- Score 0.0-0.4: News articles, job postings, general company pages
+
+EXCLUDE (HIGH PRIORITY):
 - News articles about events (not the events themselves)
-- Job postings or career pages
+- Job postings, career pages, or hiring information
 - General company pages without events
 - Blog posts or articles
 - Social media content
 - Generic directory pages
 - Pages with no clear event information
+- Law firm general pages (unless they have specific events)
+- Thought leadership content
+- Press releases
+- Any content from indeed.com, linkedin.com, or job sites
 
 SEARCH RESULTS TO PRIORITIZE:
 ${resultsJson}
