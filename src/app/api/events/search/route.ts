@@ -70,12 +70,50 @@ interface EventItem {
  * @returns Enhanced search query string
  */
 function buildEnhancedQuery(userQuery: string, searchConfig: any, country: string, from: string, to: string): string {
-  // TEMPORARILY DISABLE COMPLEX QUERIES - always use simple format to avoid 400 errors
   const industryTerms = searchConfig.industryTerms || [];
   const currentYear = new Date().getFullYear();
   
-  // Always return simple query format regardless of user input
-  return `${industryTerms[0] || 'compliance'} conference ${currentYear}`;
+  // Use user query if provided, otherwise use base query from config
+  let query = userQuery.trim() || searchConfig.baseQuery || 'conference';
+  
+  // Build comprehensive query using all available terms
+  const queryParts: string[] = [];
+  queryParts.push(query);
+  
+  // Add industry terms from search config
+  if (industryTerms.length > 0) {
+    const filteredTerms = industryTerms
+      .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
+      .slice(0, 5); // Limit to 5 industry terms
+    
+    if (filteredTerms.length > 0) {
+      queryParts.push(`(${filteredTerms.join(' OR ')})`);
+    }
+  }
+  
+  // Add country-specific event terms
+  if (country === 'de') {
+    const germanEventTerms = ['veranstaltung', 'konferenz', 'kongress', 'workshop'];
+    const hasGermanEventTerm = germanEventTerms.some(term => query.toLowerCase().includes(term));
+    
+    if (!hasGermanEventTerm) {
+      queryParts.push('(veranstaltung OR konferenz OR kongress)');
+    }
+  }
+  
+  // Add year
+  queryParts.push(currentYear.toString());
+  
+  // Combine all parts
+  const finalQuery = queryParts.join(' ');
+  
+  // Limit query length to prevent API errors
+  if (finalQuery.length > 500) {
+    console.warn('Query too long, truncating:', finalQuery.length);
+    return finalQuery.substring(0, 500).trim();
+  }
+  
+  return finalQuery.trim();
 }
 
 /**

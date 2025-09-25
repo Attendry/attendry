@@ -93,7 +93,7 @@ export class FirecrawlSearchService {
       // Build search parameters according to Firecrawl v2 API docs
       const searchParams = {
         query: searchQuery,
-        limit: Math.min(maxResults, 50), // Reduce limit to focus on quality
+        limit: Math.min(maxResults, 30), // Further reduce limit to focus on quality
         sources: ["web"], // Focus on web results for events
         location: this.mapCountryToLocation(country),
         tbs: this.buildTimeBasedSearch(from, to),
@@ -217,6 +217,23 @@ export class FirecrawlSearchService {
         .replace(/\s+/g, ' ') // Clean up multiple spaces
         .trim();
       
+      // For Germany, make the query more specific to avoid international results
+      if (country === 'de') {
+        // Use German-specific compliance and legal terms
+        const germanTerms = ['datenschutz', 'dsgvo', 'compliance', 'recht', 'legal', 'veranstaltung', 'kongress'];
+        const hasGermanTerms = germanTerms.some(term => searchQuery.toLowerCase().includes(term));
+        
+        if (!hasGermanTerms) {
+          // Replace generic terms with German equivalents
+          searchQuery = searchQuery
+            .replace(/\b(legal|compliance|investigation)\b/gi, 'compliance')
+            .replace(/\b(conference|event|summit)\b/gi, 'veranstaltung');
+          
+          // Add German context
+          searchQuery = `deutsche ${searchQuery} deutschland`;
+        }
+      }
+      
       // Add event keywords if not present (English and German)
       const hasEventKeywords = ['conference', 'event', 'summit', 'veranstaltung', 'kongress', 'konferenz'].some(keyword => 
         searchQuery.toLowerCase().includes(keyword)
@@ -263,6 +280,15 @@ export class FirecrawlSearchService {
         if (!hasGermanCity) {
           // Add a major German city to focus the search
           searchQuery += ' berlin';
+        }
+        
+        // Add German-specific event terms to find local events
+        const germanEventTerms = ['deutschland', 'deutsche', 'german', 'veranstaltung', 'kongress', 'konferenz', 'workshop', 'panel', 'summit'];
+        const hasGermanEventTerm = germanEventTerms.some(term => searchQuery.toLowerCase().includes(term));
+        
+        if (!hasGermanEventTerm) {
+          // Add multiple German event types
+          searchQuery += ' (veranstaltung OR konferenz OR kongress OR workshop)';
         }
       }
     }

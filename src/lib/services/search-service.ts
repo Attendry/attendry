@@ -182,15 +182,15 @@ export class SearchService {
       console.warn('Database not available for search config, using default:', dbError);
     }
 
-    // Return default configuration
+    // Return default configuration with localized base queries
     return {
       id: "default",
       name: "Default Configuration",
       industry: "legal-compliance",
-      baseQuery: "legal compliance conference",
-      excludeTerms: "reddit forum personal blog",
-      industryTerms: ["compliance", "legal", "investigation"],
-      icpTerms: ["legal counsel", "compliance officer"],
+      baseQuery: "compliance veranstaltung OR compliance konferenz OR compliance kongress OR compliance panel OR compliance workshop OR datenschutz veranstaltung OR dsgvo konferenz OR compliance summit deutschland",
+      excludeTerms: "reddit forum personal blog international global usa america",
+      industryTerms: ["compliance", "legal", "investigation", "datenschutz", "dsgvo", "recht", "regulierung", "audit", "risk management", "governance"],
+      icpTerms: ["legal counsel", "compliance officer", "datenschutzbeauftragter", "compliance manager"],
       speakerPrompts: {
         extraction: "Extract ALL speakers on the page(s). For each, return name, organization (org), title/role if present, and profile_url if linked. Look for sections labelled Speakers, Referenten, Referent:innen, Sprecher, Vortragende, Mitwirkende, Panel, Agenda/Programm/Fachprogramm. Do not invent names; only list people visible on the pages.",
         normalization: "You are a data normalizer. Merge duplicate speakers across pages. Return clean JSON with fields: name, org, title, profile_url, source_url (one of the pages), confidence (0-1). Do not invent people. Keep only real names (≥2 tokens)."
@@ -264,33 +264,61 @@ export class SearchService {
       query = "conference";
     }
     
-    // Limit the query to avoid overly broad searches
-    // Only add a few key terms to keep it focused
-    const maxTerms = 5;
-    let addedTerms = 0;
+    // Build comprehensive query using all available terms
+    const queryParts: string[] = [];
     
-    // Add a few key industry terms from search config (limit to 2-3)
-    if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0 && addedTerms < maxTerms) {
-      const keyTerms = searchConfig.industryTerms.slice(0, 2); // Take only first 2 terms
-      for (const term of keyTerms) {
-        if (!query.toLowerCase().includes(term.toLowerCase()) && addedTerms < maxTerms) {
-          query = `${query} ${term}`;
-          addedTerms++;
+    // Start with base query
+    queryParts.push(query);
+    
+    // Add industry terms from search config
+    if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
+      const industryTerms = searchConfig.industryTerms
+        .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
+        .slice(0, 5); // Limit to 5 industry terms
+      
+      if (industryTerms.length > 0) {
+        queryParts.push(`(${industryTerms.join(' OR ')})`);
+      }
+    }
+    
+    // Add user profile terms if available and enabled
+    if (userProfile?.use_in_basic_search !== false) {
+      // Add user's industry terms
+      if (userProfile.industry_terms && userProfile.industry_terms.length > 0) {
+        const userIndustryTerms = userProfile.industry_terms
+          .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
+          .slice(0, 3); // Limit to 3 user industry terms
+        
+        if (userIndustryTerms.length > 0) {
+          queryParts.push(`(${userIndustryTerms.join(' OR ')})`);
+        }
+      }
+      
+      // Add user's ICP terms
+      if (userProfile.icp_terms && userProfile.icp_terms.length > 0) {
+        const icpTerms = userProfile.icp_terms
+          .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
+          .slice(0, 3); // Limit to 3 ICP terms
+        
+        if (icpTerms.length > 0) {
+          queryParts.push(`(${icpTerms.join(' OR ')})`);
+        }
+      }
+      
+      // Add competitors (as positive terms to find related events)
+      if (userProfile.competitors && userProfile.competitors.length > 0) {
+        const competitors = userProfile.competitors
+          .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
+          .slice(0, 2); // Limit to 2 competitors
+        
+        if (competitors.length > 0) {
+          queryParts.push(`(${competitors.join(' OR ')})`);
         }
       }
     }
     
-    // Add user profile terms if available and enabled (limit to 1-2)
-    if (userProfile?.use_in_basic_search && addedTerms < maxTerms) {
-      // Add user's industry terms (limit to 1)
-      if (userProfile.industry_terms && userProfile.industry_terms.length > 0 && addedTerms < maxTerms) {
-        const keyTerm = userProfile.industry_terms[0]; // Take only first term
-        if (!query.toLowerCase().includes(keyTerm.toLowerCase())) {
-          query = `${query} ${keyTerm}`;
-          addedTerms++;
-        }
-      }
-    }
+    // Combine all parts
+    query = queryParts.join(' ');
     
     // Add German event keywords for German searches
     if (country === 'de') {
@@ -314,10 +342,10 @@ export class SearchService {
       .replace(/\s+/g, ' ') // Clean up multiple spaces
       .trim();
     
-    // Limit query length to prevent overly broad searches
-    if (query.length > 100) {
-      const words = query.split(' ');
-      query = words.slice(0, 8).join(' '); // Limit to 8 words
+    // Limit query length to prevent API errors but allow comprehensive queries
+    if (query.length > 500) {
+      console.warn('Query too long, truncating:', query.length);
+      query = query.substring(0, 500).trim();
     }
     
     return query;
@@ -433,8 +461,15 @@ export class SearchService {
     // Build enhanced query - ultra simplified to avoid Google CSE 400 errors
     let enhancedQuery = q;
     
-    // Use ultra simple base query to avoid 400 errors
-    const simpleBaseQuery = "conference 2025";
+    // Use localized base query based on country
+    let simpleBaseQuery = "conference 2025";
+    if (country === "de") {
+      simpleBaseQuery = "(veranstaltung OR konferenz OR kongress OR workshop OR panel) deutschland 2025";
+    } else if (country === "fr") {
+      simpleBaseQuery = "(conférence OR congrès OR atelier OR panel) france 2025";
+    } else if (country === "nl") {
+      simpleBaseQuery = "(conferentie OR congres OR workshop OR panel) nederland 2025";
+    }
     
     if (!q.trim()) {
       enhancedQuery = simpleBaseQuery;
