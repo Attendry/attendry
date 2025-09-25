@@ -108,9 +108,9 @@ function buildEnhancedQuery(userQuery: string, searchConfig: any, country: strin
   const finalQuery = queryParts.join(' ');
   
   // Limit query length to prevent API errors
-  if (finalQuery.length > 500) {
+  if (finalQuery.length > 1000) {
     console.warn('Query too long, truncating:', finalQuery.length);
-    return finalQuery.substring(0, 500).trim();
+    return finalQuery.substring(0, 1000).trim();
   }
   
   return finalQuery.trim();

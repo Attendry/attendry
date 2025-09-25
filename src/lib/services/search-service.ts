@@ -342,11 +342,11 @@ export class SearchService {
       .replace(/\s+/g, ' ') // Clean up multiple spaces
       .trim();
     
-    // Limit query length to prevent API errors but allow comprehensive queries
-    if (query.length > 500) {
-      console.warn('Query too long, truncating:', query.length);
-      query = query.substring(0, 500).trim();
-    }
+      // Limit query length to prevent API errors but allow comprehensive queries
+      if (query.length > 1000) {
+        console.warn('Query too long, truncating:', query.length);
+        query = query.substring(0, 1000).trim();
+      }
     
     return query;
   }
@@ -646,6 +646,7 @@ export class SearchService {
               waitFor: 2000,
               blockAds: true,
               removeBase64Images: true,
+              maxConcurrentBrowsers: 5,
               timeout: 30000
             },
             ignoreInvalidURLs: true
@@ -1069,26 +1070,18 @@ Return a JSON array of speaker objects. If no speakers are found, return an empt
     // Step 1: Load search configuration
     const searchConfig = await this.loadSearchConfig();
 
-    // Step 2: Build effective query - ultra simplified to avoid Google CSE 400 errors
-    let effectiveQ = q;
-    
-    // Use ultra simple base query to avoid 400 errors
-    const simpleBaseQuery = "conference 2025";
-    
-    if (!q.trim()) {
-      effectiveQ = simpleBaseQuery;
-    } else if (q.trim()) {
-      // Use simple space separation instead of AND to avoid issues
-      effectiveQ = `${q} ${simpleBaseQuery}`;
-    }
+    // Step 2: Load user profile for comprehensive query building
+    const userProfile = await this.loadUserProfile();
 
-    // Limit query length to prevent 400 errors
-    if (effectiveQ.length > 200) {
-      console.warn('Query too long, truncating to prevent 400 error:', effectiveQ.length);
-      effectiveQ = effectiveQ.substring(0, 200);
-    }
+    // Step 3: Build comprehensive query using all available data
+    const effectiveQ = this.buildEnhancedQuery(
+      q,
+      searchConfig,
+      userProfile,
+      country
+    );
 
-    // Step 3: Execute search
+    // Step 4: Execute search
     const search = await this.executeSearch({
       q: effectiveQ,
       country,
@@ -1099,11 +1092,11 @@ Return a JSON array of speaker objects. If no speakers are found, return an empt
       topK: 50
     });
 
-    // Step 4: Extract events from URLs
+    // Step 5: Extract events from URLs
     const urls = search.items.map(item => item.link);
     const extract = await this.extractEvents(urls);
 
-    // Step 5: Process and deduplicate events
+    // Step 6: Process and deduplicate events
     let events = extract.events;
     
     // Basic deduplication by URL
