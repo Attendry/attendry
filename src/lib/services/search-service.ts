@@ -1409,7 +1409,29 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
     };
   } {
     try {
-      const text = response.candidates[0].content.parts[0].text;
+      // Debug: Log the response structure
+      console.log("Gemini response structure:", JSON.stringify({
+        hasCandidates: !!response.candidates,
+        candidatesLength: response.candidates?.length || 0,
+        hasContent: !!response.candidates?.[0]?.content,
+        hasParts: !!response.candidates?.[0]?.content?.parts,
+        partsLength: response.candidates?.[0]?.content?.parts?.length || 0,
+        hasText: !!response.candidates?.[0]?.content?.parts?.[0]?.text
+      }, null, 2));
+
+      // Safely extract text from response
+      let text = "";
+      if (response.candidates && response.candidates[0] && 
+          response.candidates[0].content && response.candidates[0].content.parts && 
+          response.candidates[0].content.parts[0] && 
+          response.candidates[0].content.parts[0].text) {
+        text = response.candidates[0].content.parts[0].text;
+      } else {
+        throw new Error("Invalid Gemini response structure");
+      }
+
+      console.log("Gemini response text (first 500 chars):", text.substring(0, 500));
+      
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       
       if (!jsonMatch) {
@@ -1417,6 +1439,7 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
       }
       
       const parsed = JSON.parse(jsonMatch[0]);
+      console.log("Parsed Gemini response:", JSON.stringify(parsed, null, 2));
       
       return {
         prioritizedUrls: parsed.prioritizedUrls || [],
@@ -1428,10 +1451,31 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
       };
     } catch (error) {
       console.error("Error parsing Gemini prioritization response:", error);
+      console.error("Full response:", JSON.stringify(response, null, 2));
       
-      // Fallback: return top 10 URLs based on simple heuristics
+      // Fallback: return URLs based on simple heuristics, filtering out obvious non-events
       const fallbackUrls = originalResults
-        .slice(0, 10)
+        .filter(item => {
+          const title = item.title.toLowerCase();
+          const link = item.link.toLowerCase();
+          
+          // Filter out obvious non-events
+          if (title.includes('job') || title.includes('career') || title.includes('hiring')) {
+            return false;
+          }
+          if (link.includes('indeed.com') || link.includes('linkedin.com') || link.includes('x.com')) {
+            return false;
+          }
+          if (title.includes('news') || title.includes('article') || title.includes('blog')) {
+            return false;
+          }
+          if (link.includes('law.com') && !title.includes('event') && !title.includes('conference')) {
+            return false;
+          }
+          
+          return true;
+        })
+        .slice(0, 8) // Limit to 8 URLs for fallback
         .map(item => item.link);
       
       return {
