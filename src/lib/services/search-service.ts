@@ -1059,10 +1059,10 @@ export class SearchService {
             scrapeOptions: {
               formats: ["markdown"],
               onlyMainContent: true,
-              waitFor: 2000, // Increased for better content loading
+              waitFor: 1000, // Reduced for faster failure
               blockAds: true,
               removeBase64Images: true,
-              timeout: 15000 // Increased for better success rate
+              timeout: 8000 // Reduced for faster failure
             },
             ignoreInvalidURLs: true
           })
@@ -1105,7 +1105,7 @@ export class SearchService {
    * Poll for extract results using the job ID
    */
   private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
-    const maxAttempts = 20; // 20 seconds max (increased for better success rate)
+    const maxAttempts = 10; // 10 seconds max (reduced to fail faster and use fallback)
     const pollInterval = 1000; // 1 second intervals
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1223,19 +1223,61 @@ export class SearchService {
       }
     }
 
-    // If still no events extracted, create minimal events with better titles
+    // If still no events extracted, try direct content fetching as fallback
     if (events.length === 0) {
-      console.log('No events extracted from any method, creating minimal events from URLs');
-      events.push(...urls.slice(0, 10).map(url => ({
-        source_url: url,
-        title: this.extractTitleFromUrl(url),
-        description: `Event page: ${url}`, // Basic description for speaker extraction
-        starts_at: null,
-        ends_at: null,
-        city: null,
-        country: null,
-        organizer: null,
-      })));
+      console.log('No events extracted from any method, trying direct content fetching');
+      
+      for (let i = 0; i < Math.min(urls.length, 5); i++) {
+        const url = urls[i];
+        try {
+          console.log(`Fetching content directly from: ${url}`);
+          const response = await fetch(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            },
+            signal: AbortSignal.timeout(10000) // 10 second timeout
+          });
+          
+          if (response.ok) {
+            const html = await response.text();
+            const title = this.extractTitleFromUrl(url);
+            const description = this.extractTextFromHTML(html).substring(0, 2000);
+            
+            events.push({
+              source_url: url,
+              title: title,
+              description: description,
+              starts_at: null,
+              ends_at: null,
+              city: null,
+              country: null,
+              organizer: null,
+              confidence: 0.5
+            });
+            
+            console.log(`Successfully fetched content from: ${url}`);
+          } else {
+            console.log(`Failed to fetch content from: ${url} (status: ${response.status})`);
+          }
+        } catch (error: any) {
+          console.log(`Error fetching content from: ${url}`, error.message);
+        }
+      }
+      
+      // If still no events, create minimal events
+      if (events.length === 0) {
+        console.log('Direct content fetching failed, creating minimal events from URLs');
+        events.push(...urls.slice(0, 10).map(url => ({
+          source_url: url,
+          title: this.extractTitleFromUrl(url),
+          description: `Event page: ${url}`, // Basic description for speaker extraction
+          starts_at: null,
+          ends_at: null,
+          city: null,
+          country: null,
+          organizer: null,
+        })));
+      }
     }
     
     console.log(`Final events count: ${events.length}`);
@@ -1273,6 +1315,27 @@ export class SearchService {
     }
     
     return null;
+  }
+
+  /**
+   * Extract text content from HTML
+   */
+  private static extractTextFromHTML(html: string): string {
+    try {
+      // Simple HTML tag removal and text extraction
+      let text = html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+        .replace(/<[^>]+>/g, ' ') // Remove HTML tags
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim();
+      
+      // Extract meaningful content (first 3000 characters)
+      return text.substring(0, 3000);
+    } catch (error) {
+      console.error('Error extracting text from HTML:', error);
+      return '';
+    }
   }
 
   /**
