@@ -362,7 +362,7 @@ Extract only clear speaker information. If no speakers found, return empty array
       try {
         console.log(`Processing URL prioritization batch ${i + 1}/${batches.length} with ${batch.length} URLs`);
         
-        const batchResult = await this.processUrlPrioritizationBatch(batch, searchConfig, country);
+        const batchResult = await this.processUrlPrioritizationBatchInternal(batch, searchConfig, country);
         results.push(batchResult);
         stats.successfulBatches++;
         stats.totalProcessed += batch.length;
@@ -397,7 +397,7 @@ Extract only clear speaker information. If no speakers found, return empty array
   /**
    * Process a single batch of URLs for prioritization
    */
-  private static async processUrlPrioritizationBatch(
+  private static async processUrlPrioritizationBatchInternal(
     urls: Array<{
       title: string;
       link: string;

@@ -1055,10 +1055,10 @@ export class SearchService {
             scrapeOptions: {
               formats: ["markdown"],
               onlyMainContent: true,
-              waitFor: 500, // Further reduced from 1000ms
+              waitFor: 2000, // Increased for better content loading
               blockAds: true,
               removeBase64Images: true,
-              timeout: 10000 // Further reduced from 15000ms
+              timeout: 15000 // Increased for better success rate
             },
             ignoreInvalidURLs: true
           })
@@ -1100,7 +1100,7 @@ export class SearchService {
    * Poll for extract results using the job ID
    */
   private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
-    const maxAttempts = 10; // 10 seconds max (further reduced from 20)
+    const maxAttempts = 20; // 20 seconds max (increased for better success rate)
     const pollInterval = 1000; // 1 second intervals
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
