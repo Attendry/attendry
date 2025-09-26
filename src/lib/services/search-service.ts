@@ -4,6 +4,9 @@ import { fetchWithRetry } from "@/lib/http";
 import { RetryService } from "./retry-service";
 import { FirecrawlSearchService } from "./firecrawl-search-service";
 import { GeminiService } from "./gemini-service";
+import { BatchGeminiService } from "./batch-gemini-service";
+import { TokenBudgetService } from "./token-budget-service";
+import { PromptTemplates } from "../prompts/prompt-templates";
 
 /**
  * Shared Search Service
@@ -791,8 +794,119 @@ export class SearchService {
 
   /**
    * Enhance events with Gemini AI for speaker extraction and additional information
+   * Now uses batch processing for improved efficiency and token usage
    */
   static async enhanceEventsWithGemini(events: EventRec[]): Promise<{
+    enhancedEvents: EventRec[];
+    enhancementStats: {
+      processed: number;
+      enhanced: number;
+      speakersFound: number;
+    };
+  }> {
+    const stats = {
+      processed: 0,
+      enhanced: 0,
+      speakersFound: 0
+    };
+
+    // Check token budget before processing
+    const eventsForEstimation = events.map((event, index) => ({
+      id: event.source_url || `event_${index}`,
+      title: event.title || '',
+      description: event.description || '',
+      starts_at: event.starts_at || undefined,
+      location: event.location || event.city || undefined,
+      city: event.city || undefined
+    }));
+    
+    const estimatedTokens = TokenBudgetService.estimateTokenUsage(
+      PromptTemplates.getSpeakerExtractionBatchPrompt(eventsForEstimation)
+    );
+    
+    const budgetStatus = TokenBudgetService.getBudgetStatus();
+    const fallbackRecommendation = TokenBudgetService.getFallbackRecommendation(estimatedTokens);
+    
+    if (fallbackRecommendation.useFallback) {
+      console.warn(`Token budget constraint: ${fallbackRecommendation.reason}. ${fallbackRecommendation.alternative}`);
+      
+      // Return events without enhancement if budget is exceeded
+      return {
+        enhancedEvents: events,
+        enhancementStats: {
+          processed: events.length,
+          enhanced: 0,
+          speakersFound: 0
+        }
+      };
+    }
+
+    try {
+      // Prepare events for batch processing
+      const eventsForProcessing = events.map((event, index) => ({
+        id: event.source_url || `event_${index}`,
+        title: event.title || '',
+        description: event.description || '',
+        starts_at: event.starts_at || undefined,
+        location: event.location || event.city || undefined,
+        city: event.city || undefined,
+        speakers: event.speakers // Include existing speakers
+      }));
+
+      // Record estimated token usage
+      TokenBudgetService.recordEstimate(estimatedTokens, 'speaker_extraction_batch', 'gemini');
+
+      // Use batch processing for speaker extraction
+      const batchResult = await BatchGeminiService.processSpeakerExtractionBatch(
+        eventsForProcessing,
+        {
+          batchSize: 5, // Process 5 events at once
+          maxRetries: 2,
+          delayBetweenBatches: 1000
+        }
+      );
+
+      // Record actual token usage (estimate based on batch size)
+      const actualTokens = Math.ceil(estimatedTokens * 0.8); // Assume 20% efficiency gain
+      TokenBudgetService.recordUsage(actualTokens, 'speaker_extraction_batch', 'gemini');
+
+      // Apply results to events
+      const enhancedEvents: EventRec[] = [];
+      
+      for (const event of events) {
+        const eventId = event.source_url || `event_${events.indexOf(event)}`;
+        const batchResultItem = batchResult.results.find(r => r.eventId === eventId);
+        
+        if (batchResultItem && batchResultItem.success && batchResultItem.speakers.length > 0) {
+          event.speakers = batchResultItem.speakers;
+          stats.speakersFound += batchResultItem.speakers.length;
+          stats.enhanced++;
+        }
+        
+        enhancedEvents.push(event);
+        stats.processed++;
+      }
+
+      console.log(`Batch Gemini enhancement complete: ${stats.enhanced}/${stats.processed} events enhanced, ${stats.speakersFound} speakers found`);
+      console.log(`Batch processing stats: ${batchResult.stats.successfulBatches}/${batchResult.stats.totalProcessed} successful, ${batchResult.stats.processingTime}ms`);
+
+      return {
+        enhancedEvents,
+        enhancementStats: stats
+      };
+
+    } catch (error: any) {
+      console.error('Batch speaker extraction failed, falling back to individual processing:', error.message);
+      
+      // Fallback to individual processing if batch fails
+      return await this.enhanceEventsWithGeminiFallback(events);
+    }
+  }
+
+  /**
+   * Fallback method for individual event enhancement (used when batch processing fails)
+   */
+  private static async enhanceEventsWithGeminiFallback(events: EventRec[]): Promise<{
     enhancedEvents: EventRec[];
     enhancementStats: {
       processed: number;
@@ -818,22 +932,39 @@ export class SearchService {
           continue;
         }
 
+        // Check token budget for individual processing
+        const estimatedTokens = TokenBudgetService.estimateTokenUsage(
+          PromptTemplates.getSpeakerExtractionSinglePrompt(
+            event.title || '',
+            event.description || ''
+          )
+        );
+
+        if (!TokenBudgetService.canSpend(estimatedTokens)) {
+          console.warn(`Token budget exceeded for individual processing of event: ${event.title}`);
+          enhancedEvents.push(event);
+          continue;
+        }
+
+        // Use optimized single prompt
+        const prompt = PromptTemplates.getSpeakerExtractionSinglePrompt(
+          event.title || '',
+          event.description || ''
+        );
+
         // Use Gemini to extract speakers and enhance event information
         const enhancementResult = await GeminiService.extractWithGemini({
           content: event.description || event.title || "",
-          prompt: `Extract speaker information from this event description. Look for:
-          - Speaker names
-          - Their organizations/companies
-          - Job titles/roles
-          - Session titles or topics they're speaking about
-          
-          Return a JSON array of speakers with fields: name, org, title, session_title, confidence (0-1)`,
+          prompt: prompt,
           context: {
             eventTitle: event.title,
             eventDate: event.starts_at,
             eventLocation: event.location || event.city
           }
         });
+
+        // Record token usage
+        TokenBudgetService.recordUsage(estimatedTokens, 'speaker_extraction_single', 'gemini');
 
         if (enhancementResult.result?.speakers) {
           const speakers = enhancementResult.result.speakers;
@@ -851,7 +982,7 @@ export class SearchService {
       }
     }
 
-    console.log(`Gemini enhancement complete: ${stats.enhanced}/${stats.processed} events enhanced, ${stats.speakersFound} speakers found`);
+    console.log(`Fallback Gemini enhancement complete: ${stats.enhanced}/${stats.processed} events enhanced, ${stats.speakersFound} speakers found`);
 
     return {
       enhancedEvents,
@@ -1249,6 +1380,7 @@ export class SearchService {
 
   /**
    * Prioritize URLs using Gemini AI before expensive extraction
+   * Now uses batch processing and token budgeting for improved efficiency
    */
   static async prioritizeUrlsWithGemini(searchResults: Array<{
     title: string;
@@ -1276,42 +1408,106 @@ export class SearchService {
         };
       }
 
-      // Build prioritization prompt
-      const prompt = this.buildUrlPrioritizationPrompt(searchResults, searchConfig, country);
+      // Check token budget before processing
+      const context = PromptTemplates.buildPromptContext(searchConfig, null, country);
+      const estimatedTokens = TokenBudgetService.estimateTokenUsage(
+        PromptTemplates.getUrlPrioritizationBatchPrompt(searchResults, context)
+      );
       
-      const response = await RetryService.fetchWithRetry(
-        "gemini",
-        "prioritize_urls",
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-002:generateContent?key=${geminiKey}`,
+      const fallbackRecommendation = TokenBudgetService.getFallbackRecommendation(estimatedTokens);
+      
+      if (fallbackRecommendation.useFallback) {
+        console.warn(`Token budget constraint for URL prioritization: ${fallbackRecommendation.reason}. ${fallbackRecommendation.alternative}`);
+        
+        // Return top 15 URLs based on simple heuristics
+        const fallbackUrls = searchResults
+          .slice(0, 15)
+          .map(item => item.link);
+        
+        return {
+          prioritizedUrls: fallbackUrls,
+          prioritizationStats: {
+            total: searchResults.length,
+            prioritized: fallbackUrls.length,
+            reasons: []
+          }
+        };
+      }
+
+      // Record estimated token usage
+      TokenBudgetService.recordEstimate(estimatedTokens, 'url_prioritization_batch', 'gemini');
+
+      // Use batch processing for URL prioritization
+      const batchResult = await BatchGeminiService.processUrlPrioritizationBatch(
+        searchResults,
+        searchConfig,
+        country,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: prompt
-              }]
-            }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 2048
-            }
-          })
+          batchSize: 10, // Process 10 URLs at once
+          maxRetries: 2,
+          delayBetweenBatches: 500
         }
       );
 
-      const data = await response.json();
-      const parsed = this.parseUrlPrioritizationResponse(data, searchResults);
+      // Record actual token usage
+      const actualTokens = Math.ceil(estimatedTokens * 0.8); // Assume 20% efficiency gain
+      TokenBudgetService.recordUsage(actualTokens, 'url_prioritization_batch', 'gemini');
+
+      // Combine results from all batches
+      const allPrioritizedUrls: string[] = [];
+      const allReasons: Array<{ url: string; score: number; reason: string }> = [];
       
-      console.log(`Gemini URL prioritization: ${parsed.prioritizedUrls.length}/${searchResults.length} URLs selected for extraction`);
+      for (const result of batchResult.results) {
+        if (result.success) {
+          allPrioritizedUrls.push(...result.prioritizedUrls);
+          allReasons.push(...result.reasons);
+        }
+      }
+
+      // Remove duplicates and limit to top 15
+      const uniqueUrls = Array.from(new Set(allPrioritizedUrls)).slice(0, 15);
       
-      return parsed;
+      console.log(`Batch Gemini URL prioritization: ${uniqueUrls.length}/${searchResults.length} URLs selected for extraction`);
+      console.log(`Batch processing stats: ${batchResult.stats.successfulBatches}/${batchResult.stats.totalProcessed} successful, ${batchResult.stats.processingTime}ms`);
+      
+      return {
+        prioritizedUrls: uniqueUrls,
+        prioritizationStats: {
+          total: searchResults.length,
+          prioritized: uniqueUrls.length,
+          reasons: allReasons.slice(0, 10) // Show top 10 reasons
+        }
+      };
+
     } catch (error: any) {
-      console.warn('Gemini URL prioritization failed:', error.message);
+      console.warn('Batch Gemini URL prioritization failed, falling back to simple heuristics:', error.message);
+      
       // Fallback: return top 15 URLs based on simple heuristics
       const fallbackUrls = searchResults
+        .filter(item => {
+          const title = item.title.toLowerCase();
+          const link = item.link.toLowerCase();
+          const snippet = (item.snippet || '').toLowerCase();
+          
+          // Filter out obvious non-events
+          if (title.includes('job') || title.includes('career') || title.includes('hiring')) {
+            return false;
+          }
+          if (link.includes('indeed.com') || link.includes('linkedin.com') || link.includes('x.com')) {
+            return false;
+          }
+          if (title.includes('news') || title.includes('article') || title.includes('blog')) {
+            return false;
+          }
+          
+          // Prefer URLs that look like events
+          const hasEventKeywords = title.includes('event') || title.includes('conference') || 
+                                 title.includes('summit') || title.includes('webinar') ||
+                                 title.includes('workshop') || title.includes('seminar') ||
+                                 title.includes('veranstaltung') || title.includes('kongress');
+          
+          return hasEventKeywords;
+        })
         .slice(0, 15)
         .map(item => item.link);
       

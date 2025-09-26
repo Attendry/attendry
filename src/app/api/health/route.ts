@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { GeminiService } from "@/lib/services/gemini-service";
 import { RetryService } from "@/lib/services/retry-service";
 import { FirecrawlSearchService } from "@/lib/services/firecrawl-search-service";
+import { BatchGeminiService } from "@/lib/services/batch-gemini-service";
+import { TokenBudgetService } from "@/lib/services/token-budget-service";
 
 /**
  * Health Check API Route
@@ -18,6 +20,8 @@ export interface HealthStatus {
     firecrawl: ServiceHealth;
     firecrawl_search: ServiceHealth;
     gemini: ServiceHealth;
+    batch_gemini: ServiceHealth;
+    token_budget: ServiceHealth;
     database: ServiceHealth;
     retry_service: ServiceHealth;
   };
@@ -49,11 +53,15 @@ export async function GET(req: NextRequest) {
     const [
       geminiHealth,
       firecrawlSearchHealth,
+      batchGeminiHealth,
+      tokenBudgetHealth,
       retryMetrics,
       databaseHealth
     ] = await Promise.allSettled([
       checkGeminiHealth(),
       checkFirecrawlSearchHealth(),
+      checkBatchGeminiHealth(),
+      checkTokenBudgetHealth(),
       getRetryMetrics(),
       checkDatabaseHealth()
     ]);
@@ -71,6 +79,14 @@ export async function GET(req: NextRequest) {
         gemini: geminiHealth.status === 'fulfilled' ? geminiHealth.value : {
           status: 'unhealthy',
           last_error: geminiHealth.status === 'rejected' ? geminiHealth.reason?.message : 'Unknown error'
+        },
+        batch_gemini: batchGeminiHealth.status === 'fulfilled' ? batchGeminiHealth.value : {
+          status: 'unhealthy',
+          last_error: batchGeminiHealth.status === 'rejected' ? batchGeminiHealth.reason?.message : 'Unknown error'
+        },
+        token_budget: tokenBudgetHealth.status === 'fulfilled' ? tokenBudgetHealth.value : {
+          status: 'unhealthy',
+          last_error: tokenBudgetHealth.status === 'rejected' ? tokenBudgetHealth.reason?.message : 'Unknown error'
         },
         database: databaseHealth.status === 'fulfilled' ? databaseHealth.value : {
           status: 'unhealthy',
@@ -290,6 +306,60 @@ async function checkDatabaseHealth(): Promise<ServiceHealth> {
     return {
       status: 'healthy',
       response_time_ms: responseTime
+    };
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      response_time_ms: Date.now() - startTime,
+      last_error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Check batch Gemini service health
+ */
+async function checkBatchGeminiHealth(): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  
+  try {
+    const healthStatus = await BatchGeminiService.getHealthStatus();
+    const responseTime = Date.now() - startTime;
+    
+    return {
+      status: healthStatus.status,
+      response_time_ms: responseTime,
+      details: {
+        batchProcessingEnabled: healthStatus.batchProcessingEnabled,
+        lastError: healthStatus.lastError
+      }
+    };
+  } catch (error) {
+    return {
+      status: 'unhealthy',
+      response_time_ms: Date.now() - startTime,
+      last_error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Check token budget service health
+ */
+async function checkTokenBudgetHealth(): Promise<ServiceHealth> {
+  const startTime = Date.now();
+  
+  try {
+    const healthStatus = TokenBudgetService.getHealthStatus();
+    const responseTime = Date.now() - startTime;
+    
+    return {
+      status: healthStatus.status,
+      response_time_ms: responseTime,
+      details: {
+        budgetStatus: healthStatus.budgetStatus,
+        lastError: healthStatus.lastError
+      }
     };
   } catch (error) {
     return {
