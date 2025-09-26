@@ -451,7 +451,22 @@ Extract only clear speaker information. If no speakers found, return empty array
       snippet: url.snippet?.substring(0, 200) || '' // Limit snippet length
     }));
 
-    return `Prioritize URLs for events in ${industry}, ${countryName}. Score 0.9-1.0: direct event pages, 0.7-0.8: event aggregators, 0.5-0.6: company calendars, 0.0-0.4: news/jobs. Exclude: news, jobs, social media.
+    return `Prioritize URLs for ACTUAL EVENTS in ${industry}, ${countryName}. 
+
+ONLY SELECT URLs that are:
+- Direct event/conference/seminar/workshop pages with specific dates
+- Event registration pages
+- Conference websites with event details
+- Seminar/workshop listings with dates and locations
+
+EXCLUDE URLs that are:
+- Attendee lists, speaker lists, or participant directories
+- Company websites, law firm pages, or general business pages
+- News articles, blog posts, or press releases
+- Job postings, career pages, or recruitment content
+- Marketing pages, product pages, or service descriptions
+- Generic event directories without specific events
+- Webinar series or ongoing programs without specific dates
 
 URLS:
 ${JSON.stringify(urlsData, null, 2)}
@@ -463,12 +478,12 @@ Return JSON:
     {
       "url": "url1",
       "score": 0.9,
-      "reason": "Direct conference page"
+      "reason": "Direct conference page with specific date"
     }
   ]
 }
 
-Return top 15 most promising URLs.`;
+Return ONLY URLs that are actual events with specific dates. Be very selective.`;
   }
 
   /**

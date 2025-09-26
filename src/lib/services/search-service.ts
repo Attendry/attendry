@@ -270,7 +270,15 @@ export class SearchService {
     
     // If no base query, use a simple default
     if (!query) {
-      query = "conference";
+      query = "conference OR event OR seminar OR workshop";
+    }
+    
+    // Ensure the query includes event-specific terms
+    const eventTerms = ['conference', 'event', 'seminar', 'workshop', 'summit', 'webinar', 'veranstaltung', 'kongress'];
+    const hasEventTerms = eventTerms.some(term => query.toLowerCase().includes(term));
+    
+    if (!hasEventTerms) {
+      query = `${query} (conference OR event OR seminar OR workshop)`;
     }
     
     // Build comprehensive query using all available terms
@@ -1938,6 +1946,26 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
             return false;
           }
           if (link.includes('law.com') && !title.includes('event') && !title.includes('conference')) {
+            return false;
+          }
+          
+          // Filter out attendee lists, speaker lists, and participant directories
+          if (title.includes('attendee list') || title.includes('speaker list') || 
+              title.includes('participant') || title.includes('delegate list') ||
+              title.includes('who\'s attending') || title.includes('attendees')) {
+            return false;
+          }
+          
+          // Filter out marketing pages and company websites
+          if (title.includes('company') || title.includes('about us') || 
+              title.includes('services') || title.includes('solutions') ||
+              title.includes('products') || title.includes('contact us')) {
+            return false;
+          }
+          
+          // Filter out generic directories and finder pages
+          if (title.includes('finder') || title.includes('directory') || 
+              title.includes('search') || title.includes('browse')) {
             return false;
           }
           
