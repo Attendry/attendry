@@ -2,7 +2,6 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { BatchGeminiService } from "@/lib/services/batch-gemini-service";
 import { TokenBudgetService } from "@/lib/services/token-budget-service";
-import { PromptTemplates } from "@/lib/prompts/prompt-templates";
 
 /**
  * GET /api/debug/test-batch-processing
@@ -110,11 +109,8 @@ export async function GET(req: NextRequest) {
         }
       ];
 
-      const speakerPrompt = PromptTemplates.getSpeakerExtractionBatchPrompt(testEvents);
-      const urlPrompt = PromptTemplates.getUrlPrioritizationBatchPrompt(
-        [{ title: 'Test', link: 'https://test.com', snippet: 'Test snippet' }],
-        { industry: 'test', country: 'de' }
-      );
+      const speakerPrompt = `Extract speakers from ${testEvents.length} events. Return JSON array with speaker information.`;
+      const urlPrompt = `Prioritize URLs for events in test industry, de. Return top 15 URLs with scores.`;
 
       results.promptTemplates = {
         speakerExtractionPrompt: {
