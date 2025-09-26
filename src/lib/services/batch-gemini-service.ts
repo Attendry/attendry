@@ -243,7 +243,12 @@ export class BatchGeminiService {
       location: event.location || event.city
     }));
 
-    return `Extract speakers from these events. Return JSON array with results for each event:
+    return `Extract speakers from these event pages. Look for:
+- Speaker names (people presenting, moderating, or speaking)
+- Their organizations/companies
+- Job titles/roles
+- Session titles or topics they're speaking about
+- Panelists, moderators, keynote speakers, workshop leaders
 
 EVENTS:
 ${JSON.stringify(eventsData, null, 2)}

@@ -934,11 +934,15 @@ export class SearchService {
         }
 
         // Use simple prompt
-        const prompt = `Extract speaker information from this event description. Look for:
-        - Speaker names
+        const prompt = `Extract speaker information from this event page content. Look for:
+        - Speaker names (people presenting, moderating, or speaking)
         - Their organizations/companies
         - Job titles/roles
         - Session titles or topics they're speaking about
+        - Panelists, moderators, keynote speakers, workshop leaders
+        
+        Event: ${event.title || 'Unknown Event'}
+        Content: ${event.description || 'No description available'}
         
         Return a JSON array of speakers with fields: name, org, title, session_title, confidence (0-1)`;
 
@@ -1084,6 +1088,7 @@ export class SearchService {
         events: urls.slice(0, 10).map(url => ({
           source_url: url,
           title: url,
+          description: `Event page: ${url}`, // Basic description for speaker extraction
           starts_at: null,
           ends_at: null,
           city: null,
@@ -1205,6 +1210,7 @@ export class SearchService {
           events.push({
             source_url: url,
             title: title,
+            description: markdown.substring(0, 2000), // Include markdown content for speaker extraction
             starts_at: date,
             ends_at: null,
             city: location,
@@ -1223,6 +1229,7 @@ export class SearchService {
       events.push(...urls.slice(0, 10).map(url => ({
         source_url: url,
         title: this.extractTitleFromUrl(url),
+        description: `Event page: ${url}`, // Basic description for speaker extraction
         starts_at: null,
         ends_at: null,
         city: null,
