@@ -1242,6 +1242,7 @@ export class SearchService {
             const html = await response.text();
             const title = this.extractTitleFromUrl(url);
             const description = this.extractTextFromHTML(html).substring(0, 2000);
+            const country = this.extractCountryFromUrl(url) || this.extractCountryFromContent(description);
             
             events.push({
               source_url: url,
@@ -1250,7 +1251,7 @@ export class SearchService {
               starts_at: null,
               ends_at: null,
               city: null,
-              country: null,
+              country: country,
               organizer: null,
               confidence: 0.5
             });
@@ -1312,6 +1313,217 @@ export class SearchService {
       if (trimmed.length > 10 && trimmed.length < 200) {
         return trimmed;
       }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extract country from URL
+   */
+  private static extractCountryFromUrl(url: string): string | null {
+    try {
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname.toLowerCase();
+      
+      // Check for German domains
+      if (hostname.includes('.de') || hostname.includes('germany') || hostname.includes('deutschland')) {
+        return 'Germany';
+      }
+      
+      // Check for other country indicators
+      if (hostname.includes('.uk') || hostname.includes('britain')) {
+        return 'United Kingdom';
+      }
+      if (hostname.includes('.fr') || hostname.includes('france')) {
+        return 'France';
+      }
+      if (hostname.includes('.it') || hostname.includes('italy')) {
+        return 'Italy';
+      }
+      if (hostname.includes('.es') || hostname.includes('spain')) {
+        return 'Spain';
+      }
+      if (hostname.includes('.nl') || hostname.includes('netherlands')) {
+        return 'Netherlands';
+      }
+      if (hostname.includes('.at') || hostname.includes('austria')) {
+        return 'Austria';
+      }
+      if (hostname.includes('.ch') || hostname.includes('switzerland')) {
+        return 'Switzerland';
+      }
+      
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Extract country from venue/location information
+   */
+  private static extractCountryFromVenue(venue: string): string | null {
+    if (!venue) return null;
+    
+    const lowerVenue = venue.toLowerCase();
+    
+    // German cities and regions
+    if (lowerVenue.includes('berlin') || lowerVenue.includes('munich') || 
+        lowerVenue.includes('hamburg') || lowerVenue.includes('frankfurt') ||
+        lowerVenue.includes('cologne') || lowerVenue.includes('stuttgart') ||
+        lowerVenue.includes('düsseldorf') || lowerVenue.includes('dortmund') ||
+        lowerVenue.includes('leipzig') || lowerVenue.includes('dresden') ||
+        lowerVenue.includes('bremen') || lowerVenue.includes('hannover') ||
+        lowerVenue.includes('nürnberg') || lowerVenue.includes('duisburg') ||
+        lowerVenue.includes('bochum') || lowerVenue.includes('wuppertal') ||
+        lowerVenue.includes('bielefeld') || lowerVenue.includes('bonn') ||
+        lowerVenue.includes('münster') || lowerVenue.includes('karlsruhe') ||
+        lowerVenue.includes('mannheim') || lowerVenue.includes('augsburg') ||
+        lowerVenue.includes('wiesbaden') || lowerVenue.includes('gelsenkirchen') ||
+        lowerVenue.includes('mönchengladbach') || lowerVenue.includes('braunschweig') ||
+        lowerVenue.includes('chemnitz') || lowerVenue.includes('kiel') ||
+        lowerVenue.includes('aachen') || lowerVenue.includes('halle') ||
+        lowerVenue.includes('magdeburg') || lowerVenue.includes('freiburg') ||
+        lowerVenue.includes('krefeld') || lowerVenue.includes('lübeck') ||
+        lowerVenue.includes('oberhausen') || lowerVenue.includes('erfurt') ||
+        lowerVenue.includes('mainz') || lowerVenue.includes('rostock') ||
+        lowerVenue.includes('kassel') || lowerVenue.includes('hagen') ||
+        lowerVenue.includes('hamm') || lowerVenue.includes('saarbrücken') ||
+        lowerVenue.includes('mülheim') || lowerVenue.includes('potsdam') ||
+        lowerVenue.includes('ludwigshafen') || lowerVenue.includes('oldenburg') ||
+        lowerVenue.includes('leverkusen') || lowerVenue.includes('osnabrück') ||
+        lowerVenue.includes('solingen') || lowerVenue.includes('heidelberg') ||
+        lowerVenue.includes('herne') || lowerVenue.includes('neuss') ||
+        lowerVenue.includes('darmstadt') || lowerVenue.includes('paderborn') ||
+        lowerVenue.includes('regensburg') || lowerVenue.includes('ingolstadt') ||
+        lowerVenue.includes('würzburg') || lowerVenue.includes('fürth') ||
+        lowerVenue.includes('wolfsburg') || lowerVenue.includes('offenbach') ||
+        lowerVenue.includes('ulm') || lowerVenue.includes('heilbronn') ||
+        lowerVenue.includes('pforzheim') || lowerVenue.includes('göttingen') ||
+        lowerVenue.includes('bottrop') || lowerVenue.includes('trier') ||
+        lowerVenue.includes('recklinghausen') || lowerVenue.includes('reutlingen') ||
+        lowerVenue.includes('bremerhaven') || lowerVenue.includes('koblenz') ||
+        lowerVenue.includes('bergisch gladbach') || lowerVenue.includes('jena') ||
+        lowerVenue.includes('remscheid') || lowerVenue.includes('erlangen') ||
+        lowerVenue.includes('moers') || lowerVenue.includes('siegen') ||
+        lowerVenue.includes('hildesheim') || lowerVenue.includes('salzgitter')) {
+      return 'Germany';
+    }
+    
+    // Other European cities
+    if (lowerVenue.includes('london') || lowerVenue.includes('manchester') || 
+        lowerVenue.includes('birmingham') || lowerVenue.includes('glasgow') ||
+        lowerVenue.includes('liverpool') || lowerVenue.includes('leeds') ||
+        lowerVenue.includes('sheffield') || lowerVenue.includes('edinburgh') ||
+        lowerVenue.includes('bristol') || lowerVenue.includes('cardiff')) {
+      return 'United Kingdom';
+    }
+    
+    if (lowerVenue.includes('paris') || lowerVenue.includes('lyon') || 
+        lowerVenue.includes('marseille') || lowerVenue.includes('toulouse') ||
+        lowerVenue.includes('nice') || lowerVenue.includes('nantes') ||
+        lowerVenue.includes('strasbourg') || lowerVenue.includes('montpellier') ||
+        lowerVenue.includes('bordeaux') || lowerVenue.includes('lille')) {
+      return 'France';
+    }
+    
+    if (lowerVenue.includes('rome') || lowerVenue.includes('milan') || 
+        lowerVenue.includes('naples') || lowerVenue.includes('turin') ||
+        lowerVenue.includes('palermo') || lowerVenue.includes('genoa') ||
+        lowerVenue.includes('bologna') || lowerVenue.includes('florence') ||
+        lowerVenue.includes('bari') || lowerVenue.includes('catania')) {
+      return 'Italy';
+    }
+    
+    if (lowerVenue.includes('madrid') || lowerVenue.includes('barcelona') || 
+        lowerVenue.includes('valencia') || lowerVenue.includes('seville') ||
+        lowerVenue.includes('zaragoza') || lowerVenue.includes('málaga') ||
+        lowerVenue.includes('murcia') || lowerVenue.includes('palma') ||
+        lowerVenue.includes('las palmas') || lowerVenue.includes('bilbao')) {
+      return 'Spain';
+    }
+    
+    if (lowerVenue.includes('amsterdam') || lowerVenue.includes('rotterdam') || 
+        lowerVenue.includes('the hague') || lowerVenue.includes('utrecht') ||
+        lowerVenue.includes('eindhoven') || lowerVenue.includes('tilburg') ||
+        lowerVenue.includes('groningen') || lowerVenue.includes('almere') ||
+        lowerVenue.includes('breda') || lowerVenue.includes('nijmegen')) {
+      return 'Netherlands';
+    }
+    
+    if (lowerVenue.includes('vienna') || lowerVenue.includes('graz') || 
+        lowerVenue.includes('linz') || lowerVenue.includes('salzburg') ||
+        lowerVenue.includes('innsbruck') || lowerVenue.includes('klagenfurt') ||
+        lowerVenue.includes('villach') || lowerVenue.includes('wels') ||
+        lowerVenue.includes('sankt pölten') || lowerVenue.includes('dornbirn')) {
+      return 'Austria';
+    }
+    
+    if (lowerVenue.includes('zurich') || lowerVenue.includes('geneva') || 
+        lowerVenue.includes('basel') || lowerVenue.includes('bern') ||
+        lowerVenue.includes('lausanne') || lowerVenue.includes('winterthur') ||
+        lowerVenue.includes('lucerne') || lowerVenue.includes('st. gallen') ||
+        lowerVenue.includes('lugano') || lowerVenue.includes('biel')) {
+      return 'Switzerland';
+    }
+    
+    return null;
+  }
+
+  /**
+   * Check if a country is European
+   */
+  private static isEuropeanCountry(country: string): boolean {
+    const europeanCountries = [
+      'germany', 'france', 'italy', 'spain', 'poland', 'romania', 'netherlands',
+      'belgium', 'greece', 'czech republic', 'portugal', 'sweden', 'hungary',
+      'austria', 'belarus', 'switzerland', 'bulgaria', 'serbia', 'denmark',
+      'finland', 'slovakia', 'norway', 'ireland', 'croatia', 'bosnia and herzegovina',
+      'albania', 'lithuania', 'slovenia', 'latvia', 'estonia', 'north macedonia',
+      'moldova', 'luxembourg', 'malta', 'iceland', 'montenegro', 'cyprus',
+      'united kingdom', 'ukraine', 'russia'
+    ];
+    
+    return europeanCountries.includes(country.toLowerCase());
+  }
+
+  /**
+   * Extract country from content
+   */
+  private static extractCountryFromContent(content: string): string | null {
+    const lowerContent = content.toLowerCase();
+    
+    // German indicators
+    if (lowerContent.includes('germany') || lowerContent.includes('deutschland') || 
+        lowerContent.includes('berlin') || lowerContent.includes('munich') || 
+        lowerContent.includes('hamburg') || lowerContent.includes('frankfurt') ||
+        lowerContent.includes('cologne') || lowerContent.includes('stuttgart') ||
+        lowerContent.includes('düsseldorf') || lowerContent.includes('dortmund')) {
+      return 'Germany';
+    }
+    
+    // Other country indicators
+    if (lowerContent.includes('united kingdom') || lowerContent.includes('london') || lowerContent.includes('britain')) {
+      return 'United Kingdom';
+    }
+    if (lowerContent.includes('france') || lowerContent.includes('paris')) {
+      return 'France';
+    }
+    if (lowerContent.includes('italy') || lowerContent.includes('rome') || lowerContent.includes('milan')) {
+      return 'Italy';
+    }
+    if (lowerContent.includes('spain') || lowerContent.includes('madrid') || lowerContent.includes('barcelona')) {
+      return 'Spain';
+    }
+    if (lowerContent.includes('netherlands') || lowerContent.includes('amsterdam')) {
+      return 'Netherlands';
+    }
+    if (lowerContent.includes('austria') || lowerContent.includes('vienna')) {
+      return 'Austria';
+    }
+    if (lowerContent.includes('switzerland') || lowerContent.includes('zurich') || lowerContent.includes('geneva')) {
+      return 'Switzerland';
     }
     
     return null;
@@ -1859,9 +2071,46 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
         return false;
       }
       
-      // Basic country filtering
-      if (country && event.country && event.country.toLowerCase() !== country.toLowerCase()) {
-        return false;
+      // Country filtering based on physical venue location
+      if (country) {
+        let eventCountry = event.country;
+        
+        // If no country is set, try to infer from URL, content, or venue location
+        if (!eventCountry) {
+          eventCountry = this.extractCountryFromUrl(event.source_url) || 
+                        this.extractCountryFromContent(event.description || '') ||
+                        this.extractCountryFromVenue(event.venue || event.location || '');
+        }
+        
+        // Handle "All Europe" vs specific country filtering
+        if (country.toLowerCase() === 'all europe' || country.toLowerCase() === 'europe') {
+          // Keep events from any European country
+          if (eventCountry && !this.isEuropeanCountry(eventCountry)) {
+            return false;
+          }
+        } else {
+          // Keep events only from the specific country (physical venue location)
+          if (!eventCountry || eventCountry.toLowerCase() !== country.toLowerCase()) {
+            return false;
+          }
+        }
+      }
+      
+      // Date filtering for "next 7 days" type searches
+      if (from && to) {
+        if (!event.starts_at) {
+          // If no date, only keep if we're being lenient (allowUndated)
+          // For strict searches like "next 7 days", we should filter out undated events
+          return false;
+        }
+        
+        const eventDate = new Date(event.starts_at);
+        const fromDate = new Date(from);
+        const toDate = new Date(to);
+        
+        if (eventDate < fromDate || eventDate > toDate) {
+          return false;
+        }
       }
       
       return true;
