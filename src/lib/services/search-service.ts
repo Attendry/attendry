@@ -6,7 +6,6 @@ import { FirecrawlSearchService } from "./firecrawl-search-service";
 import { GeminiService } from "./gemini-service";
 import { BatchGeminiService } from "./batch-gemini-service";
 import { TokenBudgetService } from "./token-budget-service";
-import { PromptTemplates } from "../prompts/prompt-templates";
 
 /**
  * Shared Search Service
@@ -811,17 +810,8 @@ export class SearchService {
     };
 
     // Check token budget before processing
-    const eventsForEstimation = events.map((event, index) => ({
-      id: event.source_url || `event_${index}`,
-      title: event.title || '',
-      description: event.description || '',
-      starts_at: event.starts_at || undefined,
-      location: event.location || event.city || undefined,
-      city: event.city || undefined
-    }));
-    
     const estimatedTokens = TokenBudgetService.estimateTokenUsage(
-      PromptTemplates.getSpeakerExtractionBatchPrompt(eventsForEstimation)
+      `Extract speakers from ${events.length} events. Return JSON array with speaker information.`
     );
     
     const budgetStatus = TokenBudgetService.getBudgetStatus();
@@ -934,10 +924,7 @@ export class SearchService {
 
         // Check token budget for individual processing
         const estimatedTokens = TokenBudgetService.estimateTokenUsage(
-          PromptTemplates.getSpeakerExtractionSinglePrompt(
-            event.title || '',
-            event.description || ''
-          )
+          `Extract speakers from event: ${event.title || ''}. Return JSON with speaker information.`
         );
 
         if (!TokenBudgetService.canSpend(estimatedTokens)) {
@@ -946,11 +933,14 @@ export class SearchService {
           continue;
         }
 
-        // Use optimized single prompt
-        const prompt = PromptTemplates.getSpeakerExtractionSinglePrompt(
-          event.title || '',
-          event.description || ''
-        );
+        // Use simple prompt
+        const prompt = `Extract speaker information from this event description. Look for:
+        - Speaker names
+        - Their organizations/companies
+        - Job titles/roles
+        - Session titles or topics they're speaking about
+        
+        Return a JSON array of speakers with fields: name, org, title, session_title, confidence (0-1)`;
 
         // Use Gemini to extract speakers and enhance event information
         const enhancementResult = await GeminiService.extractWithGemini({
@@ -1409,9 +1399,8 @@ export class SearchService {
       }
 
       // Check token budget before processing
-      const context = PromptTemplates.buildPromptContext(searchConfig, null, country);
       const estimatedTokens = TokenBudgetService.estimateTokenUsage(
-        PromptTemplates.getUrlPrioritizationBatchPrompt(searchResults, context)
+        `Prioritize ${searchResults.length} URLs for events in ${country}. Return top 15 URLs with scores.`
       );
       
       const fallbackRecommendation = TokenBudgetService.getFallbackRecommendation(estimatedTokens);
