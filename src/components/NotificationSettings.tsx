@@ -7,7 +7,7 @@
 
 "use client";
 import { useState, useEffect, useCallback, memo } from 'react';
-import { useUser } from '@supabase/auth-helpers-react';
+// import { useUser } from '@supabase/auth-helpers-react';
 
 /**
  * Notification settings interface
@@ -27,7 +27,8 @@ interface NotificationSettings {
  * Notification Settings Component
  */
 const NotificationSettings = memo(function NotificationSettings() {
-  const { user } = useUser();
+  // const { user } = useUser();
+  const user = null; // Mock for now
   const [settings, setSettings] = useState<NotificationSettings>({
     email: true,
     inApp: true,

@@ -9,13 +9,14 @@
 import { useState, useEffect, useCallback, memo } from 'react';
 import { EventData } from '@/lib/types/core';
 import EventComparison from '@/components/EventComparison';
-import { useUser } from '@supabase/auth-helpers-react';
+// import { useUser } from '@supabase/auth-helpers-react';
 
 /**
  * Event Comparison Page Component
  */
 const ComparePage = memo(function ComparePage() {
-  const { user } = useUser();
+  // const { user } = useUser();
+  const user = null; // Mock for now
   const [comparisonEvents, setComparisonEvents] = useState<EventData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

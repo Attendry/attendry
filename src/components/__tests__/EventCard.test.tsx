@@ -5,7 +5,7 @@
  */
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { mockFetch, mockUser, mockEvent } from '@/lib/testing/test-utils';
+import { mockFetch, mockUser, mockEvent } from '../../__tests__/utils/test-utils';
 import EventCard from '../EventCard';
 
 // Mock the EventCard component dependencies

@@ -7,7 +7,7 @@
 
 "use client";
 import { useState, useEffect, useCallback, memo } from 'react';
-import { useUser } from '@supabase/auth-helpers-react';
+// import { useUser } from '@supabase/auth-helpers-react';
 
 /**
  * User preferences interface
@@ -81,7 +81,8 @@ const EVENT_TYPES = [
  * User Profile Component
  */
 const UserProfile = memo(function UserProfile() {
-  const { user } = useUser();
+  // const { user } = useUser();
+  const user = null; // Mock for now
   const [preferences, setPreferences] = useState<UserPreferences>({
     industries: [],
     locations: [],

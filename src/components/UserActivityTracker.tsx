@@ -7,7 +7,7 @@
 
 "use client";
 import { useState, useEffect, useCallback, memo } from 'react';
-import { useUser } from '@supabase/auth-helpers-react';
+// import { useUser } from '@supabase/auth-helpers-react';
 
 /**
  * Activity event types
@@ -51,7 +51,8 @@ interface ActivitySummary {
  * User Activity Tracker Component
  */
 const UserActivityTracker = memo(function UserActivityTracker() {
-  const { user } = useUser();
+  // const { user } = useUser();
+  const user = null; // Mock for now
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [summary, setSummary] = useState<ActivitySummary>({
     totalSearches: 0,

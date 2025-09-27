@@ -7,7 +7,7 @@
 
 "use client";
 import { useState, useEffect, useCallback, memo } from 'react';
-import { useUser } from '@supabase/auth-helpers-react';
+// import { useUser } from '@supabase/auth-helpers-react';
 
 /**
  * Analytics data interfaces
@@ -84,7 +84,8 @@ interface SystemAnalytics {
  * Analytics Dashboard Component
  */
 const AnalyticsDashboard = memo(function AnalyticsDashboard() {
-  const { user } = useUser();
+  // const { user } = useUser();
+  const user = null; // Mock for now
   const [userAnalytics, setUserAnalytics] = useState<UserAnalytics | null>(null);
   const [eventAnalytics, setEventAnalytics] = useState<EventAnalytics | null>(null);
   const [searchAnalytics, setSearchAnalytics] = useState<SearchAnalytics | null>(null);

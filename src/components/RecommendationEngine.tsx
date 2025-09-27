@@ -7,7 +7,7 @@
 
 "use client";
 import { useState, useEffect, useCallback, memo } from 'react';
-import { useUser } from '@supabase/auth-helpers-react';
+// import { useUser } from '@supabase/auth-helpers-react';
 import { EventData } from '@/lib/types/core';
 
 /**
@@ -38,7 +38,8 @@ interface Recommendation {
  * Recommendation Engine Component
  */
 const RecommendationEngine = memo(function RecommendationEngine() {
-  const { user } = useUser();
+  // const { user } = useUser();
+  const user = null; // Mock for now
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<RecommendationType | 'all'>('all');

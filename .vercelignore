@@ -56,4 +56,11 @@ Thumbs.db
 
 # Test files
 test-cron-setup.js
+src/__tests__/
+jest.config.js
+jest.setup.js
+playwright.config.ts
+scripts/run-performance-tests.js
+test-results/
+coverage/
 
