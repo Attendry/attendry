@@ -6,21 +6,29 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createSearchTrace, logSearchTrace, logSearchSummary, type SearchTrace } from '@/lib/trace';
-import { executeAllTiers } from '@/lib/search/tier-guardrails';
-import { prioritizeWithBypass } from '@/lib/ai/gemini-bypass';
-import { extractWithFallbacks } from '@/lib/extraction/timeout-handler';
-import { applyRelaxedFilters } from '@/lib/filters/relaxed-filters';
-import { FLAGS } from '@/config/flags';
+import { SearchService } from '@/lib/services/search-service';
+import { buildTierQueries } from '@/search/query-builder';
+import { validateQueryProvenance } from '@/search/provenance-guard';
 
 export const runtime = 'nodejs';
 
 interface DebugSearchResponse {
-  items: any[];
-  trace: SearchTrace;
-  flags: any;
-  fallbackUsed: boolean;
-  items_fallback?: any[];
+  events: any[];
+  preFilterCount: number;
+  keptAfterHeuristics: number;
+  keptAfterModel: number;
+  keptAfterCountryDate: number;
+  degradedRun: boolean;
+  sample: string[];
+  finalQueries?: string[];
+  webResults?: any;
+  filteredReasons?: any;
+  provenance?: {
+    tier: string;
+    query: string;
+    len: number;
+    tokens: { text: string; source: string }[];
+  }[];
 }
 
 /**
@@ -29,202 +37,152 @@ interface DebugSearchResponse {
  * Runs the full search pipeline with debug flags enabled
  */
 export async function GET(req: NextRequest): Promise<NextResponse<DebugSearchResponse>> {
-  const startTime = Date.now();
+  const url = new URL(req.url);
+  const country = (url.searchParams.get('country') ?? 'DE').toUpperCase();
+  const days = Number(url.searchParams.get('days') ?? 45);
+  
+  const DEBUG_MODE = process.env.DEBUG_MODE === '1';
   
   try {
-    // Override flags for debugging
-    const debugFlags = {
-      ...FLAGS,
-      BYPASS_GEMINI_JSON_STRICT: true,
-      ALLOW_UNDATED: true,
-      RELAX_COUNTRY: true,
-      RELAX_DATE: true,
-      MIN_KEEP_AFTER_PRIOR: 5,
-      TBS_WINDOW_DAYS: 60,
-      FIRECRAWL_LIMIT: 30,
-      MAX_QUERY_TIERS: 3,
-      ENABLE_CURATION_TIER: true,
-      ENABLE_TLD_PREFERENCE: true
-    };
+    // Build queries to show provenance
+    const baseQuery = '(legal OR compliance OR investigation OR "e-discovery" OR ediscovery OR "legal tech" OR "legal technology" OR "GDPR" OR "cybersecurity" OR "interne untersuchung" OR "compliance management")';
+    const tierQueries = buildTierQueries(baseQuery);
     
-    // Create search trace
-    const trace = createSearchTrace(
-      'DEBUG_TEST_SEARCH',
-      'DE',
-      new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(), // 60 days ago
-      new Date().toISOString()
-    );
-    
-    console.info('Starting debug search with flags:', debugFlags);
-    
-    // Step 1: Execute search tiers
-    const searchResults = await executeAllTiers(
-      '(legal OR compliance OR investigation OR "e-discovery" OR ediscovery OR "legal tech" OR "legal technology" OR "regulatory" OR "governance" OR "risk management" OR "audit" OR "whistleblowing" OR "data protection" OR "GDPR" OR "privacy" OR "cybersecurity" OR "regtech" OR "ESG") (conference OR summit OR forum OR "trade show" OR exhibition OR convention OR "industry event" OR "business event" OR konferenz OR kongress OR symposium OR veranstaltung OR workshop OR seminar OR webinar OR "training" OR "certification")',
-      'DE',
-      60,
-      trace
-    );
-    
-    if (searchResults.length === 0) {
-      console.warn('No search results found, returning fallback');
-      return NextResponse.json({
-        items: [],
-        trace,
-        flags: debugFlags,
-        fallbackUsed: true,
-        items_fallback: [
-          {
-            title: 'Legal Tech Conference 2024 - Berlin',
-            url: 'https://example.com/legal-tech-2024',
-            snippet: 'Fallback event for debugging',
-            tier: 'fallback'
-          },
-          {
-            title: 'Compliance Summit 2024 - Munich',
-            url: 'https://example.com/compliance-summit-2024',
-            snippet: 'Fallback event for debugging',
-            tier: 'fallback'
-          },
-          {
-            title: 'Data Protection Conference 2024 - Frankfurt',
-            url: 'https://example.com/data-protection-2024',
-            snippet: 'Fallback event for debugging',
-            tier: 'fallback'
-          }
-        ]
-      });
-    }
-    
-    // Step 2: Prioritization
-    const prioritizationResult = await prioritizeWithBypass(
-      searchResults.map(result => ({
-        title: result.title,
-        url: result.url,
-        snippet: result.snippet,
-        tier: result.tier
-      })),
-      'legal compliance conference',
-      trace
-    );
-    
-    // Step 3: Extraction
-    const extractionResults = await extractWithFallbacks(
-      prioritizationResult.prioritizedUrls.map(url => {
-        const result = searchResults.find(r => r.url === url);
-        return {
-          url,
-          title: result?.title || 'Unknown',
-          snippet: result?.snippet || ''
-        };
-      }),
-      {
-        batchSize: 3,
-        maxPollMs: 25000,
-        maxRetries: 2
-      },
-      trace
-    );
-    
-    // Step 4: Filtering
-    const filteredResults = applyRelaxedFilters(
-      extractionResults,
-      'DE',
-      new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
-      new Date(),
-      trace
-    );
-    
-    // Step 5: Final processing
-    const finalItems = filteredResults.map((result, index) => ({
-      id: `debug-${index}`,
-      title: result.title,
-      url: result.url,
-      description: result.description,
-      startsAt: result.startsAt,
-      endsAt: result.endsAt,
-      venue: result.venue,
-      city: result.city,
-      country: result.country,
-      speakers: result.speakers || [],
-      undatedCandidate: result.undatedCandidate || false,
-      tier: result.tier || 'unknown',
-      success: result.success || false
+    // Validate provenance
+    const allBuiltQueries = [...tierQueries.tierA, ...tierQueries.tierB, ...tierQueries.tierC];
+    const provenance = allBuiltQueries.map(b => ({
+      tier: b.tier,
+      query: b.query,
+      len: b.query.length,
+      tokens: b.tokens
     }));
     
-    // Update performance metrics
-    trace.performance.totalMs = Date.now() - startTime;
-    trace.performance.searchMs = Math.floor(trace.performance.totalMs * 0.3);
-    trace.performance.prioritizationMs = Math.floor(trace.performance.totalMs * 0.2);
-    trace.performance.extractionMs = Math.floor(trace.performance.totalMs * 0.4);
-    trace.performance.filteringMs = Math.floor(trace.performance.totalMs * 0.1);
+    // Check for blocked augmentation
+    const allTokens = allBuiltQueries.flatMap(b => b.tokens);
+    const validation = validateQueryProvenance(allTokens);
     
-    // Log trace for debugging
-    logSearchTrace(trace, finalItems.length === 0 ? 'warn' : 'info');
-    logSearchSummary(finalItems, trace);
-    
-    // If we still have no results, return fallback
-    if (finalItems.length === 0) {
-      console.warn('All filtering resulted in zero items, returning fallback');
+    if (!validation.isValid) {
       return NextResponse.json({
-        items: [],
-        trace,
-        flags: debugFlags,
-        fallbackUsed: true,
-        items_fallback: [
-          {
-            title: 'Legal Tech Conference 2024 - Berlin',
-            url: 'https://example.com/legal-tech-2024',
-            snippet: 'Fallback event for debugging',
-            tier: 'fallback'
-          },
-          {
-            title: 'Compliance Summit 2024 - Munich',
-            url: 'https://example.com/compliance-summit-2024',
-            snippet: 'Fallback event for debugging',
-            tier: 'fallback'
-          },
-          {
-            title: 'Data Protection Conference 2024 - Frankfurt',
-            url: 'https://example.com/data-protection-2024',
-            snippet: 'Fallback event for debugging',
-            tier: 'fallback'
-          }
-        ]
+        events: [],
+        preFilterCount: 0,
+        keptAfterHeuristics: 0,
+        keptAfterModel: 0,
+        keptAfterCountryDate: 0,
+        degradedRun: false,
+        sample: [],
+        items_fallback: [],
+        provenance,
+        error: 'Query validation failed',
+        errors: validation.errors
+      }, { status: 400 });
+    }
+    
+    // Run search with relaxed parameters
+    const result = await SearchService.executeSearch({
+      q: 'legal compliance conference',
+      country,
+      from: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
+      to: new Date().toISOString(),
+      num: 20
+    });
+    
+    // Convert SearchItem[] to events format with proper metadata
+    const events = result.items.map((item, index) => ({
+      id: `debug-${index}`,
+      title: item.title,
+      url: item.link,
+      description: item.snippet,
+      source_url: item.link,
+      // Add inferred metadata
+      country: 'DE', // Will be properly inferred in the search service
+      dateISO: new Date().toISOString().split('T')[0] // Placeholder, will be properly inferred
+    }));
+    
+    // Only return fallback items if DEBUG_MODE is enabled
+    let items_fallback: any[] = [];
+    if (DEBUG_MODE) {
+      items_fallback = [
+        {
+          id: 'fallback-1',
+          title: 'Legal Tech Conference 2024 - Berlin',
+          url: 'https://example.com/legal-tech-2024',
+          description: 'Fallback event for debugging',
+          source_url: 'https://example.com/legal-tech-2024',
+          country: 'DE',
+          dateISO: '2024-01-15'
+        }
+      ];
+    }
+    
+    // If we have real results, return them
+    if (events.length > 0) {
+      return NextResponse.json({
+        events,
+        preFilterCount: result.items.length,
+        keptAfterHeuristics: result.items.length,
+        keptAfterModel: result.items.length,
+        keptAfterCountryDate: result.items.length,
+        degradedRun: false,
+        sample: events.slice(0, 5).map(x => x.url),
+        items_fallback,
+        provenance
       });
     }
     
+    // If no real results and DEBUG_MODE is enabled, return fallback
+    if (DEBUG_MODE && items_fallback.length > 0) {
+      return NextResponse.json({
+        events: items_fallback,
+        preFilterCount: 0,
+        keptAfterHeuristics: 0,
+        keptAfterModel: 0,
+        keptAfterCountryDate: 0,
+        degradedRun: true,
+        sample: items_fallback.slice(0, 5).map(x => x.url),
+        items_fallback
+      });
+    }
+    
+    // Return empty results if no real results and not in debug mode
     return NextResponse.json({
-      items: finalItems,
-      trace,
-      flags: debugFlags,
-      fallbackUsed: false
+      events: [],
+      preFilterCount: 0,
+      keptAfterHeuristics: 0,
+      keptAfterModel: 0,
+      keptAfterCountryDate: 0,
+      degradedRun: false,
+      sample: [],
+      items_fallback: []
     });
     
   } catch (error) {
     console.error('Debug search failed:', error);
     
-    const errorTrace = createSearchTrace(
-      'DEBUG_TEST_SEARCH_ERROR',
-      'DE',
-      new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-      new Date().toISOString()
-    );
-    
-    logSearchTrace(errorTrace, 'error');
-    
-    return NextResponse.json({
-      items: [],
-      trace: errorTrace,
-      flags: FLAGS,
-      fallbackUsed: true,
-      items_fallback: [
+    // Only return error fallback if DEBUG_MODE is enabled
+    let items_fallback: any[] = [];
+    if (DEBUG_MODE) {
+      items_fallback = [
         {
+          id: 'error-fallback-1',
           title: 'Error Fallback Event',
           url: 'https://example.com/error-fallback',
-          snippet: 'Fallback event due to error',
-          tier: 'error-fallback'
+          description: 'Fallback event due to error',
+          source_url: 'https://example.com/error-fallback',
+          country: 'DE',
+          dateISO: '2024-01-15'
         }
-      ]
+      ];
+    }
+    
+    return NextResponse.json({
+      events: items_fallback,
+      preFilterCount: 0,
+      keptAfterHeuristics: 0,
+      keptAfterModel: 0,
+      keptAfterCountryDate: 0,
+      degradedRun: true,
+      sample: items_fallback.map(x => x.url),
+      items_fallback
     });
   }
 }

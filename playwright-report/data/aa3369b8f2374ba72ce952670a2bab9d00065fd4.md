@@ -1,0 +1,83 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "Attendry" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e7] [cursor=pointer]: Attendry
+        - navigation [ref=e8]:
+          - link "🏠 Home" [ref=e9] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e10] [cursor=pointer]: 🏠
+            - generic [ref=e11] [cursor=pointer]: Home
+          - link "📅 Events" [ref=e12] [cursor=pointer]:
+            - /url: /events
+            - generic [ref=e13] [cursor=pointer]: 📅
+            - generic [ref=e14] [cursor=pointer]: Events
+          - link "🔍 Smart Search" [ref=e15] [cursor=pointer]:
+            - /url: /search
+            - generic [ref=e16] [cursor=pointer]: 🔍
+            - generic [ref=e17] [cursor=pointer]: Smart Search
+          - link "💡 Recommendations" [ref=e18] [cursor=pointer]:
+            - /url: /recommendations
+            - generic [ref=e19] [cursor=pointer]: 💡
+            - generic [ref=e20] [cursor=pointer]: Recommendations
+          - link "🔥 Trending" [ref=e21] [cursor=pointer]:
+            - /url: /trending
+            - generic [ref=e22] [cursor=pointer]: 🔥
+            - generic [ref=e23] [cursor=pointer]: Trending
+          - link "⚖️ Compare Events" [ref=e24] [cursor=pointer]:
+            - /url: /compare
+            - generic [ref=e25] [cursor=pointer]: ⚖️
+            - generic [ref=e26] [cursor=pointer]: Compare Events
+          - link "🔮 Predictions" [ref=e27] [cursor=pointer]:
+            - /url: /predictions
+            - generic [ref=e28] [cursor=pointer]: 🔮
+            - generic [ref=e29] [cursor=pointer]: Predictions
+          - link "⭐ Watchlist" [ref=e30] [cursor=pointer]:
+            - /url: /watchlist
+            - generic [ref=e31] [cursor=pointer]: ⭐
+            - generic [ref=e32] [cursor=pointer]: Watchlist
+          - link "👤 Profile" [ref=e33] [cursor=pointer]:
+            - /url: /profile
+            - generic [ref=e34] [cursor=pointer]: 👤
+            - generic [ref=e35] [cursor=pointer]: Profile
+          - link "📊 Activity" [ref=e36] [cursor=pointer]:
+            - /url: /activity
+            - generic [ref=e37] [cursor=pointer]: 📊
+            - generic [ref=e38] [cursor=pointer]: Activity
+          - link "🔔 Notifications" [ref=e39] [cursor=pointer]:
+            - /url: /notifications
+            - generic [ref=e40] [cursor=pointer]: 🔔
+            - generic [ref=e41] [cursor=pointer]: Notifications
+    - generic [ref=e42]:
+      - banner [ref=e43]:
+        - generic [ref=e44]:
+          - heading "Dashboard" [level=1] [ref=e46]
+          - link "Sign in" [ref=e48] [cursor=pointer]:
+            - /url: /login
+            - img [ref=e49] [cursor=pointer]
+            - generic [ref=e51] [cursor=pointer]: Sign in
+      - main [ref=e52]:
+        - main [ref=e53]:
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - heading "Welcome to Attendry" [level=1] [ref=e56]
+              - paragraph [ref=e57]: Sign in to discover and track events
+            - button "Continue with Google" [ref=e59] [cursor=pointer]:
+              - img [ref=e60] [cursor=pointer]
+              - text: Continue with Google
+            - generic [ref=e67]: or
+            - generic [ref=e69]:
+              - generic [ref=e70]: Email Address
+              - textbox "Email Address" [active] [ref=e71]: invalid-email
+            - button "Send Magic Link" [ref=e73] [cursor=pointer]
+            - button "Use Password instead" [ref=e75] [cursor=pointer]
+            - paragraph [ref=e76]: We'll email you a secure link. No password needed.
+  - button "Open Next.js Dev Tools" [ref=e82] [cursor=pointer]:
+    - img [ref=e83] [cursor=pointer]
+  - alert [ref=e87]
+```

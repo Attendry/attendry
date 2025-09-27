@@ -1,0 +1,142 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - link "A" [ref=e6]:
+            - /url: /
+            - generic [ref=e7]: A
+          - button [ref=e8]:
+            - img [ref=e9]
+        - navigation [ref=e11]:
+          - link "🏠" [ref=e12]:
+            - /url: /
+            - generic [ref=e13]: 🏠
+          - link "📅" [ref=e14]:
+            - /url: /events
+            - generic [ref=e15]: 📅
+          - link "🔍" [ref=e16]:
+            - /url: /search
+            - generic [ref=e17]: 🔍
+          - link "💡" [ref=e18]:
+            - /url: /recommendations
+            - generic [ref=e19]: 💡
+          - link "🔥" [ref=e20]:
+            - /url: /trending
+            - generic [ref=e21]: 🔥
+          - link "⚖️" [ref=e22]:
+            - /url: /compare
+            - generic [ref=e23]: ⚖️
+          - link "🔮" [ref=e24]:
+            - /url: /predictions
+            - generic [ref=e25]: 🔮
+          - link "⭐" [ref=e26]:
+            - /url: /watchlist
+            - generic [ref=e27]: ⭐
+          - link "👤" [ref=e28]:
+            - /url: /profile
+            - generic [ref=e29]: 👤
+          - link "📊" [ref=e30]:
+            - /url: /activity
+            - generic [ref=e31]: 📊
+          - link "🔔" [ref=e32]:
+            - /url: /notifications
+            - generic [ref=e33]: 🔔
+    - generic [ref=e34]:
+      - banner [ref=e35]:
+        - generic [ref=e36]:
+          - button [ref=e37]:
+            - img [ref=e38]
+          - link [ref=e41]:
+            - /url: /login
+            - img [ref=e42]
+      - main [ref=e44]:
+        - generic [ref=e45]:
+          - generic [ref=e49]:
+            - heading "AI-Powered Event Discovery Platform" [level=1] [ref=e50]:
+              - text: AI-Powered Event
+              - generic [ref=e51]: Discovery Platform
+            - paragraph [ref=e52]: Discover, compare, and track events with advanced AI features. Get personalized recommendations, smart search, and intelligent insights.
+            - generic [ref=e53]:
+              - link "Try Smart Search" [ref=e54]:
+                - /url: /search
+                - generic [ref=e55]: Try Smart Search
+              - link "Get Recommendations" [ref=e57]:
+                - /url: /recommendations
+          - generic [ref=e59]:
+            - generic [ref=e60]:
+              - heading "Why Choose Attendry?" [level=2] [ref=e61]
+              - paragraph [ref=e62]: Powerful features designed to help you discover, connect, and grow professionally
+            - generic [ref=e63]:
+              - generic [ref=e64] [cursor=pointer]:
+                - generic [ref=e65] [cursor=pointer]: 🔍
+                - heading "Smart Search" [level=3] [ref=e66] [cursor=pointer]
+                - paragraph [ref=e67] [cursor=pointer]: Advanced search with natural language processing, filters, and intelligent suggestions.
+                - generic [ref=e68] [cursor=pointer]:
+                  - text: Try Smart Search
+                  - img [ref=e69] [cursor=pointer]
+              - generic [ref=e71] [cursor=pointer]:
+                - generic [ref=e72] [cursor=pointer]: 💡
+                - heading "AI Recommendations" [level=3] [ref=e73] [cursor=pointer]
+                - paragraph [ref=e74] [cursor=pointer]: Get personalized event recommendations based on your interests and behavior.
+                - generic [ref=e75] [cursor=pointer]:
+                  - text: View Recommendations
+                  - img [ref=e76] [cursor=pointer]
+              - generic [ref=e78] [cursor=pointer]:
+                - generic [ref=e79] [cursor=pointer]: ⚖️
+                - heading "Event Comparison" [level=3] [ref=e80] [cursor=pointer]
+                - paragraph [ref=e81] [cursor=pointer]: Compare events side-by-side to make informed decisions about which to attend.
+                - generic [ref=e82] [cursor=pointer]:
+                  - text: Compare Events
+                  - img [ref=e83] [cursor=pointer]
+              - generic [ref=e85] [cursor=pointer]:
+                - generic [ref=e86] [cursor=pointer]: 🔥
+                - heading "Trending Events" [level=3] [ref=e87] [cursor=pointer]
+                - paragraph [ref=e88] [cursor=pointer]: Discover what's popular and trending in your industry and interests.
+                - generic [ref=e89] [cursor=pointer]:
+                  - text: See Trending
+                  - img [ref=e90] [cursor=pointer]
+              - generic [ref=e92] [cursor=pointer]:
+                - generic [ref=e93] [cursor=pointer]: 🔮
+                - heading "Event Predictions" [level=3] [ref=e94] [cursor=pointer]
+                - paragraph [ref=e95] [cursor=pointer]: AI-powered predictions for upcoming events based on historical data and trends.
+                - generic [ref=e96] [cursor=pointer]:
+                  - text: View Predictions
+                  - img [ref=e97] [cursor=pointer]
+              - generic [ref=e99] [cursor=pointer]:
+                - generic [ref=e100] [cursor=pointer]: 📊
+                - heading "Activity Tracking" [level=3] [ref=e101] [cursor=pointer]
+                - paragraph [ref=e102] [cursor=pointer]: Track your event discovery journey and see insights about your preferences.
+                - generic [ref=e103] [cursor=pointer]:
+                  - text: View Activity
+                  - img [ref=e104] [cursor=pointer]
+          - generic [ref=e108]:
+            - generic [ref=e109]:
+              - generic [ref=e110]: 500+
+              - generic [ref=e111]: Events Discovered
+            - generic [ref=e112]:
+              - generic [ref=e113]: 50+
+              - generic [ref=e114]: Industries Covered
+            - generic [ref=e115]:
+              - generic [ref=e116]: 24/7
+              - generic [ref=e117]: AI-Powered Search
+          - generic [ref=e119]:
+            - heading "Ready to Experience AI-Powered Event Discovery?" [level=2] [ref=e120]
+            - paragraph [ref=e121]: Join professionals who use Attendry's advanced features to discover, compare, and track the perfect events.
+            - generic [ref=e122]:
+              - link "Try Smart Search" [ref=e123]:
+                - /url: /search
+                - text: Try Smart Search
+                - img [ref=e124]
+              - link "Compare Events" [ref=e126]:
+                - /url: /compare
+                - text: Compare Events
+                - img [ref=e127]
+          - group [ref=e131]
+  - button "Open Next.js Dev Tools" [ref=e138] [cursor=pointer]:
+    - img [ref=e139] [cursor=pointer]
+  - alert [ref=e144]
+```

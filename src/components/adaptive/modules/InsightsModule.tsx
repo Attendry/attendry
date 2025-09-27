@@ -13,7 +13,8 @@ import {
   Zap,
   CheckCircle,
   AlertCircle,
-  Info
+  Info,
+  Star
 } from 'lucide-react';
 import { useAdaptive } from '../AdaptiveDashboard';
 import { SuggestionBanner } from '../SuggestionBanner';

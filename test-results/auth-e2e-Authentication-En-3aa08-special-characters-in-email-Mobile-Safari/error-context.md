@@ -1,0 +1,75 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - link "A" [ref=e6]:
+            - /url: /
+            - generic [ref=e7]: A
+          - button [ref=e8]:
+            - img [ref=e9]
+        - navigation [ref=e11]:
+          - link "🏠" [ref=e12]:
+            - /url: /
+            - generic [ref=e13]: 🏠
+          - link "📅" [ref=e14]:
+            - /url: /events
+            - generic [ref=e15]: 📅
+          - link "🔍" [ref=e16]:
+            - /url: /search
+            - generic [ref=e17]: 🔍
+          - link "💡" [ref=e18]:
+            - /url: /recommendations
+            - generic [ref=e19]: 💡
+          - link "🔥" [ref=e20]:
+            - /url: /trending
+            - generic [ref=e21]: 🔥
+          - link "⚖️" [ref=e22]:
+            - /url: /compare
+            - generic [ref=e23]: ⚖️
+          - link "🔮" [ref=e24]:
+            - /url: /predictions
+            - generic [ref=e25]: 🔮
+          - link "⭐" [ref=e26]:
+            - /url: /watchlist
+            - generic [ref=e27]: ⭐
+          - link "👤" [ref=e28]:
+            - /url: /profile
+            - generic [ref=e29]: 👤
+          - link "📊" [ref=e30]:
+            - /url: /activity
+            - generic [ref=e31]: 📊
+          - link "🔔" [ref=e32]:
+            - /url: /notifications
+            - generic [ref=e33]: 🔔
+    - generic [ref=e34]:
+      - banner [ref=e35]:
+        - generic [ref=e36]:
+          - button [ref=e37]:
+            - img [ref=e38]
+          - link [ref=e41]:
+            - /url: /login
+            - img [ref=e42]
+      - main [ref=e44]:
+        - main [ref=e45]:
+          - generic [ref=e46]:
+            - generic [ref=e47]:
+              - heading "Welcome to Attendry" [level=1] [ref=e48]
+              - paragraph [ref=e49]: Sign in to discover and track events
+            - button "Continue with Google" [ref=e51] [cursor=pointer]:
+              - img [ref=e52] [cursor=pointer]
+              - text: Continue with Google
+            - generic [ref=e59]: or
+            - generic [ref=e61]:
+              - generic [ref=e62]: Email Address
+              - textbox "Email Address" [active] [ref=e63]: test+tag@example.com
+            - button "Send Magic Link" [ref=e65] [cursor=pointer]
+            - button "Use Password instead" [ref=e67] [cursor=pointer]
+            - paragraph [ref=e68]: We'll email you a secure link. No password needed.
+  - button "Open Next.js Dev Tools" [ref=e74] [cursor=pointer]:
+    - img [ref=e75] [cursor=pointer]
+  - alert [ref=e80]
+```

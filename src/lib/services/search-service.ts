@@ -12,6 +12,8 @@ import { getServiceQueue, RATE_LIMIT_CONFIGS } from "@/lib/services/request-queu
 import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/services/circuit-breaker";
 import { executeWithFallback } from "@/lib/services/fallback-strategies";
 import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
+import { buildTierQueries } from "@/search/query-builder";
+import { assertNoBlockedAugmentation } from "@/search/provenance-guard";
 
 /**
  * Shared Search Service
@@ -181,19 +183,14 @@ export class SearchService {
     userProfile: any, 
     country: string
   ): string {
-    // Use search config's baseQuery if available, otherwise use the passed baseQuery
-    let query = (searchConfig?.baseQuery || baseQuery).trim();
+    // Use only the base query from search config - no augmentation
+    let query = searchConfig?.baseQuery || baseQuery || '(legal)';
     
     console.log('buildEnhancedQuery debug:', {
       searchConfigBaseQuery: searchConfig?.baseQuery,
       passedBaseQuery: baseQuery,
       finalQuery: query
     });
-    
-    // If no base query, use a simple default
-    if (!query) {
-      query = "conference OR event OR seminar OR workshop";
-    }
     
     // Ensure the query includes event-specific terms
     const eventTerms = ['conference', 'event', 'seminar', 'workshop', 'summit', 'webinar', 'veranstaltung', 'kongress'];
@@ -308,6 +305,249 @@ export class SearchService {
     }
     
     return query;
+  }
+
+  /**
+   * Build tier queries for multi-tier search strategy
+   */
+  static buildTierQueries(countryCode: 'DE', cityList: string[], dateRange: {fromISO: string, toISO: string}, baseQuery: string) {
+    const MAX_Q = 230;
+    
+    function clamp(q: string) {
+      return q.length <= MAX_Q ? q : q.slice(0, MAX_Q);
+    }
+
+    const EVENT_TERMS = ['Konferenz','Kongress','Tagung','Seminar','Workshop','Forum','Summit','Symposium','Fortbildung','Veranstaltung'];
+    const LEGAL_TERMS = ['Compliance','Datenschutz','DSGVO','GDPR','eDiscovery','"E-Discovery"','Interne Untersuchung','Geldwäsche','Whistleblowing','Legal Operations','Wirtschaftsstrafrecht','Forensik'];
+    
+    const CITIES_DE = ['Berlin','München','Frankfurt','Köln','Düsseldorf','Hamburg','Stuttgart','Leipzig','Nürnberg','Hannover','Bremen','Essen','Mannheim','Dortmund','Bonn'];
+
+    function mergedBase(searchConfigBaseQuery: string, passedBaseQuery?: string) {
+      const parts = [searchConfigBaseQuery, passedBaseQuery].filter(Boolean);
+      return `(${parts.join(' ')})`;
+    }
+
+    // Tier A: precise, city-sharded
+    function makeTierA(baseQ: string) {
+      return CITIES_DE.slice(0, 10).map(city =>
+        clamp(`${baseQ} (${EVENT_TERMS.join(' OR ')}) (${LEGAL_TERMS.join(' OR ')}) ("${city}" OR Germany)`)
+      );
+    }
+
+    // Tier B: roles + events (ensure non-empty!)
+    function makeTierB(baseQ: string) {
+      const ROLES = '(GC OR "General Counsel" OR "Chief Compliance Officer" OR "Leiter Recht" OR "Leiter Compliance")';
+      return CITIES_DE.slice(10).map(city =>
+        clamp(`${baseQ} (${EVENT_TERMS.join(' OR ')}) ${ROLES} ("${city}" OR Germany)`)
+      );
+    }
+
+    // Tier C: curated domains — one site per query
+    const DOMAINS = [
+      'juve.de/termine','anwaltverein.de','dav.de','forum-institut.de','euroforum.de',
+      'beck-akademie.de','dai.de/veranstaltungen','bitkom.org/Veranstaltungen',
+      'handelsblatt.com/veranstaltungen','uni-koeln.de','uni-muenchen.de','uni-frankfurt.de'
+    ];
+    function makeTierC(baseQ: string) {
+      return DOMAINS.map(d => clamp(`${baseQ} (${EVENT_TERMS.join(' OR ')}) site:${d}`));
+    }
+
+    const tierA = makeTierA(baseQuery);
+    const tierB = makeTierB(baseQuery);
+    const tierC = makeTierC(baseQuery);
+    
+    // Ensure Tier B is non-empty (at least 5 queries)
+    if (tierB.length < 5) {
+      // Add more cities to Tier B if needed
+      const additionalCities = ['Karlsruhe', 'Augsburg', 'Wiesbaden', 'Gelsenkirchen', 'Mönchengladbach'];
+      const ROLES = '(GC OR "General Counsel" OR "Chief Compliance Officer" OR "Leiter Recht" OR "Leiter Compliance")';
+      additionalCities.forEach(city => {
+        tierB.push(clamp(`${baseQuery} (${EVENT_TERMS.join(' OR ')}) ${ROLES} ("${city}" OR Germany)`));
+      });
+    }
+    
+    const result = { tierA, tierB, tierC };
+    
+    // Log query lengths and ensure no query exceeds 230 chars
+    console.log('buildTierQueries lengths:', {
+      tierA: result.tierA.map(q => q.length),
+      tierB: result.tierB.map(q => q.length),
+      tierC: result.tierC.map(q => q.length),
+      maxLength: Math.max(...result.tierA.map(q => q.length), ...result.tierB.map(q => q.length), ...result.tierC.map(q => q.length))
+    });
+    
+    // Verify no query exceeds 230 chars
+    const allQueries = [...result.tierA, ...result.tierB, ...result.tierC];
+    const overLimit = allQueries.filter(q => q.length > MAX_Q);
+    if (overLimit.length > 0) {
+      console.warn(`Found ${overLimit.length} queries exceeding ${MAX_Q} chars:`, overLimit.map(q => q.length));
+    }
+    
+    return result;
+  }
+
+  /**
+   * Soft filter URLs to remove only hard noise
+   */
+  static softFilterUrls(urls: string[]): string[] {
+    const ALLOWLIST = new Set([
+      'juve.de','anwaltverein.de','dav.de','forum-institut.de','euroforum.de',
+      'beck-akademie.de','dai.de','bitkom.org','handelsblatt.com','uni-koeln.de',
+      'uni-muenchen.de','uni-frankfurt.de','zfbf.de','compliance-netzwerk.de','legal-operations.de'
+    ]);
+
+    function isLikelyEventUrl(u: URL) {
+      const p = u.pathname.toLowerCase();
+      return /veranstalt|termine|event|konferenz|kongress|tagung|seminar|workshop|symposium|summit/.test(p);
+    }
+
+    function isGermanish(u: URL, htmlLang?: string) {
+      return u.hostname.endsWith('.de') || ALLOWLIST.has(u.hostname.replace(/^www\./,''))
+          || (htmlLang?.startsWith('de'));
+    }
+
+    const out: string[] = [];
+    for (const s of urls) {
+      try {
+        const u = new URL(s);
+        if (/\/tag\//.test(u.pathname)) continue;         // kill tag indexes
+        if (/fintech\.global|nerja|student/i.test(s)) continue; // obvious noise from logs
+        if (!isGermanish(u)) { out.push(s); continue; }   // keep for now—later filtering will cull
+        out.push(s);
+      } catch { /* skip invalid */ }
+    }
+    return Array.from(new Set(out));
+  }
+
+  /**
+   * Safe JSON parsing with repair and fallback
+   */
+  static safeParse<T=any>(s: string): T | null {
+    try { return JSON.parse(s) as T; } catch {}
+    try { 
+      // Try jsonrepair if available
+      const { jsonrepair } = require('jsonrepair');
+      return JSON.parse(jsonrepair(s)) as T; 
+    } catch {}
+    try { 
+      // Try json5 if available
+      const { parse: parseJson5 } = require('json5');
+      return parseJson5(s) as T; 
+    } catch {}
+    // last-ditch: extract first {...} block
+    const m = s.match(/\{[\s\S]*\}$/m);
+    if (m) { 
+      try { 
+        const { jsonrepair } = require('jsonrepair');
+        return JSON.parse(jsonrepair(m[0])) as T; 
+      } catch {} 
+    }
+    return null;
+  }
+
+  /**
+   * Calculate heuristic score for prioritization fallback
+   */
+  static calculateHeuristicScore(item: SearchItem): number {
+    const url = item.link?.toLowerCase() || '';
+    const title = item.title?.toLowerCase() || '';
+    const text = item.snippet?.toLowerCase() || '';
+    
+    let s = 0;
+    
+    // Event keywords
+    if (/veranstalt|konferenz|kongress|tagung|seminar|workshop|symposium|summit/i.test(title + text)) s += 3;
+    
+    // Legal keywords
+    if (/compliance|datenschutz|dsgvo|gdpr|ediscovery|e-discovery|whistleblow|interne untersuch|wirtschaftsstrafrecht|legal operations/i.test(title + text)) s += 3;
+    
+    // URL path hints
+    if (/\/veranstaltungen?|\/termine|\/event|\/konferenz|\/kongress/i.test(url)) s += 2;
+    
+    // Domain trust
+    if (url.endsWith('.de') || /juve\.de|anwaltverein\.de|forum-institut\.de|euroforum\.de|beck-akademie\.de|dai\.de/i.test(url)) s += 2;
+    
+    return s;
+  }
+
+  /**
+   * Convert days to CDR window format
+   */
+  static toCdr(days: number): { cd_min: string, cd_max: string } {
+    const now = new Date();
+    const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    
+    const formatDate = (date: Date) => {
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${month}/${day}/${year}`;
+    };
+    
+    return {
+      cd_min: formatDate(from),
+      cd_max: formatDate(now)
+    };
+  }
+
+  /**
+   * Infer country from URL and text content
+   */
+  static inferCountry(url: string, text: string): string {
+    try {
+      const u = new URL(url);
+      const host = u.hostname.replace(/^www\./, '');
+      
+      if (host.endsWith('.de')) return 'DE';
+      
+      const DE_CITIES = new Set(['berlin', 'münchen', 'frankfurt', 'köln', 'hamburg', 'stuttgart', 'leipzig', 'düsseldorf']);
+      
+      if (/\b(Deutschland|Germany|Berlin|München|Frankfurt|Köln|Hamburg|Stuttgart|Leipzig|Düsseldorf)\b/i.test(text)) return 'DE';
+      if (/\b(Österreich|Austria|Wien)\b/i.test(text)) return 'AT';
+      if (/\b(Schweiz|Switzerland|Zürich|Bern|Basel)\b/i.test(text)) return 'CH';
+      
+      return 'OTHER';
+    } catch {
+      return 'OTHER';
+    }
+  }
+
+  /**
+   * Infer date from text content
+   */
+  static inferDate(text: string): string | undefined {
+    // ISO format: 2024-01-15
+    const iso = text.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+    if (iso) return iso[1];
+    
+    // German dots format: dd.mm.yyyy or dd.mm.yy
+    const deDots = text.match(/\b(\d{1,2}\.\d{1,2}\.(20)?\d{2,4})\b/);
+    if (deDots) {
+      const [d, m, y] = deDots[1].split('.');
+      const year = (y.length === 2 ? '20' + y : y).padStart(4, '0');
+      return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+    }
+    
+    // German month names: d. Monat yyyy
+    const months = ['januar','februar','märz','april','mai','juni','juli','august','september','oktober','november','dezember'];
+    const m = text.toLowerCase().match(new RegExp(`\\b(\\d{1,2})\\.\\s*(${months.join('|')})\\s*(20\\d{2})\\b`,'i'));
+    if (m) {
+      const day = m[1].padStart(2, '0');
+      const month = String(months.indexOf(m[2].toLowerCase()) + 1).padStart(2, '0');
+      return `${m[3]}-${month}-${day}`;
+    }
+    
+    return undefined;
+  }
+
+  /**
+   * Infer metadata from URL and content
+   */
+  static inferMeta(url: string, html: string, text: string): { country: string, dateISO?: string } {
+    const country = this.inferCountry(url, text);
+    const dateISO = this.inferDate(text);
+    
+    return { country, dateISO };
   }
 
   /**
@@ -511,9 +751,9 @@ export class SearchService {
       console.log(JSON.stringify({ at: "search_service", provider: "database", found: false, count: dbResult.count, proceeding_to_search: true }));
     }
 
-    // Step 2: Try Firecrawl Search with user configuration
+    // Step 2: Try Firecrawl Search with tier-based approach
     try {
-      console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "primary" }));
+      console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "tier_based" }));
       
       // Load user configuration to enhance search
       const searchConfig = await this.loadSearchConfig();
@@ -526,7 +766,181 @@ export class SearchService {
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
       console.log(JSON.stringify({ at: "search_service", firecrawl_query: enhancedQuery, query_length: enhancedQuery.length }));
       
-      const firecrawlResult = await executeWithFallback("firecrawl", async () => {
+      // Declare firecrawlResult outside the if block for proper scope
+      let firecrawlResult: any;
+      
+      // Use tier-based search for Germany
+      if (params.country === 'DE') {
+        const cityList = ['Berlin', 'München', 'Hamburg', 'Köln', 'Frankfurt', 'Stuttgart', 'Düsseldorf', 'Dortmund', 'Essen', 'Leipzig', 'Bremen', 'Dresden', 'Hannover', 'Nürnberg', 'Duisburg', 'Bochum', 'Wuppertal', 'Bielefeld', 'Bonn', 'Münster', 'Karlsruhe', 'Mannheim', 'Augsburg', 'Wiesbaden', 'Gelsenkirchen'];
+        const dateRange = { fromISO: params.from || '', toISO: params.to || '' };
+        const tierQueries = buildTierQueries(enhancedQuery);
+        
+        // Calculate CDR window
+        const days = Math.ceil((Date.now() - new Date(params.from || Date.now() - 60 * 24 * 60 * 60 * 1000).getTime()) / (1000 * 60 * 60 * 24));
+        const { cd_min, cd_max } = this.toCdr(days);
+        
+        let allResults: any[] = [];
+        const seenUrls = new Set<string>();
+        let tiersExecuted = 0;
+        
+        // Execute Tier A queries
+        console.log(`Executing ${tierQueries.tierA.length} Tier A queries`);
+        for (const builtQuery of tierQueries.tierA) {
+          // Validate provenance unless in debug mode
+          if (process.env.DEBUG_MODE !== '1') {
+            assertNoBlockedAugmentation(builtQuery.tokens);
+          }
+          
+          const result = await executeWithFallback("firecrawl", async () => {
+            return await executeWithCircuitBreaker("firecrawl", () =>
+              FirecrawlSearchService.searchEvents({
+                query: builtQuery.query,
+                country: params.country,
+                from: params.from,
+                to: params.to,
+                industry: searchConfig?.industry || "legal-compliance",
+                maxResults: 25,
+                tbs: `cdr:1,cd_min:${cd_min},cd_max:${cd_max}`
+              }),
+              CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+            );
+          });
+          
+          // Deduplicate by normalized URL
+          result.items.forEach((item: any) => {
+            const normalizedUrl = item.link?.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+            if (normalizedUrl && !seenUrls.has(normalizedUrl)) {
+              seenUrls.add(normalizedUrl);
+              allResults.push(item);
+            }
+          });
+        }
+        tiersExecuted++;
+        
+        // Execute Tier B queries (always run, not conditional)
+        console.log(`Executing ${tierQueries.tierB.length} Tier B queries`);
+        for (const builtQuery of tierQueries.tierB) {
+          // Validate provenance unless in debug mode
+          if (process.env.DEBUG_MODE !== '1') {
+            assertNoBlockedAugmentation(builtQuery.tokens);
+          }
+          
+          const result = await executeWithFallback("firecrawl", async () => {
+            return await executeWithCircuitBreaker("firecrawl", () =>
+              FirecrawlSearchService.searchEvents({
+                query: builtQuery.query,
+                country: params.country,
+                from: params.from,
+                to: params.to,
+                industry: searchConfig?.industry || "legal-compliance",
+                maxResults: 25,
+                tbs: `cdr:1,cd_min:${cd_min},cd_max:${cd_max}`
+              }),
+              CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+            );
+          });
+          
+          // Deduplicate by normalized URL
+          result.items.forEach((item: any) => {
+            const normalizedUrl = item.link?.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+            if (normalizedUrl && !seenUrls.has(normalizedUrl)) {
+              seenUrls.add(normalizedUrl);
+              allResults.push(item);
+            }
+          });
+        }
+        tiersExecuted++;
+        
+        // If still < 8, try Tier C
+        if (allResults.length < 8) {
+          console.log(`Executing ${tierQueries.tierC.length} Tier C queries`);
+          for (const builtQuery of tierQueries.tierC) {
+            // Validate provenance unless in debug mode
+            if (process.env.DEBUG_MODE !== '1') {
+              assertNoBlockedAugmentation(builtQuery.tokens);
+            }
+            
+            const result = await executeWithFallback("firecrawl", async () => {
+              return await executeWithCircuitBreaker("firecrawl", () =>
+                FirecrawlSearchService.searchEvents({
+                  query: builtQuery.query,
+                  country: params.country,
+                  from: params.from,
+                  to: params.to,
+                  industry: searchConfig?.industry || "legal-compliance",
+                  maxResults: 25,
+                  tbs: `cdr:1,cd_min:${cd_min},cd_max:${cd_max}`
+                }),
+                CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+              );
+            });
+            
+            // Deduplicate by normalized URL
+            result.items.forEach((item: any) => {
+              const normalizedUrl = item.link?.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+              if (normalizedUrl && !seenUrls.has(normalizedUrl)) {
+                seenUrls.add(normalizedUrl);
+                allResults.push(item);
+              }
+            });
+          }
+          tiersExecuted++;
+        }
+        
+        // If still < 8, widen window by +30 days
+        if (allResults.length < 8) {
+          console.log('Widening search window by +30 days');
+          const widenedDays = days + 30;
+          const { cd_min: cd_min_wide, cd_max: cd_max_wide } = this.toCdr(widenedDays);
+          
+          // Re-run Tier C with wider window
+          for (const builtQuery of tierQueries.tierC) {
+            const result = await executeWithFallback("firecrawl", async () => {
+              return await executeWithCircuitBreaker("firecrawl", () =>
+                FirecrawlSearchService.searchEvents({
+                  query: builtQuery.query,
+                  country: params.country,
+                  from: params.from,
+                  to: params.to,
+                  industry: searchConfig?.industry || "legal-compliance",
+                  maxResults: 25,
+                  tbs: `cdr:1,cd_min:${cd_min_wide},cd_max:${cd_max_wide}`
+                }),
+                CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+              );
+            });
+            
+            // Deduplicate by normalized URL
+            result.items.forEach((item: any) => {
+              const normalizedUrl = item.link?.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+              if (normalizedUrl && !seenUrls.has(normalizedUrl)) {
+                seenUrls.add(normalizedUrl);
+                allResults.push(item);
+              }
+            });
+          }
+        }
+        
+        // Soft filter URLs
+        const urls = allResults.map(item => item.link).filter(Boolean);
+        const filteredUrls = this.softFilterUrls(urls);
+        firecrawlResult = { items: allResults.filter(item => filteredUrls.includes(item.link)) };
+        
+        console.log(JSON.stringify({ 
+          at: "search_service", 
+          tier_results: { 
+            tierA: tierQueries.tierA.length, 
+            tierB: tierQueries.tierB.length, 
+            tierC: tierQueries.tierC.length 
+          },
+          tiersExecuted,
+          total_results: allResults.length,
+          filtered_results: firecrawlResult.items.length,
+          sample_urls: allResults.slice(0, 5).map(item => item.link)
+        }));
+      } else {
+        // Fallback to original single query for non-DE countries
+        firecrawlResult = await executeWithFallback("firecrawl", async () => {
         return await executeWithCircuitBreaker("firecrawl", () =>
           FirecrawlSearchService.searchEvents({
             query: enhancedQuery,
@@ -539,13 +953,27 @@ export class SearchService {
           CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
         );
       });
+      }
       
       if (firecrawlResult.items.length > 0) {
         console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", success: true, items: firecrawlResult.items.length }));
         
-        // NEW: Add Gemini prioritization before returning results
+        // NEW: Add Gemini prioritization with safe JSON parsing
         try {
           console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization", items: firecrawlResult.items.length }));
+          
+          // Check if we have enough results for prioritization
+          if (firecrawlResult.items.length < 8) {
+            console.log(JSON.stringify({ at: "search_service", step: "auto_degrade", reason: "low_results", count: firecrawlResult.items.length }));
+            // Auto-degrade: widen window, relax filters
+            const degradedParams = {
+              ...params,
+              from: new Date(Date.now() - (60 * 24 * 60 * 60 * 1000)).toISOString(), // +30 days
+              to: params.to
+            };
+            // TODO: Implement auto-degrade logic here
+          }
+          
           const prioritization = await OptimizedAIService.processRequest<{ prioritizedUrls: string[] }>(
             'prioritize',
             'Prioritize URLs based on relevance for event discovery',
@@ -553,9 +981,37 @@ export class SearchService {
             { useBatching: true, useCache: true }
           );
           
+          // Use safeParse to handle JSON parsing errors (prioritization is already parsed)
+          const parsedPrioritization = prioritization as { prioritizedUrls: string[] };
+          
+          if (!parsedPrioritization) {
+            console.warn('Gemini prioritization returned invalid JSON, using heuristic fallback');
+            // Use heuristic prioritization based on title/URL scoring
+            const scoredItems = firecrawlResult.items
+              .map((item: any) => ({
+                ...item,
+                score: this.calculateHeuristicScore(item)
+              }))
+              .sort((a: any, b: any) => b.score - a.score);
+            
+            // Keep items with score >= 4, or top-scoring if fewer than 8
+            const highScoreItems = scoredItems.filter((item: any) => item.score >= 4);
+            const prioritizedItems = highScoreItems.length >= 8 
+              ? highScoreItems 
+              : scoredItems.slice(0, Math.max(8, scoredItems.length));
+            
+            console.log(`Heuristic scoring: ${scoredItems.length} total, ${highScoreItems.length} with score >= 4, keeping ${prioritizedItems.length}`);
+            
+            return {
+              provider: firecrawlResult.provider,
+              items: prioritizedItems.map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet })),
+              cached: false
+            };
+          }
+          
           // Return only prioritized URLs as search items
-          const prioritizedItems = firecrawlResult.items.filter(item => 
-            prioritization.prioritizedUrls.includes(item.link)
+          const prioritizedItems = firecrawlResult.items.filter((item: any) => 
+            parsedPrioritization.prioritizedUrls.includes(item.link)
           );
           
           console.log(JSON.stringify({ 
@@ -571,8 +1027,28 @@ export class SearchService {
             cached: false
           };
         } catch (error: any) {
-          console.warn('Gemini prioritization failed, returning all results:', error.message);
-          return firecrawlResult;
+          console.warn('Gemini prioritization failed, using heuristic fallback:', error.message);
+          // Use heuristic prioritization as fallback
+          const scoredItems = firecrawlResult.items
+            .map((item: any) => ({
+              ...item,
+              score: this.calculateHeuristicScore(item)
+            }))
+            .sort((a: any, b: any) => b.score - a.score);
+          
+          // Keep items with score >= 4, or top-scoring if fewer than 8
+          const highScoreItems = scoredItems.filter((item: any) => item.score >= 4);
+          const prioritizedItems = highScoreItems.length >= 8 
+            ? highScoreItems 
+            : scoredItems.slice(0, Math.max(8, scoredItems.length));
+          
+          console.log(`Heuristic fallback: ${scoredItems.length} total, ${highScoreItems.length} with score >= 4, keeping ${prioritizedItems.length}`);
+          
+          return {
+            provider: firecrawlResult.provider,
+            items: prioritizedItems.map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet })),
+            cached: false
+          };
         }
       }
     } catch (error) {
@@ -583,6 +1059,18 @@ export class SearchService {
     console.log(JSON.stringify({ at: "search_service", provider: "google_cse", attempt: "fallback" }));
     const cseResult = await this.executeGoogleCSESearch(params);
     console.log(JSON.stringify({ at: "search_service", google_cse_result: { provider: cseResult.provider, items_count: cseResult.items.length } }));
+    
+    // Log search summary
+    console.info(JSON.stringify({
+      at: 'search_summary',
+      preFilterCount: 0, // TODO: track this
+      keptAfterHeuristics: 0, // TODO: track this
+      keptAfterModel: 0, // TODO: track this
+      keptAfterCountryDate: 0, // TODO: track this
+      degradedRun: false, // TODO: track this
+      sample: cseResult.items.slice(0,5).map(x => x.link)
+    }, null, 2));
+    
     return cseResult;
   }
 

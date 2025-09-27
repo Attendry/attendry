@@ -14,6 +14,7 @@ export interface FirecrawlSearchParams {
   to?: string;
   industry?: string;
   maxResults?: number;
+  tbs?: string;
 }
 
 export interface FirecrawlSearchResult {

@@ -1,0 +1,150 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "Attendry" [ref=e6]:
+          - /url: /
+          - generic [ref=e7]: Attendry
+        - navigation [ref=e8]:
+          - link "🏠 Home" [ref=e9]:
+            - /url: /
+            - generic [ref=e10]: 🏠
+            - generic [ref=e11]: Home
+          - link "📅 Events" [ref=e12]:
+            - /url: /events
+            - generic [ref=e13]: 📅
+            - generic [ref=e14]: Events
+          - link "🔍 Smart Search" [ref=e15]:
+            - /url: /search
+            - generic [ref=e16]: 🔍
+            - generic [ref=e17]: Smart Search
+          - link "💡 Recommendations" [ref=e18]:
+            - /url: /recommendations
+            - generic [ref=e19]: 💡
+            - generic [ref=e20]: Recommendations
+          - link "🔥 Trending" [ref=e21]:
+            - /url: /trending
+            - generic [ref=e22]: 🔥
+            - generic [ref=e23]: Trending
+          - link "⚖️ Compare Events" [ref=e24]:
+            - /url: /compare
+            - generic [ref=e25]: ⚖️
+            - generic [ref=e26]: Compare Events
+          - link "🔮 Predictions" [ref=e27]:
+            - /url: /predictions
+            - generic [ref=e28]: 🔮
+            - generic [ref=e29]: Predictions
+          - link "⭐ Watchlist" [ref=e30]:
+            - /url: /watchlist
+            - generic [ref=e31]: ⭐
+            - generic [ref=e32]: Watchlist
+          - link "👤 Profile" [ref=e33]:
+            - /url: /profile
+            - generic [ref=e34]: 👤
+            - generic [ref=e35]: Profile
+          - link "📊 Activity" [ref=e36]:
+            - /url: /activity
+            - generic [ref=e37]: 📊
+            - generic [ref=e38]: Activity
+          - link "🔔 Notifications" [ref=e39]:
+            - /url: /notifications
+            - generic [ref=e40]: 🔔
+            - generic [ref=e41]: Notifications
+    - generic [ref=e42]:
+      - banner [ref=e43]:
+        - generic [ref=e44]:
+          - heading "Dashboard" [level=1] [ref=e46]
+          - link "Sign in" [ref=e48]:
+            - /url: /login
+            - img [ref=e49]
+            - generic [ref=e51]: Sign in
+      - main [ref=e52]:
+        - generic [ref=e54]:
+          - generic [ref=e55]:
+            - heading "Discover Events" [level=1] [ref=e56]
+            - paragraph [ref=e57]: Find conferences, meetups, and networking opportunities tailored to your interests
+          - generic [ref=e58]:
+            - generic [ref=e60]:
+              - generic [ref=e63]: Setup incomplete
+              - paragraph [ref=e64]: Complete your profile for better search results.
+              - generic [ref=e65]:
+                - generic [ref=e68]: Profile
+                - generic [ref=e71]: Search Config
+              - generic [ref=e73]:
+                - link "Setup Profile" [ref=e75]:
+                  - /url: /admin?tab=profile
+                  - img [ref=e76]
+                  - text: Setup Profile
+                - button "Refresh" [ref=e78]:
+                  - img [ref=e79]
+                  - text: Refresh
+            - generic [ref=e81]:
+              - generic [ref=e82]:
+                - img [ref=e84]
+                - heading "Find Events" [level=2] [ref=e86]
+              - generic [ref=e87]:
+                - generic [ref=e88]:
+                  - generic [ref=e89]: Location
+                  - combobox [ref=e90]:
+                    - option "All Europe" [selected]
+                    - option "Germany"
+                    - option "France"
+                    - option "Netherlands"
+                    - option "United Kingdom"
+                    - option "Spain"
+                    - option "Italy"
+                    - option "Sweden"
+                    - option "Poland"
+                    - option "Belgium"
+                    - option "Switzerland"
+                - generic [ref=e91]:
+                  - generic [ref=e92]: Time Range
+                  - generic [ref=e93]:
+                    - generic [ref=e94]:
+                      - button "Next 7 days" [ref=e95]
+                      - button "Past 7 days" [ref=e96]
+                    - generic [ref=e97]:
+                      - button "7 days" [ref=e98]
+                      - button "14 days" [ref=e99]
+                      - button "30 days" [ref=e100]
+              - button "Advanced Search Options" [ref=e102]:
+                - img [ref=e103]
+                - text: Advanced Search Options
+              - generic [ref=e105]:
+                - generic [ref=e106]:
+                  - generic [ref=e107]:
+                    - generic [ref=e108]: Start Date
+                    - textbox [ref=e109]: 2025-09-26
+                  - generic [ref=e110]:
+                    - generic [ref=e111]: End Date
+                    - textbox [ref=e112]: 2025-10-03
+                - generic [ref=e113]:
+                  - generic [ref=e114]:
+                    - generic [ref=e115]: Search
+                    - button "Use Advanced Search" [ref=e116]
+                  - textbox "e.g. compliance, ediscovery, forensics, legal tech" [ref=e117]
+                  - paragraph [ref=e118]: Separate multiple keywords with commas for more targeted results
+              - generic [ref=e119]:
+                - button "Search Events" [ref=e120]:
+                  - img [ref=e121]
+                  - text: Search Events
+                - button "Reset" [ref=e123]
+              - generic [ref=e124]:
+                - paragraph [ref=e125]: 💡 Works even without API keys (returns demo events)
+                - paragraph [ref=e126]: "📍 Current location: \"All Europe\""
+          - generic [ref=e128]:
+            - img [ref=e130]
+            - heading "Ready to discover events?" [level=3] [ref=e132]
+            - paragraph [ref=e133]: Use the search controls above to find conferences, meetups, and networking opportunities.
+            - generic [ref=e134]:
+              - generic [ref=e135]: Select a location
+              - generic [ref=e136]: Choose time range
+              - generic [ref=e137]: Add keywords (optional)
+              - generic [ref=e138]: Click Search
+  - button "Open Next.js Dev Tools" [ref=e144] [cursor=pointer]:
+    - img [ref=e145] [cursor=pointer]
+  - alert [ref=e150]
+```

@@ -1,0 +1,150 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - generic [ref=e4]:
+        - link "Attendry" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e7] [cursor=pointer]: Attendry
+        - navigation [ref=e8]:
+          - link "🏠 Home" [ref=e9] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e10] [cursor=pointer]: 🏠
+            - generic [ref=e11] [cursor=pointer]: Home
+          - link "📅 Events" [active] [ref=e12] [cursor=pointer]:
+            - /url: /events
+            - generic [ref=e13] [cursor=pointer]: 📅
+            - generic [ref=e14] [cursor=pointer]: Events
+          - link "🔍 Smart Search" [ref=e15] [cursor=pointer]:
+            - /url: /search
+            - generic [ref=e16] [cursor=pointer]: 🔍
+            - generic [ref=e17] [cursor=pointer]: Smart Search
+          - link "💡 Recommendations" [ref=e18] [cursor=pointer]:
+            - /url: /recommendations
+            - generic [ref=e19] [cursor=pointer]: 💡
+            - generic [ref=e20] [cursor=pointer]: Recommendations
+          - link "🔥 Trending" [ref=e21] [cursor=pointer]:
+            - /url: /trending
+            - generic [ref=e22] [cursor=pointer]: 🔥
+            - generic [ref=e23] [cursor=pointer]: Trending
+          - link "⚖️ Compare Events" [ref=e24] [cursor=pointer]:
+            - /url: /compare
+            - generic [ref=e25] [cursor=pointer]: ⚖️
+            - generic [ref=e26] [cursor=pointer]: Compare Events
+          - link "🔮 Predictions" [ref=e27] [cursor=pointer]:
+            - /url: /predictions
+            - generic [ref=e28] [cursor=pointer]: 🔮
+            - generic [ref=e29] [cursor=pointer]: Predictions
+          - link "⭐ Watchlist" [ref=e30] [cursor=pointer]:
+            - /url: /watchlist
+            - generic [ref=e31] [cursor=pointer]: ⭐
+            - generic [ref=e32] [cursor=pointer]: Watchlist
+          - link "👤 Profile" [ref=e33] [cursor=pointer]:
+            - /url: /profile
+            - generic [ref=e34] [cursor=pointer]: 👤
+            - generic [ref=e35] [cursor=pointer]: Profile
+          - link "📊 Activity" [ref=e36] [cursor=pointer]:
+            - /url: /activity
+            - generic [ref=e37] [cursor=pointer]: 📊
+            - generic [ref=e38] [cursor=pointer]: Activity
+          - link "🔔 Notifications" [ref=e39] [cursor=pointer]:
+            - /url: /notifications
+            - generic [ref=e40] [cursor=pointer]: 🔔
+            - generic [ref=e41] [cursor=pointer]: Notifications
+    - generic [ref=e42]:
+      - banner [ref=e43]:
+        - generic [ref=e44]:
+          - heading "Dashboard" [level=1] [ref=e46]
+          - link "Sign in" [ref=e48] [cursor=pointer]:
+            - /url: /login
+            - img [ref=e49] [cursor=pointer]
+            - generic [ref=e51] [cursor=pointer]: Sign in
+      - main [ref=e52]:
+        - generic [ref=e54]:
+          - generic [ref=e55]:
+            - heading "Discover Events" [level=1] [ref=e56]
+            - paragraph [ref=e57]: Find conferences, meetups, and networking opportunities tailored to your interests
+          - generic [ref=e58]:
+            - generic [ref=e60]:
+              - generic [ref=e63]: Setup incomplete
+              - paragraph [ref=e64]: Complete your profile for better search results.
+              - generic [ref=e65]:
+                - generic [ref=e68]: Profile
+                - generic [ref=e71]: Search Config
+              - generic [ref=e73]:
+                - link "Setup Profile" [ref=e75] [cursor=pointer]:
+                  - /url: /admin?tab=profile
+                  - img [ref=e76] [cursor=pointer]
+                  - text: Setup Profile
+                - button "Refresh" [ref=e78]:
+                  - img [ref=e79]
+                  - text: Refresh
+            - generic [ref=e81]:
+              - generic [ref=e82]:
+                - img [ref=e84]
+                - heading "Find Events" [level=2] [ref=e86]
+              - generic [ref=e87]:
+                - generic [ref=e88]:
+                  - generic [ref=e89]: Location
+                  - combobox [ref=e90]:
+                    - option "All Europe" [selected]
+                    - option "Germany"
+                    - option "France"
+                    - option "Netherlands"
+                    - option "United Kingdom"
+                    - option "Spain"
+                    - option "Italy"
+                    - option "Sweden"
+                    - option "Poland"
+                    - option "Belgium"
+                    - option "Switzerland"
+                - generic [ref=e91]:
+                  - generic [ref=e92]: Time Range
+                  - generic [ref=e93]:
+                    - generic [ref=e94]:
+                      - button "Next 7 days" [ref=e95]
+                      - button "Past 7 days" [ref=e96]
+                    - generic [ref=e97]:
+                      - button "7 days" [ref=e98]
+                      - button "14 days" [ref=e99]
+                      - button "30 days" [ref=e100]
+              - button "Advanced Search Options" [ref=e102]:
+                - img [ref=e103]
+                - text: Advanced Search Options
+              - generic [ref=e105]:
+                - generic [ref=e106]:
+                  - generic [ref=e107]:
+                    - generic [ref=e108]: Start Date
+                    - textbox [ref=e109]: 2025-09-26
+                  - generic [ref=e110]:
+                    - generic [ref=e111]: End Date
+                    - textbox [ref=e112]: 2025-10-03
+                - generic [ref=e113]:
+                  - generic [ref=e114]:
+                    - generic [ref=e115]: Search
+                    - button "Use Advanced Search" [ref=e116]
+                  - textbox "e.g. compliance, ediscovery, forensics, legal tech" [ref=e117]
+                  - paragraph [ref=e118]: Separate multiple keywords with commas for more targeted results
+              - generic [ref=e119]:
+                - button "Search Events" [ref=e120]:
+                  - img [ref=e121]
+                  - text: Search Events
+                - button "Reset" [ref=e123]
+              - generic [ref=e124]:
+                - paragraph [ref=e125]: 💡 Works even without API keys (returns demo events)
+                - paragraph [ref=e126]: "📍 Current location: \"All Europe\""
+          - generic [ref=e128]:
+            - img [ref=e130]
+            - heading "Ready to discover events?" [level=3] [ref=e132]
+            - paragraph [ref=e133]: Use the search controls above to find conferences, meetups, and networking opportunities.
+            - generic [ref=e134]:
+              - generic [ref=e135]: Select a location
+              - generic [ref=e136]: Choose time range
+              - generic [ref=e137]: Add keywords (optional)
+              - generic [ref=e138]: Click Search
+  - button "Open Next.js Dev Tools" [ref=e144] [cursor=pointer]:
+    - img [ref=e145] [cursor=pointer]
+  - alert [ref=e148]
+```

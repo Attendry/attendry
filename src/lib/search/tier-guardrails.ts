@@ -191,12 +191,6 @@ export async function executeAllTiers(
  */
 async function performSearch(tier: SearchTier): Promise<SearchResult[]> {
   // This would be replaced with actual Firecrawl or Google CSE calls
-  return [
-    {
-      title: `Sample Event ${tier.tier}`,
-      url: `https://example.com/event-${tier.tier}`,
-      snippet: `Sample event description for tier ${tier.tier}`,
-      tier: tier.tier
-    }
-  ];
+  // Return empty array to avoid stubs in production
+  return [];
 }

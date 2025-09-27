@@ -31,6 +31,8 @@ export interface AdaptiveContextType {
   setTheme: (theme: ThemeMode) => void;
   userBehavior: UserBehavior;
   updateUserBehavior: (updates: Partial<UserBehavior>) => void;
+  adaptiveMode: boolean;
+  setAdaptiveMode: (enabled: boolean) => void;
 }
 
 const AdaptiveContext = createContext<AdaptiveContextType | undefined>(undefined);
@@ -51,6 +53,7 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
   const [currentModule, setCurrentModule] = useState<ModuleType>('search');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>('light');
+  const [adaptiveMode, setAdaptiveMode] = useState<boolean>(true);
   const [userBehavior, setUserBehavior] = useState<UserBehavior>({
     searchCount: 0,
     eventClicks: 0,
@@ -75,29 +78,34 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
-  // Adaptive behavior logic
+  // Adaptive behavior logic - less aggressive and optional
   useEffect(() => {
+    if (!adaptiveMode) return; // Skip if adaptive mode is disabled
+    
     const { searchCount, eventClicks, idleTime, savedEvents } = userBehavior;
     
-    // Context-driven module switching
-    if (idleTime > 10000) { // 10 seconds idle
+    // Only switch modules if user has been idle for a longer period
+    // and hasn't been actively using the interface
+    if (idleTime > 30000) { // 30 seconds idle (increased from 10)
       setCurrentModule('insights');
-    } else if (eventClicks >= 3) {
+    } else if (eventClicks >= 5) { // Increased threshold
       setCurrentModule('compare');
-    } else if (savedEvents >= 2) {
+    } else if (savedEvents >= 3) { // Increased threshold
       setCurrentModule('recommendations');
-    } else if (searchCount > 0) {
-      setCurrentModule('search');
     }
-  }, [userBehavior]);
+    // Remove automatic switching to search - let user stay where they are
+  }, [userBehavior, adaptiveMode]);
 
   // Auto-collapse sidebar when user is heavily focused on main content
   useEffect(() => {
+    if (!adaptiveMode) return; // Skip if adaptive mode is disabled
+    
     const { searchCount, eventClicks } = userBehavior;
-    if (searchCount > 3 || eventClicks > 2) {
+    // Only collapse after more activity to be less intrusive
+    if (searchCount > 5 || eventClicks > 4) {
       setSidebarCollapsed(true);
     }
-  }, [userBehavior]);
+  }, [userBehavior, adaptiveMode]);
 
   // Track idle time
   useEffect(() => {
@@ -128,6 +136,8 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
     setTheme,
     userBehavior,
     updateUserBehavior,
+    adaptiveMode,
+    setAdaptiveMode,
   };
 
   return (

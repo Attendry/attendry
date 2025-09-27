@@ -12,7 +12,9 @@ import {
   Menu,
   Sun,
   Moon,
-  Contrast
+  Contrast,
+  Zap,
+  ZapOff
 } from 'lucide-react';
 import { useAdaptive } from './AdaptiveDashboard';
 
@@ -23,7 +25,9 @@ export const Sidebar = () => {
     setSidebarCollapsed, 
     theme, 
     setTheme,
-    userBehavior 
+    userBehavior,
+    adaptiveMode,
+    setAdaptiveMode
   } = useAdaptive();
 
   const modules = [
@@ -120,6 +124,47 @@ export const Sidebar = () => {
             );
           })}
         </nav>
+
+        {/* Adaptive Mode Toggle */}
+        <div className="mb-6">
+          <h3 className={`text-sm font-medium mb-3 ${
+            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+          }`}>
+            Adaptive Mode
+          </h3>
+          <button
+            onClick={() => setAdaptiveMode(!adaptiveMode)}
+            className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
+              adaptiveMode
+                ? theme === 'dark'
+                  ? 'bg-green-600 text-white'
+                  : theme === 'high-contrast'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-green-100 text-green-700'
+                : theme === 'dark'
+                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                : theme === 'high-contrast'
+                ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              {adaptiveMode ? <Zap size={16} /> : <ZapOff size={16} />}
+              <span className="text-sm font-medium">
+                {adaptiveMode ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
+            <div className={`w-8 h-4 rounded-full transition-colors ${
+              adaptiveMode
+                ? theme === 'dark' ? 'bg-green-500' : 'bg-green-600'
+                : theme === 'dark' ? 'bg-gray-600' : 'bg-gray-300'
+            }`}>
+              <div className={`w-3 h-3 rounded-full bg-white transition-transform ${
+                adaptiveMode ? 'translate-x-4' : 'translate-x-0.5'
+              } mt-0.5`} />
+            </div>
+          </button>
+        </div>
 
         {/* Theme Selector */}
         <div className="mb-8">

@@ -17,35 +17,67 @@
             - /url: /events
             - generic [ref=e13] [cursor=pointer]: 📅
             - generic [ref=e14] [cursor=pointer]: Events
-          - link "⭐ Watchlist" [ref=e15] [cursor=pointer]:
+          - link "🔍 Smart Search" [ref=e15] [cursor=pointer]:
+            - /url: /search
+            - generic [ref=e16] [cursor=pointer]: 🔍
+            - generic [ref=e17] [cursor=pointer]: Smart Search
+          - link "💡 Recommendations" [ref=e18] [cursor=pointer]:
+            - /url: /recommendations
+            - generic [ref=e19] [cursor=pointer]: 💡
+            - generic [ref=e20] [cursor=pointer]: Recommendations
+          - link "🔥 Trending" [ref=e21] [cursor=pointer]:
+            - /url: /trending
+            - generic [ref=e22] [cursor=pointer]: 🔥
+            - generic [ref=e23] [cursor=pointer]: Trending
+          - link "⚖️ Compare Events" [ref=e24] [cursor=pointer]:
+            - /url: /compare
+            - generic [ref=e25] [cursor=pointer]: ⚖️
+            - generic [ref=e26] [cursor=pointer]: Compare Events
+          - link "🔮 Predictions" [ref=e27] [cursor=pointer]:
+            - /url: /predictions
+            - generic [ref=e28] [cursor=pointer]: 🔮
+            - generic [ref=e29] [cursor=pointer]: Predictions
+          - link "⭐ Watchlist" [ref=e30] [cursor=pointer]:
             - /url: /watchlist
-            - generic [ref=e16] [cursor=pointer]: ⭐
-            - generic [ref=e17] [cursor=pointer]: Watchlist
-    - generic [ref=e18]:
-      - banner [ref=e19]:
-        - generic [ref=e20]:
-          - heading "Dashboard" [level=1] [ref=e22]
-          - link "Sign in" [ref=e24] [cursor=pointer]:
+            - generic [ref=e31] [cursor=pointer]: ⭐
+            - generic [ref=e32] [cursor=pointer]: Watchlist
+          - link "👤 Profile" [ref=e33] [cursor=pointer]:
+            - /url: /profile
+            - generic [ref=e34] [cursor=pointer]: 👤
+            - generic [ref=e35] [cursor=pointer]: Profile
+          - link "📊 Activity" [ref=e36] [cursor=pointer]:
+            - /url: /activity
+            - generic [ref=e37] [cursor=pointer]: 📊
+            - generic [ref=e38] [cursor=pointer]: Activity
+          - link "🔔 Notifications" [ref=e39] [cursor=pointer]:
+            - /url: /notifications
+            - generic [ref=e40] [cursor=pointer]: 🔔
+            - generic [ref=e41] [cursor=pointer]: Notifications
+    - generic [ref=e42]:
+      - banner [ref=e43]:
+        - generic [ref=e44]:
+          - heading "Dashboard" [level=1] [ref=e46]
+          - link "Sign in" [ref=e48] [cursor=pointer]:
             - /url: /login
-            - img [ref=e25] [cursor=pointer]
-            - generic [ref=e27] [cursor=pointer]: Sign in
-      - main [ref=e28]:
-        - main [ref=e29]:
-          - generic [ref=e30]:
-            - generic [ref=e31]:
-              - heading "Welcome to Attendry" [level=1] [ref=e32]
-              - paragraph [ref=e33]: Sign in to discover and track events
-            - button "Continue with Google" [ref=e35] [cursor=pointer]:
-              - img [ref=e36] [cursor=pointer]
+            - img [ref=e49] [cursor=pointer]
+            - generic [ref=e51] [cursor=pointer]: Sign in
+      - main [ref=e52]:
+        - main [ref=e53]:
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - heading "Welcome to Attendry" [level=1] [ref=e56]
+              - paragraph [ref=e57]: Sign in to discover and track events
+            - button "Continue with Google" [ref=e59] [cursor=pointer]:
+              - img [ref=e60] [cursor=pointer]
               - text: Continue with Google
-            - generic [ref=e43]: or
-            - generic [ref=e45]:
-              - generic [ref=e46]: Email Address
-              - textbox "Email Address" [ref=e47]
-            - button "Send Magic Link" [ref=e49] [cursor=pointer]
-            - button "Use Password instead" [ref=e51] [cursor=pointer]
-            - paragraph [ref=e52]: We'll email you a secure link. No password needed.
-  - button "Open Next.js Dev Tools" [ref=e58] [cursor=pointer]:
-    - img [ref=e59] [cursor=pointer]
-  - alert [ref=e62]
+            - generic [ref=e67]: or
+            - generic [ref=e69]:
+              - generic [ref=e70]: Email Address
+              - textbox "Email Address" [ref=e71]
+            - button "Send Magic Link" [ref=e73] [cursor=pointer]
+            - button "Use Password instead" [ref=e75] [cursor=pointer]
+            - paragraph [ref=e76]: We'll email you a secure link. No password needed.
+  - button "Open Next.js Dev Tools" [ref=e82] [cursor=pointer]:
+    - img [ref=e83] [cursor=pointer]
+  - alert [ref=e86]
 ```
