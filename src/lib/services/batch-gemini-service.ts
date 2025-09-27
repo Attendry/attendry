@@ -250,6 +250,13 @@ export class BatchGeminiService {
 - Session titles or topics they're speaking about
 - Panelists, moderators, keynote speakers, workshop leaders
 
+IMPORTANT: Look for speakers in various formats:
+- "Speaker: John Doe, Acme Inc" (explicit speaker designation)
+- "John Doe, Acme Inc" (session owner/presenter, likely a speaker)
+- "Bruce Banner, Acme Inc" (in session context, probably a speaker)
+- Attendee lists where people are clearly presenting or leading sessions
+- Participant directories where roles indicate speaking/presenting
+
 EVENTS:
 ${JSON.stringify(eventsData, null, 2)}
 
@@ -269,7 +276,7 @@ Return format:
   }
 ]
 
-Extract only clear speaker information. If no speakers found, return empty array.`;
+Extract speakers even if not explicitly labeled as "Speaker". Use context clues to identify presenters, session owners, and session leaders. If no speakers found, return empty array.`;
   }
 
   /**
@@ -451,22 +458,22 @@ Extract only clear speaker information. If no speakers found, return empty array
       snippet: url.snippet?.substring(0, 200) || '' // Limit snippet length
     }));
 
-    return `Prioritize URLs for ACTUAL EVENTS in ${industry}, ${countryName}. 
+    return `Prioritize URLs for events in ${industry}, ${countryName}. 
 
-ONLY SELECT URLs that are:
-- Direct event/conference/seminar/workshop pages with specific dates
+PRIORITIZE URLs that are:
+- Direct event/conference/seminar/workshop pages
 - Event registration pages
 - Conference websites with event details
-- Seminar/workshop listings with dates and locations
+- Seminar/workshop listings
+- Event calendars or directories with specific events
+- Industry association event pages
 
 EXCLUDE URLs that are:
-- Attendee lists, speaker lists, or participant directories
-- Company websites, law firm pages, or general business pages
+- Company websites, law firm pages, or general business pages (unless they have specific events)
 - News articles, blog posts, or press releases
 - Job postings, career pages, or recruitment content
 - Marketing pages, product pages, or service descriptions
-- Generic event directories without specific events
-- Webinar series or ongoing programs without specific dates
+- Generic directory pages without event information
 
 URLS:
 ${JSON.stringify(urlsData, null, 2)}
@@ -478,12 +485,12 @@ Return JSON:
     {
       "url": "url1",
       "score": 0.9,
-      "reason": "Direct conference page with specific date"
+      "reason": "Direct conference page"
     }
   ]
 }
 
-Return ONLY URLs that are actual events with specific dates. Be very selective.`;
+Return the top 8-12 most promising URLs for event extraction. Be selective but not overly restrictive.`;
   }
 
   /**

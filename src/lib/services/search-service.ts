@@ -359,13 +359,13 @@ export class SearchService {
       .replace(/\s+/g, ' ') // Clean up multiple spaces
       .trim();
     
-    // Limit query length to prevent API errors but allow comprehensive queries
-    if (query.length > 1000) {
+    // Limit query length to prevent Google CSE 400 errors
+    if (query.length > 200) {
       console.warn('Query too long, truncating:', query.length);
       // Try to truncate at word boundaries to avoid cutting off words
-      const truncated = query.substring(0, 1000);
+      const truncated = query.substring(0, 200);
       const lastSpace = truncated.lastIndexOf(' ');
-      if (lastSpace > 800) { // Only use word boundary if it's not too far back
+      if (lastSpace > 150) { // Only use word boundary if it's not too far back
         query = truncated.substring(0, lastSpace).trim();
       } else {
         query = truncated.trim();
@@ -394,23 +394,23 @@ export class SearchService {
     // Simplify query building to avoid Google CSE 400 errors
     // Use space-separated terms instead of complex OR clauses
     
-    // Add key industry terms (max 3 to avoid complexity)
+    // Add key industry terms (max 2 to avoid complexity)
     if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
       const keyTerms = searchConfig.industryTerms
         .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-        .slice(0, 3); // Limit to 3 key terms
+        .slice(0, 2); // Limit to 2 key terms
       
       if (keyTerms.length > 0) {
         query = `${query} ${keyTerms.join(' ')}`;
       }
     }
     
-    // Add user profile terms (max 2 to avoid complexity)
+    // Add user profile terms (max 1 to avoid complexity)
     if (userProfile?.use_in_basic_search !== false) {
       if (userProfile.industry_terms && userProfile.industry_terms.length > 0) {
         const userTerms = userProfile.industry_terms
           .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-          .slice(0, 2); // Limit to 2 user terms
+          .slice(0, 1); // Limit to 1 user term
         
         if (userTerms.length > 0) {
           query = `${query} ${userTerms.join(' ')}`;
@@ -1847,6 +1847,7 @@ EXCLUDE (HIGH PRIORITY):
 - Thought leadership content
 - Press releases
 - Any content from indeed.com, linkedin.com, or job sites
+- Generic directory pages without event information
 
 SEARCH RESULTS TO PRIORITIZE:
 ${resultsJson}
@@ -1949,12 +1950,8 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
             return false;
           }
           
-          // Filter out attendee lists, speaker lists, and participant directories
-          if (title.includes('attendee list') || title.includes('speaker list') || 
-              title.includes('participant') || title.includes('delegate list') ||
-              title.includes('who\'s attending') || title.includes('attendees')) {
-            return false;
-          }
+          // Don't filter out attendee/participant lists - they provide valuable intelligence
+          // and may contain speaker information in various formats
           
           // Filter out marketing pages and company websites
           if (title.includes('company') || title.includes('about us') || 
@@ -1963,9 +1960,10 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
             return false;
           }
           
-          // Filter out generic directories and finder pages
-          if (title.includes('finder') || title.includes('directory') || 
-              title.includes('search') || title.includes('browse')) {
+          // Filter out generic directories and finder pages (but allow event directories)
+          if ((title.includes('finder') || title.includes('directory') || 
+              title.includes('search') || title.includes('browse')) &&
+              !title.includes('event') && !title.includes('conference')) {
             return false;
           }
           
@@ -2003,7 +2001,7 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
           
           return score >= 1; // Only keep URLs with some event indicators
         })
-        .slice(0, 5) // Limit to 5 URLs for fallback (reduced from 8)
+        .slice(0, 10) // Limit to 10 URLs for fallback
         .map(item => item.link);
       
       return {

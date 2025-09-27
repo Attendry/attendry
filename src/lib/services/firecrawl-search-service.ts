@@ -73,7 +73,7 @@ const EVENT_SEARCH_SCHEMA = {
 export class FirecrawlSearchService {
   private static readonly FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search";
   private static readonly MAX_RESULTS = 20;
-  private static readonly SEARCH_TIMEOUT = 60000; // 60 seconds (as per docs)
+  private static readonly SEARCH_TIMEOUT = 30000; // 30 seconds - reduced for faster fallback
 
   /**
    * Execute a web search using Firecrawl Search API v2
