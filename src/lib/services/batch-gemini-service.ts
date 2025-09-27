@@ -313,6 +313,14 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
       }
       
       if (!jsonMatch) {
+        // Try to find JSON object with code block markers
+        jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+        if (jsonMatch) {
+          jsonMatch = [jsonMatch[1]];
+        }
+      }
+      
+      if (!jsonMatch) {
         console.warn("No JSON found in Gemini response, returning empty results");
         return originalEvents.map(event => ({
           eventId: event.id,
@@ -338,7 +346,9 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
       jsonString = jsonString
         .replace(/,\s*}/g, '}') // Remove trailing commas before closing braces
         .replace(/,\s*]/g, ']') // Remove trailing commas before closing brackets
+        .replace(/,\s*$/, '') // Remove trailing commas at end
         .replace(/\n\s*/g, ' ') // Normalize whitespace
+        .replace(/\s+/g, ' ') // Normalize multiple spaces
         .trim();
       
       const parsed = JSON.parse(jsonString);

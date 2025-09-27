@@ -393,25 +393,29 @@ export class SearchService {
     userProfile: any, 
     country: string
   ): string {
-    // Use search config's baseQuery if available, otherwise use the passed baseQuery
-    let query = (searchConfig?.baseQuery || baseQuery).trim();
+    // For Google CSE, use very simple queries to avoid 400 errors
+    // Extract just the key terms from the search config
+    let query = "";
     
-    // If no base query, use a simple default
-    if (!query) {
-      query = "conference";
+    if (searchConfig?.baseQuery) {
+      // Extract key terms from the complex baseQuery for Google CSE
+      const keyTerms = searchConfig.baseQuery
+        .replace(/\([^)]*\)/g, '') // Remove parentheses
+        .replace(/\b(OR|AND)\b/gi, ' ') // Replace OR/AND with spaces
+        .replace(/["']/g, '') // Remove quotes
+        .split(/\s+/)
+        .filter((term: string) => term.length > 2)
+        .slice(0, 2); // Take only first 2 terms for Google CSE
+      
+      query = keyTerms.join(' ');
     }
     
-    // Simplify query building to avoid Google CSE 400 errors
-    // Use space-separated terms instead of complex OR clauses
-    
-    // Add only the most essential terms for Google CSE
-    if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
-      const keyTerms = searchConfig.industryTerms
-        .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-        .slice(0, 1); // Limit to 1 key term only
-      
-      if (keyTerms.length > 0) {
-        query = `${query} ${keyTerms[0]}`;
+    // If no query extracted, use simple defaults
+    if (!query || query.length < 3) {
+      if (searchConfig?.industry === 'legal-compliance') {
+        query = "compliance conference";
+      } else {
+        query = "conference";
       }
     }
     

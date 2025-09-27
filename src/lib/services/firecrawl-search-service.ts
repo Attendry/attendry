@@ -232,24 +232,25 @@ export class FirecrawlSearchService {
       const industryTerms = this.getIndustryTerms(industry);
       searchQuery = `${industryTerms} conference`;
     } else {
-      // Simplify complex queries to avoid Firecrawl timeouts
-      // Extract key terms from complex boolean queries
-      const keyTerms = searchQuery
-        .replace(/\([^)]*\)/g, '') // Remove parentheses
-        .replace(/\b(OR|AND)\b/gi, ' ') // Replace OR/AND with spaces
-        .replace(/["']/g, '') // Remove quotes
-        .split(/\s+/)
-        .filter(term => term.length > 2)
-        .slice(0, 5); // Take only first 5 terms
-      
-      if (keyTerms.length > 0) {
-        searchQuery = keyTerms.join(' ');
+      // For legal/compliance, use specific event terms instead of complex boolean logic
+      if (industry === 'legal-compliance') {
+        // Use specific legal/compliance event terms that work well with Firecrawl
+        searchQuery = 'compliance conference legal summit regulatory forum GDPR cybersecurity';
       } else {
-        // For legal/compliance, use specific event terms
-        if (industry === 'legal-compliance') {
-          searchQuery = 'compliance conference legal summit regulatory forum';
+        // Simplify complex queries to avoid Firecrawl timeouts
+        // Extract key terms from complex boolean queries
+        const keyTerms = searchQuery
+          .replace(/\([^)]*\)/g, '') // Remove parentheses
+          .replace(/\b(OR|AND)\b/gi, ' ') // Replace OR/AND with spaces
+          .replace(/["']/g, '') // Remove quotes
+          .split(/\s+/)
+          .filter(term => term.length > 2)
+          .slice(0, 5); // Take only first 5 terms
+        
+        if (keyTerms.length > 0) {
+          searchQuery = keyTerms.join(' ');
         } else {
-          searchQuery = 'compliance conference event';
+          searchQuery = 'business conference event';
         }
       }
       
