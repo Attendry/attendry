@@ -18,36 +18,19 @@ const nextConfig: NextConfig = {
   },
   
   // Webpack optimization
-  webpack: (config, { dev, isServer }) => {
-    // Handle browser globals for SSR
-    if (isServer) {
-      config.resolve = {
-        ...config.resolve,
-        fallback: {
-          ...config.resolve?.fallback,
-          fs: false,
-          net: false,
-          tls: false,
-          crypto: false,
-        },
-      };
-      
-      // Define browser globals for server-side rendering
-      config.plugins = [
-        ...config.plugins,
-        new config.webpack.DefinePlugin({
-          'global.self': 'global',
-          'global.window': 'undefined',
-          'global.document': 'undefined',
-          'global.navigator': 'undefined',
-          'global.localStorage': 'undefined',
-          'global.sessionStorage': 'undefined',
-        }),
-      ];
+  webpack: (config, options) => {
+    // Defensive: options.webpack may be undefined under Turbopack or certain build modes
+    let Webpack = options?.webpack;
+    if (!Webpack) {
+      try {
+        Webpack = require('webpack');
+      } catch {
+        Webpack = null;
+      }
     }
-    
+
     // Production optimizations
-    if (!dev) {
+    if (!options.dev) {
       config.optimization = {
         ...config.optimization,
         splitChunks: {
@@ -81,6 +64,20 @@ const nextConfig: NextConfig = {
           },
         },
       };
+    }
+
+    // Only add DefinePlugin if available (for future use)
+    if (Webpack?.DefinePlugin) {
+      config.plugins = config.plugins || [];
+      config.plugins.push(
+        new Webpack.DefinePlugin({
+          'process.env.NEXT_PUBLIC_COMMIT_SHA': JSON.stringify(
+            process.env.VERCEL_GIT_COMMIT_SHA ||
+            process.env.COMMIT_SHA ||
+            ''
+          ),
+        })
+      );
     }
     
     return config;
