@@ -7,7 +7,14 @@
 import { firecrawlSearch } from './firecrawlService';
 import { cseSearch } from './cseService';
 import { logger } from '@/utils/logger';
-import { normalizeProviders, asArray } from '@/utils/array-helpers';
+import { ensureArray, safeFilter } from '@/lib/arrays';
+
+// Normalize provider lists once at the edge
+function normalizeProviders(input?: unknown) {
+  const list = ensureArray<string>(input);
+  // Default order if nothing is provided
+  return (list.length ? list : ['firecrawl', 'cse']).map(s => s.trim());
+}
 
 export async function executeSearch(opts: {
   baseQuery: string;
@@ -15,9 +22,18 @@ export async function executeSearch(opts: {
   country?: string;
   dateFrom?: string;
   dateTo?: string;
-  providers?: string | string[];
+  providers?: unknown;
 }) {
   const { baseQuery, userText, country, dateFrom, dateTo, providers: providerInput } = opts;
+
+  // Add debug logging in non-production
+  if (process.env.NODE_ENV !== 'production') {
+    console.info('[providers_debug]', {
+      raw: providerInput || process.env.SEARCH_PROVIDERS,
+      typeof: typeof (providerInput || process.env.SEARCH_PROVIDERS),
+      isArray: Array.isArray(providerInput || process.env.SEARCH_PROVIDERS),
+    });
+  }
 
   // Normalize providers to always be an array
   const providers = normalizeProviders(providerInput || process.env.SEARCH_PROVIDERS);
@@ -46,8 +62,8 @@ export async function executeSearch(opts: {
         });
       }
 
-      // Use type guard to ensure items is always an array
-      const items = asArray(result?.items).filter(Boolean);
+      // Use defensive helper to ensure items is always an array
+      const items = ensureArray(result?.items).filter(Boolean);
       
       if (items.length > 0) {
         logger.info({ at: 'search_service', provider, items: items.length });
