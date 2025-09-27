@@ -254,7 +254,14 @@ export class SearchService {
     userProfile: any, 
     country: string
   ): string {
-    let query = baseQuery.trim();
+    // Use search config's baseQuery if available, otherwise use the passed baseQuery
+    let query = (searchConfig?.baseQuery || baseQuery).trim();
+    
+    console.log('buildEnhancedQuery debug:', {
+      searchConfigBaseQuery: searchConfig?.baseQuery,
+      passedBaseQuery: baseQuery,
+      finalQuery: query
+    });
     
     // If no base query, use a simple default
     if (!query) {
@@ -385,7 +392,8 @@ export class SearchService {
     userProfile: any, 
     country: string
   ): string {
-    let query = baseQuery.trim();
+    // Use search config's baseQuery if available, otherwise use the passed baseQuery
+    let query = (searchConfig?.baseQuery || baseQuery).trim();
     
     // If no base query, use a simple default
     if (!query) {
