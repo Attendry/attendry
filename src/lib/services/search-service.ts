@@ -59,8 +59,9 @@ export interface EventRec {
 // Unified cache service
 const cacheService = getCacheService();
 
-function getCacheKey(q: string, country: string, from?: string, to?: string): string {
-  return `${q}|${country}|${from || ''}|${to || ''}`;
+function getCacheKey(provider: string, q: string, country: string, from?: string, to?: string): string {
+  const cleanedQuery = q.trim().replace(/\s+/g, ' ');
+  return `search:${provider}:${cleanedQuery}|${country}|${from || ''}|${to || ''}`;
 }
 
 async function getCachedResult<T>(key: string): Promise<T | null> {
@@ -585,7 +586,9 @@ export class SearchService {
         
         const { urls, retriedWithBase } = await runSearch({
           baseQuery: enhancedQuery,
-          days
+          country: params.country,
+          days,
+          enableAug: false
         });
         
         // Convert URLs to SearchItem format
@@ -758,7 +761,7 @@ export class SearchService {
     const { q = "", country = "", from, to, num = 10, rerank = false, topK = 50 } = params;
 
     // Check cache first
-    const cacheKey = getCacheKey(q, country, from, to);
+    const cacheKey = getCacheKey('firecrawl', q, country, from, to);
     const cachedResult = await getCachedResult<{ provider: string; items: SearchItem[]; cached: boolean }>(cacheKey);
     if (cachedResult) {
       console.log(JSON.stringify({ at: "search_service", cache: "hit", key: cacheKey }));

@@ -101,7 +101,7 @@ export class CircuitBreaker {
       return result;
     } catch (error) {
       // Handle failure
-      this.onFailure();
+      this.onFailure(error);
       throw error;
     }
   }
@@ -151,23 +151,57 @@ export class CircuitBreaker {
   /**
    * Handle failed request
    */
-  private onFailure(): void {
-    this.failureCount++;
-    this.lastFailureTime = Date.now();
+  private onFailure(error?: any): void {
+    // Don't trip circuit breaker on programmer errors
+    if (this.isTransientError(error)) {
+      this.failureCount++;
+      this.lastFailureTime = Date.now();
 
-    if (this.state === CircuitBreakerState.CLOSED) {
-      if (this.failureCount >= this.config.failureThreshold) {
+      if (this.state === CircuitBreakerState.CLOSED) {
+        if (this.failureCount >= this.config.failureThreshold) {
+          this.state = CircuitBreakerState.OPEN;
+          this.nextAttemptTime = Date.now() + this.config.resetTimeout;
+          console.log(`[CIRCUIT_BREAKER] Circuit moved to OPEN state after ${this.failureCount} failures`);
+        }
+      } else if (this.state === CircuitBreakerState.HALF_OPEN) {
+        // Move back to open state on failure in half-open
         this.state = CircuitBreakerState.OPEN;
         this.nextAttemptTime = Date.now() + this.config.resetTimeout;
-        console.log(`[CIRCUIT_BREAKER] Circuit moved to OPEN state after ${this.failureCount} failures`);
+        this.successCount = 0;
+        console.log(`[CIRCUIT_BREAKER] Circuit moved back to OPEN state after failure in HALF_OPEN`);
       }
-    } else if (this.state === CircuitBreakerState.HALF_OPEN) {
-      // Move back to open state on failure in half-open
-      this.state = CircuitBreakerState.OPEN;
-      this.nextAttemptTime = Date.now() + this.config.resetTimeout;
-      this.successCount = 0;
-      console.log(`[CIRCUIT_BREAKER] Circuit moved back to OPEN state after failure in HALF_OPEN`);
+    } else {
+      console.log(`[CIRCUIT_BREAKER] Non-transient error, not tripping circuit:`, error?.name || error?.message);
     }
+  }
+
+  /**
+   * Check if error is transient (should trip circuit breaker)
+   */
+  private isTransientError(error: any): boolean {
+    if (!error) return true; // Unknown error, treat as transient
+    
+    // Programmer errors - don't trip circuit
+    if (error.name === 'ReferenceError' || 
+        error.name === 'TypeError' || 
+        error.name === 'SyntaxError') {
+      return false;
+    }
+    
+    // HTTP 4xx from our own code - don't trip circuit
+    if (error.statusCode >= 400 && error.statusCode < 500) {
+      return false;
+    }
+    
+    // Transient errors - should trip circuit
+    if (error.code === 23 || // TIMEOUT_ERR
+        error.name === 'AbortError' ||
+        error.statusCode >= 500) {
+      return true;
+    }
+    
+    // Default to transient for unknown errors
+    return true;
   }
 
   /**

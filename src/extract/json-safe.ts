@@ -2,7 +2,7 @@
  * Safe JSON Parsing with Repair and Fallback
  */
 
-export function parseJsonSafe(s: string): any | null {
+export function parseJsonSafe(s: string) {
   try { return JSON.parse(s); } catch {}
   try { 
     // Try jsonrepair if available

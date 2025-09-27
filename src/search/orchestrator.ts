@@ -4,21 +4,21 @@
  * Runs tiers, then retry with base if 0
  */
 
-import { buildTierQueries, assertQueryIsClean } from './query-builder';
+import { buildTierQueries, assertClean } from './query';
 import { firecrawlSearch } from './providers/firecrawl';
 import { cseSearch } from './providers/cse';
 import { prefilter } from './url-filters';
 
 const MIN_URLS = 8;
 
-export async function runSearch({ baseQuery, days=60 }: { baseQuery: string; days?: number }) {
-  const { A, B, C } = buildTierQueries(baseQuery);
-  const tiers = [A,B,C].flat();
+export async function runSearch(opts: { baseQuery: string; country?: string; days?: number; enableAug?: boolean }) {
+  const country = (opts.country ?? 'DE').toUpperCase();
+  const tiers = buildTierQueries(opts.baseQuery, !!opts.enableAug);
+  const urlsAll: string[] = [];
 
-  const params = {
+  const fcParams = {
     limit: 20,
     sources: ['web'],
-    // avoid brittle 'tbs' here; Firecrawl's date filters have been noisy in your logs
     ignoreInvalidURLs: true,
     scrapeOptions: {
       formats: ['markdown'],
@@ -26,49 +26,33 @@ export async function runSearch({ baseQuery, days=60 }: { baseQuery: string; day
       waitFor: 800,
       blockAds: true,
       removeBase64Images: true,
-      location: { country: 'DE', languages: ['de','en'] }
+      location: { country, languages: ['de','en'] }
     }
   };
 
   async function providerOnce(q: string) {
-    try { return await firecrawlSearch(q, params); }
-    catch { return await cseSearch(q); } // clean fallback
+    try { return await firecrawlSearch(q, fcParams); }
+    catch { return await cseSearch(q); }
   }
 
-  let urls: string[] = [];
   for (const b of tiers) {
-    assertQueryIsClean(b.q);
-    urls.push(...await providerOnce(b.q));
+    assertClean(b.q);
+    urlsAll.push(...await providerOnce(b.q));
   }
-  urls = Array.from(new Set(urls));
-  urls = prefilter(urls);
 
-  // Retry with base chips if too few / junk
+  let urls = prefilter(Array.from(new Set(urlsAll)));
+
+  // Retry with base chips + .de shard if too few or noisy:
   let retriedWithBase = false;
   if (urls.length < MIN_URLS) {
     retriedWithBase = true;
-    const chips = ['Konferenz','Kongress','Tagung','Seminar','Workshop','Veranstaltung'];
+    const chips = ['Konferenz','Kongress','Tagung','Seminar','Workshop','Veranstaltung','Berlin','München','Frankfurt','Köln','Hamburg','Düsseldorf','Stuttgart'];
     for (const w of chips) {
-      const q = `(${baseQuery}) ${w}`;
-      assertQueryIsClean(q);
+      const q = `(${opts.baseQuery}) ${w}`;
+      assertClean(q);
       urls.push(...await providerOnce(q));
-    }
-    urls = prefilter(Array.from(new Set(urls)));
-  }
-
-  // Curated site shards (DE legal event-heavy)
-  if (urls.length < MIN_URLS) {
-    const sites = [
-      'site:juve.de', 'site:anwaltverein.de', 'site:dav.de',
-      'site:forum-institut.de', 'site:euroforum.de', 'site:beck-akademie.de',
-      'site:beck-shop.de', 'site:bitkom.org', 'site:handelsblatt.com',
-      'site:uni-*.de'
-    ];
-    for (const s of sites) {
-      const q = `(${baseQuery}) ${s}`;
-      assertQueryIsClean(q);
-      urls.push(...await cseSearch(q));
-      if (urls.length >= MIN_URLS) break;
+      const qDe = `(${opts.baseQuery}) site:.de ${w}`;
+      urls.push(...await cseSearch(qDe));
     }
     urls = prefilter(Array.from(new Set(urls)));
   }
