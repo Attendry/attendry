@@ -13,8 +13,6 @@ import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/servic
 import { executeWithFallback } from "@/lib/services/fallback-strategies";
 import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
 import { runSearch } from "@/search/orchestrator";
-import { prefilter } from "@/search/url-filters";
-import { inferCountry, inferDate } from "@/search/infer";
 
 /**
  * Shared Search Service
@@ -585,17 +583,13 @@ export class SearchService {
       if (params.country === 'DE') {
         const days = Math.ceil((Date.now() - new Date(params.from || Date.now() - 60 * 24 * 60 * 60 * 1000).getTime()) / (1000 * 60 * 60 * 24));
         
-        const { urls, searchRetriedWithBase } = await runSearch({
+        const { urls, retriedWithBase } = await runSearch({
           baseQuery: enhancedQuery,
-          days,
-          use: 'auto'
+          days
         });
         
-        // Pre-filter URLs to kill obvious noise
-        const filteredUrls = prefilter(urls);
-        
         // Convert URLs to SearchItem format
-        const allResults = filteredUrls.map(url => ({
+        const allResults = urls.map(url => ({
           title: "Event",
           link: url,
           snippet: "Event details"
@@ -605,10 +599,9 @@ export class SearchService {
         
         console.log(JSON.stringify({ 
           at: "search_service", 
-          searchRetriedWithBase,
+          searchRetriedWithBase: retriedWithBase,
           total_results: urls.length,
-          filtered_results: filteredUrls.length,
-          sample_urls: filteredUrls.slice(0, 5)
+          sample_urls: urls.slice(0, 5)
         }));
       } else {
         // Fallback to original single query for non-DE countries

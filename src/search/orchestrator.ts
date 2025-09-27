@@ -7,47 +7,72 @@
 import { buildTierQueries, assertQueryIsClean } from './query-builder';
 import { firecrawlSearch } from './providers/firecrawl';
 import { cseSearch } from './providers/cse';
+import { prefilter } from './url-filters';
 
-export async function runSearch({ baseQuery, days = 60, use = 'auto' }: { baseQuery: string; days?: number; use?: 'auto'|'cse'|'firecrawl' }) {
-  const { tierA, tierB, tierC } = buildTierQueries(baseQuery);
-  const allTiers = [tierA, tierB, tierC].flat();
-  let urls: string[] = [];
+const MIN_URLS = 8;
+
+export async function runSearch({ baseQuery, days=60 }: { baseQuery: string; days?: number }) {
+  const { A, B, C } = buildTierQueries(baseQuery);
+  const tiers = [A,B,C].flat();
 
   const params = {
     limit: 20,
     sources: ['web'],
-    tbs: days ? undefined : undefined, // Let provider internally handle date; Firecrawl CDR was noisy
+    // avoid brittle 'tbs' here; Firecrawl's date filters have been noisy in your logs
     ignoreInvalidURLs: true,
-    scrapeOptions: { formats: ['markdown'], onlyMainContent: false, waitFor: 800, blockAds: true, removeBase64Images: true, location: { country: 'DE', languages: ['de','en'] } }
+    scrapeOptions: {
+      formats: ['markdown'],
+      onlyMainContent: false,
+      waitFor: 800,
+      blockAds: true,
+      removeBase64Images: true,
+      location: { country: 'DE', languages: ['de','en'] }
+    }
   };
 
-  const providerSearch = async (q: string) => {
-    if (use === 'cse') return cseSearch(q);
-    if (use === 'firecrawl') return firecrawlSearch(q, params);
-    // auto: try firecrawl once, if it throws, go CSE
-    try { return await firecrawlSearch(q, params); } catch { return cseSearch(q, { minimal: true }); }
-  };
+  async function providerOnce(q: string) {
+    try { return await firecrawlSearch(q, params); }
+    catch { return await cseSearch(q); } // clean fallback
+  }
 
-  for (const bq of allTiers) {
-    assertQueryIsClean(bq.q);
-    const batch = await providerSearch(bq.q);
-    urls.push(...batch);
+  let urls: string[] = [];
+  for (const b of tiers) {
+    assertQueryIsClean(b.q);
+    urls.push(...await providerOnce(b.q));
   }
   urls = Array.from(new Set(urls));
+  urls = prefilter(urls);
 
-  // Retry with base + single German event chips if still zero
-  let searchRetriedWithBase = false;
-  if (urls.length === 0) {
-    searchRetriedWithBase = true;
-    for (const w of ['Konferenz','Kongress','Tagung','Seminar','Workshop','Veranstaltung']) {
+  // Retry with base chips if too few / junk
+  let retriedWithBase = false;
+  if (urls.length < MIN_URLS) {
+    retriedWithBase = true;
+    const chips = ['Konferenz','Kongress','Tagung','Seminar','Workshop','Veranstaltung'];
+    for (const w of chips) {
       const q = `(${baseQuery}) ${w}`;
       assertQueryIsClean(q);
-      const b = await providerSearch(q);
-      urls.push(...b);
+      urls.push(...await providerOnce(q));
     }
-    urls = Array.from(new Set(urls));
+    urls = prefilter(Array.from(new Set(urls)));
   }
 
-  console.info(JSON.stringify({ at: 'search_summary_urls', count: urls.length, sample: urls.slice(0,5) }, null, 2));
-  return { urls, searchRetriedWithBase };
+  // Curated site shards (DE legal event-heavy)
+  if (urls.length < MIN_URLS) {
+    const sites = [
+      'site:juve.de', 'site:anwaltverein.de', 'site:dav.de',
+      'site:forum-institut.de', 'site:euroforum.de', 'site:beck-akademie.de',
+      'site:beck-shop.de', 'site:bitkom.org', 'site:handelsblatt.com',
+      'site:uni-*.de'
+    ];
+    for (const s of sites) {
+      const q = `(${baseQuery}) ${s}`;
+      assertQueryIsClean(q);
+      urls.push(...await cseSearch(q));
+      if (urls.length >= MIN_URLS) break;
+    }
+    urls = prefilter(Array.from(new Set(urls)));
+  }
+
+  console.info(JSON.stringify({ at:'search_summary_urls', count: urls.length, sample: urls.slice(0,6) }, null, 2));
+  return { urls, retriedWithBase };
 }

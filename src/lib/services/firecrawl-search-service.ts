@@ -236,7 +236,7 @@ export class FirecrawlSearchService {
       // For legal/compliance, use specific event terms instead of complex boolean logic
       if (industry === 'legal-compliance') {
         // Use specific legal/compliance event terms that work well with Firecrawl
-        searchQuery = 'compliance conference legal summit regulatory forum GDPR cybersecurity';
+        searchQuery = baseQuery || 'legal compliance';
       } else {
         // Simplify complex queries to avoid Firecrawl timeouts
         // Extract key terms from complex boolean queries
