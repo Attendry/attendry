@@ -57,8 +57,10 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
   const [debug, setDebug] = useState<any>(null);
   const showDebug = useMemo(() => {
     if (typeof window === 'undefined') return process.env.NODE_ENV !== 'production';
-    const sp = new URLSearchParams(window.location.search);
-    if (sp.get('debug') === '1') return true;
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('debug') === '1') return true;
+    }
     return process.env.NODE_ENV !== 'production';
   }, []);
 

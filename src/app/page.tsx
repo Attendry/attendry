@@ -95,7 +95,11 @@ export default function Home() {
                 className="group relative bg-white rounded-2xl border border-slate-200 p-8 hover:border-blue-300 hover:shadow-xl transition-all duration-300 cursor-pointer"
                 onMouseEnter={() => setHoveredFeature(index)}
                 onMouseLeave={() => setHoveredFeature(null)}
-                onClick={() => window.location.href = feature.href}
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = feature.href;
+                  }
+                }}
               >
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl mb-6 transition-all duration-300 ${
                   hoveredFeature === index 

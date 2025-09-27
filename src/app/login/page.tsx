@@ -27,7 +27,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/events`,
+          redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/events`,
         },
       });
       if (error) throw error;
@@ -51,7 +51,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: { 
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=/events` 
+          emailRedirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/events` 
         },
       });
       if (error) throw error;
@@ -98,7 +98,9 @@ export default function LoginPage() {
       // The session should persist automatically with the updated browser client config
       
       // Redirect immediately - Supabase will handle session persistence
-      window.location.href = "/events";
+      if (typeof window !== 'undefined') {
+        window.location.href = "/events";
+      }
     } catch (error: any) {
       console.error('Unexpected sign-in error:', error);
       setMessage(`Unexpected error: ${error.message}`);

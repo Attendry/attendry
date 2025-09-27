@@ -43,15 +43,19 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   // Handle window resize to detect sidebar collapse state
   useEffect(() => {
     function handleResize() {
-      const isSmallScreen = window.innerWidth < 1280; // xl breakpoint
-      setIsCollapsed(isSmallScreen);
+      if (typeof window !== 'undefined') {
+        const isSmallScreen = window.innerWidth < 1280; // xl breakpoint
+        setIsCollapsed(isSmallScreen);
+      }
     }
 
     // Set initial state
     handleResize();
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
   }, []);
 
   // Close user menu when clicking outside
@@ -62,7 +66,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
       }
     }
 
-    if (showUserMenu) {
+    if (showUserMenu && typeof document !== 'undefined') {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
