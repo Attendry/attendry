@@ -127,6 +127,7 @@ async function readSearchCacheDB(cacheKey: string) {
     console.log(JSON.stringify({ at: "search_service_cache_db", exception: error instanceof Error ? error.message : 'unknown', key: cacheKey }));
     return null;
   }
+
 }
 
 async function writeSearchCacheDB(cacheKey: string, provider: string, payload: any) {
@@ -414,10 +415,14 @@ export class SearchService {
       }
     }
     
-    // Add country-specific event keywords
+    // Add country-specific event keywords with industry focus
     if (country === 'de') {
+      // Add legal/compliance specific German terms
       if (!query.toLowerCase().includes('veranstaltung')) {
         query = `${query} veranstaltung`;
+      }
+      if (!query.toLowerCase().includes('konferenz')) {
+        query = `${query} konferenz`;
       }
       if (!query.toLowerCase().includes('deutschland')) {
         query = `${query} deutschland`;
@@ -427,6 +432,11 @@ export class SearchService {
       if (!query.toLowerCase().includes('conference') && !query.toLowerCase().includes('event')) {
         query = `${query} conference`;
       }
+    }
+    
+    // Ensure we're looking for professional events, not general events
+    if (!query.toLowerCase().includes('professional') && !query.toLowerCase().includes('business')) {
+      query = `${query} professional`;
     }
     
     // Add current year (2025) unless query already includes a year
@@ -1072,11 +1082,11 @@ export class SearchService {
             showSources: true,
             scrapeOptions: {
               formats: ["markdown"],
-              onlyMainContent: true,
-              waitFor: 1000, // Reduced for faster failure
-              blockAds: true,
-              removeBase64Images: true,
-              timeout: 8000 // Reduced for faster failure
+              onlyMainContent: false, // Get more content for better event extraction
+              waitFor: 2000, // More time for dynamic content
+              blockAds: false, // Don't block ads to avoid missing content
+              removeBase64Images: false, // Keep images for better context
+              timeout: 15000 // More time for complex pages
             },
             ignoreInvalidURLs: true
           })
@@ -1119,7 +1129,7 @@ export class SearchService {
    * Poll for extract results using the job ID
    */
   private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
-    const maxAttempts = 10; // 10 seconds max (reduced to fail faster and use fallback)
+    const maxAttempts = 20; // 20 seconds max for better extraction success
     const pollInterval = 1000; // 1 second intervals
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1257,14 +1267,16 @@ export class SearchService {
             const title = this.extractTitleFromUrl(url);
             const description = this.extractTextFromHTML(html).substring(0, 2000);
             const country = this.extractCountryFromUrl(url) || this.extractCountryFromContent(description);
+            const city = this.extractCityFromContent(description) || this.extractCityFromUrl(url);
+            const dateInfo = this.extractDateFromContent(description);
             
             events.push({
               source_url: url,
               title: title,
               description: description,
-              starts_at: null,
-              ends_at: null,
-              city: null,
+              starts_at: dateInfo?.starts_at || null,
+              ends_at: dateInfo?.ends_at || null,
+              city: city,
               country: country,
               organizer: null,
               confidence: 0.5
@@ -2178,5 +2190,116 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
         speakersFound: enhancementStats.speakersFound
       }
     };
+  }
+
+  private static extractCityFromContent(content: string): string | null {
+    if (!content) return null;
+    
+    const contentLower = content.toLowerCase();
+    
+    // German cities
+    const germanCities = [
+      'berlin', 'münchen', 'hamburg', 'köln', 'frankfurt', 'stuttgart', 'düsseldorf', 'dortmund', 'essen',
+      'leipzig', 'bremen', 'dresden', 'hannover', 'nürnberg', 'duisburg', 'bochum', 'wuppertal', 'bielefeld',
+      'bonn', 'münster', 'karlsruhe', 'mannheim', 'augsburg', 'wiesbaden', 'gelsenkirchen', 'mönchengladbach',
+      'braunschweig', 'chemnitz', 'kiel', 'aachen', 'halle', 'magdeburg', 'freiburg', 'krefeld', 'lübeck',
+      'oberhausen', 'erfurt', 'mainz', 'rostock', 'kassel', 'hagen', 'hamm', 'saarbrücken', 'mülheim', 'potsdam'
+    ];
+    
+    for (const city of germanCities) {
+      if (contentLower.includes(city)) {
+        return city.charAt(0).toUpperCase() + city.slice(1);
+      }
+    }
+    
+    return null;
+  }
+
+  private static extractCityFromUrl(url: string): string | null {
+    if (!url) return null;
+    
+    const urlLower = url.toLowerCase();
+    
+    // Extract city from URL patterns
+    if (urlLower.includes('berlin')) return 'Berlin';
+    if (urlLower.includes('münchen') || urlLower.includes('munich')) return 'München';
+    if (urlLower.includes('hamburg')) return 'Hamburg';
+    if (urlLower.includes('köln') || urlLower.includes('cologne')) return 'Köln';
+    if (urlLower.includes('frankfurt')) return 'Frankfurt';
+    if (urlLower.includes('stuttgart')) return 'Stuttgart';
+    if (urlLower.includes('düsseldorf')) return 'Düsseldorf';
+    if (urlLower.includes('dortmund')) return 'Dortmund';
+    if (urlLower.includes('essen')) return 'Essen';
+    if (urlLower.includes('leipzig')) return 'Leipzig';
+    if (urlLower.includes('bremen')) return 'Bremen';
+    if (urlLower.includes('dresden')) return 'Dresden';
+    if (urlLower.includes('hannover')) return 'Hannover';
+    if (urlLower.includes('nürnberg') || urlLower.includes('nuremberg')) return 'Nürnberg';
+    
+    return null;
+  }
+
+  private static extractDateFromContent(content: string): { starts_at: string | null; ends_at: string | null } {
+    if (!content) return { starts_at: null, ends_at: null };
+    
+    const contentLower = content.toLowerCase();
+    
+    // Look for date patterns
+    const datePatterns = [
+      // German date formats
+      /(\d{1,2})\.(\d{1,2})\.(\d{4})/g, // DD.MM.YYYY
+      /(\d{1,2})\s+(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)\s+(\d{4})/gi, // DD Month YYYY
+      // English date formats
+      /(\d{1,2})\/(\d{1,2})\/(\d{4})/g, // MM/DD/YYYY
+      /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/gi, // DD Month YYYY
+      // ISO format
+      /(\d{4})-(\d{1,2})-(\d{1,2})/g // YYYY-MM-DD
+    ];
+    
+    const months: { [key: string]: string } = {
+      'januar': '01', 'january': '01', 'februar': '02', 'february': '02', 'märz': '03', 'march': '03',
+      'april': '04', 'mai': '05', 'may': '05', 'juni': '06', 'june': '06', 'juli': '07', 'july': '07',
+      'august': '08', 'september': '09', 'oktober': '10', 'october': '10', 'november': '11', 'dezember': '12', 'december': '12'
+    };
+    
+    for (const pattern of datePatterns) {
+      const matches = content.match(pattern);
+      if (matches && matches.length > 0) {
+        const firstMatch = matches[0];
+        let dateStr = null;
+        
+        if (pattern.source.includes('\\d{4}-\\d{1,2}-\\d{1,2}')) {
+          // ISO format
+          dateStr = firstMatch;
+        } else if (pattern.source.includes('\\d{1,2}\\.\\d{1,2}\\.\\d{4}')) {
+          // DD.MM.YYYY format
+          const parts = firstMatch.split('.');
+          if (parts.length === 3) {
+            dateStr = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          }
+        } else if (pattern.source.includes('\\d{1,2}\\/\\d{1,2}\\/\\d{4}')) {
+          // MM/DD/YYYY format
+          const parts = firstMatch.split('/');
+          if (parts.length === 3) {
+            dateStr = `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+          }
+        } else if (pattern.source.includes('januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember|january|february|march|april|may|june|july|august|september|october|november|december')) {
+          // DD Month YYYY format
+          const parts = firstMatch.split(' ');
+          if (parts.length === 3) {
+            const month = months[parts[1].toLowerCase()];
+            if (month) {
+              dateStr = `${parts[2]}-${month}-${parts[0].padStart(2, '0')}`;
+            }
+          }
+        }
+        
+        if (dateStr) {
+          return { starts_at: dateStr, ends_at: null };
+        }
+      }
+    }
+    
+    return { starts_at: null, ends_at: null };
   }
 }
