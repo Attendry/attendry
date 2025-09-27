@@ -15,7 +15,7 @@ import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
 import { runSearch } from "@/search/orchestrator";
 import { buildSearchQuery } from "@/search/buildQuery";
 import { cseSearch } from "@/search/providers/cse";
-import { makeCacheKey } from "@/search/cache";
+import { searchCacheKey } from "@/search/cache";
 import { FLAGS } from "@/config/flags";
 
 /**
@@ -65,7 +65,13 @@ const cacheService = getCacheService();
 
 function getCacheKey(provider: string, q: string, country: string, from?: string, to?: string): string {
   const cleanedQuery = q.trim().replace(/\s+/g, ' ');
-  return makeCacheKey(provider as 'firecrawl'|'cse', cleanedQuery, country, from, to);
+  return searchCacheKey({
+    provider: provider as 'firecrawl'|'cse',
+    query: cleanedQuery,
+    country,
+    from,
+    to
+  });
 }
 
 async function getCachedResult<T>(key: string): Promise<T | null> {
