@@ -8,13 +8,9 @@ export async function cseSearch(q: string): Promise<string[]> {
   const base = 'https://www.googleapis.com/customsearch/v1';
   const key = process.env.GOOGLE_CSE_KEY!;
   const cx  = process.env.GOOGLE_CSE_CX!;
-  for (const num of [10, 5]) {
-    const url = `${base}?q=${encodeURIComponent(q)}&key=${key}&cx=${cx}&num=${num}`;
-    const r = await fetch(url);
-    if (r.status === 200) {
-      const j = await r.json();
-      return (j.items ?? []).map((i: any) => i.link).filter(Boolean);
-    }
-  }
-  return [];
+  const url = `${base}?q=${encodeURIComponent(q)}&key=${key}&cx=${cx}&num=10`;
+  const r = await fetch(url);
+  if (r.status !== 200) return [];
+  const j = await r.json();
+  return (j.items ?? []).map((i: any) => i.link).filter(Boolean);
 }

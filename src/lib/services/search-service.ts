@@ -15,6 +15,8 @@ import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
 import { runSearch } from "@/search/orchestrator";
 import { buildSearchQuery } from "@/search/buildQuery";
 import { cseSearch } from "@/search/providers/cse";
+import { makeCacheKey } from "@/search/cache";
+import { FLAGS } from "@/config/flags";
 
 /**
  * Shared Search Service
@@ -63,7 +65,7 @@ const cacheService = getCacheService();
 
 function getCacheKey(provider: string, q: string, country: string, from?: string, to?: string): string {
   const cleanedQuery = q.trim().replace(/\s+/g, ' ');
-  return `search:${provider}:${cleanedQuery}|${country}|${from || ''}|${to || ''}`;
+  return makeCacheKey(provider as 'firecrawl'|'cse', cleanedQuery, country, from, to);
 }
 
 async function getCachedResult<T>(key: string): Promise<T | null> {
@@ -577,15 +579,31 @@ export class SearchService {
       
       // Build enhanced query using user configuration
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
-      console.log(JSON.stringify({ at: "search_service", firecrawl_query: enhancedQuery, query_length: enhancedQuery.length }));
+      
+      // Normalize effectiveQ (single parentheses, no postfix)
+      const effectiveQ = buildSearchQuery({
+        baseQuery: searchConfig.baseQuery,
+        userText: params.q
+      });
+      
+      // Sanitize to collapse accidental double parens
+      const normalizedQ = effectiveQ.replace(/^\(+/, '(').replace(/\)+$/, ')');
+      
+      console.log(JSON.stringify({ 
+        at: "search_service", 
+        effectiveQ: normalizedQ, 
+        query_length: normalizedQ.length 
+      }));
       
       // Declare firecrawlResult outside the if block for proper scope
       let firecrawlResult: any;
       
-      // Single-attempt Firecrawl with clean fallback
+      // One-shot Firecrawl with clean CSE fallback (no re-entry)
+      let providerUsed: 'firecrawl' | 'cse' | null = null;
       let urls: string[] = [];
+
       try {
-        const q = buildSearchQuery({ baseQuery: enhancedQuery });
+        const q = buildSearchQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
         const fcResult = await FirecrawlSearchService.searchEvents({
           query: q,
           country: params.country,
@@ -595,9 +613,12 @@ export class SearchService {
           maxResults: params.num || 10
         });
         urls = (fcResult?.items ?? []).map((r: any) => r.link).filter(Boolean);
-      } catch (e) {
-        console.warn('[firecrawl.build] skip -> using CSE', String(e));
-        urls = await cseSearch(enhancedQuery);
+        providerUsed = 'firecrawl';
+      } catch (err) {
+        console.warn('[firecrawl.build] skip -> using CSE', String(err));
+        const q = buildSearchQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
+        urls = await cseSearch(q);
+        providerUsed = 'cse';
       }
       
       // Convert URLs to SearchItem format
@@ -611,6 +632,7 @@ export class SearchService {
       
       console.log(JSON.stringify({ 
         at: "search_service", 
+        providerUsed,
         total_results: urls.length,
         sample_urls: urls.slice(0, 5)
       }));
@@ -618,9 +640,10 @@ export class SearchService {
       if (firecrawlResult.items.length > 0) {
         console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", success: true, items: firecrawlResult.items.length }));
         
-        // NEW: Add Gemini prioritization with safe JSON parsing
-        try {
-          console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization", items: firecrawlResult.items.length }));
+        // Disable Gemini prioritization for low-signal docs
+        if (FLAGS.aiRankingEnabled && urls.length > 0) {
+          try {
+            console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization", items: firecrawlResult.items.length }));
           
           // Check if we have enough results for prioritization
           if (firecrawlResult.items.length < 8) {
@@ -709,6 +732,10 @@ export class SearchService {
             items: prioritizedItems.map((item: any) => ({ title: item.title, link: item.link, snippet: item.snippet })),
             cached: false
           };
+        }
+        } else {
+          // skip; use heuristic or identity ordering
+          console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization_skipped", reason: "flag_disabled" }));
         }
       }
     } catch (error) {
@@ -883,30 +910,34 @@ export class SearchService {
       return true;
     });
 
-    // Apply Gemini prioritization to Google CSE results as well
+    // Disable Gemini prioritization for CSE results
     let finalItems = filteredItems;
-    try {
-      console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization_cse", items: filteredItems.length }));
-      const prioritization = await OptimizedAIService.processRequest<{ prioritizedUrls: string[] }>(
-        'prioritize',
-        'Prioritize URLs based on relevance for event discovery',
-        { items: filteredItems, searchConfig, country },
-        { useBatching: true, useCache: true }
-      );
-      
-      // Return only prioritized URLs
-      finalItems = filteredItems.filter(item => 
-        prioritization.prioritizedUrls.includes(item.link)
-      );
-      
-      console.log(JSON.stringify({ 
-        at: "search_service", 
-        step: "prioritization_complete_cse", 
-        original: filteredItems.length, 
-        prioritized: finalItems.length 
-      }));
-    } catch (error: any) {
-      console.warn('Gemini prioritization failed for CSE results, returning all filtered results:', error.message);
+    if (FLAGS.aiRankingEnabled && filteredItems.length > 0) {
+      try {
+        console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization_cse", items: filteredItems.length }));
+        const prioritization = await OptimizedAIService.processRequest<{ prioritizedUrls: string[] }>(
+          'prioritize',
+          'Prioritize URLs based on relevance for event discovery',
+          { items: filteredItems, searchConfig, country },
+          { useBatching: true, useCache: true }
+        );
+        
+        // Return only prioritized URLs
+        finalItems = filteredItems.filter(item => 
+          prioritization.prioritizedUrls.includes(item.link)
+        );
+        
+        console.log(JSON.stringify({ 
+          at: "search_service", 
+          step: "prioritization_complete_cse", 
+          original: filteredItems.length, 
+          prioritized: finalItems.length 
+        }));
+      } catch (error: any) {
+        console.warn('Gemini prioritization failed for CSE results, returning all filtered results:', error.message);
+      }
+    } else {
+      console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization_cse_skipped", reason: "flag_disabled" }));
     }
 
     const result = {
