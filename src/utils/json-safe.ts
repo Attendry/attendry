@@ -1,18 +1,10 @@
 /**
- * Safe JSON Parsing Utilities
- * 
- * Prevents speaker-extraction JSON parse crashes
+ * Defensive JSON parsing for speaker extraction (removes crash in log)
  */
-
-export function safeJsonParse<T>(s: string, fallback: T): T {
+export function safeJsonParse<T>(text: string, fallback: T): T {
   try { 
-    return JSON.parse(s) as T; 
+    return JSON.parse(text) as T; 
   } catch { 
     return fallback; 
   }
-}
-
-// Specialized for speaker extraction
-export function parseSpeakerExtraction(rawModelText: string): { speakers: string[] } {
-  return safeJsonParse<{ speakers: string[] }>(rawModelText, { speakers: [] });
 }

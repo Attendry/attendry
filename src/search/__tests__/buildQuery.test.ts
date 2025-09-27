@@ -1,4 +1,4 @@
-import { buildSearchQuery } from './buildQuery';
+import { buildSearchQuery } from '../query';
 
 describe('buildSearchQuery', () => {
   it('uses baseQuery when userText is empty', () => {

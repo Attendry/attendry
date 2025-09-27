@@ -4,7 +4,7 @@
  * Removes hard-coded "Germany" override and uses explicit query builder
  */
 
-import { buildSearchQuery } from '@/search/buildQuery';
+import { buildQueryExplicit } from '@/search/query';
 import { withTimeoutAndRetry } from '@/utils/net/withTimeoutAndRetry';
 import { logger } from '@/utils/logger';
 
@@ -22,10 +22,10 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
   if (!baseQuery?.trim()) throw new Error('firecrawlSearch: baseQuery required');
 
   // ✅ Use the explicit builder; never override with a fixed German literal string.
-  const q = buildSearchQuery({ baseQuery, userText });
+  const q = buildQueryExplicit({ baseQuery, userText });
 
   // Build params WITHOUT rewriting the query text.
-  const params: any = {
+  const fcParams = {
     query: q,                 // ← not a literal
     limit: 15,                // smaller to avoid timeouts
     sources: ['web'] as const,
@@ -46,34 +46,29 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
       const [Y, M, D] = d.split('-');
       return `${M}/${D}/${Y}`;
     };
-    params.tbs = `cdr:1,cd_min:${toMDY(dateFrom)},cd_max:${toMDY(dateTo)}`;
+    fcParams.tbs = `cdr:1,cd_min:${toMDY(dateFrom)},cd_max:${toMDY(dateTo)}`;
   }
 
-  logger.info({ at: 'firecrawl_search', query: q, params });
+  logger.info({ at: 'firecrawl_search', query: q, params: fcParams });
 
-  // ✅ Increase timeout + retries to reduce spurious 15s timeouts.
-  return withTimeoutAndRetry(
-    () => doFirecrawl(params),  // your existing Firecrawl client
-    { timeoutMs: 30000, maxRetries: 2, backoffMs: 600 }
-  );
-}
-
-// Retry/backoff wrapper (cap to ~25s overall)
-async function firecrawlSearchWithBackoff(params: any, maxMs = 25000) {
-  const deadlines = [15000, 8000, 4000];
-  const started = Date.now();
-  for (const budget of deadlines) {
-    const left = maxMs - (Date.now() - started);
-    if (left <= 0) break;
-    try {
-      const res = await doFirecrawl({ ...params, timeoutMs: Math.min(budget, left) });
-      if (res?.items?.length) return res;
-    } catch (e) {
-      if (String(e?.name ?? e).includes('Timeout')) continue;
+  // Firecrawl: no hardcoded query, add short backoff retries
+  async function firecrawlSearchWithBackoff() {
+    const timeouts = [12000, 7000, 4000]; // ~23s cumulative max
+    for (const timeoutMs of timeouts) {
+      try {
+        const res = await doFirecrawl({ ...fcParams, timeoutMs });
+        if (res?.items?.length) return res;
+      } catch (e: any) {
+        // Only swallow timeouts; rethrow others
+        if (!String(e?.name ?? e).toLowerCase().includes('timeout')) throw e;
+      }
     }
+    return { items: [] };
   }
-  return { items: [] };
+
+  return await firecrawlSearchWithBackoff();
 }
+
 
 // Placeholder for actual Firecrawl client call
 async function doFirecrawl(params: any) {

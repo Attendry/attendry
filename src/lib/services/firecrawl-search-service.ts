@@ -1,5 +1,5 @@
 import { RetryService } from "./retry-service";
-import { buildSearchQuery } from '@/search/buildQuery';
+import { buildQueryExplicit } from '@/search/query';
 
 /**
  * Firecrawl Search Service
@@ -90,7 +90,7 @@ export class FirecrawlSearchService {
 
     try {
       // Build the search query with event-specific terms
-      const searchQuery = this.buildSearchQuery(query, industry, country, from, to);
+      const searchQuery = this.buildSearchQueryInternal(query, industry, country, from, to);
       
       // Build search parameters according to Firecrawl v2 API docs
       const searchParams = {
@@ -220,7 +220,7 @@ export class FirecrawlSearchService {
   /**
    * Build search query with event-specific terms
    */
-  private static buildSearchQuery(
+  private static buildSearchQueryInternal(
     query: string, 
     industry: string, 
     country: string, 
@@ -350,9 +350,9 @@ export class FirecrawlSearchService {
 
     // Use the centralized query builder instead
     const baseQuery = searchQuery || this.getIndustryTerms(industry);
-    return buildSearchQuery({ 
+    return buildQueryExplicit({ 
       baseQuery,
-      maxLen: 200 // Shorter for Firecrawl
+      userText: undefined
     });
   }
 

@@ -7,8 +7,8 @@
 import { firecrawlSearch } from './firecrawlService';
 import { cseSearch } from './cseService';
 import { logger } from '@/utils/logger';
-import { ensureArray, safeFilter } from '@/lib/arrays';
-import { buildSearchQuery } from '@/search/buildQuery';
+import { ensureArray } from '@/lib/ensureArray';
+import { buildQueryExplicit } from '@/search/query';
 
 // Normalize provider lists once at the edge
 function normalizeProviders(input?: unknown) {
@@ -27,6 +27,12 @@ export async function executeSearch(opts: {
 }) {
   const { baseQuery, userText, country, dateFrom, dateTo, providers: providerInput } = opts;
 
+  // Build the effective query once, and use it everywhere
+  const effectiveQ = buildQueryExplicit({
+    baseQuery: baseQuery?.trim() || '',
+    userText: userText,
+  });
+
   // Normalize providers to always be an array
   const providers = normalizeProviders(providerInput || process.env.SEARCH_PROVIDERS);
 
@@ -40,7 +46,7 @@ export async function executeSearch(opts: {
     console.info('[query_debug]', {
       baseFromConfig: baseQuery,
       userText: userText,
-      effectiveQ: buildSearchQuery({ baseQuery, userText }),
+      effectiveQ,
     });
   }
 
@@ -51,16 +57,16 @@ export async function executeSearch(opts: {
 
       if (provider === 'firecrawl') {
         result = await firecrawlSearch({
-          baseQuery,
-          userText,
+          baseQuery: effectiveQ,
+          userText: null,
           location: country,
           dateFrom,
           dateTo,
         });
       } else if (provider === 'cse') {
         result = await cseSearch({
-          baseQuery,
-          userText,
+          baseQuery: effectiveQ,
+          userText: null,
           crCountry: country ? `country${country.toUpperCase()}` : undefined,
           gl: country?.toLowerCase(),
           lr: 'lang_de|lang_en',

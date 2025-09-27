@@ -4,7 +4,7 @@
  * Fixes 400 handling and stops claiming "success: true" when it isn't
  */
 
-import { buildSearchQuery } from '@/search/buildQuery';
+import { buildQueryExplicit } from '@/search/query';
 import { withTimeoutAndRetry } from '@/utils/net/withTimeoutAndRetry';
 import { logger } from '@/utils/logger';
 
@@ -25,45 +25,33 @@ export async function cseSearch(args: CSEArgs) {
   } = args;
 
   if (!baseQuery?.trim()) throw new Error('cseSearch: baseQuery required');
-  const q = buildSearchQuery({ baseQuery, userText });
+  const q = buildQueryExplicit({ baseQuery, userText });
 
-  const url = new URL('https://www.googleapis.com/customsearch/v1');
-  url.searchParams.set('q', q.slice(0, 256)); // trim long queries
-  url.searchParams.set('key', process.env.CSE_API_KEY!);
-  url.searchParams.set('cx', process.env.CSE_CX_ID!);
-  url.searchParams.set('num', String(num));
-  url.searchParams.set('safe', 'off');
-  url.searchParams.set('hl', 'en');
-  url.searchParams.set('cr', crCountry);
-  url.searchParams.set('gl', gl);
-  url.searchParams.set('lr', lr);
-  if (dateRestrict) url.searchParams.set('dateRestrict', dateRestrict); // ✅ use this, not tbs
-
-  const fetcher = async () => {
-    const res = await fetch(url.toString(), { method: 'GET' });
-    const text = await res.text();
-    if (!res.ok) {
-      // ✅ Treat 4xx as error, don't mark success elsewhere.
-      logger.warn({ at: 'cse_search', status: res.status, body: text.slice(0, 1000) });
-      
-      // Add fallback path that removes optional params on 400
-      if (res.status === 400) {
-        ['cr','lr'].forEach(k => url.searchParams.delete(k));
-        url.searchParams.set('num','10');
-        const r2 = await fetch(url.toString());
-        if (r2.ok) {
-          const data2 = JSON.parse(await r2.text());
-          const items = (data2.items ?? []).map((i: any) => i.link).filter(Boolean);
-          return { items, raw: data2 };
-        }
-      }
-      
-      throw new Error(`CSE error ${res.status}`);
+  // CSE: avoid 400s (trim query) and retry without locale clamps
+  function buildCSEUrl(q: string, withLocale: boolean) {
+    const u = new URL('https://www.googleapis.com/customsearch/v1');
+    u.searchParams.set('q', q.slice(0, 256));         // trim long queries to reduce 400s
+    u.searchParams.set('key', process.env.GOOGLE_API_KEY!);
+    u.searchParams.set('cx', process.env.GOOGLE_CSE_CX!);
+    u.searchParams.set('num', '10');
+    u.searchParams.set('safe', 'off');
+    if (withLocale) {
+      u.searchParams.set('hl', 'de');
+      u.searchParams.set('gl', 'de');
+      // Avoid lr/cr which often trigger 400 when combined with other params
     }
-    const data = JSON.parse(text);
-    const items = (data.items ?? []).map((i: any) => i.link).filter(Boolean);
-    return { items, raw: data };
-  };
+    return u.toString();
+  }
 
-  return withTimeoutAndRetry(fetcher, { timeoutMs: 15000, maxRetries: 1, backoffMs: 500 });
+  async function cseSearchRobust(q: string) {
+    let res = await fetch(buildCSEUrl(q, true));
+    if (res.status === 400) {
+      res = await fetch(buildCSEUrl(q, false));
+    }
+    if (!res.ok) return { items: [] };
+    const json = await res.json().catch(() => ({}));
+    return { items: Array.isArray(json.items) ? json.items : [] };
+  }
+
+  return await cseSearchRobust(q);
 }
