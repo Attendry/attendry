@@ -12,8 +12,9 @@ import { getServiceQueue, RATE_LIMIT_CONFIGS } from "@/lib/services/request-queu
 import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/services/circuit-breaker";
 import { executeWithFallback } from "@/lib/services/fallback-strategies";
 import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
-import { buildTierQueries, assertNoRogueAugmentation } from "@/search/query-builder";
-import { providerSearch, circuitBreaker } from "./provider-search";
+import { runSearch } from "@/search/orchestrator";
+import { prefilter } from "@/search/url-filters";
+import { inferCountry, inferDate } from "@/search/infer";
 
 /**
  * Shared Search Service
@@ -580,82 +581,34 @@ export class SearchService {
       // Declare firecrawlResult outside the if block for proper scope
       let firecrawlResult: any;
       
-      // Use tier-based search for Germany
+      // Use new orchestrator for Germany
       if (params.country === 'DE') {
-        const tierQueries = buildTierQueries(enhancedQuery);
-        
-        // Calculate CDR window
         const days = Math.ceil((Date.now() - new Date(params.from || Date.now() - 60 * 24 * 60 * 60 * 1000).getTime()) / (1000 * 60 * 60 * 24));
-        const { cd_min, cd_max } = this.toCdr(days);
         
-        let urls: string[] = [];
-        let searchRetriedWithBase = false;
-        const seenUrls = new Set<string>();
+        const { urls, searchRetriedWithBase } = await runSearch({
+          baseQuery: enhancedQuery,
+          days,
+          use: 'auto'
+        });
         
-        // 1) Run Tier A then (if ENABLE) B, C; collect + dedupe
-        const tiers = [tierQueries.tierA, tierQueries.tierB, tierQueries.tierC];
-        for (const t of tiers) {
-          for (const b of t) {
-            assertNoRogueAugmentation(b.q);
-            const batchUrls = await providerSearch(b.q, {
-              use: 'auto',
-              country: params.country,
-              from: params.from,
-              to: params.to,
-              industry: searchConfig?.industry || "legal-compliance",
-              maxResults: 25,
-              tbs: `cdr:1,cd_min:${cd_min},cd_max:${cd_max}`
-            });
-            urls.push(...batchUrls);
-          }
-        }
-        urls = Array.from(new Set(urls));
-
-        if (urls.length === 0) {
-          // 2) RETRY WITH BASE: shard base into short chips with German event words (no cities)
-          searchRetriedWithBase = true;
-          const chips = ['Konferenz','Kongress','Tagung','Seminar','Workshop','Veranstaltung'];
-          for (const w of chips) {
-            const q = `(${enhancedQuery}) ${w}`;
-            assertNoRogueAugmentation(q);
-            const batchUrls = await providerSearch(q, { 
-              use: 'auto', 
-              fast: true,
-              country: params.country,
-              from: params.from,
-              to: params.to,
-              industry: searchConfig?.industry || "legal-compliance",
-              maxResults: 20
-            });
-            urls.push(...batchUrls);
-          }
-          urls = Array.from(new Set(urls));
-        }
+        // Pre-filter URLs to kill obvious noise
+        const filteredUrls = prefilter(urls);
         
         // Convert URLs to SearchItem format
-        const allResults = urls.map(url => ({
+        const allResults = filteredUrls.map(url => ({
           title: "Event",
           link: url,
           snippet: "Event details"
         }));
         
-        // Soft filter URLs
-        const filteredUrls = this.softFilterUrls(urls);
-        firecrawlResult = { items: allResults.filter(item => filteredUrls.includes(item.link)) };
+        firecrawlResult = { items: allResults };
         
         console.log(JSON.stringify({ 
           at: "search_service", 
-          tier_results: { 
-            tierA: tierQueries.tierA.length, 
-            tierB: tierQueries.tierB.length, 
-            tierC: tierQueries.tierC.length 
-          },
           searchRetriedWithBase,
-          firecrawl_skipped_due_to_circuit: circuitBreaker.isOpen('firecrawl'),
-          total_results: allResults.length,
-          filtered_results: firecrawlResult.items.length,
-          sample_urls: allResults.slice(0, 5).map(item => item.link),
-          final_queries: [...tierQueries.tierA, ...tierQueries.tierB, ...tierQueries.tierC].map(b => ({ q: b.q, len: b.len }))
+          total_results: urls.length,
+          filtered_results: filteredUrls.length,
+          sample_urls: filteredUrls.slice(0, 5)
         }));
       } else {
         // Fallback to original single query for non-DE countries
