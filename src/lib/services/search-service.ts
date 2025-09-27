@@ -13,6 +13,8 @@ import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/servic
 import { executeWithFallback } from "@/lib/services/fallback-strategies";
 import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
 import { runSearch } from "@/search/orchestrator";
+import { buildSearchQuery } from "@/search/buildQuery";
+import { cseSearch } from "@/search/providers/cse";
 
 /**
  * Shared Search Service
@@ -61,7 +63,7 @@ const cacheService = getCacheService();
 
 function getCacheKey(provider: string, q: string, country: string, from?: string, to?: string): string {
   const cleanedQuery = q.trim().replace(/\s+/g, ' ');
-  return `${provider}:${cleanedQuery}|${country}|${from || ''}|${to || ''}`;
+  return `search:${provider}:${cleanedQuery}|${country}|${from || ''}|${to || ''}`;
 }
 
 async function getCachedResult<T>(key: string): Promise<T | null> {
@@ -580,48 +582,38 @@ export class SearchService {
       // Declare firecrawlResult outside the if block for proper scope
       let firecrawlResult: any;
       
-      // Use new orchestrator for Germany
-      if (params.country === 'DE') {
-        const days = Math.ceil((Date.now() - new Date(params.from || Date.now() - 60 * 24 * 60 * 60 * 1000).getTime()) / (1000 * 60 * 60 * 24));
-        
-        const { urls, retriedWithBase } = await runSearch({
-          baseQuery: enhancedQuery,
+      // Single-attempt Firecrawl with clean fallback
+      let urls: string[] = [];
+      try {
+        const q = buildSearchQuery({ baseQuery: enhancedQuery });
+        const fcResult = await FirecrawlSearchService.searchEvents({
+          query: q,
           country: params.country,
-          days,
-          enableAug: false
+          from: params.from,
+          to: params.to,
+          industry: searchConfig?.industry || "legal-compliance",
+          maxResults: params.num || 10
         });
-        
-        // Convert URLs to SearchItem format
-        const allResults = urls.map(url => ({
-          title: "Event",
-          link: url,
-          snippet: "Event details"
-        }));
-        
-        firecrawlResult = { items: allResults };
-        
-        console.log(JSON.stringify({ 
-          at: "search_service", 
-          searchRetriedWithBase: retriedWithBase,
-          total_results: urls.length,
-          sample_urls: urls.slice(0, 5)
-        }));
-      } else {
-        // Fallback to original single query for non-DE countries
-        firecrawlResult = await executeWithFallback("firecrawl", async () => {
-        return await executeWithCircuitBreaker("firecrawl", () =>
-          FirecrawlSearchService.searchEvents({
-            query: enhancedQuery,
-            country: params.country,
-            from: params.from,
-            to: params.to,
-            industry: searchConfig?.industry || "legal-compliance",
-            maxResults: params.num || 20
-          }),
-          CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
-        );
-      });
+        urls = (fcResult?.items ?? []).map((r: any) => r.link).filter(Boolean);
+      } catch (e) {
+        console.warn('[firecrawl.build] skip -> using CSE', String(e));
+        urls = await cseSearch(enhancedQuery);
       }
+      
+      // Convert URLs to SearchItem format
+      const allResults = urls.map(url => ({
+        title: "Event",
+        link: url,
+        snippet: "Event details"
+      }));
+      
+      firecrawlResult = { items: allResults };
+      
+      console.log(JSON.stringify({ 
+        at: "search_service", 
+        total_results: urls.length,
+        sample_urls: urls.slice(0, 5)
+      }));
       
       if (firecrawlResult.items.length > 0) {
         console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", success: true, items: firecrawlResult.items.length }));

@@ -5,23 +5,14 @@
  * to diagnose zero-result issues.
  */
 
-import { runSearch } from '@/search/orchestrator';
+import { cseSearch } from '@/search/providers/cse';
 
 export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const country = (url.searchParams.get('country') ?? 'DE').toUpperCase();
-  const days = Number(url.searchParams.get('days') ?? '60');
-  const baseQuery = process.env.DEBUG_BASE_QUERY
+  const q = url.searchParams.get('q')
     ?? '(compliance OR investigation OR "e-discovery" OR ediscovery OR "legal tech" OR "legal technology" OR "GDPR" OR "cybersecurity" OR "interne untersuchung" OR "compliance management")';
-
-  const { urls, retriedWithBase } = await runSearch({ baseQuery, country, days, enableAug: false });
-
-  return Response.json({
-    items: urls,
-    count: urls.length,
-    country,
-    searchRetriedWithBase: retriedWithBase
-  });
+  const items = await cseSearch(q);
+  return Response.json({ items, count: items.length });
 }
