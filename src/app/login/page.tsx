@@ -4,7 +4,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function LoginPage() {
@@ -13,9 +13,15 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [usePassword, setUsePassword] = useState(false);
-  const supabase = supabaseBrowser();
+  const [supabase, setSupabase] = useState<any>(null);
+
+  useEffect(() => {
+    // Initialize Supabase client only on client side
+    setSupabase(supabaseBrowser());
+  }, []);
 
   async function signInWithGoogle() {
+    if (!supabase) return;
     setIsLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -33,6 +39,7 @@ export default function LoginPage() {
   }
 
   async function sendMagicLink() {
+    if (!supabase) return;
     if (!email) {
       setMessage("Please enter your email address");
       return;
@@ -57,6 +64,7 @@ export default function LoginPage() {
   }
 
   async function signInWithPassword() {
+    if (!supabase) return;
     if (!email || !password) {
       setMessage("Please enter both email and password");
       return;
@@ -126,6 +134,36 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  // Show loading state while Supabase client is initializing
+  if (!supabase) {
+    return (
+      <main style={{ 
+        minHeight: "100vh", 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "center",
+        padding: "2rem",
+        background: "linear-gradient(135deg, var(--muted) 0%, var(--background) 100%)"
+      }}>
+        <div style={{ 
+          textAlign: "center",
+          color: "var(--muted-foreground)"
+        }}>
+          <div style={{ 
+            width: "40px", 
+            height: "40px", 
+            border: "3px solid var(--border)",
+            borderTop: "3px solid var(--primary)",
+            borderRadius: "50%",
+            animation: "spin 1s linear infinite",
+            margin: "0 auto 1rem"
+          }}></div>
+          <p>Loading...</p>
+        </div>
+      </main>
+    );
   }
 
   return (
