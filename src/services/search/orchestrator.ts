@@ -7,6 +7,7 @@
 import { firecrawlSearch } from './firecrawlService';
 import { cseSearch } from './cseService';
 import { logger } from '@/utils/logger';
+import { normalizeProviders, asArray } from '@/utils/array-helpers';
 
 export async function executeSearch(opts: {
   baseQuery: string;
@@ -14,43 +15,47 @@ export async function executeSearch(opts: {
   country?: string;
   dateFrom?: string;
   dateTo?: string;
+  providers?: string | string[];
 }) {
-  const { baseQuery, userText, country, dateFrom, dateTo } = opts;
+  const { baseQuery, userText, country, dateFrom, dateTo, providers: providerInput } = opts;
 
-  try {
-    // Try Firecrawl with longer timeout/retries
-    const fc = await firecrawlSearch({
-      baseQuery,
-      userText,
-      location: country,
-      dateFrom,
-      dateTo,
-    });
+  // Normalize providers to always be an array
+  const providers = normalizeProviders(providerInput || process.env.SEARCH_PROVIDERS);
 
-    if (fc?.items?.length) {
-      logger.info({ at: 'search_service', provider: 'firecrawl', items: fc.items.length });
-      return { providerUsed: 'firecrawl', items: fc.items };
+  // Try each provider in order
+  for (const provider of providers) {
+    try {
+      let result: any = null;
+
+      if (provider === 'firecrawl') {
+        result = await firecrawlSearch({
+          baseQuery,
+          userText,
+          location: country,
+          dateFrom,
+          dateTo,
+        });
+      } else if (provider === 'cse') {
+        result = await cseSearch({
+          baseQuery,
+          userText,
+          crCountry: country ? `country${country.toUpperCase()}` : undefined,
+          gl: country?.toLowerCase(),
+          lr: 'lang_de|lang_en',
+          dateRestrict: undefined, // or 'w1' if you need a rolling week
+        });
+      }
+
+      // Use type guard to ensure items is always an array
+      const items = asArray(result?.items).filter(Boolean);
+      
+      if (items.length > 0) {
+        logger.info({ at: 'search_service', provider, items: items.length });
+        return { providerUsed: provider, items };
+      }
+    } catch (e) {
+      logger.warn({ at: 'search_service', provider, err: String(e) });
     }
-  } catch (e) {
-    logger.warn({ at: 'search_service', provider: 'firecrawl', err: String(e) });
-  }
-
-  // Fallback: CSE (don't mark success true if 400)
-  try {
-    const cse = await cseSearch({
-      baseQuery,
-      userText,
-      crCountry: country ? `country${country.toUpperCase()}` : undefined,
-      gl: country?.toLowerCase(),
-      lr: 'lang_de|lang_en',
-      dateRestrict: undefined, // or 'w1' if you need a rolling week
-    });
-    if (cse?.items?.length) {
-      logger.info({ at: 'search_service', provider: 'cse', items: cse.items.length });
-      return { providerUsed: 'cse', items: cse.items };
-    }
-  } catch (e) {
-    logger.warn({ at: 'search_service', provider: 'cse', err: String(e) });
   }
 
   // Consistent empty result
