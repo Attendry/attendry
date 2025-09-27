@@ -429,10 +429,15 @@ export class SearchService {
       }
     }
     
-    // Add current year
-    const currentYear = new Date().getFullYear();
-    if (!query.includes(currentYear.toString())) {
-      query = `${query} ${currentYear}`;
+    // Add current year (2025) unless query already includes a year
+    const currentYear = new Date().getFullYear(); // 2025
+    
+    // Check if query already includes a year
+    const hasYear = /\b(202[4-6])\b/.test(query);
+    if (!hasYear) {
+      // Always use current year (2025) unless it's a past search
+      const preferredYear = query.toLowerCase().includes('past') || query.toLowerCase().includes('last') ? currentYear - 1 : currentYear;
+      query = `${query} ${preferredYear}`;
     }
     
     // Clean up the query and limit length

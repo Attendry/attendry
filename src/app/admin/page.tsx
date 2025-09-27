@@ -29,10 +29,6 @@ type SearchConfig = {
   excludeTerms: string;
   industryTerms: string[];
   icpTerms: string[];
-  speakerPrompts: {
-    extraction: string;
-    normalization: string;
-  };
   is_active?: boolean;
 };
 
@@ -43,10 +39,6 @@ type IndustryTemplate = {
   excludeTerms: string;
   industryTerms: string[];
   icpTerms: string[];
-  speakerPrompts: {
-    extraction: string;
-    normalization: string;
-  };
 };
 
 function AdminContent() {
@@ -68,15 +60,16 @@ function AdminContent() {
     baseQuery: "",
     excludeTerms: "",
     industryTerms: [],
-    icpTerms: [],
-    speakerPrompts: {
-      extraction: "",
-      normalization: ""
-    }
+    icpTerms: []
   });
   const [industryTemplates, setIndustryTemplates] = useState<Record<string, IndustryTemplate>>({});
   const [newTerm, setNewTerm] = useState("");
   const [newIcpTerm, setNewIcpTerm] = useState("");
+  
+  // User Profile term management
+  const [newCompetitor, setNewCompetitor] = useState("");
+  const [newUserIcpTerm, setNewUserIcpTerm] = useState("");
+  const [newUserIndustryTerm, setNewUserIndustryTerm] = useState("");
   
   // Collection Management State
   const [collectionStatus, setCollectionStatus] = useState<{
@@ -139,10 +132,6 @@ function AdminContent() {
           excludeTerms: json.config.exclude_terms || "",
           industryTerms: json.config.industry_terms || [],
           icpTerms: json.config.icp_terms || [],
-          speakerPrompts: json.config.speaker_prompts || {
-            extraction: "",
-            normalization: ""
-          },
           is_active: json.config.is_active
         });
       }
@@ -184,6 +173,40 @@ function AdminContent() {
     }
   }
 
+  // User Profile term management functions
+  function addCompetitor() {
+    if (newCompetitor.trim() && !competitors.includes(newCompetitor.trim())) {
+      setCompetitors([...competitors, newCompetitor.trim()]);
+      setNewCompetitor("");
+    }
+  }
+
+  function removeCompetitor(competitor: string) {
+    setCompetitors(competitors.filter(c => c !== competitor));
+  }
+
+  function addUserIcpTerm() {
+    if (newUserIcpTerm.trim() && !icpTerms.includes(newUserIcpTerm.trim())) {
+      setIcpTerms([...icpTerms, newUserIcpTerm.trim()]);
+      setNewUserIcpTerm("");
+    }
+  }
+
+  function removeUserIcpTerm(term: string) {
+    setIcpTerms(icpTerms.filter(t => t !== term));
+  }
+
+  function addUserIndustryTerm() {
+    if (newUserIndustryTerm.trim() && !industryTerms.includes(newUserIndustryTerm.trim())) {
+      setIndustryTerms([...industryTerms, newUserIndustryTerm.trim()]);
+      setNewUserIndustryTerm("");
+    }
+  }
+
+  function removeUserIndustryTerm(term: string) {
+    setIndustryTerms(industryTerms.filter(t => t !== term));
+  }
+
   async function save() {
     setBusy(true); 
     setMsg("");
@@ -222,8 +245,7 @@ function AdminContent() {
         baseQuery: template.baseQuery,
         excludeTerms: template.excludeTerms,
         industryTerms: [...template.industryTerms],
-        icpTerms: [...template.icpTerms],
-        speakerPrompts: { ...template.speakerPrompts }
+        icpTerms: [...template.icpTerms]
       });
       setMsg(`Applied ${template.name} template`);
       setSaveStatus("idle"); // Reset save status when making changes
@@ -275,6 +297,25 @@ function AdminContent() {
       return;
     }
 
+    // Validate character limits
+    if (searchConfig.baseQuery.length > 500) {
+      setMsg("Base Search Query must be 500 characters or less");
+      setSaveStatus("error");
+      return;
+    }
+
+    if (searchConfig.industryTerms.length > 3) {
+      setMsg("Maximum of 3 industry terms allowed");
+      setSaveStatus("error");
+      return;
+    }
+
+    if (searchConfig.icpTerms.length > 2) {
+      setMsg("Maximum of 2 ICP terms allowed");
+      setSaveStatus("error");
+      return;
+    }
+
     setBusy(true);
     setMsg("");
     setSaveStatus("saving");
@@ -289,7 +330,6 @@ function AdminContent() {
           excludeTerms: searchConfig.excludeTerms,
           industryTerms: searchConfig.industryTerms,
           icpTerms: searchConfig.icpTerms,
-          speakerPrompts: searchConfig.speakerPrompts,
           isActive: true
         })
       });
@@ -377,114 +417,377 @@ function AdminContent() {
         <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
         
         {/* Tab Navigation */}
-        <div className="flex space-x-1 mb-8 bg-white rounded-lg p-1 shadow-sm">
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-              activeTab === "profile"
-                ? "bg-blue-600 text-white"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-            }`}
-          >
-            User Profile
-          </button>
-          <button
-            onClick={() => setActiveTab("search")}
-            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-              activeTab === "search"
-                ? "bg-blue-600 text-white"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-            }`}
-          >
-            Search Configuration
-          </button>
-          <button
-            onClick={() => setActiveTab("collection")}
-            className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
-              activeTab === "collection"
-                ? "bg-blue-600 text-white"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-            }`}
-          >
-            Data Collection
-          </button>
-        </div>
+        <nav role="tablist" aria-label="Admin dashboard sections" className="mb-8">
+          <div className="flex space-x-1 bg-white rounded-lg p-1 shadow-sm">
+            <button
+              role="tab"
+              aria-selected={activeTab === "profile"}
+              aria-controls="profile-panel"
+              id="profile-tab"
+              onClick={() => setActiveTab("profile")}
+              className={`flex-1 py-3 px-4 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                activeTab === "profile"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                </svg>
+                User Profile
+              </div>
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === "search"}
+              aria-controls="search-panel"
+              id="search-tab"
+              onClick={() => setActiveTab("search")}
+              className={`flex-1 py-3 px-4 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                activeTab === "search"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                </svg>
+                Search Configuration
+              </div>
+            </button>
+            <button
+              role="tab"
+              aria-selected={activeTab === "collection"}
+              aria-controls="collection-panel"
+              id="collection-tab"
+              onClick={() => setActiveTab("collection")}
+              className={`flex-1 py-3 px-4 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                activeTab === "collection"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+                </svg>
+                Data Collection
+              </div>
+            </button>
+          </div>
+        </nav>
 
         {/* User Profile Tab */}
         {activeTab === "profile" && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-semibold text-slate-900">User Profile Management</h2>
+          <div role="tabpanel" id="profile-panel" aria-labelledby="profile-tab" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold text-slate-900">User Profile Management</h2>
+                <p className="text-sm text-slate-600 mt-1">Configure your profile to personalize search results and recommendations</p>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <span>Profile data helps improve search relevance</span>
+              </div>
+            </div>
         
-            <div className="bg-white border rounded-2xl p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Name</label>
-                <input 
-                  className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
-                  value={fullName} 
-                  onChange={e=>setFullName(e.target.value)} 
-                />
+            <div className="bg-white border rounded-2xl p-6 space-y-6">
+              {/* Basic Information Section */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium text-slate-900 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                  </svg>
+                  Basic Information
+                </h3>
+                
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="fullName" className="block text-sm font-medium text-slate-700 mb-2">
+                      Full Name
+                      <span className="text-red-500 ml-1" aria-label="required">*</span>
+                    </label>
+                    <input 
+                      id="fullName"
+                      type="text"
+                      className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                      value={fullName} 
+                      onChange={e=>setFullName(e.target.value)}
+                      placeholder="Enter your full name"
+                      aria-describedby="fullName-help"
+                    />
+                    <p id="fullName-help" className="text-xs text-slate-500 mt-1">Used for personalized recommendations</p>
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="company" className="block text-sm font-medium text-slate-700 mb-2">
+                      Company
+                      <span className="text-red-500 ml-1" aria-label="required">*</span>
+                    </label>
+                    <input 
+                      id="company"
+                      type="text"
+                      className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                      value={company} 
+                      onChange={e=>setCompany(e.target.value)}
+                      placeholder="Enter your company name"
+                      aria-describedby="company-help"
+                    />
+                    <p id="company-help" className="text-xs text-slate-500 mt-1">Used to generate relevant industry terms</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Search Integration Section */}
+              <div className="border-t pt-6">
+                <div className="flex items-start justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex-1">
+                    <h4 className="font-medium text-blue-900 mb-1">Search Integration</h4>
+                    <p className="text-sm text-blue-700 mb-2">Use your profile data to enhance search results and find more relevant events</p>
+                    <div className="flex items-center gap-2 text-xs text-blue-600">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                      <span>When enabled, your profile terms will be included in search queries</span>
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-3 text-sm cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={useBasic} 
+                      onChange={e=>setUseBasic(e.target.checked)}
+                      className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                      aria-describedby="search-integration-help"
+                    />
+                    <span className="font-medium text-blue-900">Enable</span>
+                  </label>
+                </div>
               </div>
               
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Company</label>
-                <input 
-                  className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
-                  value={company} 
-                  onChange={e=>setCompany(e.target.value)} 
-                />
-              </div>
-              
-              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                <span className="text-sm text-slate-600">Use this profile to narrow the Basic Search</span>
-                <label className="flex items-center gap-2 text-sm">
-                  <input 
-                    type="checkbox" 
-                    checked={useBasic} 
-                    onChange={e=>setUseBasic(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  /> Enable
-                </label>
-              </div>
-              
-              <div className="flex gap-3">
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
                 <button 
                   onClick={generate} 
-                  disabled={busy} 
-                  className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-400 transition-colors"
+                  disabled={busy || !company.trim()}
+                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+                  aria-describedby="generate-help"
                 >
-                  {busy?"Working…":"Generate terms"}
+                  {busy ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                      </svg>
+                      Generate Terms
+                    </>
+                  )}
                 </button>
                 <button 
                   onClick={save} 
-                  disabled={busy} 
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                  disabled={busy}
+                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors font-medium"
                 >
-                  Save profile
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h5v5.586l-1.293-1.293zM9 4a1 1 0 012 0v2H9V4z" />
+                  </svg>
+                  Save Profile
                 </button>
               </div>
               
-              {msg && <p className="text-sm text-slate-600 p-3 bg-blue-50 border border-blue-200 rounded-lg">{msg}</p>}
+              <p id="generate-help" className="text-xs text-slate-500">
+                Generate terms automatically based on your company name. Requires company name to be filled.
+              </p>
+              
+              {/* Status Messages */}
+              {msg && (
+                <div className={`p-4 rounded-lg border flex items-start gap-3 ${
+                  msg.includes('error') || msg.includes('Error') || msg.includes('Failed')
+                    ? 'bg-red-50 border-red-200 text-red-800'
+                    : 'bg-green-50 border-green-200 text-green-800'
+                }`}>
+                  <svg className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
+                    msg.includes('error') || msg.includes('Error') || msg.includes('Failed')
+                      ? 'text-red-500'
+                      : 'text-green-500'
+                  }`} fill="currentColor" viewBox="0 0 20 20">
+                    {msg.includes('error') || msg.includes('Error') || msg.includes('Failed') ? (
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    ) : (
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    )}
+                  </svg>
+                  <div>
+                    <p className="font-medium">{msg}</p>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="bg-white border rounded-2xl p-6">
-                <h3 className="font-semibold mb-3 text-slate-900">Competitors</h3>
-                <div className="flex flex-wrap gap-2">
-                  {competitors.map((c,i)=>(<Chip key={i} text={c}/>))}
+            {/* Terms Management Section */}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-slate-900 flex items-center gap-2">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                  </svg>
+                  Profile Terms
+                </h3>
+                <div className="text-sm text-slate-500">
+                  {competitors.length + icpTerms.length + industryTerms.length} total terms
                 </div>
               </div>
-              
-              <div className="bg-white border rounded-2xl p-6">
-                <h3 className="font-semibold mb-3 text-slate-900">ICP Terms</h3>
-                <div className="flex flex-wrap gap-2">
-                  {icpTerms.map((c,i)=>(<Chip key={i} text={c}/>))}
+
+              <div className="grid lg:grid-cols-3 gap-6">
+                {/* Competitors */}
+                <div className="bg-white border rounded-2xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-medium text-slate-900 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z" />
+                      </svg>
+                      Competitors
+                    </h4>
+                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                      {competitors.length}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2 min-h-[2rem]">
+                      {competitors.length > 0 ? (
+                        competitors.map((c,i)=>(<Chip key={i} text={c} onRemove={() => removeCompetitor(c)}/>))
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">No competitors added yet</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newCompetitor}
+                        onChange={(e) => setNewCompetitor(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addCompetitor()}
+                        className="flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
+                        placeholder="Add competitor..."
+                        aria-label="Add competitor"
+                      />
+                      <button
+                        onClick={addCompetitor}
+                        disabled={!newCompetitor.trim()}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
+                        aria-label="Add competitor"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              
-              <div className="bg-white border rounded-2xl p-6">
-                <h3 className="font-semibold mb-3 text-slate-900">Industry Terms</h3>
-                <div className="flex flex-wrap gap-2">
-                  {industryTerms.map((c,i)=>(<Chip key={i} text={c}/>))}
+                
+                {/* ICP Terms */}
+                <div className="bg-white border rounded-2xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-medium text-slate-900 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                      </svg>
+                      ICP Terms
+                    </h4>
+                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                      {icpTerms.length}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2 min-h-[2rem]">
+                      {icpTerms.length > 0 ? (
+                        icpTerms.map((c,i)=>(<Chip key={i} text={c} onRemove={() => removeUserIcpTerm(c)}/>))
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">No ICP terms added yet</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newUserIcpTerm}
+                        onChange={(e) => setNewUserIcpTerm(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addUserIcpTerm()}
+                        className="flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
+                        placeholder="Add ICP term..."
+                        aria-label="Add ICP term"
+                      />
+                      <button
+                        onClick={addUserIcpTerm}
+                        disabled={!newUserIcpTerm.trim()}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
+                        aria-label="Add ICP term"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Industry Terms */}
+                <div className="bg-white border rounded-2xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h4 className="font-medium text-slate-900 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                      </svg>
+                      Industry Terms
+                    </h4>
+                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">
+                      {industryTerms.length}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2 min-h-[2rem]">
+                      {industryTerms.length > 0 ? (
+                        industryTerms.map((c,i)=>(<Chip key={i} text={c} onRemove={() => removeUserIndustryTerm(c)}/>))
+                      ) : (
+                        <p className="text-sm text-slate-400 italic">No industry terms added yet</p>
+                      )}
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newUserIndustryTerm}
+                        onChange={(e) => setNewUserIndustryTerm(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && addUserIndustryTerm()}
+                        className="flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
+                        placeholder="Add industry term..."
+                        aria-label="Add industry term"
+                      />
+                      <button
+                        onClick={addUserIndustryTerm}
+                        disabled={!newUserIndustryTerm.trim()}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
+                        aria-label="Add industry term"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -493,7 +796,7 @@ function AdminContent() {
 
         {/* Search Configuration Tab */}
         {activeTab === "search" && (
-          <div className="space-y-6">
+          <div role="tabpanel" id="search-panel" aria-labelledby="search-tab" className="space-y-6">
             <h2 className="text-2xl font-semibold text-slate-900">Search Configuration Management</h2>
             
             {/* Industry Templates */}
@@ -541,14 +844,31 @@ function AdminContent() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Base Search Query</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Base Search Query
+                  <span className="text-xs text-gray-500 ml-2">
+                    ({searchConfig.baseQuery.length}/500 characters)
+                  </span>
+                </label>
                 <textarea
                   value={searchConfig.baseQuery}
-                  onChange={(e) => setSearchConfig({...searchConfig, baseQuery: e.target.value})}
-                  className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  onChange={(e) => {
+                    if (e.target.value.length <= 500) {
+                      setSearchConfig({...searchConfig, baseQuery: e.target.value});
+                    }
+                  }}
+                  className={`w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    searchConfig.baseQuery.length > 500 ? 'border-red-300 bg-red-50' : ''
+                  }`}
                   rows={3}
                   placeholder="e.g., (legal OR compliance OR investigation OR ediscovery)"
+                  maxLength={500}
                 />
+                {searchConfig.baseQuery.length > 450 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Warning: Query is getting long. Keep it under 500 characters for best results.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -564,7 +884,12 @@ function AdminContent() {
 
               {/* Industry Terms */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-3">Industry Terms</label>
+                <label className="block text-sm font-medium text-slate-700 mb-3">
+                  Industry Terms
+                  <span className="text-xs text-gray-500 ml-2">
+                    ({searchConfig.industryTerms.length}/3 terms, max 200 chars total)
+                  </span>
+                </label>
                 <div className="flex flex-wrap gap-2 mb-3">
                   {searchConfig.industryTerms.map((term, i) => (
                     <Chip key={i} text={term} onRemove={() => removeIndustryTerm(term)} />
@@ -576,21 +901,35 @@ function AdminContent() {
                     value={newTerm}
                     onChange={(e) => setNewTerm(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && addIndustryTerm()}
-                    className="flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={`flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      searchConfig.industryTerms.length >= 3 ? 'border-red-300 bg-red-50' : ''
+                    }`}
                     placeholder="Add industry term..."
+                    disabled={searchConfig.industryTerms.length >= 3}
                   />
                   <button
                     onClick={addIndustryTerm}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    disabled={searchConfig.industryTerms.length >= 3 || !newTerm.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     Add
                   </button>
                 </div>
+                {searchConfig.industryTerms.length >= 3 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Maximum of 3 industry terms allowed. Remove a term to add a new one.
+                  </p>
+                )}
               </div>
 
               {/* ICP Terms */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-3">ICP Terms (Buyer Roles)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-3">
+                  ICP Terms (Buyer Roles)
+                  <span className="text-xs text-gray-500 ml-2">
+                    ({searchConfig.icpTerms.length}/2 terms, max 150 chars total)
+                  </span>
+                </label>
                 <div className="flex flex-wrap gap-2 mb-3">
                   {searchConfig.icpTerms.map((term, i) => (
                     <Chip key={i} text={term} onRemove={() => removeIcpTerm(term)} />
@@ -602,48 +941,27 @@ function AdminContent() {
                     value={newIcpTerm}
                     onChange={(e) => setNewIcpTerm(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && addIcpTerm()}
-                    className="flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={`flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      searchConfig.icpTerms.length >= 2 ? 'border-red-300 bg-red-50' : ''
+                    }`}
                     placeholder="Add ICP term..."
+                    disabled={searchConfig.icpTerms.length >= 2}
                   />
                   <button
                     onClick={addIcpTerm}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    disabled={searchConfig.icpTerms.length >= 2 || !newIcpTerm.trim()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     Add
                   </button>
                 </div>
+                {searchConfig.icpTerms.length >= 2 && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Maximum of 2 ICP terms allowed. Remove a term to add a new one.
+                  </p>
+                )}
               </div>
 
-              {/* Speaker Prompts */}
-              <div className="space-y-4">
-                <h4 className="font-medium text-slate-900">Speaker Extraction Prompts</h4>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Extraction Prompt</label>
-                  <textarea
-                    value={searchConfig.speakerPrompts.extraction}
-                    onChange={(e) => setSearchConfig({
-                      ...searchConfig,
-                      speakerPrompts: {...searchConfig.speakerPrompts, extraction: e.target.value}
-                    })}
-                    className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows={4}
-                    placeholder="Prompt for extracting speakers from event pages..."
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Normalization Prompt</label>
-                  <textarea
-                    value={searchConfig.speakerPrompts.normalization}
-                    onChange={(e) => setSearchConfig({
-                      ...searchConfig,
-                      speakerPrompts: {...searchConfig.speakerPrompts, normalization: e.target.value}
-                    })}
-                    className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    rows={3}
-                    placeholder="Prompt for normalizing and deduplicating speakers..."
-                  />
-                </div>
-              </div>
 
               <div className="flex gap-3 pt-4 border-t">
                 <button
@@ -726,7 +1044,7 @@ function AdminContent() {
 
         {/* Data Collection Tab */}
         {activeTab === "collection" && (
-          <div className="space-y-6">
+          <div role="tabpanel" id="collection-panel" aria-labelledby="collection-tab" className="space-y-6">
             <h2 className="text-2xl font-semibold text-slate-900">Data Collection Management</h2>
             
             {/* Collection Status */}

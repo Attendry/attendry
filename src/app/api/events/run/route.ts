@@ -423,10 +423,30 @@ export async function POST(req: NextRequest) {
     // Extract unique URLs from search results
     let urls = Array.from(new Set(search.items.map(i => i.link)));
     
-    // If no URLs found, seed with demo URLs to ensure extraction has something to process
+    // If no URLs found, return empty results instead of demo URLs
     if (urls.length === 0) {
-      urls = ["https://example.com/demo1", "https://example.com/demo2"];
-      debug.seededDemoUrls = true;
+      console.log('No URLs found from search, returning empty results');
+      return NextResponse.json({
+        count: 0,
+        saved: [],
+        events: [],
+        marker: "RUN_V4",
+        country,
+        provider: search.provider,
+        searchConfig: {
+          industry: searchConfig?.industry,
+          baseQuery: searchConfig?.baseQuery
+        },
+        effectiveQ,
+        searchRetriedWithBase: false,
+        search,
+        urls: { unique: 0, sample: [] },
+        extract: { status: 200, version: "no_urls", eventsBeforeFilter: 0, sampleTrace: [] },
+        deduped: { count: 0 },
+        dateFiltering: { from, to, beforeCount: 0, allowUndated: false, afterCount: 0 },
+        filter: { kept: 0, reasons: { kept: 0, wrongCountry: 0, ambiguous: 0 } },
+        upsert: { saved: 0 }
+      });
     }
     if (debugEnabled) debug.urls = { unique: urls.length, sample: urls.slice(0, 3) };
 
@@ -495,12 +515,13 @@ export async function POST(req: NextRequest) {
     events = kept;
     const undatedCandidates: EventRec[] = [];
     
-    // Determine if we should allow undated items (demo/minimal extraction modes)
-    // Also allow undated items if we have good country matches (events are likely relevant)
+    // Determine if we should allow undated items
+    // Allow undated items if we have good country matches or if we're searching for future events
     const allowUndated = !!(debug as any)?.synthesizedFromSearch ||
       (typeof (search as any)?.provider === 'string' && (((search as any).provider || '').includes('demo')) ) ||
       (typeof (extractResult as any)?.note === 'string' && (extractResult as any).note.includes('no FIRECRAWL_KEY')) ||
-      (events.length > 0 && events.some(e => e.country || e.city)); // Allow if we have location info
+      (events.length > 0 && events.some(e => e.country || e.city)) || // Allow if we have location info
+      (events.length > 0); // Allow undated events for all searches - better to show something than nothing
 
     // Apply date range filtering
     if (debugEnabled) debug.dateFiltering = { from, to, beforeCount: events.length, allowUndated };

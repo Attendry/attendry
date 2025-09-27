@@ -73,7 +73,7 @@ const EVENT_SEARCH_SCHEMA = {
 export class FirecrawlSearchService {
   private static readonly FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v2/search";
   private static readonly MAX_RESULTS = 20;
-  private static readonly SEARCH_TIMEOUT = 15000; // 15 seconds - very fast fallback
+  private static readonly SEARCH_TIMEOUT = 15000; // 15 seconds - faster fallback to Google CSE - very fast fallback
 
   /**
    * Execute a web search using Firecrawl Search API v2
@@ -93,18 +93,17 @@ export class FirecrawlSearchService {
       // Build search parameters according to Firecrawl v2 API docs
       const searchParams = {
         query: searchQuery,
-        limit: Math.min(maxResults, 30), // Further reduce limit to focus on quality
+        limit: Math.min(maxResults, 20), // Reduce limit further to avoid timeouts
         sources: ["web"], // Focus on web results for events
         location: this.mapCountryToLocation(country),
         tbs: this.buildTimeBasedSearch(from, to),
-        timeout: this.SEARCH_TIMEOUT,
         ignoreInvalidURLs: true,
         scrapeOptions: {
           formats: ["markdown"],
-          onlyMainContent: true,
-          waitFor: 1000, // Reduced from 2000ms
-          blockAds: true,
-          removeBase64Images: true,
+          onlyMainContent: false, // Disable to reduce processing time
+          waitFor: 500, // Reduce wait time
+          blockAds: false, // Disable to reduce processing time
+          removeBase64Images: false, // Disable to reduce processing time
           location: {
             country: this.mapCountryCode(country),
             languages: [this.getLanguageForCountry(country)]
@@ -206,6 +205,12 @@ export class FirecrawlSearchService {
 
     } catch (error) {
       console.error('Firecrawl Search failed:', error);
+      
+      // If it's a timeout error, provide more specific information
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.message.includes('timeout'))) {
+        console.warn('Firecrawl search timed out after 15 seconds - this is expected for complex queries');
+      }
+      
       throw error;
     }
   }
@@ -227,10 +232,23 @@ export class FirecrawlSearchService {
       const industryTerms = this.getIndustryTerms(industry);
       searchQuery = `${industryTerms} conference`;
     } else {
-      // Clean up the query - remove complex boolean operators
-      searchQuery = searchQuery
+      // Simplify complex queries to avoid Firecrawl timeouts
+      // Extract key terms from complex boolean queries
+      const keyTerms = searchQuery
         .replace(/\([^)]*\)/g, '') // Remove parentheses
         .replace(/\b(OR|AND)\b/gi, ' ') // Replace OR/AND with spaces
+        .replace(/["']/g, '') // Remove quotes
+        .split(/\s+/)
+        .filter(term => term.length > 2 && !['legal', 'compliance', 'investigation'].includes(term.toLowerCase()))
+        .slice(0, 5); // Take only first 5 terms
+      
+      if (keyTerms.length > 0) {
+        searchQuery = keyTerms.join(' ');
+      } else {
+        searchQuery = 'compliance conference event';
+      }
+      
+      searchQuery = searchQuery
         .replace(/\s+/g, ' ') // Clean up multiple spaces
         .trim();
       
@@ -351,14 +369,8 @@ export class FirecrawlSearchService {
       const fromDate = new Date(from);
       const toDate = new Date(to);
       
-      // Fix: Ensure we're not searching for future dates in 2025 when we're in 2024
-      const currentYear = new Date().getFullYear();
-      if (fromDate.getFullYear() > currentYear) {
-        fromDate.setFullYear(currentYear);
-      }
-      if (toDate.getFullYear() > currentYear) {
-        toDate.setFullYear(currentYear);
-      }
+      // Allow future dates (e.g., 2025) for "next 30 days" type searches
+      // Don't force dates to current year - let the user's date range stand
       
       const fromStr = `${(fromDate.getMonth() + 1).toString().padStart(2, '0')}/${fromDate.getDate().toString().padStart(2, '0')}/${fromDate.getFullYear()}`;
       const toStr = `${(toDate.getMonth() + 1).toString().padStart(2, '0')}/${toDate.getDate().toString().padStart(2, '0')}/${toDate.getFullYear()}`;
@@ -571,7 +583,7 @@ export class FirecrawlSearchService {
     if (from && to) {
       return `${from} to ${to}`;
     }
-    return "2025";
+    return "2025"; // Current year
   }
 
   /**
