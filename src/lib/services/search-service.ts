@@ -553,6 +553,8 @@ export class SearchService {
         items: items.slice(0, params.num || 20),
         cached: true
       };
+    } else {
+      console.log(JSON.stringify({ at: "search_service", provider: "database", found: false, count: dbResult.count, proceeding_to_search: true }));
     }
 
     // Step 2: Try Firecrawl Search with user configuration
@@ -568,6 +570,7 @@ export class SearchService {
       
       // Build enhanced query using user configuration
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
+      console.log(JSON.stringify({ at: "search_service", firecrawl_query: enhancedQuery, query_length: enhancedQuery.length }));
       
       const firecrawlResult = await FirecrawlSearchService.searchEvents({
         query: enhancedQuery,
@@ -614,7 +617,9 @@ export class SearchService {
 
     // Step 3: Fallback to Google CSE
     console.log(JSON.stringify({ at: "search_service", provider: "google_cse", attempt: "fallback" }));
-    return await this.executeGoogleCSESearch(params);
+    const cseResult = await this.executeGoogleCSESearch(params);
+    console.log(JSON.stringify({ at: "search_service", google_cse_result: { provider: cseResult.provider, items_count: cseResult.items.length } }));
+    return cseResult;
   }
 
   /**
