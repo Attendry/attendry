@@ -44,7 +44,21 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigationItems = [
     { href: "/", label: "Home", icon: "🏠" },
     { href: "/events", label: "Events", icon: "📅" },
+    { href: "/search", label: "Smart Search", icon: "🔍" },
+    { href: "/recommendations", label: "Recommendations", icon: "💡" },
+    { href: "/trending", label: "Trending", icon: "🔥" },
+    { href: "/compare", label: "Compare Events", icon: "⚖️" },
+    { href: "/predictions", label: "Predictions", icon: "🔮" },
     { href: "/watchlist", label: "Watchlist", icon: "⭐" },
+    { href: "/profile", label: "Profile", icon: "👤" },
+    { href: "/activity", label: "Activity", icon: "📊" },
+    { href: "/notifications", label: "Notifications", icon: "🔔" },
+  ];
+
+  const adminItems = [
+    { href: "/admin", label: "Admin Dashboard", icon: "⚙️" },
+    { href: "/admin/analytics", label: "Analytics", icon: "📈" },
+    { href: "/admin/health", label: "System Health", icon: "🏥" },
   ];
 
   const isActive = (href: string) => {
@@ -119,24 +133,35 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </Link>
             ))}
 
-            {/* Admin link - only show if user is authenticated */}
+            {/* Admin section - only show if user is authenticated */}
             {authReady && user && (
-              <Link
-                href="/admin"
-                onClick={onClose}
-                className={`
-                  flex items-center rounded-lg text-sm font-medium transition-all duration-200
-                  justify-center lg:justify-start px-2 lg:px-4 py-3 lg:gap-3
-                  ${isActive('/admin')
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                  }
-                `}
-                title="Admin"
-              >
-                <span className="text-lg">⚙️</span>
-                <span className="hidden lg:inline">Admin</span>
-              </Link>
+              <>
+                <div className="border-t border-gray-200 my-4"></div>
+                <div className="px-2 lg:px-4">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:block mb-2">
+                    Admin
+                  </h3>
+                </div>
+                {adminItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onClose}
+                    className={`
+                      flex items-center rounded-lg text-sm font-medium transition-all duration-200
+                      justify-center lg:justify-start px-2 lg:px-4 py-3 lg:gap-3
+                      ${isActive(item.href)
+                        ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
+                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                      }
+                    `}
+                    title={item.label}
+                  >
+                    <span className="text-lg">{item.icon}</span>
+                    <span className="hidden lg:inline">{item.label}</span>
+                  </Link>
+                ))}
+              </>
             )}
           </nav>
 

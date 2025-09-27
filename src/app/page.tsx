@@ -21,24 +21,45 @@ export default function Home() {
   const features = [
     {
       icon: "🔍",
-      title: "Smart Discovery",
-      description: "AI-powered search finds the most relevant events based on your interests and professional goals.",
-      action: "Explore Events",
-      href: "/events"
+      title: "Smart Search",
+      description: "Advanced search with natural language processing, filters, and intelligent suggestions.",
+      action: "Try Smart Search",
+      href: "/search"
     },
     {
-      icon: "👥",
-      title: "Network Building", 
-      description: "Connect with speakers, attendees, and industry professionals at events that matter to you.",
-      action: "View Speakers",
-      href: "/events"
+      icon: "💡",
+      title: "AI Recommendations", 
+      description: "Get personalized event recommendations based on your interests and behavior.",
+      action: "View Recommendations",
+      href: "/recommendations"
     },
     {
-      icon: "📅",
-      title: "Stay Updated",
-      description: "Never miss important events with personalized recommendations and smart notifications.",
-      action: "Set Alerts",
-      href: "/watchlist"
+      icon: "⚖️",
+      title: "Event Comparison",
+      description: "Compare events side-by-side to make informed decisions about which to attend.",
+      action: "Compare Events",
+      href: "/compare"
+    },
+    {
+      icon: "🔥",
+      title: "Trending Events",
+      description: "Discover what's popular and trending in your industry and interests.",
+      action: "See Trending",
+      href: "/trending"
+    },
+    {
+      icon: "🔮",
+      title: "Event Predictions",
+      description: "AI-powered predictions for upcoming events based on historical data and trends.",
+      action: "View Predictions",
+      href: "/predictions"
+    },
+    {
+      icon: "📊",
+      title: "Activity Tracking",
+      description: "Track your event discovery journey and see insights about your preferences.",
+      action: "View Activity",
+      href: "/activity"
     }
   ];
 
@@ -50,26 +71,26 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
           <div className="text-center">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 mb-6">
-              Discover Events,<br />
-              <span className="text-blue-600">Connect with People</span>
+              AI-Powered Event<br />
+              <span className="text-blue-600">Discovery Platform</span>
             </h1>
             <p className="text-xl sm:text-2xl text-slate-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              AI-powered event discovery and networking platform for professionals. 
-              Find conferences, meetups, and connect with like-minded individuals.
+              Discover, compare, and track events with advanced AI features. 
+              Get personalized recommendations, smart search, and intelligent insights.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Link 
-                href="/events" 
+                href="/search" 
                 className="group relative w-full sm:w-auto px-8 py-4 bg-blue-600 text-white font-semibold rounded-xl shadow-lg hover:bg-blue-700 transition-all duration-200 hover:shadow-xl hover:scale-105 text-center"
               >
-                <span className="relative z-10">Explore Events</span>
+                <span className="relative z-10">Try Smart Search</span>
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
               </Link>
               <Link 
-                href="/login" 
+                href="/recommendations" 
                 className="w-full sm:w-auto px-8 py-4 bg-white text-slate-900 font-semibold rounded-xl border-2 border-slate-300 hover:border-blue-600 hover:text-blue-600 transition-all duration-200 hover:shadow-lg text-center"
               >
-                Get Started
+                Get Recommendations
               </Link>
             </div>
           </div>
@@ -88,7 +109,7 @@ export default function Home() {
             </p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, index) => (
               <div
                 key={index}
@@ -167,20 +188,31 @@ export default function Home() {
       <section className="py-16 sm:py-24 bg-gradient-to-r from-blue-600 to-blue-700">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-6">
-            Ready to Discover Your Next Event?
+            Ready to Experience AI-Powered Event Discovery?
           </h2>
           <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-            Join thousands of professionals who trust Attendry to find their next networking opportunity.
+            Join professionals who use Attendry's advanced features to discover, compare, and track the perfect events.
           </p>
-          <Link 
-            href="/events" 
-            className="group inline-flex items-center justify-center w-full sm:w-auto px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
-          >
-            Start Exploring Now
-            <svg className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link 
+              href="/search" 
+              className="group inline-flex items-center justify-center w-full sm:w-auto px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+            >
+              Try Smart Search
+              <svg className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </Link>
+            <Link 
+              href="/compare" 
+              className="group inline-flex items-center justify-center w-full sm:w-auto px-8 py-4 bg-blue-500 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
+            >
+              Compare Events
+              <svg className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </Link>
+          </div>
         </div>
       </section>
 
