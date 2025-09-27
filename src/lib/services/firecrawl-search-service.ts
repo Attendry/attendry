@@ -239,7 +239,7 @@ export class FirecrawlSearchService {
         .replace(/\b(OR|AND)\b/gi, ' ') // Replace OR/AND with spaces
         .replace(/["']/g, '') // Remove quotes
         .split(/\s+/)
-        .filter(term => term.length > 2 && !['legal', 'compliance', 'investigation'].includes(term.toLowerCase()))
+        .filter(term => term.length > 2)
         .slice(0, 5); // Take only first 5 terms
       
       if (keyTerms.length > 0) {

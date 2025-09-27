@@ -516,6 +516,9 @@ EXCLUDE URLs that are:
 - Tourism websites, travel guides, or general event directories
 - Music/concert sites, entertainment venues, or cultural events
 - Generic city event calendars without professional focus
+- Cannabis/marijuana events, festivals, or related content
+- Entertainment festivals, music festivals, or cultural festivals
+- Non-professional events (parties, social events, recreational activities)
 
 URLS:
 ${JSON.stringify(urlsData, null, 2)}
