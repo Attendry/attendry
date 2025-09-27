@@ -25,10 +25,6 @@ export interface SearchConfig {
   excludeTerms: string;
   industryTerms: string[];
   icpTerms: string[];
-  speakerPrompts: {
-    extraction: string;
-    normalization: string;
-  };
   is_active?: boolean;
 }
 
@@ -37,14 +33,10 @@ const INDUSTRY_TEMPLATES = {
   "legal-compliance": {
     name: "Legal & Compliance",
     description: "Legal technology, compliance, and regulatory events",
-    baseQuery: "(legal OR compliance OR investigation OR \"e-discovery\" OR ediscovery OR \"legal tech\" OR \"legal technology\" OR \"regulatory\" OR \"governance\" OR \"risk management\" OR \"audit\" OR \"whistleblowing\" OR \"data protection\" OR \"GDPR\" OR \"privacy\" OR \"cybersecurity\" OR \"regtech\" OR \"ESG\" OR recht OR rechtskonformität OR regelkonformität OR \"rechtliche technologie\" OR \"recht tech\" OR \"datenschutz\" OR \"hinweisgeberschutz\" OR \"geldwäsche\" OR sanktionen OR \"interne untersuchung\" OR \"compliance management\") (conference OR summit OR forum OR \"trade show\" OR exhibition OR convention OR \"industry event\" OR \"business event\" OR konferenz OR kongress OR symposium OR veranstaltung OR fachkongress OR fachkonferenz OR fachmesse OR fachforum OR workshop OR seminar OR webinar OR \"training\" OR \"certification\") (2025 OR \"next year\" OR upcoming OR \"this year\" OR \"September 2025\" OR \"Oktober 2025\" OR \"November 2025\" OR \"Dezember 2025\" OR \"Q1 2025\" OR \"Q2 2025\" OR \"Q3 2025\" OR \"Q4 2025\")",
+    baseQuery: "(legal OR compliance OR investigation OR \"e-discovery\" OR ediscovery OR \"legal tech\" OR \"legal technology\" OR \"regulatory\" OR \"governance\" OR \"risk management\" OR \"audit\" OR \"whistleblowing\" OR \"data protection\" OR \"GDPR\" OR \"privacy\" OR \"cybersecurity\" OR \"regtech\" OR \"ESG\" OR recht OR rechtskonformität OR regelkonformität OR \"rechtliche technologie\" OR \"recht tech\" OR \"datenschutz\" OR \"hinweisgeberschutz\" OR \"geldwäsche\" OR sanktionen OR \"interne untersuchung\" OR \"compliance management\") (conference OR summit OR forum OR \"trade show\" OR exhibition OR convention OR \"industry event\" OR \"business event\" OR konferenz OR kongress OR symposium OR veranstaltung OR fachkongress OR fachkonferenz OR fachmesse OR fachforum OR workshop OR seminar OR webinar OR \"training\" OR \"certification\")",
     excludeTerms: "reddit Mumsnet \"legal advice\" forum",
-    industryTerms: ["compliance", "investigations", "regtech", "ESG", "sanctions", "governance", "legal ops", "risk", "audit", "whistleblow", "legal tech", "legal technology", "e-discovery", "ediscovery", "data protection", "GDPR", "privacy", "cybersecurity", "regulatory", "risk management", "internal audit", "external audit", "compliance management", "regulatory affairs", "legal operations", "contract management", "litigation", "dispute resolution", "corporate governance", "ethics", "anti-corruption", "AML", "KYC", "financial crime", "fraud prevention", "internal controls", "SOX", "MiFID", "Basel", "IFRS", "GAAP"],
-    icpTerms: ["general counsel", "chief compliance officer", "investigations lead", "compliance manager", "legal operations", "legal counsel", "compliance officer"],
-    speakerPrompts: {
-      extraction: "Extract ALL speakers on the page(s). For each, return name, organization (org), title/role if present, and profile_url if linked. Look for sections labelled Speakers, Referenten, Referent:innen, Sprecher, Vortragende, Mitwirkende, Panel, Agenda/Programm/Fachprogramm. Do not invent names; only list people visible on the pages.",
-      normalization: "You are a data normalizer. Merge duplicate speakers across pages. Return clean JSON with fields: name, org, title, profile_url, source_url (one of the pages), confidence (0-1). Do not invent people. Keep only real names (≥2 tokens)."
-    }
+    industryTerms: ["compliance", "investigations", "regtech", "ESG", "sanctions", "governance", "legal ops", "risk", "audit", "whistleblow", "legal tech", "e-discovery", "data protection", "GDPR", "privacy", "cybersecurity", "regulatory", "risk management", "compliance management", "legal operations", "contract management", "litigation", "corporate governance", "ethics", "AML", "KYC", "financial crime", "fraud prevention", "internal controls", "SOX", "MiFID", "Basel", "IFRS", "GAAP"],
+    icpTerms: ["general counsel", "chief compliance officer", "investigations lead", "compliance manager", "legal operations", "legal counsel", "compliance officer"]
   },
   "fintech": {
     name: "FinTech",
@@ -52,11 +44,7 @@ const INDUSTRY_TEMPLATES = {
     baseQuery: "(fintech OR \"financial technology\" OR \"digital banking\" OR \"payment systems\" OR \"blockchain\" OR \"cryptocurrency\")",
     excludeTerms: "reddit forum gambling casino",
     industryTerms: ["fintech", "digital banking", "payments", "blockchain", "cryptocurrency", "regtech", "insurtech", "wealthtech", "lending", "trading"],
-    icpTerms: ["chief technology officer", "head of digital", "product manager", "compliance officer", "risk manager"],
-    speakerPrompts: {
-      extraction: "Extract ALL speakers on the page(s). For each, return name, organization (org), title/role if present, and profile_url if linked. Look for sections labelled Speakers, Keynotes, Panelists, Presenters, Moderators. Focus on fintech, banking, and financial services professionals. Do not invent names; only list people visible on the pages.",
-      normalization: "You are a data normalizer. Merge duplicate speakers across pages. Return clean JSON with fields: name, org, title, profile_url, source_url (one of the pages), confidence (0-1). Do not invent people. Keep only real names (≥2 tokens)."
-    }
+    icpTerms: ["chief technology officer", "head of digital", "product manager", "compliance officer", "risk manager"]
   },
   "healthcare": {
     name: "Healthcare Technology",
@@ -64,23 +52,7 @@ const INDUSTRY_TEMPLATES = {
     baseQuery: "(healthtech OR \"healthcare technology\" OR \"digital health\" OR \"medical technology\" OR \"healthcare innovation\")",
     excludeTerms: "reddit forum medical advice",
     industryTerms: ["healthtech", "digital health", "medical technology", "telemedicine", "healthcare innovation", "patient care", "healthcare data", "medical devices"],
-    icpTerms: ["chief medical officer", "head of digital health", "healthcare IT director", "clinical informatics", "healthcare innovation lead"],
-    speakerPrompts: {
-      extraction: "Extract ALL speakers on the page(s). For each, return name, organization (org), title/role if present, and profile_url if linked. Look for sections labelled Speakers, Keynotes, Panelists, Medical Experts, Healthcare Leaders. Focus on healthcare, medical, and healthtech professionals. Do not invent names; only list people visible on the pages.",
-      normalization: "You are a data normalizer. Merge duplicate speakers across pages. Return clean JSON with fields: name, org, title, profile_url, source_url (one of the pages), confidence (0-1). Do not invent people. Keep only real names (≥2 tokens)."
-    }
-  },
-  "general": {
-    name: "General Business",
-    description: "General business and professional events",
-    baseQuery: "(conference OR summit OR \"business event\" OR \"professional development\" OR networking)",
-    excludeTerms: "reddit forum personal blog",
-    industryTerms: ["business", "professional development", "networking", "leadership", "innovation", "strategy", "management"],
-    icpTerms: ["executive", "manager", "director", "business leader", "entrepreneur"],
-    speakerPrompts: {
-      extraction: "Extract ALL speakers on the page(s). For each, return name, organization (org), title/role if present, and profile_url if linked. Look for sections labelled Speakers, Keynotes, Panelists, Presenters. Do not invent names; only list people visible on the pages.",
-      normalization: "You are a data normalizer. Merge duplicate speakers across pages. Return clean JSON with fields: name, org, title, profile_url, source_url (one of the pages), confidence (0-1). Do not invent people. Keep only real names (≥2 tokens)."
-    }
+    icpTerms: ["chief medical officer", "head of digital health", "healthcare IT director", "clinical informatics", "healthcare innovation lead"]
   }
 };
 
@@ -126,10 +98,6 @@ export class ConfigService {
           excludeTerms: data.exclude_terms,
           industryTerms: data.industry_terms || [],
           icpTerms: data.icp_terms || [],
-          speakerPrompts: data.speaker_prompts || {
-            extraction: "",
-            normalization: ""
-          },
           is_active: data.is_active,
           created_at: data.created_at,
           updated_at: data.updated_at,
@@ -141,23 +109,22 @@ export class ConfigService {
 
         return {
           config,
-          templates: INDUSTRY_TEMPLATES
+          templates: {} // No longer using hardcoded templates
         };
       }
     } catch (dbError) {
       console.warn('Database not available for search config, using default:', dbError);
     }
 
-    // Return default configuration
+    // Return minimal default configuration if no database config found
     const defaultConfig: SearchConfig = {
       id: "default",
       name: "Default Configuration",
       industry: "legal-compliance",
-      baseQuery: INDUSTRY_TEMPLATES["legal-compliance"].baseQuery,
-      excludeTerms: INDUSTRY_TEMPLATES["legal-compliance"].excludeTerms,
-      industryTerms: INDUSTRY_TEMPLATES["legal-compliance"].industryTerms,
-      icpTerms: INDUSTRY_TEMPLATES["legal-compliance"].icpTerms,
-      speakerPrompts: INDUSTRY_TEMPLATES["legal-compliance"].speakerPrompts,
+      baseQuery: "compliance conference OR legal conference OR compliance veranstaltung OR legal veranstaltung",
+      excludeTerms: "reddit forum personal blog social media",
+      industryTerms: ["compliance", "legal", "investigation", "audit", "risk management"],
+      icpTerms: ["general counsel", "compliance officer", "legal counsel", "compliance manager"],
       is_active: true,
       created_at: new Date().toISOString()
     };
@@ -168,7 +135,7 @@ export class ConfigService {
 
     return {
       config: defaultConfig,
-      templates: INDUSTRY_TEMPLATES
+      templates: {} // No longer using hardcoded templates
     };
   }
 
@@ -263,7 +230,6 @@ export class ConfigService {
           exclude_terms: config.excludeTerms,
           industry_terms: config.industryTerms,
           icp_terms: config.icpTerms,
-          speaker_prompts: config.speakerPrompts,
           is_active: config.is_active
         });
 

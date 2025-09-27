@@ -29,10 +29,6 @@ export interface SearchConfig {
   excludeTerms: string;
   industryTerms: string[];
   icpTerms: string[];
-  speakerPrompts: {
-    extraction: string;
-    normalization: string;
-  };
   is_active?: boolean;
 }
 
@@ -176,10 +172,6 @@ export class SearchService {
           excludeTerms: data.exclude_terms,
           industryTerms: data.industry_terms || [],
           icpTerms: data.icp_terms || [],
-          speakerPrompts: data.speaker_prompts || {
-            extraction: "",
-            normalization: ""
-          },
           is_active: data.is_active
         };
       }
@@ -197,10 +189,6 @@ export class SearchService {
       excludeTerms: "reddit forum personal blog international global usa america instagram facebook twitter linkedin social media reel post",
       industryTerms: ["compliance", "legal", "investigation", "datenschutz", "dsgvo", "recht", "regulierung", "audit", "risk management", "governance"],
       icpTerms: ["legal counsel", "compliance officer", "datenschutzbeauftragter", "compliance manager"],
-      speakerPrompts: {
-        extraction: "Extract ALL speakers on the page(s). For each, return name, organization (org), title/role if present, and profile_url if linked. Look for sections labelled Speakers, Referenten, Referent:innen, Sprecher, Vortragende, Mitwirkende, Panel, Agenda/Programm/Fachprogramm. Do not invent names; only list people visible on the pages.",
-        normalization: "You are a data normalizer. Merge duplicate speakers across pages. Return clean JSON with fields: name, org, title, profile_url, source_url (one of the pages), confidence (0-1). Do not invent people. Keep only real names (≥2 tokens)."
-      },
       is_active: true
     };
   }
@@ -284,17 +272,27 @@ export class SearchService {
     // Build comprehensive query using all available terms
     const queryParts: string[] = [];
     
-    // Start with base query
-    queryParts.push(query);
+    // Start with base query (limit to 500 chars)
+    if (query.length <= 500) {
+      queryParts.push(query);
+    } else {
+      // Truncate base query if too long
+      const truncatedQuery = query.substring(0, 500);
+      const lastSpace = truncatedQuery.lastIndexOf(' ');
+      queryParts.push(truncatedQuery.substring(0, lastSpace > 400 ? lastSpace : 500));
+    }
     
-    // Add industry terms from search config
+    // Add industry terms from search config (max 3 terms, max 200 chars)
     if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
       const industryTerms = searchConfig.industryTerms
         .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-        .slice(0, 5); // Limit to 5 industry terms
+        .slice(0, 3); // Limit to 3 industry terms
       
       if (industryTerms.length > 0) {
-        queryParts.push(`(${industryTerms.join(' OR ')})`);
+        const industryQuery = `(${industryTerms.join(' OR ')})`;
+        if (industryQuery.length <= 200) {
+          queryParts.push(industryQuery);
+        }
       }
     }
     
@@ -311,14 +309,17 @@ export class SearchService {
         }
       }
       
-      // Add user's ICP terms
+      // Add user's ICP terms (max 2 terms, max 150 chars)
       if (userProfile.icp_terms && userProfile.icp_terms.length > 0) {
         const icpTerms = userProfile.icp_terms
           .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-          .slice(0, 3); // Limit to 3 ICP terms
+          .slice(0, 2); // Limit to 2 ICP terms
         
         if (icpTerms.length > 0) {
-          queryParts.push(`(${icpTerms.join(' OR ')})`);
+          const icpQuery = `(${icpTerms.join(' OR ')})`;
+          if (icpQuery.length <= 150) {
+            queryParts.push(icpQuery);
+          }
         }
       }
       
@@ -359,13 +360,13 @@ export class SearchService {
       .replace(/\s+/g, ' ') // Clean up multiple spaces
       .trim();
     
-    // Limit query length to prevent Google CSE 400 errors - be very conservative
-    if (query.length > 100) {
+    // Limit query length to prevent API errors
+    if (query.length > 800) {
       console.warn('Query too long, truncating:', query.length);
       // Try to truncate at word boundaries to avoid cutting off words
-      const truncated = query.substring(0, 100);
+      const truncated = query.substring(0, 800);
       const lastSpace = truncated.lastIndexOf(' ');
-      if (lastSpace > 80) { // Only use word boundary if it's not too far back
+      if (lastSpace > 700) { // Only use word boundary if it's not too far back
         query = truncated.substring(0, lastSpace).trim();
       } else {
         query = truncated.trim();
