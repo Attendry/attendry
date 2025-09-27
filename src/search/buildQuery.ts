@@ -48,16 +48,11 @@ function wrapOnce(q: string): string {
   return t.startsWith('(') && t.endsWith(')') ? t : `(${t})`;
 }
 
+// DO NOT read env or globals here – only use opts.
 export function buildSearchQuery(opts: BuildQueryOpts): string {
-  if (!opts || typeof opts.baseQuery !== 'string' || !opts.baseQuery.trim()) {
-    throw new Error('buildSearchQuery: missing baseQuery');
-  }
-  const maxLen = Number.isFinite(opts.maxLen) && (opts.maxLen as number) > 0
-    ? (opts.maxLen as number)
-    : DEFAULT_MAXLEN;
-
-  const bq = sanitize(opts.baseQuery, maxLen);
-  const ut = sanitize(opts.userText ?? '', maxLen);
-
-  return wrapOnce(ut || bq);
+  if (!opts?.baseQuery?.trim()) throw new Error('buildSearchQuery: baseQuery missing');
+  const bq = opts.baseQuery.trim();
+  const ut = (opts.userText ?? '').trim();
+  if (ut) return ut.startsWith('(') && ut.endsWith(')') ? ut : `(${ut})`;
+  return bq.startsWith('(') && bq.endsWith(')') ? bq : `(${bq})`;
 }

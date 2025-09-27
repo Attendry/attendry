@@ -26,17 +26,16 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
 
   // Build params WITHOUT rewriting the query text.
   const params: any = {
-    query: q,
-    limit,
-    sources: ['web'],
+    query: q,                 // ← not a literal
+    limit: 15,                // smaller to avoid timeouts
+    sources: ['web'] as const,
     ignoreInvalidURLs: true,
     scrapeOptions: {
       formats: ['markdown'],
       onlyMainContent: false,
-      waitFor: 500,
-      blockAds: false,
-      removeBase64Images: false,
-      ...(location ? { location: { country: location === 'Germany' ? 'DE' : location } } : {}),
+      waitFor: 300,           // reduce load
+      blockAds: true,
+      removeBase64Images: true,
     },
   };
 
@@ -57,6 +56,23 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
     () => doFirecrawl(params),  // your existing Firecrawl client
     { timeoutMs: 30000, maxRetries: 2, backoffMs: 600 }
   );
+}
+
+// Retry/backoff wrapper (cap to ~25s overall)
+async function firecrawlSearchWithBackoff(params: any, maxMs = 25000) {
+  const deadlines = [15000, 8000, 4000];
+  const started = Date.now();
+  for (const budget of deadlines) {
+    const left = maxMs - (Date.now() - started);
+    if (left <= 0) break;
+    try {
+      const res = await doFirecrawl({ ...params, timeoutMs: Math.min(budget, left) });
+      if (res?.items?.length) return res;
+    } catch (e) {
+      if (String(e?.name ?? e).includes('Timeout')) continue;
+    }
+  }
+  return { items: [] };
 }
 
 // Placeholder for actual Firecrawl client call

@@ -28,7 +28,7 @@ export async function cseSearch(args: CSEArgs) {
   const q = buildSearchQuery({ baseQuery, userText });
 
   const url = new URL('https://www.googleapis.com/customsearch/v1');
-  url.searchParams.set('q', q);
+  url.searchParams.set('q', q.slice(0, 256)); // trim long queries
   url.searchParams.set('key', process.env.CSE_API_KEY!);
   url.searchParams.set('cx', process.env.CSE_CX_ID!);
   url.searchParams.set('num', String(num));
@@ -45,6 +45,19 @@ export async function cseSearch(args: CSEArgs) {
     if (!res.ok) {
       // ✅ Treat 4xx as error, don't mark success elsewhere.
       logger.warn({ at: 'cse_search', status: res.status, body: text.slice(0, 1000) });
+      
+      // Add fallback path that removes optional params on 400
+      if (res.status === 400) {
+        ['cr','lr'].forEach(k => url.searchParams.delete(k));
+        url.searchParams.set('num','10');
+        const r2 = await fetch(url.toString());
+        if (r2.ok) {
+          const data2 = JSON.parse(await r2.text());
+          const items = (data2.items ?? []).map((i: any) => i.link).filter(Boolean);
+          return { items, raw: data2 };
+        }
+      }
+      
       throw new Error(`CSE error ${res.status}`);
     }
     const data = JSON.parse(text);

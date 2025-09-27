@@ -4,8 +4,9 @@
  * Don't over-filter dates when looking for non-event pages
  */
 
-export function filterByDate(items: any[], opts: { from?: string; to?: string; allowUndated?: boolean }) {
-  const allowUndated = opts.allowUndated ?? true; // ✅ default true
+export function filterByDate(items: any[], opts: { from?: string; to?: string; allowUndated?: boolean; industry?: string }) {
+  // When industry is not explicitly "events", default to true
+  const allowUndated = opts.allowUndated ?? (opts.industry !== 'events');
   
   if (!opts.from && !opts.to) {
     return items; // No date filtering

@@ -8,6 +8,7 @@ import { firecrawlSearch } from './firecrawlService';
 import { cseSearch } from './cseService';
 import { logger } from '@/utils/logger';
 import { ensureArray, safeFilter } from '@/lib/arrays';
+import { buildSearchQuery } from '@/search/buildQuery';
 
 // Normalize provider lists once at the edge
 function normalizeProviders(input?: unknown) {
@@ -26,17 +27,22 @@ export async function executeSearch(opts: {
 }) {
   const { baseQuery, userText, country, dateFrom, dateTo, providers: providerInput } = opts;
 
+  // Normalize providers to always be an array
+  const providers = normalizeProviders(providerInput || process.env.SEARCH_PROVIDERS);
+
   // Add debug logging in non-production
   if (process.env.NODE_ENV !== 'production') {
     console.info('[providers_debug]', {
       raw: providerInput || process.env.SEARCH_PROVIDERS,
-      typeof: typeof (providerInput || process.env.SEARCH_PROVIDERS),
-      isArray: Array.isArray(providerInput || process.env.SEARCH_PROVIDERS),
+      normalized: providers,
+    });
+    
+    console.info('[query_debug]', {
+      baseFromConfig: baseQuery,
+      userText: userText,
+      effectiveQ: buildSearchQuery({ baseQuery, userText }),
     });
   }
-
-  // Normalize providers to always be an array
-  const providers = normalizeProviders(providerInput || process.env.SEARCH_PROVIDERS);
 
   // Try each provider in order
   for (const provider of providers) {
