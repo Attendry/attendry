@@ -6,6 +6,12 @@ import { FirecrawlSearchService } from "./firecrawl-search-service";
 import { GeminiService } from "./gemini-service";
 import { BatchGeminiService } from "./batch-gemini-service";
 import { TokenBudgetService } from "./token-budget-service";
+import { getCacheService, CACHE_CONFIGS } from "@/lib/cache";
+import { deduplicateRequest, createHttpRequestFingerprint } from "@/lib/services/request-deduplicator";
+import { getServiceQueue, RATE_LIMIT_CONFIGS } from "@/lib/services/request-queue";
+import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/services/circuit-breaker";
+import { executeWithFallback } from "@/lib/services/fallback-strategies";
+import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
 
 /**
  * Shared Search Service
@@ -49,104 +55,24 @@ export interface EventRec {
   confidence?: number | null;
 }
 
-// Cache management
-const searchCache = new Map<string, { data: unknown; timestamp: number }>();
-(global as any).searchCache = searchCache;
-const CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 hours
-const DB_CACHE_TTL_HOURS = 6;
+// Unified cache service
+const cacheService = getCacheService();
 
 function getCacheKey(q: string, country: string, from?: string, to?: string): string {
   return `${q}|${country}|${from || ''}|${to || ''}`;
 }
 
-function getCachedResult(key: string) {
-  const cached = searchCache.get(key);
-  if (cached) {
-    const age = Date.now() - cached.timestamp;
-    if (age < CACHE_DURATION) {
-      console.log(JSON.stringify({ at: "search_service_cache", hit: true, key, age: Math.round(age / 1000) + 's' }));
-      return cached.data;
-    } else {
-      searchCache.delete(key);
-      console.log(JSON.stringify({ at: "search_service_cache", expired: true, key, age: Math.round(age / 1000) + 's' }));
-    }
-  }
-  return null;
+async function getCachedResult<T>(key: string): Promise<T | null> {
+  return await cacheService.get<T>(key, CACHE_CONFIGS.SEARCH_RESULTS);
 }
 
-function setCachedResult(key: string, data: unknown) {
-  if (searchCache.size > 100) {
-    const now = Date.now();
-    let cleaned = 0;
-    for (const [k, v] of searchCache.entries()) {
-      if (now - v.timestamp > CACHE_DURATION) {
-        searchCache.delete(k);
-        cleaned++;
-      }
-    }
-    if (cleaned > 0) {
-      console.log(JSON.stringify({ at: "search_service_cache", cleanup: true, cleaned, remaining: searchCache.size }));
-    }
-  }
-  
-  const timestamp = Date.now();
-  searchCache.set(key, { data, timestamp });
-  console.log(JSON.stringify({ at: "search_service_cache", stored: true, key, size: searchCache.size }));
+async function setCachedResult<T>(key: string, data: T): Promise<boolean> {
+  return await cacheService.set(key, data, CACHE_CONFIGS.SEARCH_RESULTS);
 }
 
-async function readSearchCacheDB(cacheKey: string) {
-  try {
-    const supabase = supabaseAdmin(); // Use admin client to bypass RLS
-    const { data, error } = await supabase
-      .from("search_cache")
-      .select("payload, ttl_at")
-      .eq("cache_key", cacheKey)
-      .maybeSingle();
-    
-    if (error) {
-      console.log(JSON.stringify({ at: "search_service_cache_db", error: error.message, key: cacheKey }));
-      return null;
-    }
-    
-    if (!data) {
-      return null;
-    }
-    
-    const now = Date.now();
-    const ttlTime = new Date(data.ttl_at).getTime();
-    
-    if (ttlTime > now) {
-      const age = Math.round((now - (ttlTime - DB_CACHE_TTL_HOURS * 3600 * 1000)) / 1000);
-      console.log(JSON.stringify({ at: "search_service_cache_db", hit: true, key: cacheKey, age: age + 's' }));
-      return data.payload;
-    } else {
-      console.log(JSON.stringify({ at: "search_service_cache_db", expired: true, key: cacheKey }));
-      return null;
-    }
-  } catch (error) {
-    console.log(JSON.stringify({ at: "search_service_cache_db", exception: error instanceof Error ? error.message : 'unknown', key: cacheKey }));
-    return null;
-  }
+// Database cache functions are now handled by the unified cache service
 
-}
-
-async function writeSearchCacheDB(cacheKey: string, provider: string, payload: any) {
-  try {
-    const supabase = supabaseAdmin(); // Use admin client to bypass RLS
-    const ttlAt = new Date(Date.now() + DB_CACHE_TTL_HOURS * 3600 * 1000).toISOString();
-    const { error } = await supabase
-      .from("search_cache")
-      .upsert({ cache_key: cacheKey, provider, payload, schema_version: 1, ttl_at: ttlAt }, { onConflict: "cache_key" });
-    
-    if (error) {
-      console.log(JSON.stringify({ at: "search_service_cache_db", write_error: error.message, key: cacheKey }));
-    } else {
-      console.log(JSON.stringify({ at: "search_service_cache_db", stored: true, key: cacheKey, ttl: DB_CACHE_TTL_HOURS + 'h' }));
-    }
-  } catch (error) {
-    console.log(JSON.stringify({ at: "search_service_cache_db", write_exception: error instanceof Error ? error.message : 'unknown', key: cacheKey }));
-  }
-}
+// Database cache write operations are now handled by the unified cache service
 
 /**
  * Search Service Class
@@ -600,13 +526,18 @@ export class SearchService {
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
       console.log(JSON.stringify({ at: "search_service", firecrawl_query: enhancedQuery, query_length: enhancedQuery.length }));
       
-      const firecrawlResult = await FirecrawlSearchService.searchEvents({
-        query: enhancedQuery,
-        country: params.country,
-        from: params.from,
-        to: params.to,
-        industry: searchConfig?.industry || "legal-compliance",
-        maxResults: params.num || 20
+      const firecrawlResult = await executeWithFallback("firecrawl", async () => {
+        return await executeWithCircuitBreaker("firecrawl", () =>
+          FirecrawlSearchService.searchEvents({
+            query: enhancedQuery,
+            country: params.country,
+            from: params.from,
+            to: params.to,
+            industry: searchConfig?.industry || "legal-compliance",
+            maxResults: params.num || 20
+          }),
+          CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+        );
       });
       
       if (firecrawlResult.items.length > 0) {
@@ -615,7 +546,12 @@ export class SearchService {
         // NEW: Add Gemini prioritization before returning results
         try {
           console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization", items: firecrawlResult.items.length }));
-          const prioritization = await this.prioritizeUrlsWithGemini(firecrawlResult.items, searchConfig, params.country);
+          const prioritization = await OptimizedAIService.processRequest<{ prioritizedUrls: string[] }>(
+            'prioritize',
+            'Prioritize URLs based on relevance for event discovery',
+            { items: firecrawlResult.items, searchConfig, country: params.country },
+            { useBatching: true, useCache: true }
+          );
           
           // Return only prioritized URLs as search items
           const prioritizedItems = firecrawlResult.items.filter(item => 
@@ -670,7 +606,7 @@ export class SearchService {
 
     // Check cache first
     const cacheKey = getCacheKey(q, country, from, to);
-    const cachedResult = getCachedResult(cacheKey) || await readSearchCacheDB(cacheKey);
+    const cachedResult = await getCachedResult<{ provider: string; items: SearchItem[]; cached: boolean }>(cacheKey);
     if (cachedResult) {
       console.log(JSON.stringify({ at: "search_service", cache: "hit", key: cacheKey }));
       return { ...cachedResult, cached: true };
@@ -700,8 +636,7 @@ export class SearchService {
         cached: false
       };
       
-      setCachedResult(cacheKey, result);
-      await writeSearchCacheDB(cacheKey, "demo", result);
+      await setCachedResult(cacheKey, result);
       return result;
     }
 
@@ -743,12 +678,27 @@ export class SearchService {
     const url = `https://www.googleapis.com/customsearch/v1?${searchParams}`;
     console.log(JSON.stringify({ at: "search_service", real: "calling_cse", query: enhancedQuery, url: url }));
     
-    const res = await RetryService.fetchWithRetry(
+    // Use request deduplication for Google CSE calls
+    const fingerprint = createHttpRequestFingerprint(
       "google_cse",
-      "search",
       url,
-      { cache: "no-store" }
+      "GET",
+      { q: enhancedQuery, country, num: num.toString() }
     );
+
+    const res = await executeWithFallback("google_cse", async () => {
+      return await deduplicateRequest(fingerprint, () =>
+        executeWithCircuitBreaker("google_cse", () =>
+          RetryService.fetchWithRetry(
+            "google_cse",
+            "search",
+            url,
+            { cache: "no-store" }
+          ),
+          CIRCUIT_BREAKER_CONFIGS.GOOGLE_CSE
+        )
+      );
+    });
     const data = await res.json();
     console.log(JSON.stringify({ at: "search_service", real: "cse_result", status: res.status, items: data.items?.length || 0 }));
 
@@ -789,7 +739,12 @@ export class SearchService {
     let finalItems = filteredItems;
     try {
       console.log(JSON.stringify({ at: "search_service", step: "gemini_prioritization_cse", items: filteredItems.length }));
-      const prioritization = await this.prioritizeUrlsWithGemini(filteredItems, searchConfig, country);
+      const prioritization = await OptimizedAIService.processRequest<{ prioritizedUrls: string[] }>(
+        'prioritize',
+        'Prioritize URLs based on relevance for event discovery',
+        { items: filteredItems, searchConfig, country },
+        { useBatching: true, useCache: true }
+      );
       
       // Return only prioritized URLs
       finalItems = filteredItems.filter(item => 
@@ -813,8 +768,7 @@ export class SearchService {
     };
 
     // Cache the result
-    setCachedResult(cacheKey, result);
-    await writeSearchCacheDB(cacheKey, "cse", result);
+    await setCachedResult(cacheKey, result);
 
     return result;
   }
@@ -2089,10 +2043,18 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
     });
 
     // Step 5: NEW - Prioritize URLs with Gemini AI before expensive extraction
-    const prioritization = await this.prioritizeUrlsWithGemini(
-      search.items,
-      searchConfig,
-      country
+    const prioritization = await OptimizedAIService.processRequest<{ 
+      prioritizedUrls: string[];
+      prioritizationStats: {
+        total: number;
+        prioritized: number;
+        reasons: string[];
+      };
+    }>(
+      'prioritize',
+      'Prioritize URLs based on relevance for event discovery',
+      { items: search.items, searchConfig, country },
+      { useBatching: true, useCache: true }
     );
 
     // Step 6: Extract events from prioritized URLs only

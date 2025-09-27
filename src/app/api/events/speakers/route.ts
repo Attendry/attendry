@@ -2,6 +2,12 @@
 export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { 
+  SpeakerExtractionRequest, 
+  SpeakerExtractionResponse, 
+  ErrorResponse 
+} from "@/lib/types/api";
+import { SpeakerData } from "@/lib/types/core";
 
 // ---------- Config
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari";
@@ -10,15 +16,8 @@ const FIRECRAWL_WAIT_MS = 3000;   // increased wait time for dynamic content
 const LLM_MODEL = "gemini-1.5-pro"; // you can swap to flash for cheaper/faster
 const MAX_DEPTH = 2;              // maximum crawl depth for speaker pages
 
-// Enhanced speaker profile interface
-interface EnhancedSpeaker {
-  name: string;
-  org: string;
-  title: string;
-  speech_title?: string;
-  session?: string;
-  bio?: string;
-  profile_url?: string;
+// Enhanced speaker profile interface (extends base SpeakerData)
+interface EnhancedSpeaker extends SpeakerData {
   // Enhanced fields
   location?: string;
   education?: string[];
@@ -34,7 +33,6 @@ interface EnhancedSpeaker {
   achievements?: string[];
   industry_connections?: string[];
   recent_news?: string[];
-  confidence: number;
 }
 
 // Load speaker extraction prompt from search configuration
@@ -830,9 +828,10 @@ Return ONLY the JSON object, no additional text or explanations.`;
 }
 
 // ---------- Main handler
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse<SpeakerExtractionResponse | ErrorResponse>> {
   try {
-    const { url, includePast = false } = await req.json();
+    const requestData: SpeakerExtractionRequest = await req.json();
+    const { url, includePast = false } = requestData;
     if (!url) return NextResponse.json({ error: "url required" }, { status: 400 });
 
     // 1) Load main HTML (for title + link discovery)

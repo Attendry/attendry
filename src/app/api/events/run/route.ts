@@ -27,21 +27,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { SearchService } from "@/lib/services/search-service";
 import { ConfigService } from "@/lib/services/config-service";
 import { supabaseServer } from "@/lib/supabase-server";
-
-type EventRec = {
-  source_url: string;
-  title?: string;
-  starts_at?: string | null;
-  ends_at?: string | null;
-  city?: string | null;
-  country?: string | null;
-  venue?: string | null;
-  organizer?: string | null;
-  topics?: string[] | null;
-  speakers?: { name: string; org?: string; title?: string }[] | null;
-  sponsors?: string[] | null;
-  confidence?: number | null;
-};
+import { 
+  EventDiscoveryRequest, 
+  EventDiscoveryResponse, 
+  ErrorResponse 
+} from "@/lib/types/api";
+import { EventData } from "@/lib/types/core";
 
 const DROP_TITLE = /\b(404|page not found|nicht gefunden|fehler\s*404)\b/i;
 
@@ -288,10 +279,11 @@ function dedupeEvents(arr: any[]) {
  * @param req - Next.js request object
  * @returns JSON response with processed events
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse<EventDiscoveryResponse | ErrorResponse>> {
   try {
     // Parse request parameters with validation
-    const { q = "", country = "", from, to, provider = "cse" } = await req.json();
+    const requestData: EventDiscoveryRequest = await req.json();
+    const { q = "", country = "", from, to, provider = "cse" } = requestData;
     const debugEnabled = req.nextUrl?.searchParams?.get("debug") === "1" || process.env.NODE_ENV !== 'production';
     if (!from || !to) return NextResponse.json({ error: "from/to required", events: [] }, { status: 400 });
     
@@ -458,7 +450,7 @@ export async function POST(req: NextRequest) {
     const extractResult = await SearchService.extractEvents(urls.slice(0, 20)); // Limit to 20 URLs for performance
     let { events = [], version: extractVersion, trace = [] } = extractResult;
     if (debugEnabled) debug.extract = { status: 200, version: extractVersion, eventsBeforeFilter: events.length, sampleTrace: trace.slice(0,3) };
-    events = events as EventRec[];
+    events = events as EventData[];
 
     // if extraction failed hard, synthesize minimal events from search items
     if (events.length === 0 && search.items.length > 0) {
@@ -513,7 +505,7 @@ export async function POST(req: NextRequest) {
       }))
     });
     events = kept;
-    const undatedCandidates: EventRec[] = [];
+    const undatedCandidates: EventData[] = [];
     
     // Determine if we should allow undated items
     // Allow undated items if we have good country matches or if we're searching for future events
@@ -543,7 +535,7 @@ export async function POST(req: NextRequest) {
       }))
     });
     
-    events = events.filter((e: EventRec) => {
+    events = events.filter((e: EventData) => {
       // If no dates, keep the event when relaxed modes are active
       if (!e.starts_at && !e.ends_at) {
         if (allowUndated) return true;

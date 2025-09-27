@@ -17,7 +17,7 @@
  */
 
 "use client";
-import { useState } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import AttendeeCard from "./AttendeeCard";
 import EnhancedSpeakerCard from "./EnhancedSpeakerCard"; // Speaker card component
 
@@ -47,6 +47,7 @@ interface Event {
 interface EventCardProps {
   ev: Event;                        // Event data object
   initiallySaved?: boolean;         // Whether the event is initially saved to watchlist
+  onAddToComparison?: (event: Event) => void; // Callback for adding to comparison
 }
 
 /**
@@ -56,7 +57,7 @@ interface EventCardProps {
  * @param initiallySaved - Whether the event is initially saved to watchlist
  * @returns JSX element representing the event card
  */
-export default function EventCard({ ev, initiallySaved = false }: EventCardProps) {
+const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToComparison }: EventCardProps) {
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -70,14 +71,20 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
   const [followed, setFollowed] = useState<string[]>([]);       // List of followed speakers
 
   // ============================================================================
-  // COMPUTED VALUES
+  // COMPUTED VALUES (Memoized for performance)
   // ============================================================================
   
   // Format event date for display
-  const when = ev.starts_at ? new Date(ev.starts_at).toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric" }) : "TBA";
+  const when = useMemo(() => 
+    ev.starts_at ? new Date(ev.starts_at).toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric" }) : "TBA",
+    [ev.starts_at]
+  );
   
   // Format event location for display
-  const where = [ev.city, ev.country].filter(Boolean).join(", ") || "Location TBA";
+  const where = useMemo(() => 
+    [ev.city, ev.country].filter(Boolean).join(", ") || "Location TBA",
+    [ev.city, ev.country]
+  );
 
   // ============================================================================
   // EVENT HANDLERS
@@ -89,7 +96,7 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
    * This function handles adding or removing the event from the user's watchlist.
    * It includes authentication checks and proper error handling.
    */
-  async function toggleSave() {
+  const toggleSave = useCallback(async () => {
     if (busy) return;
     setBusy(true);
     const body = JSON.stringify({ kind: "event", label: ev.title, ref_id: ev.source_url });
@@ -119,7 +126,7 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
     } finally {
       setBusy(false);
     }
-  }
+  }, [busy, saved, ev.title, ev.source_url]);
 
   /**
    * Load speaker information for the event
@@ -129,7 +136,7 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
    * 
    * @param past - Whether to include past speakers in the results
    */
-  async function loadSpeakers(past: boolean) {
+  const loadSpeakers = useCallback(async (past: boolean) => {
     setLoadingSpeakers(true);
     try {
       const res = await fetch("/api/events/speakers", {
@@ -148,7 +155,7 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
     } finally {
       setLoadingSpeakers(false);
     }
-  }
+  }, [ev.source_url]);
 
   /**
    * Toggle event details expansion
@@ -156,7 +163,7 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
    * This function handles expanding/collapsing the event details.
    * When expanding for the first time, it automatically loads speaker information.
    */
-  function toggleOpen() {
+  const toggleOpen = useCallback(() => {
     const next = !open;
     setOpen(next);
     if (next && speakers == null) {
@@ -168,7 +175,7 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
         loadSpeakers(includePast);
       }
     }
-  }
+  }, [open, speakers, ev.speakers, loadSpeakers]);
 
   return (
     <div className="group bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-all duration-200">
@@ -243,6 +250,19 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
               </div>
             )}
           </button>
+          {onAddToComparison && (
+            <button
+              onClick={() => onAddToComparison(ev)}
+              className="text-sm font-medium rounded-lg px-3 py-2 border border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 transition-colors duration-200"
+            >
+              <div className="flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Compare
+              </div>
+            </button>
+          )}
         </div>
       </div>
       
@@ -422,4 +442,6 @@ export default function EventCard({ ev, initiallySaved = false }: EventCardProps
       )}
     </div>
   );
-}
+});
+
+export default EventCard;

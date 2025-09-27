@@ -2,6 +2,12 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { fetchWithRetry } from "@/lib/http";
+import { 
+  EventExtractionRequest, 
+  EventExtractionResponse, 
+  ErrorResponse 
+} from "@/lib/types/api";
+import { EventData } from "@/lib/types/core";
 
 // --- Enhanced schema with organization types
 const EVENT_SCHEMA = {
@@ -871,9 +877,10 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse<EventExtractionResponse | ErrorResponse>> {
   try {
-    const { urls, locale = "", crawl } = await req.json();
+    const requestData: EventExtractionRequest = await req.json();
+    const { urls, locale = "", crawl } = requestData;
     if (!Array.isArray(urls) || urls.length === 0) {
       return NextResponse.json({ version: "extract_v5", events: [], trace: [], note: "urls[] required" }, { status: 400 });
     }

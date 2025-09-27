@@ -4,6 +4,11 @@ import { RetryService } from "@/lib/services/retry-service";
 import { FirecrawlSearchService } from "@/lib/services/firecrawl-search-service";
 import { BatchGeminiService } from "@/lib/services/batch-gemini-service";
 import { TokenBudgetService } from "@/lib/services/token-budget-service";
+import { 
+  HealthCheckResponse, 
+  ErrorResponse 
+} from "@/lib/types/api";
+import { HealthStatus, ServiceHealth } from "@/lib/types/core";
 
 /**
  * Health Check API Route
@@ -12,40 +17,12 @@ import { TokenBudgetService } from "@/lib/services/token-budget-service";
  * including Google CSE, Firecrawl, Gemini AI, and internal services.
  */
 
-export interface HealthStatus {
-  status: 'healthy' | 'degraded' | 'unhealthy';
-  timestamp: string;
-  services: {
-    google_cse: ServiceHealth;
-    firecrawl: ServiceHealth;
-    firecrawl_search: ServiceHealth;
-    gemini: ServiceHealth;
-    batch_gemini: ServiceHealth;
-    token_budget: ServiceHealth;
-    database: ServiceHealth;
-    retry_service: ServiceHealth;
-  };
-  metrics: {
-    retry_attempts: number;
-    retry_failures: number;
-    cache_hits: number;
-    cache_misses: number;
-  };
-}
-
-export interface ServiceHealth {
-  status: 'healthy' | 'degraded' | 'unhealthy';
-  response_time_ms?: number;
-  last_error?: string;
-  details?: any;
-}
-
 /**
  * GET /api/health
  * 
  * Returns comprehensive health status for all services
  */
-export async function GET(req: NextRequest) {
+export async function GET(req: NextRequest): Promise<NextResponse<HealthCheckResponse | ErrorResponse>> {
   const startTime = Date.now();
   
   try {

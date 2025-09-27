@@ -1,0 +1,72 @@
+/**
+ * Validation Module Index
+ * 
+ * This file exports all validation utilities, schemas, and error classes
+ * for use throughout the Attendry application.
+ */
+
+// Export schemas
+export * from './schemas';
+
+// Export middleware and utilities
+export * from './middleware';
+
+// Export error classes and handlers
+export * from './errors';
+
+// Re-export commonly used types
+export type {
+  EventSearchRequest,
+  EventExtractionRequest,
+  SpeakerExtractionRequest,
+  EventDiscoveryRequest,
+  ProfileSaveRequest,
+  WatchlistAddRequest,
+  WatchlistRemoveRequest,
+  ConfigSaveRequest,
+  CronJobRequest,
+  ChatRequest,
+  TestUserCreateRequest,
+  SessionFixRequest,
+  EventData,
+  SearchResultItem,
+  UserProfile,
+  WatchlistItem,
+  SearchConfig,
+  HealthCheckResponse,
+  ApiResponse,
+  ValidationErrorResponse,
+} from './schemas';
+
+// Re-export commonly used error classes
+export {
+  ValidationError,
+  AuthenticationError,
+  AuthorizationError,
+  NotFoundError,
+  ConflictError,
+  RateLimitError,
+  ExternalServiceError,
+  DatabaseError,
+  InternalServerError,
+  BusinessLogicError,
+} from './errors';
+
+// Re-export commonly used utilities
+export {
+  createValidationMiddleware,
+  validateRequest,
+  validateRequestAsync,
+  handleValidationError,
+  handleApiError,
+  safeJsonParse,
+  validateQueryParams,
+  createValidatedRouteHandler,
+  withErrorHandling,
+  generateRequestId,
+} from './middleware';
+
+export {
+  formatZodError,
+  extractErrorDetails,
+} from './errors';

@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getCacheService, CACHE_CONFIGS } from "@/lib/cache";
 
 /**
  * Configuration Service
@@ -60,9 +61,7 @@ const INDUSTRY_TEMPLATES = {
  * Configuration Service Class
  */
 export class ConfigService {
-  private static configCache: SearchConfig | null = null;
-  private static configCacheTime: number = 0;
-  private static readonly CONFIG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private static cacheService = getCacheService();
 
   /**
    * Get search configuration with caching
@@ -72,10 +71,10 @@ export class ConfigService {
     templates: typeof INDUSTRY_TEMPLATES;
   }> {
     // Check cache first
-    const now = Date.now();
-    if (this.configCache && (now - this.configCacheTime) < this.CONFIG_CACHE_TTL) {
+    const cachedConfig = await this.cacheService.get<SearchConfig>('active_config', CACHE_CONFIGS.CONFIGURATIONS);
+    if (cachedConfig) {
       return {
-        config: this.configCache,
+        config: cachedConfig,
         templates: INDUSTRY_TEMPLATES
       };
     }
@@ -104,8 +103,7 @@ export class ConfigService {
         };
 
         // Cache the config
-        this.configCache = config;
-        this.configCacheTime = now;
+        await this.cacheService.set('active_config', config, CACHE_CONFIGS.CONFIGURATIONS);
 
         return {
           config,
@@ -130,8 +128,7 @@ export class ConfigService {
     };
 
     // Cache the default config
-    this.configCache = defaultConfig;
-    this.configCacheTime = now;
+    await this.cacheService.set('active_config', defaultConfig, CACHE_CONFIGS.CONFIGURATIONS);
 
     return {
       config: defaultConfig,
@@ -151,6 +148,13 @@ export class ConfigService {
         return null;
       }
 
+      // Check cache first
+      const cacheKey = `profile_${user.id}`;
+      const cachedProfile = await this.cacheService.get<UserProfile>(cacheKey, CACHE_CONFIGS.USER_PROFILES);
+      if (cachedProfile) {
+        return cachedProfile;
+      }
+
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("*")
@@ -161,7 +165,7 @@ export class ConfigService {
         return null;
       }
 
-      return {
+      const userProfile: UserProfile = {
         id: profile.id,
         full_name: profile.full_name,
         company: profile.company,
@@ -170,6 +174,11 @@ export class ConfigService {
         industry_terms: profile.industry_terms || [],
         use_in_basic_search: profile.use_in_basic_search ?? true
       };
+
+      // Cache the profile
+      await this.cacheService.set(cacheKey, userProfile, CACHE_CONFIGS.USER_PROFILES);
+
+      return userProfile;
     } catch (error) {
       console.error('Error loading user profile:', error);
       return null;
@@ -199,6 +208,12 @@ export class ConfigService {
           industry_terms: profile.industry_terms,
           use_in_basic_search: profile.use_in_basic_search
         });
+
+      if (!error) {
+        // Invalidate profile cache
+        const cacheKey = `profile_${user.id}`;
+        await this.cacheService.delete(cacheKey, CACHE_CONFIGS.USER_PROFILES.prefix);
+      }
 
       return !error;
     } catch (error) {

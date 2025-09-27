@@ -23,37 +23,13 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { fetchWithRetry } from "@/lib/http";
 import { createHash } from "crypto";
 import { GeminiService } from "@/lib/services/gemini-service";
-
-// ============================================================================
-// TYPE DEFINITIONS
-// ============================================================================
-
-/**
- * Represents a search result item from Google CSE
- */
-interface SearchItem {
-  title: string;      // Page title
-  link: string;       // URL to the page
-  snippet: string;    // Search result snippet/description
-}
-
-/**
- * Represents a decision from Gemini AI about whether a search result is an event
- */
-interface GeminiDecision {
-  index: number;      // Index of the item in the original array
-  isEvent: boolean;   // Whether this item represents an actual event
-  reason: string;     // AI's reasoning for the decision
-}
-
-/**
- * Represents an event item with date information for filtering
- */
-interface EventItem {
-  starts_at?: string | null;  // Event start date (ISO format)
-  ends_at?: string | null;    // Event end date (ISO format)
-  title?: string;             // Event title
-}
+import { 
+  EventSearchRequest, 
+  EventSearchResponse, 
+  ErrorResponse,
+  SearchResultItem 
+} from "@/lib/types/api";
+import { EventData, SearchConfig } from "@/lib/types/core";
 
 // ============================================================================
 // ENHANCED QUERY BUILDING
@@ -325,7 +301,7 @@ function hashItem(title: string, link: string) {
  * @param banHosts - Set of banned hostnames (e.g., reddit, forums)
  * @returns Filtered array of search results that are likely events
  */
-async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, banHosts: Set<string>, searchConfig: any = {}): Promise<SearchItem[]> {
+async function filterWithGemini(items: SearchResultItem[], dropTitleRegex: RegExp, banHosts: Set<string>, searchConfig: any = {}): Promise<SearchResultItem[]> {
   // Attempt to reuse AI decisions from DB
   let decided: Record<string, { isEvent: boolean; confidence?: number }> = {};
   try {
@@ -338,8 +314,8 @@ async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, ban
     for (const row of data || []) decided[row.item_hash] = { isEvent: !!row.is_event, confidence: row.confidence };
   } catch {}
 
-  const preApproved: SearchItem[] = [];
-  const undecided: { item: SearchItem; idx: number; hash: string }[] = [];
+  const preApproved: SearchResultItem[] = [];
+  const undecided: { item: SearchResultItem; idx: number; hash: string }[] = [];
   items.forEach((item, idx) => {
     const key = hashItem(item.title, item.link);
     if (decided[key]?.isEvent) {
@@ -355,7 +331,7 @@ async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, ban
 
   // Fallback to regex filtering when Gemini API key is not available
   if (!process.env.GEMINI_API_KEY) {
-    const base = items.filter((item: SearchItem) => {
+    const base = items.filter((item: SearchResultItem) => {
       const text = `${item.title || ""} ${item.snippet || ""}`;
       
       // Filter out obvious non-events (404 pages, error pages)
@@ -420,7 +396,7 @@ async function filterWithGemini(items: SearchItem[], dropTitleRegex: RegExp, ban
     // Fallback to regex filtering when Gemini API fails completely
     // This ensures the system continues to work even if AI services are down
     const EVENT_HINT_FALLBACK = /\b(agenda|programm|program|anmeldung|register|speakers?|konferenz|kongress|symposium|conference|summit|forum|veranstaltung|event|termin|schedule|meeting|workshop|seminar|training|webinar|exhibition|trade show|expo|convention|gathering|networking|roundtable|panel|keynote|presentation|session|breakout|track|day|2024|2025|january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
-    return items.filter((item: SearchItem) => {
+    return items.filter((item: SearchResultItem) => {
       const text = `${item.title || ""} ${item.snippet || ""}`;
       if (dropTitleRegex.test(text)) return false;
       try {
@@ -728,10 +704,20 @@ function filterEventsByDate(events: EventItem[], from?: string, to?: string): Ev
  * @param req - Next.js request object
  * @returns JSON response with search results
  */
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse<EventSearchResponse | ErrorResponse>> {
   try {
     // Parse request parameters with defaults
-    const { q = "", country = "", from, to, provider = "cse", num = 10, rerank = false, topK = 50 } = await req.json();
+    const requestData: EventSearchRequest = await req.json();
+    const { 
+      q = "", 
+      country = "", 
+      from, 
+      to, 
+      provider = "cse", 
+      num = 10, 
+      rerank = false, 
+      topK = 50 
+    } = requestData;
 
     // Check cache first to avoid unnecessary API calls
     const cacheKey = getCacheKey(q, country, from, to);
@@ -847,7 +833,7 @@ export async function POST(req: NextRequest) {
     console.log(JSON.stringify({ at: "search", real: "cse_result", status: res.status, items: data.items?.length || 0 }));
 
     // Transform Google's response into our standardized format
-    let items: SearchItem[] = (data.items || []).map((it: any) => ({
+    let items: SearchResultItem[] = (data.items || []).map((it: any) => ({
       title: it.title || "", 
       link: it.link || "", 
       snippet: it.snippet || ""
@@ -892,7 +878,7 @@ export async function POST(req: NextRequest) {
         if (text.startsWith('```')) text = text.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/,'');
         const order: number[] = JSON.parse(text);
         const seen = new Set<number>();
-        const reranked: SearchItem[] = [];
+        const reranked: SearchResultItem[] = [];
         for (const idx of order) {
           if (typeof idx === 'number' && idx >=0 && idx < filteredItems.length && !seen.has(idx)) {
             seen.add(idx);

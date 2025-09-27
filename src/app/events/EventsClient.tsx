@@ -1,7 +1,9 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import EventCard from "@/components/EventCard";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
+import AdvancedSearch from "@/components/AdvancedSearch";
+import SearchHistory from "@/components/SearchHistory";
 
 type EventRec = {
   id?: string;
@@ -39,7 +41,7 @@ function addDays(base: Date, n: number) {
   return d;
 }
 
-export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set<string> }) {
+const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSavedSet: Set<string> }) {
   const [country, setCountry] = useState<string>("");
   const [range, setRange] = useState<"next" | "past">("next");
   const [days, setDays] = useState<7 | 14 | 30>(7);
@@ -47,6 +49,7 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
   const [from, setFrom] = useState<string>(todayISO());
   const [to, setTo] = useState<string>(todayISO(addDays(new Date(), 7)));
   const [keywords, setKeywords] = useState<string>("");
+  const [useAdvancedSearch, setUseAdvancedSearch] = useState(false);
 
   const [events, setEvents] = useState<EventRec[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,6 +77,33 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
   }, [range, days, advanced]);
 
   const q = useMemo(() => keywords.trim(), [keywords]);
+
+  // Advanced search handlers
+  const handleAdvancedSearch = useCallback((query: string, filters: any) => {
+    setKeywords(query);
+    if (filters.dateRange.from) setFrom(filters.dateRange.from);
+    if (filters.dateRange.to) setTo(filters.dateRange.to);
+    if (filters.location.length > 0) {
+      // Use first location as country for now
+      const location = filters.location[0];
+      const euCountry = EU.find(c => c.name.toLowerCase().includes(location.toLowerCase()));
+      if (euCountry) setCountry(euCountry.code);
+    }
+    run();
+  }, []);
+
+  const handleSuggestionSelect = useCallback((suggestion: any) => {
+    setKeywords(suggestion.text);
+  }, []);
+
+  const handleSearchHistorySelect = useCallback((query: string) => {
+    setKeywords(query);
+    run();
+  }, []);
+
+  const handleClearSearchHistory = useCallback(() => {
+    // History is cleared in the SearchHistory component
+  }, []);
 
   async function run(e?: React.FormEvent) {
     e?.preventDefault();
@@ -273,15 +303,38 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Keywords</label>
-                  <input 
-                    type="text" 
-                    value={keywords} 
-                    onChange={(e) => setKeywords(e.target.value)} 
-                    placeholder="e.g. compliance, ediscovery, forensics, legal tech"
-                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <p className="text-sm text-slate-500 mt-2">Separate multiple keywords with commas for more targeted results</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-slate-700">Search</label>
+                    <button
+                      type="button"
+                      onClick={() => setUseAdvancedSearch(!useAdvancedSearch)}
+                      className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
+                    >
+                      {useAdvancedSearch ? 'Use Simple Search' : 'Use Advanced Search'}
+                    </button>
+                  </div>
+                  
+                  {useAdvancedSearch ? (
+                    <AdvancedSearch
+                      onSearch={handleAdvancedSearch}
+                      onSuggestionSelect={handleSuggestionSelect}
+                      initialQuery={keywords}
+                      placeholder="Search for events with advanced filters..."
+                      className="mb-4"
+                    />
+                  ) : (
+                    <input 
+                      type="text" 
+                      value={keywords} 
+                      onChange={(e) => setKeywords(e.target.value)} 
+                      placeholder="e.g. compliance, ediscovery, forensics, legal tech"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  )}
+                  
+                  {!useAdvancedSearch && (
+                    <p className="text-sm text-slate-500 mt-2">Separate multiple keywords with commas for more targeted results</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -364,6 +417,17 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
           </div>
         )}
 
+        {/* Search History */}
+        {!loading && events.length === 0 && !debug && (
+          <div className="max-w-6xl mx-auto mb-8">
+            <SearchHistory
+              onSearchSelect={handleSearchHistorySelect}
+              onClearHistory={handleClearSearchHistory}
+              className="max-w-md mx-auto"
+            />
+          </div>
+        )}
+
         {/* Results Section */}
         <div className="max-w-6xl mx-auto">
           {/* Empty State */}
@@ -439,4 +503,6 @@ export default function EventsClient({ initialSavedSet }: { initialSavedSet: Set
       </div>
     </div>
   );
-}
+});
+
+export default EventsClient;
