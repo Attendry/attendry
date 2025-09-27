@@ -52,8 +52,8 @@ export async function GET(req: NextRequest): Promise<NextResponse<DebugSearchRes
     const allBuiltQueries = [...tierQueries.tierA, ...tierQueries.tierB, ...tierQueries.tierC];
     const provenance = allBuiltQueries.map(b => ({
       tier: b.tier,
-      query: b.query,
-      len: b.query.length,
+      query: b.q,
+      len: b.len,
       tokens: b.tokens
     }));
     

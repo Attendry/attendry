@@ -2,24 +2,28 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { Suspense, lazy, memo } from 'react';
-import { useAdaptive } from './AdaptiveDashboard';
+import { useAdaptive } from './PremiumAdaptiveDashboard';
 
 // Lazy load modules for better performance
-const SearchModule = lazy(() => import('./modules/SearchModule').then(m => ({ default: m.SearchModule })));
+const SearchModule = lazy(() => import('./modules/PremiumSearchModule').then(m => ({ default: m.PremiumSearchModule })));
 const RecommendationsModule = lazy(() => import('./modules/RecommendationsModule').then(m => ({ default: m.RecommendationsModule })));
 const TrendingModule = lazy(() => import('./modules/TrendingModule').then(m => ({ default: m.TrendingModule })));
 const CompareModule = lazy(() => import('./modules/CompareModule').then(m => ({ default: m.CompareModule })));
 const InsightsModule = lazy(() => import('./modules/InsightsModule').then(m => ({ default: m.InsightsModule })));
+const PremiumDemo = lazy(() => import('./PremiumDemo').then(m => ({ default: m.PremiumDemo })));
 
-// Loading component
-const ModuleLoader = () => (
+// Premium loading component
+const PremiumModuleLoader = () => (
   <div className="flex items-center justify-center h-64">
-    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    <div className="flex flex-col items-center space-y-4">
+      <div className="w-8 h-8 border-2 border-[#4ADE80] border-t-transparent rounded-full animate-spin"></div>
+      <p className="text-[#9CA3AF] text-sm font-mono">Loading module...</p>
+    </div>
   </div>
 );
 
-const MainContent = memo(() => {
-  const { currentModule, theme } = useAdaptive();
+const PremiumMainContent = memo(() => {
+  const { currentModule } = useAdaptive();
 
   const moduleComponents = {
     search: SearchModule,
@@ -29,16 +33,11 @@ const MainContent = memo(() => {
     insights: InsightsModule,
   };
 
-  const CurrentModule = moduleComponents[currentModule];
+  // Show demo for search module initially
+  const CurrentModule = currentModule === 'search' ? PremiumDemo : moduleComponents[currentModule];
 
   return (
-    <main className={`flex-1 overflow-hidden transition-colors duration-300 ${
-      theme === 'dark' 
-        ? 'bg-gray-900' 
-        : theme === 'high-contrast'
-        ? 'bg-black'
-        : 'bg-gray-50'
-    }`}>
+    <main className="flex-1 bg-[#0B0F1A] overflow-hidden">
       <div className="h-full p-6">
         <AnimatePresence mode="wait">
           <motion.div
@@ -46,10 +45,10 @@ const MainContent = memo(() => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }} // Faster transition
+            transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
             className="h-full"
           >
-            <Suspense fallback={<ModuleLoader />}>
+            <Suspense fallback={<PremiumModuleLoader />}>
               <CurrentModule />
             </Suspense>
           </motion.div>
@@ -59,6 +58,6 @@ const MainContent = memo(() => {
   );
 });
 
-MainContent.displayName = 'MainContent';
+PremiumMainContent.displayName = 'PremiumMainContent';
 
-export { MainContent };
+export { PremiumMainContent };

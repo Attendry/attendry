@@ -2,9 +2,10 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sidebar } from './Sidebar';
-import { Topbar } from './Topbar';
-import { MainContent } from './MainContent';
+import { PremiumSidebar } from './PremiumSidebar';
+import { PremiumTopbar } from './PremiumTopbar';
+import { PremiumMainContent } from './PremiumMainContent';
+import { PremiumActionRail } from './PremiumActionRail';
 import { ThemeProvider } from './ThemeProvider';
 import { AdaptiveErrorBoundary } from './ErrorBoundary';
 
@@ -53,7 +54,7 @@ interface AdaptiveProviderProps {
 const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
   const [currentModule, setCurrentModule] = useState<ModuleType>('search');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [theme, setTheme] = useState<ThemeMode>('light');
+  const [theme, setTheme] = useState<ThemeMode>('dark'); // Default to dark mode
   const [adaptiveMode, setAdaptiveMode] = useState<boolean>(true);
   const [userBehavior, setUserBehavior] = useState<UserBehavior>({
     searchCount: 0,
@@ -70,13 +71,15 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
   const idleIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastUpdateRef = useRef<number>(0);
 
-  // Auto-detect system theme preference
+  // Auto-detect system theme preference (but default to dark)
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    setTheme(mediaQuery.matches ? 'dark' : 'light');
+    // Keep dark mode as default for premium look
+    setTheme('dark');
 
     const handleChange = (e: MediaQueryListEvent) => {
-      setTheme(e.matches ? 'dark' : 'light');
+      // Still respect system preference but with dark as fallback
+      setTheme(e.matches ? 'dark' : 'dark');
     };
 
     mediaQuery.addEventListener('change', handleChange);
@@ -91,7 +94,7 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
     
     // Only switch modules if user has been idle for a longer period
     // and hasn't been actively using the interface
-    if (idleTime > 30000) { // 30 seconds idle (increased from 10)
+    if (idleTime > 30000) { // 30 seconds idle
       setCurrentModule('insights');
     } else if (eventClicks >= 5) { // Increased threshold
       setCurrentModule('compare');
@@ -179,31 +182,30 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
     <AdaptiveContext.Provider value={contextValue}>
       <ThemeProvider theme={theme}>
         <AdaptiveErrorBoundary>
-          <div className={`min-h-screen transition-colors duration-300 ${
-            theme === 'dark' 
-              ? 'bg-gray-900 text-white' 
-              : theme === 'high-contrast'
-              ? 'bg-black text-white'
-              : 'bg-gray-50 text-gray-900'
-          }`}>
+          <div className="min-h-screen bg-[#0B0F1A] text-[#E6E8EC] font-sans">
             <div className="flex h-screen">
+              {/* Sidebar */}
               <AnimatePresence>
                 {!sidebarCollapsed && (
                   <motion.div
                     initial={{ width: 0, opacity: 0 }}
-                    animate={{ width: 280, opacity: 1 }}
+                    animate={{ width: 288, opacity: 1 }}
                     exit={{ width: 0, opacity: 0 }}
-                    transition={{ duration: 0.2, ease: 'easeOut' }} // Faster transition
+                    transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
                     className="flex-shrink-0"
                   >
-                    <Sidebar />
+                    <PremiumSidebar />
                   </motion.div>
                 )}
               </AnimatePresence>
               
+              {/* Main Content Area */}
               <div className="flex-1 flex flex-col min-w-0">
-                <Topbar />
-                <MainContent />
+                <PremiumTopbar />
+                <div className="flex-1 flex">
+                  <PremiumMainContent />
+                  <PremiumActionRail />
+                </div>
               </div>
             </div>
           </div>
@@ -213,12 +215,6 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
   );
 };
 
-export const AdaptiveDashboard = () => {
-  return (
-    <AdaptiveProvider>
-      <div className="adaptive-dashboard">
-        {/* The actual dashboard content is rendered by AdaptiveProvider */}
-      </div>
-    </AdaptiveProvider>
-  );
+export const PremiumAdaptiveDashboard = () => {
+  return <AdaptiveProvider />;
 };

@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { memo, useMemo, useCallback } from 'react';
 import { 
   Search, 
   Heart, 
@@ -18,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useAdaptive } from './AdaptiveDashboard';
 
-export const Sidebar = () => {
+const Sidebar = memo(() => {
   const { 
     currentModule, 
     setCurrentModule, 
@@ -30,19 +31,34 @@ export const Sidebar = () => {
     setAdaptiveMode
   } = useAdaptive();
 
-  const modules = [
+  // Memoized modules array to prevent unnecessary re-renders
+  const modules = useMemo(() => [
     { id: 'search' as const, label: 'Search', icon: Search, count: userBehavior.searchCount },
     { id: 'recommendations' as const, label: 'Recommendations', icon: Heart, count: userBehavior.savedEvents },
     { id: 'trending' as const, label: 'Trending', icon: TrendingUp, count: 0 },
     { id: 'compare' as const, label: 'Compare', icon: GitCompare, count: userBehavior.eventClicks },
     { id: 'insights' as const, label: 'Insights', icon: Lightbulb, count: 0 },
-  ];
+  ], [userBehavior.searchCount, userBehavior.savedEvents, userBehavior.eventClicks]);
 
-  const themeOptions = [
+  // Memoized theme options
+  const themeOptions = useMemo(() => [
     { id: 'light' as const, label: 'Light', icon: Sun },
     { id: 'dark' as const, label: 'Dark', icon: Moon },
     { id: 'high-contrast' as const, label: 'High Contrast', icon: Contrast },
-  ];
+  ], []);
+
+  // Memoized event handlers
+  const handleModuleClick = useCallback((moduleId: typeof currentModule) => {
+    setCurrentModule(moduleId);
+  }, [setCurrentModule]);
+
+  const handleThemeChange = useCallback((themeId: typeof theme) => {
+    setTheme(themeId);
+  }, [setTheme]);
+
+  const handleAdaptiveModeToggle = useCallback(() => {
+    setAdaptiveMode(!adaptiveMode);
+  }, [adaptiveMode, setAdaptiveMode]);
 
   return (
     <motion.div
@@ -88,7 +104,7 @@ export const Sidebar = () => {
             return (
               <motion.button
                 key={module.id}
-                onClick={() => setCurrentModule(module.id)}
+                onClick={() => handleModuleClick(module.id)}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className={`w-full flex items-center justify-between p-3 rounded-lg transition-all duration-200 ${
@@ -133,7 +149,7 @@ export const Sidebar = () => {
             Adaptive Mode
           </h3>
           <button
-            onClick={() => setAdaptiveMode(!adaptiveMode)}
+            onClick={handleAdaptiveModeToggle}
             className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
               adaptiveMode
                 ? theme === 'dark'
@@ -181,7 +197,7 @@ export const Sidebar = () => {
               return (
                 <motion.button
                   key={option.id}
-                  onClick={() => setTheme(option.id)}
+                  onClick={() => handleThemeChange(option.id)}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   className={`p-2 rounded-lg transition-colors ${
@@ -245,4 +261,8 @@ export const Sidebar = () => {
       </div>
     </motion.div>
   );
-};
+});
+
+Sidebar.displayName = 'Sidebar';
+
+export { Sidebar };

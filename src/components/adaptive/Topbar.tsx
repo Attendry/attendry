@@ -2,9 +2,10 @@
 
 import { motion } from 'framer-motion';
 import { Menu, Bell, Search, User } from 'lucide-react';
+import { memo, useMemo, useCallback } from 'react';
 import { useAdaptive } from './AdaptiveDashboard';
 
-export const Topbar = () => {
+const Topbar = memo(() => {
   const { 
     setSidebarCollapsed, 
     currentModule, 
@@ -12,27 +13,34 @@ export const Topbar = () => {
     userBehavior 
   } = useAdaptive();
 
-  const getModuleTitle = () => {
-    switch (currentModule) {
-      case 'search': return 'Event Search';
-      case 'recommendations': return 'Recommendations';
-      case 'trending': return 'Trending Events';
-      case 'compare': return 'Compare Events';
-      case 'insights': return 'Insights';
-      default: return 'Event Discovery';
-    }
-  };
+  // Memoized module title and description
+  const { moduleTitle, moduleDescription } = useMemo(() => {
+    const titles = {
+      search: 'Event Search',
+      recommendations: 'Recommendations',
+      trending: 'Trending Events',
+      compare: 'Compare Events',
+      insights: 'Insights',
+    };
 
-  const getModuleDescription = () => {
-    switch (currentModule) {
-      case 'search': return 'Find conferences, meetups, and networking opportunities';
-      case 'recommendations': return 'Personalized event recommendations based on your interests';
-      case 'trending': return 'Discover what\'s popular and trending in your industry';
-      case 'compare': return 'Compare events side-by-side to make informed decisions';
-      case 'insights': return 'AI-powered insights about your event discovery patterns';
-      default: return 'AI-Powered Event Discovery Platform';
-    }
-  };
+    const descriptions = {
+      search: 'Find conferences, meetups, and networking opportunities',
+      recommendations: 'Personalized event recommendations based on your interests',
+      trending: 'Discover what\'s popular and trending in your industry',
+      compare: 'Compare events side-by-side to make informed decisions',
+      insights: 'AI-powered insights about your event discovery patterns',
+    };
+
+    return {
+      moduleTitle: titles[currentModule] || 'Event Discovery',
+      moduleDescription: descriptions[currentModule] || 'AI-Powered Event Discovery Platform',
+    };
+  }, [currentModule]);
+
+  // Memoized event handlers
+  const handleSidebarToggle = useCallback(() => {
+    setSidebarCollapsed(false);
+  }, [setSidebarCollapsed]);
 
   return (
     <motion.header
@@ -52,7 +60,7 @@ export const Topbar = () => {
           {/* Left side */}
           <div className="flex items-center space-x-4">
             <button
-              onClick={() => setSidebarCollapsed(false)}
+              onClick={handleSidebarToggle}
               className={`p-2 rounded-lg transition-colors ${
                 theme === 'dark' 
                   ? 'hover:bg-gray-700 text-gray-300' 
@@ -68,12 +76,12 @@ export const Topbar = () => {
               <h1 className={`text-xl font-semibold ${
                 theme === 'dark' ? 'text-white' : 'text-gray-900'
               }`}>
-                {getModuleTitle()}
+                {moduleTitle}
               </h1>
               <p className={`text-sm ${
                 theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
               }`}>
-                {getModuleDescription()}
+                {moduleDescription}
               </p>
             </div>
           </div>
@@ -150,4 +158,8 @@ export const Topbar = () => {
       </div>
     </motion.header>
   );
-};
+});
+
+Topbar.displayName = 'Topbar';
+
+export { Topbar };

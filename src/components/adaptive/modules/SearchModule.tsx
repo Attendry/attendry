@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo, useMemo } from 'react';
 import { 
   Search, 
   MapPin, 
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAdaptive } from '../AdaptiveDashboard';
 import { SuggestionBanner } from '../SuggestionBanner';
+import { usePerformanceMonitor } from '../hooks/usePerformanceMonitor';
 
 interface SearchFilters {
   location: string;
@@ -47,8 +48,12 @@ const INDUSTRIES = [
   "General Business"
 ];
 
-export const SearchModule = () => {
+const SearchModule = memo(() => {
   const { theme, updateUserBehavior, userBehavior } = useAdaptive();
+  const { recordRender } = usePerformanceMonitor('SearchModule');
+  
+  // Record render for performance monitoring
+  recordRender();
   const [filters, setFilters] = useState<SearchFilters>({
     location: '',
     dateRange: 'next7',
@@ -461,4 +466,8 @@ export const SearchModule = () => {
       </div>
     </div>
   );
-};
+});
+
+SearchModule.displayName = 'SearchModule';
+
+export { SearchModule };

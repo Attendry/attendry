@@ -12,8 +12,8 @@ import { getServiceQueue, RATE_LIMIT_CONFIGS } from "@/lib/services/request-queu
 import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/services/circuit-breaker";
 import { executeWithFallback } from "@/lib/services/fallback-strategies";
 import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
-import { buildTierQueries } from "@/search/query-builder";
-import { assertNoBlockedAugmentation } from "@/search/provenance-guard";
+import { buildTierQueries, assertNoRogueAugmentation } from "@/search/query-builder";
+import { providerSearch, circuitBreaker } from "./provider-search";
 
 /**
  * Shared Search Service
@@ -184,7 +184,7 @@ export class SearchService {
     country: string
   ): string {
     // Use only the base query from search config - no augmentation
-    let query = searchConfig?.baseQuery || baseQuery || '(legal)';
+    const query = searchConfig?.baseQuery || baseQuery || '(legal)';
     
     console.log('buildEnhancedQuery debug:', {
       searchConfigBaseQuery: searchConfig?.baseQuery,
@@ -192,199 +192,10 @@ export class SearchService {
       finalQuery: query
     });
     
-    // Ensure the query includes event-specific terms
-    const eventTerms = ['conference', 'event', 'seminar', 'workshop', 'summit', 'webinar', 'veranstaltung', 'kongress'];
-    const hasEventTerms = eventTerms.some(term => query.toLowerCase().includes(term));
-    
-    if (!hasEventTerms) {
-      query = `${query} (conference OR event OR seminar OR workshop)`;
-    }
-    
-    // Build comprehensive query using all available terms
-    const queryParts: string[] = [];
-    
-    // Start with base query (limit to 500 chars)
-    if (query.length <= 500) {
-      queryParts.push(query);
-    } else {
-      // Truncate base query if too long
-      const truncatedQuery = query.substring(0, 500);
-      const lastSpace = truncatedQuery.lastIndexOf(' ');
-      queryParts.push(truncatedQuery.substring(0, lastSpace > 400 ? lastSpace : 500));
-    }
-    
-    // Add industry terms from search config (max 3 terms, max 200 chars)
-    if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
-      const industryTerms = searchConfig.industryTerms
-        .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-        .slice(0, 3); // Limit to 3 industry terms
-      
-      if (industryTerms.length > 0) {
-        const industryQuery = `(${industryTerms.join(' OR ')})`;
-        if (industryQuery.length <= 200) {
-          queryParts.push(industryQuery);
-        }
-      }
-    }
-    
-    // Add user profile terms if available and enabled
-    if (userProfile?.use_in_basic_search !== false) {
-      // Add user's industry terms
-      if (userProfile.industry_terms && userProfile.industry_terms.length > 0) {
-        const userIndustryTerms = userProfile.industry_terms
-          .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-          .slice(0, 3); // Limit to 3 user industry terms
-        
-        if (userIndustryTerms.length > 0) {
-          queryParts.push(`(${userIndustryTerms.join(' OR ')})`);
-        }
-      }
-      
-      // Add user's ICP terms (max 2 terms, max 150 chars)
-      if (userProfile.icp_terms && userProfile.icp_terms.length > 0) {
-        const icpTerms = userProfile.icp_terms
-          .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-          .slice(0, 2); // Limit to 2 ICP terms
-        
-        if (icpTerms.length > 0) {
-          const icpQuery = `(${icpTerms.join(' OR ')})`;
-          if (icpQuery.length <= 150) {
-            queryParts.push(icpQuery);
-          }
-        }
-      }
-      
-      // Add competitors (as positive terms to find related events)
-      if (userProfile.competitors && userProfile.competitors.length > 0) {
-        const competitors = userProfile.competitors
-          .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-          .slice(0, 2); // Limit to 2 competitors
-        
-        if (competitors.length > 0) {
-          queryParts.push(`(${competitors.join(' OR ')})`);
-        }
-      }
-    }
-    
-    // Combine all parts
-    query = queryParts.join(' ');
-    
-    // Add German event keywords for German searches
-    if (country === 'de') {
-      const germanEventKeywords = ['veranstaltung', 'kongress', 'konferenz'];
-      const hasGermanKeywords = germanEventKeywords.some(keyword => 
-        query.toLowerCase().includes(keyword)
-      );
-      
-      if (!hasGermanKeywords) {
-        query = `${query} veranstaltung`;
-      }
-    } else {
-      // Add English event keyword if not present
-      if (!query.toLowerCase().includes('conference') && !query.toLowerCase().includes('event')) {
-        query = `${query} conference`;
-      }
-    }
-    
-    // Clean up the query and limit length
-    query = query
-      .replace(/\s+/g, ' ') // Clean up multiple spaces
-      .trim();
-    
-    // Limit query length to prevent API errors
-    if (query.length > 800) {
-      console.warn('Query too long, truncating:', query.length);
-      // Try to truncate at word boundaries to avoid cutting off words
-      const truncated = query.substring(0, 800);
-      const lastSpace = truncated.lastIndexOf(' ');
-      if (lastSpace > 700) { // Only use word boundary if it's not too far back
-        query = truncated.substring(0, lastSpace).trim();
-      } else {
-        query = truncated.trim();
-      }
-    }
     
     return query;
   }
 
-  /**
-   * Build tier queries for multi-tier search strategy
-   */
-  static buildTierQueries(countryCode: 'DE', cityList: string[], dateRange: {fromISO: string, toISO: string}, baseQuery: string) {
-    const MAX_Q = 230;
-    
-    function clamp(q: string) {
-      return q.length <= MAX_Q ? q : q.slice(0, MAX_Q);
-    }
-
-    const EVENT_TERMS = ['Konferenz','Kongress','Tagung','Seminar','Workshop','Forum','Summit','Symposium','Fortbildung','Veranstaltung'];
-    const LEGAL_TERMS = ['Compliance','Datenschutz','DSGVO','GDPR','eDiscovery','"E-Discovery"','Interne Untersuchung','Geldwäsche','Whistleblowing','Legal Operations','Wirtschaftsstrafrecht','Forensik'];
-    
-    const CITIES_DE = ['Berlin','München','Frankfurt','Köln','Düsseldorf','Hamburg','Stuttgart','Leipzig','Nürnberg','Hannover','Bremen','Essen','Mannheim','Dortmund','Bonn'];
-
-    function mergedBase(searchConfigBaseQuery: string, passedBaseQuery?: string) {
-      const parts = [searchConfigBaseQuery, passedBaseQuery].filter(Boolean);
-      return `(${parts.join(' ')})`;
-    }
-
-    // Tier A: precise, city-sharded
-    function makeTierA(baseQ: string) {
-      return CITIES_DE.slice(0, 10).map(city =>
-        clamp(`${baseQ} (${EVENT_TERMS.join(' OR ')}) (${LEGAL_TERMS.join(' OR ')}) ("${city}" OR Germany)`)
-      );
-    }
-
-    // Tier B: roles + events (ensure non-empty!)
-    function makeTierB(baseQ: string) {
-      const ROLES = '(GC OR "General Counsel" OR "Chief Compliance Officer" OR "Leiter Recht" OR "Leiter Compliance")';
-      return CITIES_DE.slice(10).map(city =>
-        clamp(`${baseQ} (${EVENT_TERMS.join(' OR ')}) ${ROLES} ("${city}" OR Germany)`)
-      );
-    }
-
-    // Tier C: curated domains — one site per query
-    const DOMAINS = [
-      'juve.de/termine','anwaltverein.de','dav.de','forum-institut.de','euroforum.de',
-      'beck-akademie.de','dai.de/veranstaltungen','bitkom.org/Veranstaltungen',
-      'handelsblatt.com/veranstaltungen','uni-koeln.de','uni-muenchen.de','uni-frankfurt.de'
-    ];
-    function makeTierC(baseQ: string) {
-      return DOMAINS.map(d => clamp(`${baseQ} (${EVENT_TERMS.join(' OR ')}) site:${d}`));
-    }
-
-    const tierA = makeTierA(baseQuery);
-    const tierB = makeTierB(baseQuery);
-    const tierC = makeTierC(baseQuery);
-    
-    // Ensure Tier B is non-empty (at least 5 queries)
-    if (tierB.length < 5) {
-      // Add more cities to Tier B if needed
-      const additionalCities = ['Karlsruhe', 'Augsburg', 'Wiesbaden', 'Gelsenkirchen', 'Mönchengladbach'];
-      const ROLES = '(GC OR "General Counsel" OR "Chief Compliance Officer" OR "Leiter Recht" OR "Leiter Compliance")';
-      additionalCities.forEach(city => {
-        tierB.push(clamp(`${baseQuery} (${EVENT_TERMS.join(' OR ')}) ${ROLES} ("${city}" OR Germany)`));
-      });
-    }
-    
-    const result = { tierA, tierB, tierC };
-    
-    // Log query lengths and ensure no query exceeds 230 chars
-    console.log('buildTierQueries lengths:', {
-      tierA: result.tierA.map(q => q.length),
-      tierB: result.tierB.map(q => q.length),
-      tierC: result.tierC.map(q => q.length),
-      maxLength: Math.max(...result.tierA.map(q => q.length), ...result.tierB.map(q => q.length), ...result.tierC.map(q => q.length))
-    });
-    
-    // Verify no query exceeds 230 chars
-    const allQueries = [...result.tierA, ...result.tierB, ...result.tierC];
-    const overLimit = allQueries.filter(q => q.length > MAX_Q);
-    if (overLimit.length > 0) {
-      console.warn(`Found ${overLimit.length} queries exceeding ${MAX_Q} chars:`, overLimit.map(q => q.length));
-    }
-    
-    return result;
-  }
 
   /**
    * Soft filter URLs to remove only hard noise
@@ -771,158 +582,64 @@ export class SearchService {
       
       // Use tier-based search for Germany
       if (params.country === 'DE') {
-        const cityList = ['Berlin', 'München', 'Hamburg', 'Köln', 'Frankfurt', 'Stuttgart', 'Düsseldorf', 'Dortmund', 'Essen', 'Leipzig', 'Bremen', 'Dresden', 'Hannover', 'Nürnberg', 'Duisburg', 'Bochum', 'Wuppertal', 'Bielefeld', 'Bonn', 'Münster', 'Karlsruhe', 'Mannheim', 'Augsburg', 'Wiesbaden', 'Gelsenkirchen'];
-        const dateRange = { fromISO: params.from || '', toISO: params.to || '' };
         const tierQueries = buildTierQueries(enhancedQuery);
         
         // Calculate CDR window
         const days = Math.ceil((Date.now() - new Date(params.from || Date.now() - 60 * 24 * 60 * 60 * 1000).getTime()) / (1000 * 60 * 60 * 24));
         const { cd_min, cd_max } = this.toCdr(days);
         
-        let allResults: any[] = [];
+        let urls: string[] = [];
+        let searchRetriedWithBase = false;
         const seenUrls = new Set<string>();
-        let tiersExecuted = 0;
         
-        // Execute Tier A queries
-        console.log(`Executing ${tierQueries.tierA.length} Tier A queries`);
-        for (const builtQuery of tierQueries.tierA) {
-          // Validate provenance unless in debug mode
-          if (process.env.DEBUG_MODE !== '1') {
-            assertNoBlockedAugmentation(builtQuery.tokens);
-          }
-          
-          const result = await executeWithFallback("firecrawl", async () => {
-            return await executeWithCircuitBreaker("firecrawl", () =>
-              FirecrawlSearchService.searchEvents({
-                query: builtQuery.query,
-                country: params.country,
-                from: params.from,
-                to: params.to,
-                industry: searchConfig?.industry || "legal-compliance",
-                maxResults: 25,
-                tbs: `cdr:1,cd_min:${cd_min},cd_max:${cd_max}`
-              }),
-              CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
-            );
-          });
-          
-          // Deduplicate by normalized URL
-          result.items.forEach((item: any) => {
-            const normalizedUrl = item.link?.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
-            if (normalizedUrl && !seenUrls.has(normalizedUrl)) {
-              seenUrls.add(normalizedUrl);
-              allResults.push(item);
-            }
-          });
-        }
-        tiersExecuted++;
-        
-        // Execute Tier B queries (always run, not conditional)
-        console.log(`Executing ${tierQueries.tierB.length} Tier B queries`);
-        for (const builtQuery of tierQueries.tierB) {
-          // Validate provenance unless in debug mode
-          if (process.env.DEBUG_MODE !== '1') {
-            assertNoBlockedAugmentation(builtQuery.tokens);
-          }
-          
-          const result = await executeWithFallback("firecrawl", async () => {
-            return await executeWithCircuitBreaker("firecrawl", () =>
-              FirecrawlSearchService.searchEvents({
-                query: builtQuery.query,
-                country: params.country,
-                from: params.from,
-                to: params.to,
-                industry: searchConfig?.industry || "legal-compliance",
-                maxResults: 25,
-                tbs: `cdr:1,cd_min:${cd_min},cd_max:${cd_max}`
-              }),
-              CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
-            );
-          });
-          
-          // Deduplicate by normalized URL
-          result.items.forEach((item: any) => {
-            const normalizedUrl = item.link?.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
-            if (normalizedUrl && !seenUrls.has(normalizedUrl)) {
-              seenUrls.add(normalizedUrl);
-              allResults.push(item);
-            }
-          });
-        }
-        tiersExecuted++;
-        
-        // If still < 8, try Tier C
-        if (allResults.length < 8) {
-          console.log(`Executing ${tierQueries.tierC.length} Tier C queries`);
-          for (const builtQuery of tierQueries.tierC) {
-            // Validate provenance unless in debug mode
-            if (process.env.DEBUG_MODE !== '1') {
-              assertNoBlockedAugmentation(builtQuery.tokens);
-            }
-            
-            const result = await executeWithFallback("firecrawl", async () => {
-              return await executeWithCircuitBreaker("firecrawl", () =>
-                FirecrawlSearchService.searchEvents({
-                  query: builtQuery.query,
-                  country: params.country,
-                  from: params.from,
-                  to: params.to,
-                  industry: searchConfig?.industry || "legal-compliance",
-                  maxResults: 25,
-                  tbs: `cdr:1,cd_min:${cd_min},cd_max:${cd_max}`
-                }),
-                CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
-              );
+        // 1) Run Tier A then (if ENABLE) B, C; collect + dedupe
+        const tiers = [tierQueries.tierA, tierQueries.tierB, tierQueries.tierC];
+        for (const t of tiers) {
+          for (const b of t) {
+            assertNoRogueAugmentation(b.q);
+            const batchUrls = await providerSearch(b.q, {
+              use: 'auto',
+              country: params.country,
+              from: params.from,
+              to: params.to,
+              industry: searchConfig?.industry || "legal-compliance",
+              maxResults: 25,
+              tbs: `cdr:1,cd_min:${cd_min},cd_max:${cd_max}`
             });
-            
-            // Deduplicate by normalized URL
-            result.items.forEach((item: any) => {
-              const normalizedUrl = item.link?.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
-              if (normalizedUrl && !seenUrls.has(normalizedUrl)) {
-                seenUrls.add(normalizedUrl);
-                allResults.push(item);
-              }
-            });
-          }
-          tiersExecuted++;
-        }
-        
-        // If still < 8, widen window by +30 days
-        if (allResults.length < 8) {
-          console.log('Widening search window by +30 days');
-          const widenedDays = days + 30;
-          const { cd_min: cd_min_wide, cd_max: cd_max_wide } = this.toCdr(widenedDays);
-          
-          // Re-run Tier C with wider window
-          for (const builtQuery of tierQueries.tierC) {
-            const result = await executeWithFallback("firecrawl", async () => {
-              return await executeWithCircuitBreaker("firecrawl", () =>
-                FirecrawlSearchService.searchEvents({
-                  query: builtQuery.query,
-                  country: params.country,
-                  from: params.from,
-                  to: params.to,
-                  industry: searchConfig?.industry || "legal-compliance",
-                  maxResults: 25,
-                  tbs: `cdr:1,cd_min:${cd_min_wide},cd_max:${cd_max_wide}`
-                }),
-                CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
-              );
-            });
-            
-            // Deduplicate by normalized URL
-            result.items.forEach((item: any) => {
-              const normalizedUrl = item.link?.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
-              if (normalizedUrl && !seenUrls.has(normalizedUrl)) {
-                seenUrls.add(normalizedUrl);
-                allResults.push(item);
-              }
-            });
+            urls.push(...batchUrls);
           }
         }
+        urls = Array.from(new Set(urls));
+
+        if (urls.length === 0) {
+          // 2) RETRY WITH BASE: shard base into short chips with German event words (no cities)
+          searchRetriedWithBase = true;
+          const chips = ['Konferenz','Kongress','Tagung','Seminar','Workshop','Veranstaltung'];
+          for (const w of chips) {
+            const q = `(${enhancedQuery}) ${w}`;
+            assertNoRogueAugmentation(q);
+            const batchUrls = await providerSearch(q, { 
+              use: 'auto', 
+              fast: true,
+              country: params.country,
+              from: params.from,
+              to: params.to,
+              industry: searchConfig?.industry || "legal-compliance",
+              maxResults: 20
+            });
+            urls.push(...batchUrls);
+          }
+          urls = Array.from(new Set(urls));
+        }
+        
+        // Convert URLs to SearchItem format
+        const allResults = urls.map(url => ({
+          title: "Event",
+          link: url,
+          snippet: "Event details"
+        }));
         
         // Soft filter URLs
-        const urls = allResults.map(item => item.link).filter(Boolean);
         const filteredUrls = this.softFilterUrls(urls);
         firecrawlResult = { items: allResults.filter(item => filteredUrls.includes(item.link)) };
         
@@ -933,10 +650,12 @@ export class SearchService {
             tierB: tierQueries.tierB.length, 
             tierC: tierQueries.tierC.length 
           },
-          tiersExecuted,
+          searchRetriedWithBase,
+          firecrawl_skipped_due_to_circuit: circuitBreaker.isOpen('firecrawl'),
           total_results: allResults.length,
           filtered_results: firecrawlResult.items.length,
-          sample_urls: allResults.slice(0, 5).map(item => item.link)
+          sample_urls: allResults.slice(0, 5).map(item => item.link),
+          final_queries: [...tierQueries.tierA, ...tierQueries.tierB, ...tierQueries.tierC].map(b => ({ q: b.q, len: b.len }))
         }));
       } else {
         // Fallback to original single query for non-DE countries
