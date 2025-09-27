@@ -498,30 +498,41 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
       snippet: url.snippet?.substring(0, 200) || '' // Limit snippet length
     }));
 
-    return `Prioritize URLs for ${industry} events in ${countryName}. 
+    return `You are a professional event curator for ${industry} industry events in ${countryName}.
 
-PRIORITIZE URLs that are:
-- Direct event/conference/seminar/workshop pages with specific dates and venues
-- Event registration pages with clear event details
-- Conference websites with specific event information
-- Professional seminar/workshop listings with agendas
-- Industry-specific event pages (legal, compliance, regulatory events)
+CONTEXT: We are searching for professional ${industry} events that would be relevant for:
+- Legal professionals, compliance officers, general counsel
+- Regulatory affairs professionals, risk management experts
+- Data protection officers, cybersecurity professionals
+- Internal audit teams, investigation specialists
+- Legal technology professionals, e-discovery experts
+
+PRIORITIZE URLs that contain:
+- Professional conferences, summits, or forums with ${industry} focus
+- Regulatory compliance training, workshops, or seminars
+- Legal technology conferences, data protection events
+- Risk management summits, audit conferences
+- Professional development events for legal/compliance teams
+- Industry association events, professional networking events
+- Events with clear agendas, speaker lists, and professional content
 
 EXCLUDE URLs that are:
-- Generic event calendars (visitberlin, songkick, general tourism sites)
-- Company websites, law firm pages, or general business pages
+- Entertainment events (music, festivals, cultural events, parties)
+- Tourism or travel-related events
+- Generic event calendars without professional focus
+- Company marketing pages or general business websites
 - News articles, blog posts, or press releases
-- Job postings, career pages, or recruitment content
-- Marketing pages, product pages, or service descriptions
-- Tourism websites, travel guides, or general event directories
-- Music/concert sites, entertainment venues, or cultural events
-- Generic city event calendars without professional focus
-- Cannabis/marijuana events, festivals, or related content
-- Entertainment festivals, music festivals, or cultural festivals
-- Non-professional events (parties, social events, recreational activities)
+- Job postings or recruitment events
+- Non-professional recreational activities
 
 URLS:
 ${JSON.stringify(urlsData, null, 2)}
+
+SCORING CRITERIA:
+- Score 0.9-1.0: Professional ${industry} conferences with clear agendas and speakers
+- Score 0.7-0.8: Industry-specific training, workshops, or professional events
+- Score 0.5-0.6: General business events that might have ${industry} relevance
+- Score 0.0-0.4: Entertainment, tourism, or non-professional events
 
 Return JSON:
 {
@@ -530,12 +541,12 @@ Return JSON:
     {
       "url": "url1",
       "score": 0.9,
-      "reason": "Direct conference page"
+      "reason": "Professional compliance conference with legal focus"
     }
   ]
 }
 
-Return the top 8-12 most promising URLs for event extraction. Be selective but not overly restrictive.`;
+Return the top 8-12 most promising URLs for event extraction. Focus on professional relevance to ${industry} industry.`;
   }
 
   /**

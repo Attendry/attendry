@@ -2315,10 +2315,9 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
     const titleLower = title.toLowerCase();
     const descLower = description.toLowerCase();
     
-    // Generic event calendar patterns
+    // Generic event calendar patterns (universal exclusions)
     const genericPatterns = [
       'visitberlin', 'songkick', 'eventbrite.de', 'berliner-philharmoniker',
-      'maryjane-berlin', 'cannabis', 'marijuana', 'weed', 'festival',
       'event calendar', 'event-calendar', 'concerts', 'festivals',
       'tourism', 'travel', 'sightseeing', 'entertainment',
       'music', 'cultural', 'art', 'museum', 'theater'
@@ -2335,8 +2334,7 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
     const genericTitlePatterns = [
       'event calendar', 'concerts', 'festivals', 'tourism',
       'sightseeing', 'entertainment', 'music events',
-      'cultural events', 'art events', 'museum events',
-      'cannabis', 'marijuana', 'weed', 'mary jane'
+      'cultural events', 'art events', 'museum events'
     ];
     
     for (const pattern of genericTitlePatterns) {
@@ -2350,9 +2348,7 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
       'concerts in', 'festivals in', 'tourism', 'sightseeing',
       'entertainment', 'cultural events', 'music events',
       'art events', 'museum events', 'theater events',
-      'visit berlin', 'berlin events', 'city events',
-      'cannabis event', 'marijuana', 'weed', 'mary jane',
-      'world\'s largest cannabis', 'cannabis festival'
+      'visit berlin', 'berlin events', 'city events'
     ];
     
     for (const pattern of genericDescPatterns) {
