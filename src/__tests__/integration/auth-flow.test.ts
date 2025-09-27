@@ -7,7 +7,7 @@
 import { NextRequest } from 'next/server';
 import { GET as profileGET } from '@/app/api/profile/get/route';
 import { POST as profilePOST } from '@/app/api/profile/save/route';
-import { mockRequest, mockUserProfile } from '@/lib/testing/test-utils';
+import { mockRequest, mockUserProfile } from '../utils/test-utils';
 
 // Mock dependencies
 jest.mock('@/lib/supabase-server', () => ({

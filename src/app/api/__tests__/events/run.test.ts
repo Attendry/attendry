@@ -6,7 +6,7 @@
 
 import { NextRequest } from 'next/server';
 import { POST } from '../events/run/route';
-import { mockRequest, mockResponse, mockEventData } from '@/lib/testing/test-utils';
+import { mockRequest, mockResponse, mockEventData } from '../../../../__tests__/utils/test-utils';
 
 // Mock dependencies
 jest.mock('@/lib/services/search-service', () => ({

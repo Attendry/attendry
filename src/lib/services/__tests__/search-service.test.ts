@@ -5,7 +5,7 @@
  */
 
 import { SearchService } from '../search-service';
-import { mockSearchResults, mockEventData } from '@/lib/testing/test-utils';
+import { mockSearchResults, mockEventData } from '../../../__tests__/utils/test-utils';
 
 // Mock dependencies
 jest.mock('@/lib/cache', () => ({

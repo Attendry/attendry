@@ -6,7 +6,7 @@
 
 import { NextRequest } from 'next/server';
 import { GET } from '../health/route';
-import { mockRequest, mockResponse } from '@/lib/testing/test-utils';
+import { mockRequest, mockResponse } from '../../../../__tests__/utils/test-utils';
 
 // Mock dependencies
 jest.mock('@/lib/services/health-service', () => ({

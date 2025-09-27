@@ -5,7 +5,7 @@
  */
 
 import { GeminiService } from '../gemini-service';
-import { mockEventData } from '@/lib/testing/test-utils';
+import { mockEventData } from '../../../__tests__/utils/test-utils';
 
 // Mock dependencies
 jest.mock('@google/generative-ai', () => ({

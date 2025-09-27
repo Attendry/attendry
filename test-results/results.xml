@@ -1,2 +1,1158 @@
-<testsuites id="" name="" tests="0" failures="0" skipped="0" errors="0" time="60.433247">
+<testsuites id="" name="" tests="182" failures="12" skipped="170" errors="0" time="51.840553">
+<testsuite name="auth-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="chromium" tests="14" failures="9" skipped="5" time="321.2" errors="0">
+<testcase name="Authentication End-to-End › should display login page" classname="auth-e2e.test.ts" time="11.406">
+<failure message="auth-e2e.test.ts:14:7 should display login page" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:14:7 › Authentication End-to-End › should display login page ───────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator:  locator('form[data-testid="login-form"]')
+    Expected: visible
+    Received: <element(s) not found>
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for locator('form[data-testid="login-form"]')
+
+
+      18 |
+      19 |     // Verify login form is displayed
+    > 20 |     await expect(page.locator('form[data-testid="login-form"]')).toBeVisible();
+         |                                                                  ^
+      21 |     await expect(page.locator('input[name="email"]')).toBeVisible();
+      22 |     await expect(page.locator('input[name="password"]')).toBeVisible();
+      23 |     await expect(page.locator('button[type="submit"]')).toBeVisible();
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:20:66
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-End-to-End-should-display-login-page-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-End-to-End-should-display-login-page-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-End-to-End-should-display-login-page-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-End-to-End-should-display-login-page-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-End-to-End-should-display-login-page-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-End-to-End-should-display-login-page-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with valid credentials" classname="auth-e2e.test.ts" time="30.171">
+<failure message="auth-e2e.test.ts:26:7 should handle login with valid credentials" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:26:7 › Authentication End-to-End › should handle login with valid credentials 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.fill: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('input[name="password"]')
+
+
+      31 |     // Fill login form
+      32 |     await page.fill('input[name="email"]', 'test@example.com');
+    > 33 |     await page.fill('input[name="password"]', 'password123');
+         |                ^
+      34 |
+      35 |     // Submit form
+      36 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:33:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-f027a-ogin-with-valid-credentials-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-f027a-ogin-with-valid-credentials-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-En-f027a-ogin-with-valid-credentials-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-En-f027a-ogin-with-valid-credentials-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-f027a-ogin-with-valid-credentials-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-f027a-ogin-with-valid-credentials-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid credentials" classname="auth-e2e.test.ts" time="30.188">
+<failure message="auth-e2e.test.ts:48:7 should handle login with invalid credentials" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:48:7 › Authentication End-to-End › should handle login with invalid credentials 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.fill: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('input[name="password"]')
+
+
+      53 |     // Fill login form with invalid credentials
+      54 |     await page.fill('input[name="email"]', 'invalid@example.com');
+    > 55 |     await page.fill('input[name="password"]', 'wrongpassword');
+         |                ^
+      56 |
+      57 |     // Submit form
+      58 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:55:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-a659b-in-with-invalid-credentials-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-a659b-in-with-invalid-credentials-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-En-a659b-in-with-invalid-credentials-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-En-a659b-in-with-invalid-credentials-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-a659b-in-with-invalid-credentials-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-a659b-in-with-invalid-credentials-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with empty fields" classname="auth-e2e.test.ts" time="31.011">
+<failure message="auth-e2e.test.ts:67:7 should handle login with empty fields" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:67:7 › Authentication End-to-End › should handle login with empty fields 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('button[type="submit"]')
+
+
+      71 |
+      72 |     // Submit form without filling fields
+    > 73 |     await page.click('button[type="submit"]');
+         |                ^
+      74 |
+      75 |     // Wait for validation errors
+      76 |     await page.waitForSelector('[data-testid="validation-error"]', { timeout: 5000 });
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:73:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-39095-dle-login-with-empty-fields-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-39095-dle-login-with-empty-fields-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-En-39095-dle-login-with-empty-fields-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-En-39095-dle-login-with-empty-fields-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-39095-dle-login-with-empty-fields-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-39095-dle-login-with-empty-fields-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid email format" classname="auth-e2e.test.ts" time="30.139">
+<failure message="auth-e2e.test.ts:83:7 should handle login with invalid email format" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:83:7 › Authentication End-to-End › should handle login with invalid email format 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.fill: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('input[name="password"]')
+
+
+      88 |     // Fill login form with invalid email
+      89 |     await page.fill('input[name="email"]', 'invalid-email');
+    > 90 |     await page.fill('input[name="password"]', 'password123');
+         |                ^
+      91 |
+      92 |     // Submit form
+      93 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:90:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-941e6-n-with-invalid-email-format-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-941e6-n-with-invalid-email-format-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-En-941e6-n-with-invalid-email-format-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-En-941e6-n-with-invalid-email-format-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-941e6-n-with-invalid-email-format-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-941e6-n-with-invalid-email-format-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with short password" classname="auth-e2e.test.ts" time="30.177">
+<failure message="auth-e2e.test.ts:102:7 should handle login with short password" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:102:7 › Authentication End-to-End › should handle login with short password 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.fill: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('input[name="password"]')
+
+
+      107 |     // Fill login form with short password
+      108 |     await page.fill('input[name="email"]', 'test@example.com');
+    > 109 |     await page.fill('input[name="password"]', '123');
+          |                ^
+      110 |
+      111 |     // Submit form
+      112 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:109:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-869e1-e-login-with-short-password-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-869e1-e-login-with-short-password-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-En-869e1-e-login-with-short-password-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-En-869e1-e-login-with-short-password-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-869e1-e-login-with-short-password-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-869e1-e-login-with-short-password-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in email" classname="auth-e2e.test.ts" time="30.182">
+<failure message="auth-e2e.test.ts:121:7 should handle login with special characters in email" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:121:7 › Authentication End-to-End › should handle login with special characters in email 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.fill: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('input[name="password"]')
+
+
+      126 |     // Fill login form with special characters in email
+      127 |     await page.fill('input[name="email"]', 'test+tag@example.com');
+    > 128 |     await page.fill('input[name="password"]', 'password123');
+          |                ^
+      129 |
+      130 |     // Submit form
+      131 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:128:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-3aa08-special-characters-in-email-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-3aa08-special-characters-in-email-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-En-3aa08-special-characters-in-email-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-En-3aa08-special-characters-in-email-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-3aa08-special-characters-in-email-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-3aa08-special-characters-in-email-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in password" classname="auth-e2e.test.ts" time="30.126">
+<failure message="auth-e2e.test.ts:143:7 should handle login with special characters in password" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:143:7 › Authentication End-to-End › should handle login with special characters in password 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.fill: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('input[name="password"]')
+
+
+      148 |     // Fill login form with special characters in password
+      149 |     await page.fill('input[name="email"]', 'test@example.com');
+    > 150 |     await page.fill('input[name="password"]', 'password!@#$%^&*()');
+          |                ^
+      151 |
+      152 |     // Submit form
+      153 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:150:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-03ea1-cial-characters-in-password-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-03ea1-cial-characters-in-password-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-En-03ea1-cial-characters-in-password-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-En-03ea1-cial-characters-in-password-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-03ea1-cial-characters-in-password-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-03ea1-cial-characters-in-password-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long email" classname="auth-e2e.test.ts" time="30.108">
+<failure message="auth-e2e.test.ts:165:7 should handle login with very long email" type="FAILURE">
+<![CDATA[  [chromium] › auth-e2e.test.ts:165:7 › Authentication End-to-End › should handle login with very long email 
+
+    Test timeout of 30000ms exceeded.
+
+    Error: page.fill: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('input[name="password"]')
+
+
+      171 |     const longEmail = 'a'.repeat(100) + '@example.com';
+      172 |     await page.fill('input[name="email"]', longEmail);
+    > 173 |     await page.fill('input[name="password"]', 'password123');
+          |                ^
+      174 |
+      175 |     // Submit form
+      176 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\auth-e2e.test.ts:173:16
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-32b65--login-with-very-long-email-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: video (video/webm) ──────────────────────────────────────────────────────────────
+    ..\..\..\test-results\auth-e2e-Authentication-En-32b65--login-with-very-long-email-chromium\video.webm
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\..\..\test-results\auth-e2e-Authentication-En-32b65--login-with-very-long-email-chromium\error-context.md
+]]>
+</failure>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|auth-e2e-Authentication-En-32b65--login-with-very-long-email-chromium\test-failed-1.png]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-32b65--login-with-very-long-email-chromium\video.webm]]
+
+[[ATTACHMENT|auth-e2e-Authentication-En-32b65--login-with-very-long-email-chromium\error-context.md]]
+]]>
+</system-out>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long password" classname="auth-e2e.test.ts" time="13.619">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with SQL injection attempt" classname="auth-e2e.test.ts" time="13.578">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with XSS attempt" classname="auth-e2e.test.ts" time="13.543">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with network error" classname="auth-e2e.test.ts" time="13.474">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with timeout" classname="auth-e2e.test.ts" time="13.478">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="search-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="chromium" tests="12" failures="3" skipped="9" time="27.754" errors="0">
+<testcase name="Search End-to-End › should perform basic search" classname="search-e2e.test.ts" time="13.322">
+<failure message="search-e2e.test.ts:14:7 should perform basic search" type="FAILURE">
+<![CDATA[  [chromium] › search-e2e.test.ts:14:7 › Search End-to-End › should perform basic search ───────────
+
+    Error: page.fill: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('input[placeholder*="search"]')
+
+
+      18 |
+      19 |     // Enter search query
+    > 20 |     await page.fill('input[placeholder*="search"]', 'legal conference');
+         |                ^
+      21 |     
+      22 |     // Click search button
+      23 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\search-e2e.test.ts:20:16
+
+    Error: browserContext.close: Test ended.
+    Browser logs:
+
+    <launching> C:\Users\olive\AppData\Local\ms-playwright\chromium_headless_shell-1193\chrome-win\headless_shell.exe --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=C:\Users\olive\AppData\Local\Temp\playwright_chromiumdev_profile-bTXm2j --remote-debugging-pipe --no-startup-window
+    <launched> pid=31652
+]]>
+</failure>
+</testcase>
+<testcase name="Search End-to-End › should perform advanced search" classname="search-e2e.test.ts" time="12.697">
+<failure message="search-e2e.test.ts:33:7 should perform advanced search" type="FAILURE">
+<![CDATA[  [chromium] › search-e2e.test.ts:33:7 › Search End-to-End › should perform advanced search ────────
+
+    Error: page.click: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('button[data-testid="toggle-advanced-search"]')
+
+
+      37 |
+      38 |     // Toggle advanced search
+    > 39 |     await page.click('button[data-testid="toggle-advanced-search"]');
+         |                ^
+      40 |
+      41 |     // Fill advanced search form
+      42 |     await page.fill('input[name="query"]', 'legal conference');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\search-e2e.test.ts:39:16
+
+    Error: browserContext.close: Test ended.
+    Browser logs:
+
+    <launching> C:\Users\olive\AppData\Local\ms-playwright\chromium_headless_shell-1193\chrome-win\headless_shell.exe --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=C:\Users\olive\AppData\Local\Temp\playwright_chromiumdev_profile-4zeOSx --remote-debugging-pipe --no-startup-window
+    <launched> pid=27252
+]]>
+</failure>
+</testcase>
+<testcase name="Search End-to-End › should handle search with no results" classname="search-e2e.test.ts" time="1.735">
+<failure message="search-e2e.test.ts:60:7 should handle search with no results" type="FAILURE">
+<![CDATA[  [chromium] › search-e2e.test.ts:60:7 › Search End-to-End › should handle search with no results ──
+
+    Error: page.fill: Target page, context or browser has been closed
+    Call log:
+      - waiting for locator('input[placeholder*="search"]')
+
+
+      64 |
+      65 |     // Enter search query with no results
+    > 66 |     await page.fill('input[placeholder*="search"]', 'nonexistent event xyz123');
+         |                ^
+      67 |     
+      68 |     // Click search button
+      69 |     await page.click('button[type="submit"]');
+        at C:\Users\olive\.cursor\Attendry\src\__tests__\e2e\search-e2e.test.ts:66:16
+
+    Error: browserContext.close: Target page, context or browser has been closed
+]]>
+</failure>
+</testcase>
+<testcase name="Search End-to-End › should handle search errors gracefully" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform real-time search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should save search to history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should load search from history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should clear search history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search pagination" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search filters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with special characters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with long query" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="auth-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="firefox" tests="14" failures="0" skipped="14" time="0" errors="0">
+<testcase name="Authentication End-to-End › should display login page" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with valid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with empty fields" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid email format" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with short password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with SQL injection attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with XSS attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with network error" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with timeout" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="search-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="firefox" tests="12" failures="0" skipped="12" time="0" errors="0">
+<testcase name="Search End-to-End › should perform basic search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform advanced search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with no results" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search errors gracefully" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform real-time search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should save search to history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should load search from history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should clear search history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search pagination" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search filters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with special characters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with long query" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="auth-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="webkit" tests="14" failures="0" skipped="14" time="0" errors="0">
+<testcase name="Authentication End-to-End › should display login page" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with valid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with empty fields" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid email format" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with short password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with SQL injection attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with XSS attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with network error" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with timeout" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="search-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="webkit" tests="12" failures="0" skipped="12" time="0" errors="0">
+<testcase name="Search End-to-End › should perform basic search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform advanced search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with no results" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search errors gracefully" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform real-time search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should save search to history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should load search from history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should clear search history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search pagination" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search filters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with special characters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with long query" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="auth-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="Mobile Chrome" tests="14" failures="0" skipped="14" time="0" errors="0">
+<testcase name="Authentication End-to-End › should display login page" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with valid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with empty fields" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid email format" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with short password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with SQL injection attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with XSS attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with network error" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with timeout" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="search-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="Mobile Chrome" tests="12" failures="0" skipped="12" time="0" errors="0">
+<testcase name="Search End-to-End › should perform basic search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform advanced search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with no results" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search errors gracefully" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform real-time search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should save search to history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should load search from history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should clear search history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search pagination" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search filters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with special characters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with long query" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="auth-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="Mobile Safari" tests="14" failures="0" skipped="14" time="0" errors="0">
+<testcase name="Authentication End-to-End › should display login page" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with valid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with empty fields" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid email format" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with short password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with SQL injection attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with XSS attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with network error" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with timeout" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="search-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="Mobile Safari" tests="12" failures="0" skipped="12" time="0" errors="0">
+<testcase name="Search End-to-End › should perform basic search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform advanced search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with no results" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search errors gracefully" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform real-time search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should save search to history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should load search from history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should clear search history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search pagination" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search filters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with special characters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with long query" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="auth-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="Microsoft Edge" tests="14" failures="0" skipped="14" time="0" errors="0">
+<testcase name="Authentication End-to-End › should display login page" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with valid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with empty fields" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid email format" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with short password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with SQL injection attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with XSS attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with network error" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with timeout" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="search-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="Microsoft Edge" tests="12" failures="0" skipped="12" time="0" errors="0">
+<testcase name="Search End-to-End › should perform basic search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform advanced search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with no results" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search errors gracefully" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform real-time search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should save search to history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should load search from history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should clear search history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search pagination" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search filters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with special characters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with long query" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="auth-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="Google Chrome" tests="14" failures="0" skipped="14" time="0" errors="0">
+<testcase name="Authentication End-to-End › should display login page" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with valid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid credentials" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with empty fields" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with invalid email format" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with short password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with special characters in password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long email" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with very long password" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with SQL injection attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with XSS attempt" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with network error" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Authentication End-to-End › should handle login with timeout" classname="auth-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
+<testsuite name="search-e2e.test.ts" timestamp="2025-09-27T14:05:57.918Z" hostname="Google Chrome" tests="12" failures="0" skipped="12" time="0" errors="0">
+<testcase name="Search End-to-End › should perform basic search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform advanced search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with no results" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search errors gracefully" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should perform real-time search" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should save search to history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should load search from history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should clear search history" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search pagination" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search filters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with special characters" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+<testcase name="Search End-to-End › should handle search with long query" classname="search-e2e.test.ts" time="0">
+<skipped>
+</skipped>
+</testcase>
+</testsuite>
 </testsuites>
