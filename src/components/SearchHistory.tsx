@@ -42,13 +42,15 @@ const SearchHistory = memo(function SearchHistory({
 
   // Load search history from localStorage
   useEffect(() => {
-    const savedHistory = localStorage.getItem('searchHistory');
-    if (savedHistory) {
-      try {
-        const parsedHistory = JSON.parse(savedHistory);
-        setHistory(parsedHistory.slice(0, maxItems));
-      } catch (error) {
-        console.error('Failed to parse search history:', error);
+    if (typeof window !== 'undefined') {
+      const savedHistory = localStorage.getItem('searchHistory');
+      if (savedHistory) {
+        try {
+          const parsedHistory = JSON.parse(savedHistory);
+          setHistory(parsedHistory.slice(0, maxItems));
+        } catch (error) {
+          console.error('Failed to parse search history:', error);
+        }
       }
     }
   }, [maxItems]);
@@ -60,7 +62,9 @@ const SearchHistory = memo(function SearchHistory({
 
   // Handle clear history
   const handleClearHistory = useCallback(() => {
-    localStorage.removeItem('searchHistory');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('searchHistory');
+    }
     setHistory([]);
     onClearHistory();
   }, [onClearHistory]);

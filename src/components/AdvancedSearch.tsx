@@ -80,9 +80,11 @@ const AdvancedSearch = memo(function AdvancedSearch({
 
   // Load search history from localStorage
   useEffect(() => {
-    const savedHistory = localStorage.getItem('searchHistory');
-    if (savedHistory) {
-      setSearchHistory(JSON.parse(savedHistory));
+    if (typeof window !== 'undefined') {
+      const savedHistory = localStorage.getItem('searchHistory');
+      if (savedHistory) {
+        setSearchHistory(JSON.parse(savedHistory));
+      }
     }
   }, []);
 
@@ -91,7 +93,9 @@ const AdvancedSearch = memo(function AdvancedSearch({
     if (searchTerm.trim() && !searchHistory.includes(searchTerm)) {
       const newHistory = [searchTerm, ...searchHistory.slice(0, 9)]; // Keep last 10
       setSearchHistory(newHistory);
-      localStorage.setItem('searchHistory', JSON.stringify(newHistory));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('searchHistory', JSON.stringify(newHistory));
+      }
     }
   }, [searchHistory]);
 

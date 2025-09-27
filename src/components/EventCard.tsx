@@ -108,7 +108,9 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         if (!res.ok) {
           if (res.status === 401) {
             alert("Please log in to save items.");
-            window.location.href = "/login";
+            if (typeof window !== 'undefined') {
+              window.location.href = "/login";
+            }
             return;
           }
           throw new Error(j.error || "Save failed");
