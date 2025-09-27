@@ -295,13 +295,38 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
   ): SpeakerExtractionResult[] {
     try {
       const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      
+      // Try multiple JSON extraction methods
+      let jsonMatch = text.match(/\[[\s\S]*?\]/);
       
       if (!jsonMatch) {
-        throw new Error("No JSON array found in response");
+        // Try to find JSON object instead of array
+        jsonMatch = text.match(/\{[\s\S]*?\}/);
       }
       
-      const parsed = JSON.parse(jsonMatch[0]);
+      if (!jsonMatch) {
+        console.warn("No JSON found in Gemini response, returning empty results");
+        return originalEvents.map(event => ({
+          eventId: event.id,
+          speakers: [],
+          success: false,
+          error: "No JSON found in response"
+        }));
+      }
+      
+      // Clean up the JSON string
+      let jsonString = jsonMatch[0];
+      
+      // Remove any trailing text after the JSON
+      const lastBrace = jsonString.lastIndexOf('}');
+      const lastBracket = jsonString.lastIndexOf(']');
+      const endIndex = Math.max(lastBrace, lastBracket);
+      
+      if (endIndex > 0) {
+        jsonString = jsonString.substring(0, endIndex + 1);
+      }
+      
+      const parsed = JSON.parse(jsonString);
       
       // Validate and map results
       const results: SpeakerExtractionResult[] = [];

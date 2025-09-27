@@ -359,13 +359,13 @@ export class SearchService {
       .replace(/\s+/g, ' ') // Clean up multiple spaces
       .trim();
     
-    // Limit query length to prevent Google CSE 400 errors
-    if (query.length > 200) {
+    // Limit query length to prevent Google CSE 400 errors - be very conservative
+    if (query.length > 100) {
       console.warn('Query too long, truncating:', query.length);
       // Try to truncate at word boundaries to avoid cutting off words
-      const truncated = query.substring(0, 200);
+      const truncated = query.substring(0, 100);
       const lastSpace = truncated.lastIndexOf(' ');
-      if (lastSpace > 150) { // Only use word boundary if it's not too far back
+      if (lastSpace > 80) { // Only use word boundary if it's not too far back
         query = truncated.substring(0, lastSpace).trim();
       } else {
         query = truncated.trim();
@@ -394,27 +394,14 @@ export class SearchService {
     // Simplify query building to avoid Google CSE 400 errors
     // Use space-separated terms instead of complex OR clauses
     
-    // Add key industry terms (max 2 to avoid complexity)
+    // Add only the most essential terms for Google CSE
     if (searchConfig?.industryTerms && searchConfig.industryTerms.length > 0) {
       const keyTerms = searchConfig.industryTerms
         .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-        .slice(0, 2); // Limit to 2 key terms
+        .slice(0, 1); // Limit to 1 key term only
       
       if (keyTerms.length > 0) {
-        query = `${query} ${keyTerms.join(' ')}`;
-      }
-    }
-    
-    // Add user profile terms (max 1 to avoid complexity)
-    if (userProfile?.use_in_basic_search !== false) {
-      if (userProfile.industry_terms && userProfile.industry_terms.length > 0) {
-        const userTerms = userProfile.industry_terms
-          .filter((term: string) => !query.toLowerCase().includes(term.toLowerCase()))
-          .slice(0, 1); // Limit to 1 user term
-        
-        if (userTerms.length > 0) {
-          query = `${query} ${userTerms.join(' ')}`;
-        }
+        query = `${query} ${keyTerms[0]}`;
       }
     }
     
