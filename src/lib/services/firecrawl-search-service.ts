@@ -1,4 +1,5 @@
 import { RetryService } from "./retry-service";
+import { buildSearchQuery } from '@/search/buildQuery';
 
 /**
  * Firecrawl Search Service
@@ -236,7 +237,7 @@ export class FirecrawlSearchService {
       // For legal/compliance, use specific event terms instead of complex boolean logic
       if (industry === 'legal-compliance') {
         // Use specific legal/compliance event terms that work well with Firecrawl
-        searchQuery = baseQuery || 'legal compliance';
+        searchQuery = 'legal compliance';
       } else {
         // Simplify complex queries to avoid Firecrawl timeouts
         // Extract key terms from complex boolean queries
@@ -347,7 +348,12 @@ export class FirecrawlSearchService {
       }
     }
 
-    return searchQuery;
+    // Use the centralized query builder instead
+    const baseQuery = searchQuery || this.getIndustryTerms(industry);
+    return buildSearchQuery({ 
+      baseQuery,
+      maxLen: 200 // Shorter for Firecrawl
+    });
   }
 
   /**
