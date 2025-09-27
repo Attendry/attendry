@@ -19,6 +19,33 @@ const nextConfig: NextConfig = {
   
   // Webpack optimization
   webpack: (config, { dev, isServer }) => {
+    // Handle browser globals for SSR
+    if (isServer) {
+      config.resolve = {
+        ...config.resolve,
+        fallback: {
+          ...config.resolve?.fallback,
+          fs: false,
+          net: false,
+          tls: false,
+          crypto: false,
+        },
+      };
+      
+      // Define browser globals for server-side rendering
+      config.plugins = [
+        ...config.plugins,
+        new config.webpack.DefinePlugin({
+          'global.self': 'global',
+          'global.window': 'undefined',
+          'global.document': 'undefined',
+          'global.navigator': 'undefined',
+          'global.localStorage': 'undefined',
+          'global.sessionStorage': 'undefined',
+        }),
+      ];
+    }
+    
     // Production optimizations
     if (!dev) {
       config.optimization = {

@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
+// Force Node.js runtime for middleware to avoid Edge Runtime issues with Supabase
+export const runtime = 'nodejs';
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: { headers: req.headers } });
 
