@@ -117,8 +117,8 @@ async function calculateSystemPerformance(supabase: any, startDate: Date): Promi
       .gte('collected_at', startDate.toISOString());
 
     const totalEvents = errorEvents?.length || 0;
-    const errorEvents = errorEvents?.filter(event => event.error).length || 0;
-    const errorRate = totalEvents > 0 ? errorEvents / totalEvents : 0;
+    const errorCount = errorEvents?.filter(event => event.error).length || 0;
+    const errorRate = totalEvents > 0 ? errorCount / totalEvents : 0;
 
     return {
       averageResponseTime: responseTime,
