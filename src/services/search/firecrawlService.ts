@@ -4,7 +4,7 @@
  * Removes hard-coded "Germany" override and uses explicit query builder
  */
 
-import { buildQueryExplicit } from '@/search/query';
+import { buildEffectiveQuery } from '@/search/query';
 import { withTimeoutAndRetry } from '@/utils/net/withTimeoutAndRetry';
 import { logger } from '@/utils/logger';
 
@@ -22,7 +22,7 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
   if (!baseQuery?.trim()) throw new Error('firecrawlSearch: baseQuery required');
 
   // ✅ Use the explicit builder; never override with a fixed German literal string.
-  const q = buildQueryExplicit({ baseQuery, userText });
+  const q = buildEffectiveQuery({ baseQuery, userText });
 
   // Build params WITHOUT rewriting the query text.
   const fcParams = {
@@ -39,15 +39,7 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
     },
   };
 
-  // Only add tbs if both dates are provided. (CSE supports date restrict; Firecrawl mimics via tbs)
-  if (dateFrom && dateTo) {
-    // mm/dd/yyyy format expected by Google's cdr
-    const toMDY = (d: string) => {
-      const [Y, M, D] = d.split('-');
-      return `${M}/${D}/${Y}`;
-    };
-    fcParams.tbs = `cdr:1,cd_min:${toMDY(dateFrom)},cd_max:${toMDY(dateTo)}`;
-  }
+  // No tbs/cd_min/cd_max - these cause timeouts and 400s
 
   logger.info({ at: 'firecrawl_search', query: q, params: fcParams });
 

@@ -4,7 +4,7 @@
  * Fixes 400 handling and stops claiming "success: true" when it isn't
  */
 
-import { buildQueryExplicit } from '@/search/query';
+import { buildEffectiveQuery } from '@/search/query';
 import { withTimeoutAndRetry } from '@/utils/net/withTimeoutAndRetry';
 import { logger } from '@/utils/logger';
 
@@ -25,7 +25,7 @@ export async function cseSearch(args: CSEArgs) {
   } = args;
 
   if (!baseQuery?.trim()) throw new Error('cseSearch: baseQuery required');
-  const q = buildQueryExplicit({ baseQuery, userText });
+  const q = buildEffectiveQuery({ baseQuery, userText });
 
   // CSE: avoid 400s (trim query) and retry without locale clamps
   function buildCSEUrl(q: string, withLocale: boolean) {
