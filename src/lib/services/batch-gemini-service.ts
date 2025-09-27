@@ -498,22 +498,24 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
       snippet: url.snippet?.substring(0, 200) || '' // Limit snippet length
     }));
 
-    return `Prioritize URLs for events in ${industry}, ${countryName}. 
+    return `Prioritize URLs for ${industry} events in ${countryName}. 
 
 PRIORITIZE URLs that are:
-- Direct event/conference/seminar/workshop pages
-- Event registration pages
-- Conference websites with event details
-- Seminar/workshop listings
-- Event calendars or directories with specific events
-- Industry association event pages
+- Direct event/conference/seminar/workshop pages with specific dates and venues
+- Event registration pages with clear event details
+- Conference websites with specific event information
+- Professional seminar/workshop listings with agendas
+- Industry-specific event pages (legal, compliance, regulatory events)
 
 EXCLUDE URLs that are:
-- Company websites, law firm pages, or general business pages (unless they have specific events)
+- Generic event calendars (visitberlin, songkick, general tourism sites)
+- Company websites, law firm pages, or general business pages
 - News articles, blog posts, or press releases
 - Job postings, career pages, or recruitment content
 - Marketing pages, product pages, or service descriptions
-- Generic directory pages without event information
+- Tourism websites, travel guides, or general event directories
+- Music/concert sites, entertainment venues, or cultural events
+- Generic city event calendars without professional focus
 
 URLS:
 ${JSON.stringify(urlsData, null, 2)}

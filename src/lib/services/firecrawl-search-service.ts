@@ -245,7 +245,12 @@ export class FirecrawlSearchService {
       if (keyTerms.length > 0) {
         searchQuery = keyTerms.join(' ');
       } else {
-        searchQuery = 'compliance conference event';
+        // For legal/compliance, use specific event terms
+        if (industry === 'legal-compliance') {
+          searchQuery = 'compliance conference legal summit regulatory forum';
+        } else {
+          searchQuery = 'compliance conference event';
+        }
       }
       
       searchQuery = searchQuery

@@ -1266,6 +1266,13 @@ export class SearchService {
             const html = await response.text();
             const title = this.extractTitleFromUrl(url);
             const description = this.extractTextFromHTML(html).substring(0, 2000);
+            
+            // Filter out generic event calendars and tourism sites
+            if (this.isGenericEventPage(url, title, description)) {
+              console.log(`Skipping generic event page: ${url}`);
+              continue;
+            }
+            
             const country = this.extractCountryFromUrl(url) || this.extractCountryFromContent(description);
             const city = this.extractCityFromContent(description) || this.extractCityFromUrl(url);
             const dateInfo = this.extractDateFromContent(description);
@@ -2301,5 +2308,55 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
     }
     
     return { starts_at: null, ends_at: null };
+  }
+
+  private static isGenericEventPage(url: string, title: string, description: string): boolean {
+    const urlLower = url.toLowerCase();
+    const titleLower = title.toLowerCase();
+    const descLower = description.toLowerCase();
+    
+    // Generic event calendar patterns
+    const genericPatterns = [
+      'visitberlin', 'songkick', 'eventbrite.de', 'berliner-philharmoniker',
+      'event calendar', 'event-calendar', 'concerts', 'festivals',
+      'tourism', 'travel', 'sightseeing', 'entertainment',
+      'music', 'cultural', 'art', 'museum', 'theater'
+    ];
+    
+    // Check URL patterns
+    for (const pattern of genericPatterns) {
+      if (urlLower.includes(pattern)) {
+        return true;
+      }
+    }
+    
+    // Check title patterns
+    const genericTitlePatterns = [
+      'event calendar', 'concerts', 'festivals', 'tourism',
+      'sightseeing', 'entertainment', 'music events',
+      'cultural events', 'art events', 'museum events'
+    ];
+    
+    for (const pattern of genericTitlePatterns) {
+      if (titleLower.includes(pattern)) {
+        return true;
+      }
+    }
+    
+    // Check description patterns
+    const genericDescPatterns = [
+      'concerts in', 'festivals in', 'tourism', 'sightseeing',
+      'entertainment', 'cultural events', 'music events',
+      'art events', 'museum events', 'theater events',
+      'visit berlin', 'berlin events', 'city events'
+    ];
+    
+    for (const pattern of genericDescPatterns) {
+      if (descLower.includes(pattern)) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 }
