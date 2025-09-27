@@ -4,18 +4,25 @@
  * Runs tiers, then retry with base if 0
  */
 
-import { buildTierQueries, assertClean } from './query';
+import { buildTierQueries, assertClean, EVENT_DE, CITY_DE } from './query';
 import { firecrawlSearch } from './providers/firecrawl';
 import { cseSearch } from './providers/cse';
 import { prefilter } from './url-filters';
 
 const MIN_URLS = 8;
 
-export async function runSearch(opts: { baseQuery: string; country?: string; days?: number; enableAug?: boolean }) {
+export async function runSearch(opts: {
+  baseQuery: string;
+  country?: string; // default DE
+  days?: number;    // currently unused by CSE reliably
+  enableAug?: boolean;
+}) {
   const country = (opts.country ?? 'DE').toUpperCase();
+
   const tiers = buildTierQueries(opts.baseQuery, !!opts.enableAug);
   const urlsAll: string[] = [];
 
+  // Firecrawl params (kept small & robust)
   const fcParams = {
     limit: 20,
     sources: ['web'],
@@ -35,28 +42,40 @@ export async function runSearch(opts: { baseQuery: string; country?: string; day
     catch { return await cseSearch(q); }
   }
 
-  for (const b of tiers) {
-    assertClean(b.q);
-    urlsAll.push(...await providerOnce(b.q));
+  for (const t of tiers) {
+    assertClean(t.q);
+    urlsAll.push(...await providerOnce(t.q));
   }
 
-  let urls = prefilter(Array.from(new Set(urlsAll)));
-
-  // Retry with base chips + .de shard if too few or noisy:
+  let urls = prefilter([...new Set(urlsAll)]);
   let retriedWithBase = false;
+
   if (urls.length < MIN_URLS) {
     retriedWithBase = true;
-    const chips = ['Konferenz','Kongress','Tagung','Seminar','Workshop','Veranstaltung','Berlin','München','Frankfurt','Köln','Hamburg','Düsseldorf','Stuttgart'];
-    for (const w of chips) {
-      const q = `(${opts.baseQuery}) ${w}`;
-      assertClean(q);
-      urls.push(...await providerOnce(q));
+
+    // Strict German event sharding with .de constraint
+    // Use short shards to avoid CSE 400s.
+    const SHARDS = [
+      ...EVENT_DE,
+      ...CITY_DE,
+      'Deutschland','DE'
+    ];
+
+    for (const w of SHARDS) {
+      // 1) site:.de hard constraint
       const qDe = `(${opts.baseQuery}) site:.de ${w}`;
+      assertClean(qDe);
       urls.push(...await cseSearch(qDe));
+
+      // 2) allow Firecrawl a try with German token
+      const qFc = `(${opts.baseQuery}) ${w}`;
+      assertClean(qFc);
+      urls.push(...await firecrawlSearch(qFc, fcParams));
     }
-    urls = prefilter(Array.from(new Set(urls)));
+
+    urls = prefilter([...new Set(urls)]);
   }
 
-  console.info(JSON.stringify({ at:'search_summary_urls', count: urls.length, sample: urls.slice(0,6) }, null, 2));
+  console.info(JSON.stringify({ at:'search_summary_urls', count: urls.length, sample: urls.slice(0,8) }, null, 2));
   return { urls, retriedWithBase };
 }

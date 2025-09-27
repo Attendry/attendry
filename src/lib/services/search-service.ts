@@ -61,7 +61,7 @@ const cacheService = getCacheService();
 
 function getCacheKey(provider: string, q: string, country: string, from?: string, to?: string): string {
   const cleanedQuery = q.trim().replace(/\s+/g, ' ');
-  return `search:${provider}:${cleanedQuery}|${country}|${from || ''}|${to || ''}`;
+  return `${provider}:${cleanedQuery}|${country}|${from || ''}|${to || ''}`;
 }
 
 async function getCachedResult<T>(key: string): Promise<T | null> {
