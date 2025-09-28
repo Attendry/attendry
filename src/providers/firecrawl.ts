@@ -50,10 +50,13 @@ export async function search(params: { q: string; dateFrom?: string; dateTo?: st
     const json = await res.json();
     console.log('[firecrawl] Response data:', JSON.stringify(json, null, 2));
 
-    // Map to {items:string[]}
-    const items: string[] = (json?.data ?? json?.results ?? json?.webResults ?? [])
-      .map((x:any) => x?.url || x?.link)
-      .filter((u:string) => typeof u === 'string' && u.startsWith('http'));
+    // Map to {items:string[]} - v2 API structure
+    const webResults = json?.data?.web || [];
+    const items: string[] = Array.isArray(webResults) 
+      ? webResults
+          .map((x:any) => x?.url || x?.link)
+          .filter((u:string) => typeof u === 'string' && u.startsWith('http'))
+      : [];
 
     console.log('[firecrawl] Extracted URLs:', items.length, items.slice(0, 3));
 

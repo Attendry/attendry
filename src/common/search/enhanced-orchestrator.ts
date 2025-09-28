@@ -177,8 +177,8 @@ URLs: ${urls.slice(0, 20).join(', ')}
 
 Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3"]`;
 
-    // Try the newer Gemini API endpoint
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    // Try the correct Gemini API endpoint with proper model name
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json'
