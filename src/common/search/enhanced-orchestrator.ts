@@ -178,7 +178,7 @@ URLs: ${urls.slice(0, 20).join(', ')}
 Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3"]`;
 
     // Try the correct Gemini API endpoint with proper model name
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json'
@@ -288,7 +288,7 @@ Focus on ${searchConfig.industry || 'general'} events. If this is not an event p
     });
 
                 const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error('Extraction timeout')), 8000) // 8 second timeout
+                  setTimeout(() => reject(new Error('Extraction timeout')), 5000) // 5 second timeout
                 );
 
     const response = await Promise.race([extractPromise, timeoutPromise]) as Response;
@@ -355,7 +355,7 @@ async function fallbackExtraction(url: string, apiKey: string): Promise<any> {
     });
 
                 const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error('Scrape timeout')), 6000) // 6 second timeout
+                  setTimeout(() => reject(new Error('Scrape timeout')), 4000) // 4 second timeout
                 );
 
     const response = await Promise.race([scrapePromise, timeoutPromise]) as Response;
@@ -851,16 +851,17 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     const url = prioritizedUrls[i];
     console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', Math.min(prioritizedUrls.length, 5), ':', url);
     
-    const details = await extractEventDetails(url, cfg);
-    console.log('[enhanced_orchestrator] Extracted details:', {
-      url,
-      title: details.title,
-      country: details.country,
-      city: details.city,
-      location: details.location,
-      venue: details.venue,
-      starts_at: details.starts_at
-    });
+    try {
+      const details = await extractEventDetails(url, cfg);
+      console.log('[enhanced_orchestrator] Extracted details:', {
+        url,
+        title: details.title,
+        country: details.country,
+        city: details.city,
+        location: details.location,
+        venue: details.venue,
+        starts_at: details.starts_at
+      });
     
     // If extraction completely failed, create a basic event object
     if (!details.title && !details.description && !details.country && !details.city) {
@@ -918,7 +919,21 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       const isObviousUSCity = eventCity && 
         ['kansas city', 'nashville', 'houston', 'chicago', 'new york', 'los angeles', 'san francisco', 'boston', 'atlanta', 'miami', 'seattle', 'denver'].includes(eventCity.toLowerCase());
       
-      const shouldFilterOut = isDefinitelyNotGerman || isObviousUSCity;
+      // Also check URL for US city patterns
+      const urlContainsUSCity = url.toLowerCase().includes('kansas-city') || 
+        url.toLowerCase().includes('nashville') || 
+        url.toLowerCase().includes('houston') || 
+        url.toLowerCase().includes('chicago') || 
+        url.toLowerCase().includes('new-york') || 
+        url.toLowerCase().includes('los-angeles') || 
+        url.toLowerCase().includes('san-francisco') || 
+        url.toLowerCase().includes('boston') || 
+        url.toLowerCase().includes('atlanta') || 
+        url.toLowerCase().includes('miami') || 
+        url.toLowerCase().includes('seattle') || 
+        url.toLowerCase().includes('denver');
+      
+      const shouldFilterOut = isDefinitelyNotGerman || isObviousUSCity || urlContainsUSCity;
       
       if (shouldFilterOut) {
         console.log('[enhanced_orchestrator] Filtering out non-German event:', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
@@ -943,18 +958,34 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       }
     }
     
-    events.push({
-      id: `event_${i}`,
-      title: details.title,
-      source_url: url,
-      starts_at: details.starts_at,
-      country: details.country,
-      city: details.city,
-      location: details.location,
-      venue: details.venue,
-      description: details.description,
-      speakers: []
-    });
+      events.push({
+        id: `event_${i}`,
+        title: details.title,
+        source_url: url,
+        starts_at: details.starts_at,
+        country: details.country,
+        city: details.city,
+        location: details.location,
+        venue: details.venue,
+        description: details.description,
+        speakers: []
+      });
+    } catch (error) {
+      console.error('[enhanced_orchestrator] Error extracting event from', url, error);
+      // Create a basic event object even if extraction fails
+      events.push({
+        id: `event_${i}`,
+        title: `Event from ${new URL(url).hostname}`,
+        source_url: url,
+        starts_at: null,
+        country: null,
+        city: null,
+        location: null,
+        venue: null,
+        description: `Event found at ${url}`,
+        speakers: []
+      });
+    }
   }
 
   logs.push({ at: 'extraction', inputCount: prioritizedUrls.length, outputCount: events.length });
