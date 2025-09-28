@@ -9,5 +9,5 @@ export function buildEffectiveQuery({ baseQuery, userText }: BuildQueryOpts): st
   return ut ? wrap(ut) : wrap(bq);
 }
 
-// Legacy alias to kill old imports safely
+// Backward-compat for legacy imports:
 export const buildSearchQuery = buildEffectiveQuery;

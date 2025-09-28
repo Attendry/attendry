@@ -41,7 +41,7 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
 
   // No tbs/cd_min/cd_max - these cause timeouts and 400s
 
-  logger.info({ at: 'firecrawl_search', query: q, params: fcParams });
+  console.info('[firecrawl_call]', { query: q, limit: 15, noTbs: true, noLocation: true });
 
   // Firecrawl: no hardcoded query, add short backoff retries
   async function firecrawlSearchWithBackoff() {

@@ -6,29 +6,25 @@
 
 type FilterMode = 'events' | 'knowledge';
 
-export function filterByDate(items: any[], opts: {
-  mode: FilterMode;
-  from?: string;
-  to?: string;
-}) {
+export function filterByDate<T extends { starts_at?: string | null }>(
+  items: T[],
+  opts: { mode: FilterMode; from?: string; to?: string }
+): T[] {
   if (!Array.isArray(items) || !items.length) return [];
 
   if (opts.mode !== 'events') {
-    // Knowledge mode → keep everything; date isn't required
+    // Knowledge mode keeps everything; date windows don't apply.
     return items;
   }
 
-  // Events mode → your existing within-range logic
-  return items.filter(item => {
-    if (!item.date) return false;
-    const itemDate = new Date(item.date);
-    const fromDate = opts.from ? new Date(opts.from) : null;
-    const toDate = opts.to ? new Date(opts.to) : null;
-    
-    if (fromDate && itemDate < fromDate) return false;
-    if (toDate && itemDate > toDate) return false;
-    
-    return true;
+  // Events-only windowing:
+  const { from, to } = opts;
+  if (!from && !to) return items;
+  const fromMs = from ? Date.parse(from) : -Infinity;
+  const toMs = to ? Date.parse(to) : +Infinity;
+  return items.filter((it) => {
+    const s = it.starts_at ? Date.parse(it.starts_at) : NaN;
+    return Number.isFinite(s) && s >= fromMs && s <= toMs;
   });
 }
 

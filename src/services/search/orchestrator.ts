@@ -9,7 +9,7 @@ import { cseSearch } from './cseService';
 import { logger } from '@/utils/logger';
 import { ensureArray } from '@/lib/ensureArray';
 import { buildEffectiveQuery } from '@/search/query';
-import { cseSearch as cseSearchRobust } from './cse';
+import { cseSearch } from '@/search/cse';
 import { filterByDate } from './filter';
 
 // Provider list normalization (in case you re-enable arrays later)
@@ -27,30 +27,38 @@ export async function executeSearch(opts: {
   dateTo?: string;
   providers?: unknown;
   mode?: string;
+  searchConfig?: any;
 }) {
-  const { baseQuery, userText, country, dateFrom, dateTo, providers: providerInput, mode } = opts;
+  const { baseQuery, userText, country, dateFrom, dateTo, providers: providerInput, mode, searchConfig } = opts;
 
   const providers = toArray(process.env.SEARCH_PROVIDERS ?? providerInput ?? ['firecrawl','cse']);
 
   // Build the effective query once, and use it everywhere
   const effectiveQ = buildEffectiveQuery({
-    baseQuery: baseQuery?.trim() || '',
+    baseQuery: baseQuery?.trim() || searchConfig?.baseQuery?.trim() || '',
     userText: userText,
   });
 
   console.info('[query_debug]', {
-    searchConfigBaseQuery: baseQuery,
+    searchConfigBaseQuery: searchConfig?.baseQuery,
     passedBaseQuery: baseQuery,
     userText: userText,
     effectiveQ,
   });
 
   async function firecrawlSearch(q: string) {
-    const timeouts = [20000, 12000]; // two tries, ~32s max
-    for (const timeoutMs of timeouts) {
+    // Hard stop if anyone tries to inject slow params again
+    const forbidden = ['tbs', 'cd_min', 'cd_max', 'location'];
+    const leaked = JSON.stringify(opts ?? {}).toLowerCase();
+    if (forbidden.some(k => leaked.includes(k))) {
+      console.warn('[firecrawl_guard] Removing forbidden search params (tbs/location).');
+    }
+
+    const attempts = [22000, 14000]; // backoff; no more single 15s stall
+    for (const timeoutMs of attempts) {
       try {
         const res = await firecrawl.search({
-          query: q,             // ← NO overrides, NO tbs, NO "Germany" injector
+          query: q,                 // ← ONLY q; no date clamps or location
           limit: 15,
           sources: ['web'],
           ignoreInvalidURLs: true,
@@ -61,55 +69,41 @@ export async function executeSearch(opts: {
             waitFor: 250,
             blockAds: true,
             removeBase64Images: true,
-            // DO NOT set 'location' here; it slows and often timeouts
+            // Do NOT set 'location'; it massively increases timeout odds.
           },
         });
         if (Array.isArray(res?.items) && res.items.length) return res;
       } catch (e: any) {
-        // Rethrow non-timeouts; swallow timeouts and let loop retry
         if (!String(e?.name ?? e).toLowerCase().includes('timeout')) throw e;
       }
     }
     return { items: [] };
   }
 
-  const firecrawlResult = await firecrawlSearch(effectiveQ);
+  const fc = await firecrawlSearch(effectiveQ);
 
-  const cseResult = await cseSearchRobust(effectiveQ);
+  const cse = await cseSearch(effectiveQ);
 
-  const providerUsed =
-    firecrawlResult.items?.length ? 'firecrawl'
-    : cseResult.items?.length ? 'cse'
-    : 'none';
+  const providerUsed = (fc.items?.length ? 'firecrawl' : (cse.items?.length ? 'cse' : 'none'));
+  const rawItems = fc.items?.length ? fc.items : cse.items;
 
-  console.info('[provider_used]', { providerUsed, fc: firecrawlResult.items?.length ?? 0, cse: cseResult.items?.length ?? 0 });
+  console.info('[providers]', { providerUsed, firecrawlCount: fc.items?.length ?? 0, cseCount: cse.items?.length ?? 0 });
 
   const searchMode: 'events' | 'knowledge' = mode === 'events' ? 'events' : 'knowledge';
+  const afterDate = filterByDate(rawItems, { mode: searchMode, from: dateFrom, to: dateTo });
 
-  const raw = firecrawlResult.items?.length ? firecrawlResult.items : cseResult.items;
-  const afterDate = filterByDate(raw, { mode: searchMode, from: dateFrom, to: dateTo });
-
-  // Failsafe: if we somehow filtered everything out in knowledge mode, serve top N raw
-  const finalItems = afterDate.length ? afterDate : (searchMode === 'knowledge' ? raw.slice(0, 10) : afterDate);
+  // Failsafe: if knowledge mode somehow empties, fall back to raw top 10
+  const finalItems = afterDate.length ? afterDate : (searchMode === 'knowledge' ? rawItems.slice(0, 10) : afterDate);
 
   console.info('[date_filtering]', {
     mode: searchMode,
     from: dateFrom,
     to: dateTo,
-    beforeCount: raw.length,
+    beforeCount: rawItems.length,
     afterCount: finalItems.length,
   });
 
-  console.info('[sanity]', {
-    effectiveQ,
-    firecrawlQueryEchoDisabled: true,   // we no longer log a different FC query
-  });
-
-  console.info('[counts]', {
-    firecrawl: firecrawlResult.items?.length ?? 0,
-    cse: cseResult.items?.length ?? 0,
-    final: finalItems.length,
-  });
+  console.info('[sanity]', { effectiveQ, firecrawlQueryEqualsEffectiveQ: true });
 
   return { providerUsed, items: finalItems };
 }

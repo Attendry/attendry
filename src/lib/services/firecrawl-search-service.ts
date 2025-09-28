@@ -114,7 +114,7 @@ export class FirecrawlSearchService {
       };
 
       console.log(JSON.stringify({ 
-        at: "firecrawl_search", 
+        at: "firecrawl_call", 
         query: searchQuery, 
         params: searchParams 
       }));
@@ -142,7 +142,7 @@ export class FirecrawlSearchService {
 
       const data = await response.json();
       console.log(JSON.stringify({ 
-        at: "firecrawl_search_result", 
+        at: "firecrawl_call_result", 
         status: response.status, 
         success: data.success,
         webResults: data.data?.web?.length || 0 
