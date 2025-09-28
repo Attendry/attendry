@@ -27,6 +27,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SearchService } from "@/lib/services/search-service";
 import { ConfigService } from "@/lib/services/config-service";
 import { supabaseServer } from "@/lib/supabase-server";
+import { executeSearch } from "@/services/search/orchestrator";
 import { 
   EventDiscoveryRequest, 
   EventDiscoveryResponse, 
@@ -354,51 +355,27 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventDiscover
     // STEP 3: EXECUTE SEARCH WITH FALLBACK STRATEGY
     // ============================================================================
     
-    // Helper function to execute search using shared service
-    async function doSearch(query: string) {
-      const result = await SearchService.executeSearch({
-        q: query,
-        country,
-        from,
-        to,
-        num: 50,
-        rerank: true,
-        topK: 50
-      });
-      return { 
-        status: 200, 
-        provider: result.provider, 
-        items: result.items.map(item => ({ title: item.title, link: item.link }))
-      };
-    }
+    // Execute search using new orchestrator
+    const { items, providerUsed, providersTried, logs } = await executeSearch({
+      baseQuery: searchConfig.baseQuery,
+      userText: userQuery,
+      country,
+      dateFrom: from,
+      dateTo: to,
+    });
 
-    // Execute search with personalized query
-    let search = await doSearch(effectiveQ);
+    // Preserve items even if CSE later returns 0; do not re-run CSE here.
+    const search = {
+      status: 200,
+      provider: providerUsed,
+      items: items.map(url => ({ title: url, link: url }))
+    };
     
-    // Fallback strategy: if personalized search returns no results,
-    // retry with base query to avoid over-narrowing
-    if ((search.items?.length || 0) === 0 && effectiveQ !== searchConfig.baseQuery) {
-      const retryQ = searchConfig.baseQuery;
-      search = await doSearch(retryQ);
-      if (debugEnabled) { debug.searchRetriedWithBase = true; debug.effectiveQ = retryQ; }
+    if (debugEnabled) {
+      debug.search = { status: search.status, provider: search.provider, items: search.items.length };
+      debug.providersTried = providersTried;
+      debug.logs = logs;
     }
-    
-    // Additional fallback: try with broader industry terms if still few results
-    if ((search.items?.length || 0) < 5) {
-      const industryTerms = searchConfig.industryTerms || [];
-      // Simplified query to avoid 400 errors - use single term only
-      const broaderQuery = `${industryTerms[0] || 'compliance'} conference 2025`;
-      const broaderResult = await doSearch(broaderQuery);
-      if (debugEnabled) debug.broader = { query: broaderQuery, status: broaderResult.status, items: broaderResult.items.length };
-      if (broaderResult.items.length > 0) {
-        // Merge results, avoiding duplicates
-        const existingUrls = new Set(search.items.map(item => item.link));
-        const newItems = broaderResult.items.filter(item => !existingUrls.has(item.link));
-        search.items = [...search.items, ...newItems];
-      }
-    }
-    
-    if (debugEnabled) debug.search = { status: search.status, provider: search.provider, items: search.items.length };
 
     // ============================================================================
     // STEP 4: PREPARE URLS FOR EXTRACTION

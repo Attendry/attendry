@@ -1,5 +1,5 @@
 import { RetryService } from "./retry-service";
-import { buildEffectiveQuery } from '@/search/query';
+import { buildSearchQuery } from '@/search/query';
 
 /**
  * Firecrawl Search Service
@@ -350,7 +350,7 @@ export class FirecrawlSearchService {
 
     // Use the centralized query builder instead
     const baseQuery = searchQuery || this.getIndustryTerms(industry);
-    return buildEffectiveQuery({ 
+    return buildSearchQuery({ 
       baseQuery,
       userText: undefined
     });

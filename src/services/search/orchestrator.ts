@@ -1,23 +1,15 @@
-/**
- * Search Orchestrator
- * 
- * Single source of truth for "success" and items
- */
+import { cfg } from '../../common/config';
+import { buildSearchQuery } from '../../common/search/buildQuery';
+import { providers } from '../../providers';
 
-import { firecrawlSearch } from './firecrawlService';
-import { cseSearch } from './cseService';
-import { logger } from '@/utils/logger';
-import { ensureArray } from '@/lib/ensureArray';
-import { buildEffectiveQuery } from '@/search/query';
-import { cseSearch } from '@/search/cse';
-import { filterByDate } from './filter';
+export type Provider = 'firecrawl'|'cse'|'database';
+export type ProviderResult = { provider: Provider; items: string[]; debug?: any };
 
-// Provider list normalization (in case you re-enable arrays later)
-function toArray(v: unknown): string[] {
-  if (Array.isArray(v)) return v;
-  if (typeof v === 'string') return v.split(',').map(s => s.trim()).filter(Boolean);
-  return [];
-}
+const mergeUnique = (a: string[], b: string[]) => {
+  const s = new Set(a);
+  for (const u of b) s.add(u);
+  return [...s];
+};
 
 export async function executeSearch(opts: {
   baseQuery: string;
@@ -25,85 +17,52 @@ export async function executeSearch(opts: {
   country?: string;
   dateFrom?: string;
   dateTo?: string;
-  providers?: unknown;
-  mode?: string;
-  searchConfig?: any;
-}) {
-  const { baseQuery, userText, country, dateFrom, dateTo, providers: providerInput, mode, searchConfig } = opts;
+}): Promise<{ items: string[]; providerUsed: Provider; providersTried: Provider[]; logs: any[] }> {
+  const logs:any[] = [];
+  const q = buildSearchQuery({ baseQuery: opts.baseQuery, userText: opts.userText });
 
-  const providers = toArray(process.env.SEARCH_PROVIDERS ?? providerInput ?? ['firecrawl','cse']);
+  let best: ProviderResult | null = null;
+  const tried: Provider[] = [];
 
-  // Build the effective query once, and use it everywhere
-  const effectiveQ = buildEffectiveQuery({
-    baseQuery: baseQuery?.trim() || searchConfig?.baseQuery?.trim() || '',
-    userText: userText,
-  });
-
-  console.info('[query_debug]', {
-    searchConfigBaseQuery: searchConfig?.baseQuery,
-    passedBaseQuery: baseQuery,
-    userText: userText,
-    effectiveQ,
-  });
-
-  async function firecrawlSearch(q: string) {
-    // Hard stop if anyone tries to inject slow params again
-    const forbidden = ['tbs', 'cd_min', 'cd_max', 'location'];
-    const leaked = JSON.stringify(opts ?? {}).toLowerCase();
-    if (forbidden.some(k => leaked.includes(k))) {
-      console.warn('[firecrawl_guard] Removing forbidden search params (tbs/location).');
+  // Helper to adopt results if non-empty, otherwise keep looking
+  const consider = (r: ProviderResult) => {
+    tried.push(r.provider);
+    logs.push({ at: 'provider_result', provider: r.provider, count: r.items.length });
+    if (!best && r.items.length > 0) best = r; // adopt first non-empty
+    else if (best && r.items.length > 0 && best.provider !== r.provider) {
+      // optional: additive enrichment
+      best = { ...best, items: mergeUnique(best.items, r.items) };
     }
+  };
 
-    const attempts = [22000, 14000]; // backoff; no more single 15s stall
-    for (const timeoutMs of attempts) {
-      try {
-        const res = await firecrawl.search({
-          query: q,                 // ← ONLY q; no date clamps or location
-          limit: 15,
-          sources: ['web'],
-          ignoreInvalidURLs: true,
-          timeoutMs,
-          scrapeOptions: {
-            formats: ['markdown'],
-            onlyMainContent: false,
-            waitFor: 250,
-            blockAds: true,
-            removeBase64Images: true,
-            // Do NOT set 'location'; it massively increases timeout odds.
-          },
-        });
-        if (Array.isArray(res?.items) && res.items.length) return res;
-      } catch (e: any) {
-        if (!String(e?.name ?? e).toLowerCase().includes('timeout')) throw e;
-      }
+  // Provider order from config
+  for (const p of cfg.providers) {
+    if (p === 'database') {
+      const r = await providers.database.search({ q });        // must return {items:string[]}
+      consider({ provider: 'database', items: r.items, debug: r.debug });
+      continue;
     }
-    return { items: [] };
+    if (p === 'firecrawl') {
+      // IMPORTANT: no hard-coded "veranstaltung germany berlin 2025" and no tbs/location by default
+      const r = await providers.firecrawl.search({
+        q,
+        // If you need date constraints, expose them as typed fields the provider understands.
+        // DO NOT send "tbs" or "location" unless feature-flagged:
+        // tbs: undefined, location: undefined,
+        dateFrom: opts.dateFrom, dateTo: opts.dateTo,
+      });
+      consider({ provider: 'firecrawl', items: r.items, debug: r.debug });
+      continue;
+    }
+    if (p === 'cse') {
+      const r = await providers.cse.search({ q, country: opts.country });
+      consider({ provider: 'cse', items: r.items, debug: r.debug });
+      continue;
+    }
   }
 
-  const fc = await firecrawlSearch(effectiveQ);
+  // If everything empty, return empty once (no phantom overwrite)
+  if (!best) return { items: [], providerUsed: cfg.providers[0] ?? 'cse', providersTried: tried, logs };
 
-  const cse = await cseSearch(effectiveQ);
-
-  const providerUsed = (fc.items?.length ? 'firecrawl' : (cse.items?.length ? 'cse' : 'none'));
-  const rawItems = fc.items?.length ? fc.items : cse.items;
-
-  console.info('[providers]', { providerUsed, firecrawlCount: fc.items?.length ?? 0, cseCount: cse.items?.length ?? 0 });
-
-  const searchMode: 'events' | 'knowledge' = mode === 'events' ? 'events' : 'knowledge';
-  const afterDate = filterByDate(rawItems, { mode: searchMode, from: dateFrom, to: dateTo });
-
-  // Failsafe: if knowledge mode somehow empties, fall back to raw top 10
-  const finalItems = afterDate.length ? afterDate : (searchMode === 'knowledge' ? rawItems.slice(0, 10) : afterDate);
-
-  console.info('[date_filtering]', {
-    mode: searchMode,
-    from: dateFrom,
-    to: dateTo,
-    beforeCount: rawItems.length,
-    afterCount: finalItems.length,
-  });
-
-  console.info('[sanity]', { effectiveQ, firecrawlQueryEqualsEffectiveQ: true });
-
-  return { providerUsed, items: finalItems };
+  return { items: best.items, providerUsed: best.provider, providersTried: tried, logs };
 }

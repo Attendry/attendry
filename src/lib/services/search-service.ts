@@ -13,7 +13,7 @@ import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/servic
 import { executeWithFallback } from "@/lib/services/fallback-strategies";
 import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
 import { runSearch } from "@/search/orchestrator";
-import { buildEffectiveQuery } from "@/search/query";
+import { buildSearchQuery } from "@/search/query";
 import { cseSearch } from "@/search/providers/cse";
 import { searchCacheKey } from "@/search/cache";
 import { FLAGS } from "@/config/flags";
@@ -587,7 +587,7 @@ export class SearchService {
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
       
       // Normalize effectiveQ (single parentheses, no postfix)
-      const effectiveQ = buildEffectiveQuery({
+      const effectiveQ = buildSearchQuery({
         baseQuery: searchConfig.baseQuery,
         userText: params.q
       });
@@ -609,7 +609,7 @@ export class SearchService {
       let urls: string[] = [];
 
       try {
-        const q = buildEffectiveQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
+        const q = buildSearchQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
         const fcResult = await FirecrawlSearchService.searchEvents({
           query: q,
           country: params.country,
@@ -622,7 +622,7 @@ export class SearchService {
         providerUsed = 'firecrawl';
       } catch (err) {
         console.warn('[firecrawl.build] skip -> using CSE', String(err));
-        const q = buildEffectiveQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
+        const q = buildSearchQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
         urls = await cseSearch(q);
         providerUsed = 'cse';
       }
