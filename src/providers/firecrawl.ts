@@ -2,12 +2,12 @@ import type { SearchParams } from './types';
 
 export async function search(params: { q: string; dateFrom?: string; dateTo?: string }) {
   try {
-    // Check for API key
-    const apiKey = process.env.FIRECRAWL_API_KEY;
+    // Check for API key - try both possible names
+    const apiKey = process.env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_KEY;
     
     if (!apiKey) {
-      console.error('[firecrawl] Missing API key: FIRECRAWL_API_KEY not set');
-      return { items: [], debug: { error: 'Missing API key: FIRECRAWL_API_KEY not set', rawCount: 0 } };
+      console.error('[firecrawl] Missing API key: FIRECRAWL_API_KEY or FIRECRAWL_KEY not set');
+      return { items: [], debug: { error: 'Missing API key: FIRECRAWL_API_KEY or FIRECRAWL_KEY not set', rawCount: 0 } };
     }
 
     const body:any = {
