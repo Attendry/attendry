@@ -178,7 +178,7 @@ URLs: ${urls.slice(0, 20).join(', ')}
 Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3"]`;
 
     // Try the correct Gemini API endpoint with proper model name
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json'
@@ -791,7 +791,8 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     // Block social media and non-event platforms
     const blockedDomains = [
       'linkedin.com', 'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
-      'youtube.com', 'tiktok.com', 'reddit.com', 'mumsnet.com'
+      'youtube.com', 'tiktok.com', 'reddit.com', 'mumsnet.com',
+      'coursehero.com', 'chegg.com', 'studocu.com', 'quizlet.com'
     ];
     
     const isBlocked = blockedDomains.some(domain => urlLower.includes(domain));
@@ -809,6 +810,19 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     
     // Check if URL contains event-related terms
     const hasEventPattern = eventPatterns.some(pattern => urlLower.includes(pattern));
+    
+    // Block non-event URL patterns
+    const nonEventPatterns = [
+      '/tutors-problems', '/problems', '/questions', '/answers', '/homework',
+      '/study', '/learn', '/course', '/lesson', '/tutorial', '/guide',
+      '/blog', '/news', '/article', '/post', '/page', '/about', '/contact'
+    ];
+    
+    const hasNonEventPattern = nonEventPatterns.some(pattern => urlLower.includes(pattern));
+    if (hasNonEventPattern) {
+      console.log('[enhanced_orchestrator] Blocked non-event URL:', url);
+      return false;
+    }
     
     // Check if URL is from known event platforms
     const eventDomains = [
