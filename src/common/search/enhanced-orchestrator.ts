@@ -70,16 +70,16 @@ function processLocation(location: string | null): string[] {
   return [location.toUpperCase()];
 }
 
-// Helper function to build event-focused query
-function buildEventFocusedQuery(baseQuery: string, userText: string, location: string | null): string {
+// Industry-agnostic event-focused query builder
+function buildEventFocusedQuery(baseQuery: string, userText: string, location: string | null, searchConfig: any): string {
   const countries = processLocation(location);
   
-  // Event-specific terms to ensure we find actual events
-  const eventTerms = ['conference', 'konferenz', 'event', 'veranstaltung', 'summit', 'kongress', 'workshop', 'seminar', 'meeting', 'tagung', 'symposium', 'forum'];
+  // Generic event terms (industry-agnostic)
+  const eventTerms = ['conference', 'event', 'summit', 'workshop', 'seminar', 'meeting', 'symposium', 'forum', 'exhibition', 'trade show', 'convention', 'congress'];
   const eventQuery = `(${eventTerms.join(' OR ')})`;
   
   if (countries.length === 1) {
-    // Single country - add country-specific terms with more cities
+    // Single country - add country-specific terms
     const country = countries[0];
     const countryTerms = {
       'DE': ['Germany', 'Deutschland', 'Berlin', 'München', 'Frankfurt', 'Köln', 'Hamburg', 'Stuttgart', 'Düsseldorf', 'Leipzig', 'Hannover', 'Nürnberg', 'Bremen', 'Bonn', 'Essen', 'Mannheim', 'Münster'],
@@ -114,7 +114,7 @@ function buildEventFocusedQuery(baseQuery: string, userText: string, location: s
     };
     
     const terms = countryTerms[country] || [country];
-    const locationTerms = terms.slice(0, 5).join(' OR '); // Use more cities for better coverage
+    const locationTerms = terms.slice(0, 5).join(' OR ');
     return `${baseQuery} ${eventQuery} (${locationTerms})`;
   } else {
     // Multiple countries (EU) - add broader European terms
@@ -124,8 +124,8 @@ function buildEventFocusedQuery(baseQuery: string, userText: string, location: s
   }
 }
 
-// Simple Gemini prioritization (without full OptimizedAIService dependency)
-async function prioritizeUrls(urls: string[], country: string, location: string | null): Promise<string[]> {
+// Industry-agnostic Gemini prioritization
+async function prioritizeUrls(urls: string[], searchConfig: any, country: string, location: string | null, timeframe: string | null): Promise<string[]> {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -133,15 +133,36 @@ async function prioritizeUrls(urls: string[], country: string, location: string 
       return urls;
     }
 
-    // Create a location-aware prompt for prioritization
+    // Build context from search config
+    const industry = searchConfig.industry || 'general';
+    const baseQuery = searchConfig.baseQuery || '';
+    const excludeTerms = searchConfig.excludeTerms || '';
+    
+    // Process location context
     const countries = processLocation(location);
     const locationContext = countries.length === 1 ? 
       `in ${countries[0]}` : 
       `in European countries (${countries.slice(0, 5).join(', ')}...)`;
     
-    const prompt = `You are a legal events expert. Given these URLs, return the top 10 most relevant for legal/compliance events ${locationContext}. 
+    // Process timeframe context
+    const timeframeContext = timeframe ? 
+      `within the ${timeframe.replace('_', ' ')} timeframe` : 
+      'within the specified timeframe';
+    
+    const prompt = `You are an expert in ${industry} events and conferences. 
 
-IMPORTANT: Only return URLs for events that are actually taking place ${locationContext}. Exclude events from other countries.
+SEARCH CONTEXT:
+- Industry: ${industry}
+- Base Query: ${baseQuery}
+- Exclude Terms: ${excludeTerms}
+- Location: ${locationContext}
+- Timeframe: ${timeframeContext}
+
+TASK: From the URLs below, return the top 10 most relevant for ${industry} events that are:
+1. Actually taking place ${locationContext}
+2. ${timeframeContext}
+3. Match the search context: ${baseQuery}
+4. Are real events (conferences, workshops, seminars, etc.) - not general websites
 
 URLs: ${urls.slice(0, 20).join(', ')}
 
@@ -189,8 +210,8 @@ Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3
   }
 }
 
-// Simple Firecrawl extraction
-async function extractEventDetails(url: string): Promise<any> {
+// Industry-agnostic event extraction using Gemini
+async function extractEventDetails(url: string, searchConfig: any): Promise<any> {
   try {
     const apiKey = process.env.FIRECRAWL_KEY || process.env.FIRECRAWL_API_KEY;
     if (!apiKey) {
@@ -220,25 +241,121 @@ async function extractEventDetails(url: string): Promise<any> {
     const data = await response.json();
     const content = data.data?.markdown || '';
     
-    // Enhanced extraction logic
-    const title = extractTitle(content, url);
-    const description = extractDescription(content);
-    const starts_at = extractDate(content);
-    const location = extractLocation(content, url);
-    const venue = extractVenue(content);
-
-    // Format location as "City, Country" if both available
-    let locationFormatted = null;
-    if (location.city && location.country) {
-      locationFormatted = `${location.city}, ${location.country}`;
-    } else if (location.country) {
-      locationFormatted = location.country;
-    }
-
-    return { title, description, starts_at, country: location.country, city: location.city, location: locationFormatted, venue };
+    // Use Gemini for intelligent extraction
+    const extractedData = await extractWithGemini(content, url, searchConfig);
+    
+    return extractedData;
   } catch (error) {
     console.error('[extract] Error extracting', url, error);
     return { title: null, description: null, starts_at: null, country: null, venue: null };
+  }
+}
+
+// Use Gemini for intelligent event data extraction
+async function extractWithGemini(content: string, url: string, searchConfig: any): Promise<any> {
+  try {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey) {
+      // Fallback to simple extraction
+      return {
+        title: extractTitle(content, url),
+        description: extractDescription(content),
+        starts_at: extractDate(content),
+        country: extractLocation(content, url).country,
+        city: extractLocation(content, url).city,
+        location: null,
+        venue: extractVenue(content)
+      };
+    }
+
+    const industry = searchConfig.industry || 'general';
+    const baseQuery = searchConfig.baseQuery || '';
+    
+    const prompt = `You are an expert in extracting event information from web content.
+
+INDUSTRY CONTEXT: ${industry}
+SEARCH CONTEXT: ${baseQuery}
+
+Extract the following information from this web content for an ${industry} event:
+
+CONTENT:
+${content.substring(0, 4000)} // Limit content to avoid token limits
+
+Return a JSON object with:
+{
+  "title": "Event title or null if not found",
+  "description": "Brief event description or null if not found", 
+  "starts_at": "Event date in YYYY-MM-DD format or null if not found",
+  "country": "Country code (DE, AT, CH, etc.) or null if not found",
+  "city": "City name or null if not found",
+  "venue": "Venue name or null if not found"
+}
+
+Focus on ${industry} events. If this is not an event page, return null for most fields.`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1
+        }
+      })
+    });
+
+    if (!response.ok) {
+      console.warn('[extract] Gemini extraction failed:', response.status);
+      return {
+        title: extractTitle(content, url),
+        description: extractDescription(content),
+        starts_at: extractDate(content),
+        country: extractLocation(content, url).country,
+        city: extractLocation(content, url).city,
+        location: null,
+        venue: extractVenue(content)
+      };
+    }
+
+    const data = await response.json();
+    const extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!extractedText) {
+      throw new Error('No content in Gemini response');
+    }
+
+    const extracted = JSON.parse(extractedText);
+    
+    // Format location as "City, Country" if both available
+    let locationFormatted = null;
+    if (extracted.city && extracted.country) {
+      locationFormatted = `${extracted.city}, ${extracted.country}`;
+    } else if (extracted.country) {
+      locationFormatted = extracted.country;
+    }
+
+    return {
+      title: extracted.title,
+      description: extracted.description,
+      starts_at: extracted.starts_at,
+      country: extracted.country,
+      city: extracted.city,
+      location: locationFormatted,
+      venue: extracted.venue
+    };
+  } catch (error) {
+    console.error('[extract] Gemini extraction error:', error);
+    // Fallback to simple extraction
+    return {
+      title: extractTitle(content, url),
+      description: extractDescription(content),
+      starts_at: extractDate(content),
+      country: extractLocation(content, url).country,
+      city: extractLocation(content, url).city,
+      location: null,
+      venue: extractVenue(content)
+    };
   }
 }
 
@@ -483,30 +600,43 @@ function extractLocation(content: string, url: string): { city: string | null; c
     }
   }
   
-  // Additional German indicators in content
+  // Additional country indicators in content (industry-agnostic)
   if (!country && content) {
-    const germanIndicators = [
-      /\b(Deutschland|Germany)\b/i,
-      /\b(Bundesrepublik|BRD)\b/i,
-      /\b(Deutsche|Deutscher|Deutsche)\b/i,
-      /\b(Deutsch|Deutsche)\b/i,
-      /\b(EU|Europäische Union)\b/i,
-      /\b(Euro|€)\b/i,
-      /\b(DSGVO|GDPR)\b/i,
-      /\b(Bundesgerichtshof|BGH)\b/i,
-      /\b(Bundesverfassungsgericht|BVerfG)\b/i,
-      /\b(Bundestag|Bundesrat)\b/i,
-      /\b(Landgericht|Amtsgericht|Oberlandesgericht)\b/i,
-      /\b(Rechtsanwalt|Anwalt|Anwältin)\b/i,
-      /\b(Notar|Notarin)\b/i,
-      /\b(Steuerberater|Steuerberaterin)\b/i,
-      /\b(Wirtschaftsprüfer|Wirtschaftsprüferin)\b/i,
-      /\b(Compliance|Datenschutz|Whistleblowing)\b/i
+    const countryIndicators = [
+      { pattern: /\b(Deutschland|Germany)\b/i, country: 'DE' },
+      { pattern: /\b(Österreich|Austria)\b/i, country: 'AT' },
+      { pattern: /\b(Schweiz|Switzerland)\b/i, country: 'CH' },
+      { pattern: /\b(Frankreich|France)\b/i, country: 'FR' },
+      { pattern: /\b(Italien|Italy)\b/i, country: 'IT' },
+      { pattern: /\b(Spanien|Spain)\b/i, country: 'ES' },
+      { pattern: /\b(Niederlande|Netherlands)\b/i, country: 'NL' },
+      { pattern: /\b(Belgien|Belgium)\b/i, country: 'BE' },
+      { pattern: /\b(Luxemburg|Luxembourg)\b/i, country: 'LU' },
+      { pattern: /\b(Dänemark|Denmark)\b/i, country: 'DK' },
+      { pattern: /\b(Schweden|Sweden)\b/i, country: 'SE' },
+      { pattern: /\b(Norwegen|Norway)\b/i, country: 'NO' },
+      { pattern: /\b(Finnland|Finland)\b/i, country: 'FI' },
+      { pattern: /\b(Polen|Poland)\b/i, country: 'PL' },
+      { pattern: /\b(Tschechien|Czech Republic)\b/i, country: 'CZ' },
+      { pattern: /\b(Ungarn|Hungary)\b/i, country: 'HU' },
+      { pattern: /\b(Slowakei|Slovakia)\b/i, country: 'SK' },
+      { pattern: /\b(Slowenien|Slovenia)\b/i, country: 'SI' },
+      { pattern: /\b(Kroatien|Croatia)\b/i, country: 'HR' },
+      { pattern: /\b(Bulgarien|Bulgaria)\b/i, country: 'BG' },
+      { pattern: /\b(Rumänien|Romania)\b/i, country: 'RO' },
+      { pattern: /\b(Estland|Estonia)\b/i, country: 'EE' },
+      { pattern: /\b(Lettland|Latvia)\b/i, country: 'LV' },
+      { pattern: /\b(Litauen|Lithuania)\b/i, country: 'LT' },
+      { pattern: /\b(Malta)\b/i, country: 'MT' },
+      { pattern: /\b(Zypern|Cyprus)\b/i, country: 'CY' },
+      { pattern: /\b(Irland|Ireland)\b/i, country: 'IE' },
+      { pattern: /\b(Portugal)\b/i, country: 'PT' },
+      { pattern: /\b(Griechenland|Greece)\b/i, country: 'GR' }
     ];
     
-    for (const indicator of germanIndicators) {
-      if (indicator.test(content)) {
-        country = 'DE';
+    for (const { pattern, country: indicatorCountry } of countryIndicators) {
+      if (pattern.test(content)) {
+        country = indicatorCountry;
         break;
       }
     }
@@ -553,7 +683,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
 
   // Build event-focused query
   const baseQ = buildSearchQuery({ baseQuery, userText, excludeTerms });
-  const q = buildEventFocusedQuery(baseQ, userText, location);
+  const q = buildEventFocusedQuery(baseQ, userText, location, cfg);
 
   console.log('[enhanced_orchestrator] Search parameters:', {
     userText,
@@ -655,7 +785,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
 
   // Step 3: Prioritize URLs with Gemini
   console.log('[enhanced_orchestrator] Step 3: Prioritizing URLs with Gemini');
-  const prioritizedUrls = await prioritizeUrls(eventUrls, country, location);
+  const prioritizedUrls = await prioritizeUrls(eventUrls, cfg, country, location, timeframe);
   logs.push({ at: 'prioritization', inputCount: eventUrls.length, outputCount: prioritizedUrls.length, location });
 
   // Step 4: Extract event details from prioritized URLs
@@ -666,7 +796,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     const url = prioritizedUrls[i];
     console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', Math.min(prioritizedUrls.length, 10), ':', url);
     
-    const details = await extractEventDetails(url);
+    const details = await extractEventDetails(url, cfg);
     
     // Apply country filtering - if searching for specific country, only include events from that country
     if (country && country !== 'EU') {
