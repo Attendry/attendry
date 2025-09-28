@@ -82,12 +82,12 @@ BEGIN
   -- Parse text fields into JSONB arrays/objects
   v_industry_terms := CASE 
     WHEN p_industry_terms_text = '' THEN '[]'::jsonb
-    ELSE ('[' || array_to_string(string_to_array(p_industry_terms_text, E'\n'), '","') || ']')::jsonb
+    ELSE ('["' || array_to_string(string_to_array(p_industry_terms_text, E'\n'), '","') || '"]')::jsonb
   END;
   
   v_icp_terms := CASE 
     WHEN p_icp_terms_text = '' THEN '[]'::jsonb
-    ELSE ('[' || array_to_string(string_to_array(p_icp_terms_text, E'\n'), '","') || ']')::jsonb
+    ELSE ('["' || array_to_string(string_to_array(p_icp_terms_text, E'\n'), '","') || '"]')::jsonb
   END;
   
   v_speaker_prompts := jsonb_build_object(

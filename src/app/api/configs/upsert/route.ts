@@ -16,12 +16,12 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase.rpc("upsert_search_configuration_text", {
       p_name:                  body.name,
       p_industry:              body.industry ?? null,
-      p_base_search_query:     body.base_search_query ?? null,
-      p_exclude_terms_text:    body.exclude_terms ?? "",
-      p_industry_terms_text:   body.industry_terms ?? "",
-      p_icp_terms_text:        body.icp_terms ?? "",
-      p_speaker_prompts_text:  body.speaker_prompts ?? "",
-      p_normalization_prompts_text: body.normalization_prompts ?? ""
+      p_base_search_query:     body.baseQuery ?? body.base_search_query ?? null,
+      p_exclude_terms_text:    body.excludeTerms ?? body.exclude_terms ?? "",
+      p_industry_terms_text:   body.industryTerms ?? body.industry_terms ?? "",
+      p_icp_terms_text:        body.icpTerms ?? body.icp_terms ?? "",
+      p_speaker_prompts_text:  body.speakerPrompts ?? body.speaker_prompts ?? "",
+      p_normalization_prompts_text: body.normalizationPrompts ?? body.normalization_prompts ?? ""
     });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
