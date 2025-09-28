@@ -19,7 +19,7 @@ export async function search(params: { q: string; dateFrom?: string; dateTo?: st
     console.warn('[firecrawl] legacy knobs in use', { tbs: body.tbs, location: body.location });
   }
 
-  const res = await fetch(FIRECRAWL_URL, { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(body) });
+  const res = await fetch('https://api.firecrawl.dev/v1/search', { method: 'POST', headers: {'content-type':'application/json', 'Authorization': `Bearer ${process.env.FIRECRAWL_API_KEY}`}, body: JSON.stringify(body) });
   const json = await res.json();
 
   // Map to {items:string[]}

@@ -22,603 +22,96 @@
  * @version 2.0
  */
 
-export const runtime = "nodejs";
-import { NextRequest, NextResponse } from "next/server";
-import { SearchService } from "@/lib/services/search-service";
-import { ConfigService } from "@/lib/services/config-service";
-import { supabaseServer } from "@/lib/supabase-server";
-import { executeSearch } from "@/services/search/orchestrator";
-import { 
-  EventDiscoveryRequest, 
-  EventDiscoveryResponse, 
-  ErrorResponse 
-} from "@/lib/types/api";
-import { EventData } from "@/lib/types/core";
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { cfg } from '@/common/config';
+import { executeSearch } from '@/services/search/orchestrator';
+import { buildSearchQuery } from '@/common/search/buildQuery';
 
-const DROP_TITLE = /\b(404|page not found|nicht gefunden|fehler\s*404)\b/i;
+const BodySchema = z.object({
+  userText: z.string().optional(),
+  baseQuery: z.string().optional(),
+  country: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
+  // ...anything else you accept
+}).passthrough();
 
-const DE_CITIES = new Set([
-  "Berlin","München","Munich","Hamburg","Köln","Cologne","Frankfurt","Stuttgart","Düsseldorf",
-  "Leipzig","Bremen","Dresden","Hannover","Nürnberg","Nuremberg","Heidelberg","Freiburg",
-  "Aachen","Bonn","Münster","Mainz","Wiesbaden","Mannheim","Karlsruhe","Augsburg","Bielefeld",
-  "Bochum","Wuppertal","Essen","Duisburg","Mönchengladbach","Gelsenkirchen","Braunschweig",
-  "Chemnitz","Kiel","Halle","Magdeburg","Freiburg im Breisgau","Krefeld","Lübeck","Oberhausen",
-  "Erfurt","Rostock","Kassel","Hagen","Hamm","Saarbrücken","Mülheim","Potsdam","Ludwigshafen",
-  "Oldenburg","Leverkusen","Osnabrück","Solingen","Heidelberg","Herne","Neuss","Darmstadt",
-  "Paderborn","Regensburg","Ingolstadt","Würzburg","Fürth","Wolfsburg","Offenbach","Ulm",
-  "Heilbronn","Pforzheim","Göttingen","Bottrop","Trier","Recklinghausen","Reutlingen","Bremerhaven",
-  "Koblenz","Bergisch Gladbach","Jena","Remscheid","Erlangen","Moers","Siegen","Hildesheim",
-  "Salzgitter"
-]);
-
-// German location indicators (cities, states, regions)
-const DE_LOCATION_INDICATORS = new Set([
-  "Baden-Württemberg", "Bayern", "Bavaria", "Berlin", "Brandenburg", "Bremen", "Hamburg",
-  "Hessen", "Hesse", "Mecklenburg-Vorpommern", "Niedersachsen", "Lower Saxony", "Nordrhein-Westfalen",
-  "North Rhine-Westphalia", "Rheinland-Pfalz", "Rhineland-Palatinate", "Saarland", "Sachsen",
-  "Saxony", "Sachsen-Anhalt", "Saxony-Anhalt", "Schleswig-Holstein", "Thüringen", "Thuringia",
-  "Deutschland", "Germany", "Deutsch", "German"
-]);
-
-function tldCountry(u: string): string | null {
+export async function POST(req: Request) {
   try {
-    const tld = new URL(u).hostname.split(".").pop()!.toLowerCase();
-    const m: Record<string,string> = {
-      de:"Germany", fr:"France", nl:"Netherlands", it:"Italy", es:"Spain", be:"Belgium",
-      ch:"Switzerland", at:"Austria", uk:"United Kingdom", gb:"United Kingdom",
-      se:"Sweden", pl:"Poland", pt:"Portugal", cz:"Czechia", dk:"Denmark", fi:"Finland", ie:"Ireland"
-    };
-    return m[tld] || null;
-  } catch { return null; }
-}
-
-// Keep items that match the selected country, with sensible fallbacks.
-function postExtractFilter(events: any[], country: string) {
-  if (!country) return { kept: events, reasons: { kept: events.length } };
-
-  const want = country.toLowerCase(); // e.g. "de"
-  const wantName = { de: "Germany", fr:"France", nl:"Netherlands", it:"Italy", es:"Spain",
-                     be:"Belgium", ch:"Switzerland", at:"Austria", uk:"United Kingdom",
-                     gb:"United Kingdom", se:"Sweden", pl:"Poland", pt:"Portugal",
-                     cz:"Czechia", dk:"Denmark", fi:"Finland", ie:"Ireland" }[want];
-
-  const reasons: Record<string, number> = { kept:0, wrongCountry:0, ambiguous:0 };
-
-  const kept = events.filter((e) => {
-    // explicit country match (exact)
-    if (e.country && wantName && e.country === wantName) { reasons.kept++; return true; }
-
-    // Get all location-related text for analysis
-    const locationText = `${e.city || ''} ${e.country || ''} ${e.location || ''} ${e.venue || ''}`.toLowerCase();
-    
-    // Define non-target country indicators for each country
-    const nonTargetIndicators: Record<string, string[]> = {
-      de: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'toronto', 'orlando', 'florida', 'fl', 'ca', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
-      fr: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
-      nl: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london'],
-      gb: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'netherlands', 'amsterdam'],
-      es: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
-      it: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'uk', 'london', 'netherlands', 'amsterdam'],
-      se: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
-      pl: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
-      be: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam'],
-      ch: ['americas', 'america', 'usa', 'us', 'united states', 'canada', 'germany', 'berlin', 'france', 'paris', 'spain', 'madrid', 'italy', 'rome', 'uk', 'london', 'netherlands', 'amsterdam']
-    };
-
-    // First, check if event is clearly in a non-target location (exclude these)
-    const indicators = nonTargetIndicators[want] || [];
-    for (const indicator of indicators) {
-      if (locationText.includes(indicator)) { 
-        reasons.wrongCountry = (reasons.wrongCountry||0) + 1; 
-        return false; 
-      }
+    const json = await req.json().catch(() => ({}));
+    const parsed = BodySchema.safeParse(json);
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'invalid_request', details: parsed.error.errors }, { status: 400 });
     }
 
-    // For Germany, check various location indicators
-    if (want === "de") {
-      // Check city in expanded German cities list
-      if (e.city && DE_CITIES.has(e.city)) { reasons.kept++; return true; }
-      
-      // Check if any location field contains German indicators
-      for (const indicator of DE_LOCATION_INDICATORS) {
-        if (locationText.includes(indicator.toLowerCase())) { reasons.kept++; return true; }
-      }
-    }
-
-    // For other countries, check if city contains country name or major cities
-    if (want !== "de") {
-      // Check if city contains country name
-      if (e.city && wantName && e.city.toLowerCase().includes(wantName.toLowerCase())) { 
-        reasons.kept++; 
-        return true; 
-      }
-      
-      // Check for major cities of the target country
-      const majorCities: Record<string, string[]> = {
-        fr: ['paris', 'lyon', 'marseille', 'toulouse', 'nice', 'nantes', 'strasbourg', 'montpellier', 'bordeaux', 'lille'],
-        nl: ['amsterdam', 'rotterdam', 'the hague', 'utrecht', 'eindhoven', 'tilburg', 'groningen', 'almere', 'breda', 'nijmegen'],
-        gb: ['london', 'birmingham', 'manchester', 'glasgow', 'liverpool', 'leeds', 'sheffield', 'edinburgh', 'bristol', 'leicester'],
-        es: ['madrid', 'barcelona', 'valencia', 'seville', 'zaragoza', 'málaga', 'murcia', 'palma', 'las palmas', 'bilbao'],
-        it: ['rome', 'milan', 'naples', 'turin', 'palermo', 'genoa', 'bologna', 'florence', 'bari', 'catania'],
-        se: ['stockholm', 'gothenburg', 'malmö', 'uppsala', 'västerås', 'örebro', 'linköping', 'helsingborg', 'jönköping', 'norrköping'],
-        pl: ['warsaw', 'krakow', 'lodz', 'wroclaw', 'poznan', 'gdansk', 'szczecin', 'bydgoszcz', 'lublin', 'katowice'],
-        be: ['brussels', 'antwerp', 'ghent', 'charleroi', 'liège', 'bruges', 'namur', 'leuven', 'mons', 'aalst'],
-        ch: ['zurich', 'geneva', 'basel', 'bern', 'lausanne', 'winterthur', 'lucerne', 'st. gallen', 'lugano', 'biel']
-      };
-      
-      const cities = majorCities[want] || [];
-      if (e.city && cities.some(city => e.city.toLowerCase().includes(city))) {
-        reasons.kept++;
-        return true;
-      }
-    }
-
-    // TLD-based fallback
-    const tld = tldCountry(e.source_url);
-    if (tld && wantName && tld === wantName) { reasons.kept++; return true; }
-
-    // Only check title/description if we don't have clear location data
-    if (!e.city && !e.country && !e.location && !e.venue) {
-      const contentText = `${e.title || ''} ${e.description || ''}`.toLowerCase();
-      if (contentText.includes(wantName.toLowerCase())) { 
-        reasons.kept++; 
-        return true; 
-      }
-    }
-
-    // otherwise drop
-    if (e.country || e.city || tld) reasons.wrongCountry = (reasons.wrongCountry||0) + 1;
-    else reasons.ambiguous = (reasons.ambiguous||0) + 1;
-    return false;
-  });
-
-  return { kept, reasons };
-}
-
-function sanitizeEvents(arr: any[]) {
-  const out: any[] = [];
-  for (const e of arr) {
-    // drop obvious 404s
-    if (e.title && DROP_TITLE.test(e.title)) continue;
-
-    // backfill country from TLD if missing
-    if (!e.country) {
-      const c = tldCountry(e.source_url);
-      if (c) e.country = c;
-    }
-
-    // trim datetimes to date if needed
-    if (e.starts_at && typeof e.starts_at === "string") e.starts_at = e.starts_at.slice(0,10);
-    if (e.ends_at && typeof e.ends_at === "string") e.ends_at = e.ends_at.slice(0,10);
-
-    out.push(e);
-  }
-  return out;
-}
-
-const EU: Record<string, string> = {
-  "": "", de: "Germany", fr: "France", nl: "Netherlands", gb: "United Kingdom",
-  es: "Spain", it: "Italy", se: "Sweden", pl: "Poland", be: "Belgium", ch: "Switzerland",
-};
-
-function inRange(iso: string | null | undefined, from: string, to: string) {
-  if (!iso) return true; // keep if no date - let other filters handle quality
-  const x = new Date(iso).getTime();
-  const a = new Date(from + "T00:00:00Z").getTime();
-  const b = new Date(to + "T23:59:59Z").getTime();
-  return x >= a && x <= b;
-}
-
-// Load search configuration
-async function loadSearchConfig(origin: string, headers: HeadersInit) {
-  const defaults = {
-    baseQuery: '(conference OR summit OR forum OR congress OR symposium OR "industry event" OR "annual meeting") (legal OR compliance OR investigation OR "e-discovery" OR ediscovery)',
-    excludeTerms: 'reddit Mumsnet "legal advice" forum',
-    industryTerms: ['compliance', 'investigations', 'regtech', 'ESG', 'sanctions'],
-    icpTerms: ['general counsel', 'chief compliance officer', 'investigations lead']
-  };
-  try {
-    const abs = new URL('/api/config/search', origin).toString();
-    const res = await fetch(abs, { cache: 'no-store', headers });
-    const data = await res.json().catch(() => ({}));
-    const c = data?.config || {};
-    return {
-      baseQuery: c.baseQuery || c.base_query || defaults.baseQuery,
-      excludeTerms: c.excludeTerms || c.exclude_terms || defaults.excludeTerms,
-      industryTerms: c.industryTerms || c.industry_terms || defaults.industryTerms,
-      icpTerms: c.icpTerms || c.icp_terms || defaults.icpTerms,
-      industry: c.industry || 'general'
-    };
-  } catch (error) {
-    console.warn('Failed to load search config, using defaults:', error);
-    return defaults as any;
-  }
-}
-
-function normalizeUrl(u: string) {
-  try {
-    const url = new URL(u);
-    url.hash = "";
-    url.search = "";
-    let path = url.pathname.replace(/\/+$/, "");
-    if (!path) path = "/";
-    return `${url.hostname.toLowerCase()}${path}`;
-  } catch { return u; }
-}
-function normalizeTitle(t?: string | null) {
-  return (t || "").toLowerCase().replace(/\s+/g, " ").replace(/[^\p{L}\p{N}\s]/gu, "").trim();
-}
-function dedupeEvents(arr: any[]) {
-  const seen = new Set<string>();
-  const out: any[] = [];
-  for (const e of arr) {
-    const key = `${normalizeUrl(e.source_url)}|${normalizeTitle(e.title)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(e);
-  }
-  return out;
-}
-
-/**
- * POST /api/events/run
- * 
- * Main endpoint for running the complete event discovery pipeline.
- * 
- * Request Body:
- * - q: Search query string (optional, defaults to "")
- * - country: Country code for filtering (optional, defaults to "")
- * - from: Start date for filtering (required)
- * - to: End date for filtering (required)
- * - provider: Search provider (optional, defaults to "cse")
- * 
- * Response:
- * - events: Array of processed event objects
- * - debug: Debug information for troubleshooting
- * - error: Error message if something went wrong
- * 
- * @param req - Next.js request object
- * @returns JSON response with processed events
- */
-export async function POST(req: NextRequest): Promise<NextResponse<EventDiscoveryResponse | ErrorResponse>> {
-  try {
-    // Parse request parameters with validation
-    const requestData: EventDiscoveryRequest = await req.json();
-    const { q = "", country = "", from, to, provider = "cse" } = requestData;
-    const debugEnabled = req.nextUrl?.searchParams?.get("debug") === "1" || process.env.NODE_ENV !== 'production';
-    if (!from || !to) return NextResponse.json({ error: "from/to required", events: [] }, { status: 400 });
-    
-    // Build absolute URLs for internal API calls
-    // This ensures the API calls work correctly regardless of deployment environment
-    const origin = req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || "http://127.0.0.1:4000";
-    const url = (p: string) => new URL(p, origin).toString();
-    const forwardHeaders: HeadersInit = {
-      Cookie: req.headers.get('cookie') || ''
-    };
-    const authHeader = req.headers.get('authorization');
-    if (authHeader) (forwardHeaders as any).Authorization = authHeader;
-
-    // Initialize debug object for troubleshooting and monitoring
-    const debug: any = debugEnabled ? { marker: "RUN_V4", country, provider } : {};
-
-    // ============================================================================
-    // STEP 1: LOAD SEARCH CONFIGURATION
-    // ============================================================================
-    
-    // Load search configuration using shared service
-    const { config: searchConfig } = await ConfigService.getSearchConfig();
-    if (debugEnabled) debug.searchConfig = { industry: searchConfig.industry, baseQuery: searchConfig.baseQuery };
-
-    // ============================================================================
-    // STEP 2: GET USER PROFILE FOR PERSONALIZED SEARCH
-    // ============================================================================
-    
-    // Attempt to get authenticated user for personalized search (tolerate missing Supabase)
-    let supabase: any = null;
-    try {
-      supabase = await supabaseServer();
-    } catch {
-      supabase = null;
-    }
-    let uid: string | null = null;
-    if (supabase) {
-      try {
-        const auth: any = (supabase as any)?.auth;
-        if (auth && typeof auth.getUser === "function") {
-          const { data } = await auth.getUser();
-          uid = data?.user?.id ?? null;
-        }
-      } catch {
-        // No session or mismatched versions; proceed without profile bias
-        uid = null;
-      }
-    }
-
-    let profile: any = null;
-    if (uid && supabase) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("competitors, icp_terms, industry_terms, use_in_basic_search")
-        .eq("id", uid)
-        .maybeSingle();
-      profile = data;
-    }
-
-    // Use explicit query building - no postfix injection
-    const effectiveQ = (q || "").trim() 
-      ? `(${(q || "").trim()})`
-      : `(${searchConfig.baseQuery})`;
-
-    if (debugEnabled) debug.effectiveQ = effectiveQ;
-
-    // ============================================================================
-    // STEP 3: EXECUTE SEARCH WITH FALLBACK STRATEGY
-    // ============================================================================
-    
-    // Execute search using new orchestrator
-    const { items, providerUsed, providersTried, logs } = await executeSearch({
-      baseQuery: searchConfig.baseQuery,
-      userText: userQuery,
+    const {
+      userText = '',                          // <-- canonical, replaces userQuery
+      baseQuery: baseQueryFromBody,
       country,
-      dateFrom: from,
-      dateTo: to,
+      dateFrom,
+      dateTo,
+    } = parsed.data;
+
+    // Use configured baseQuery if body not provided
+    const searchConfig = {
+      ...cfg.searchConfig,
+      baseQuery: baseQueryFromBody ?? cfg.searchConfig?.baseQuery ?? '',
+    };
+
+    if (!searchConfig.baseQuery?.trim()) {
+      return NextResponse.json({ error: 'baseQuery_missing' }, { status: 400 });
+    }
+
+    // Build the actual query once (for debug only)
+    const effectiveQ = buildSearchQuery({
+      baseQuery: searchConfig.baseQuery,
+      userText,
     });
 
-    // Preserve items even if CSE later returns 0; do not re-run CSE here.
-    const search = {
-      status: 200,
-      provider: providerUsed,
-      items: items.map(url => ({ title: url, link: url }))
-    };
-    
-    if (debugEnabled) {
-      debug.search = { status: search.status, provider: search.provider, items: search.items.length };
-      debug.providersTried = providersTried;
-      debug.logs = logs;
-    }
+    // Run orchestrator once; do not run any other fallbacks here.
+    const { items, providerUsed, providersTried, logs } = await executeSearch({
+      baseQuery: searchConfig.baseQuery,
+      userText,
+      country,
+      dateFrom,
+      dateTo,
+    });
 
-    // ============================================================================
-    // STEP 4: PREPARE URLS FOR EXTRACTION
-    // ============================================================================
-    
-    // Extract unique URLs from search results
-    let urls = Array.from(new Set(search.items.map(i => i.link)));
-    
-    // If no URLs found, return empty results instead of demo URLs
-    if (urls.length === 0) {
-      console.log('No URLs found from search, returning empty results');
+    const debugPayload = {
+      marker: 'RUN_V4',
+      country: country ?? null,
+      provider: providerUsed,
+      searchConfig,
+      effectiveQ,
+      searchRetriedWithBase: false,
+      search: { status: 200, provider: providerUsed, items: items.length },
+      urls: { unique: new Set(items).size, sample: items.slice(0, 5) },
+      extract: { status: 200, version: items.length ? 'urls_only' : 'no_urls', eventsBeforeFilter: 0, sampleTrace: [] },
+      deduped: { count: new Set(items).size },
+      dateFiltering: {
+        from: dateFrom ?? null,
+        to: dateTo ?? null,
+        beforeCount: 0,
+        allowUndated: false,
+        afterCount: 0,
+      },
+      filter: { kept: 0, reasons: { kept: 0, wrongCountry: 0, ambiguous: 0 } },
+      upsert: { saved: 0 },
+      providersTried,
+      logs,
+    };
+
       return NextResponse.json({
         count: 0,
         saved: [],
         events: [],
-        marker: "RUN_V4",
-        country,
-        provider: search.provider,
-        searchConfig: {
-          industry: searchConfig?.industry,
-          baseQuery: searchConfig?.baseQuery
-        },
-        effectiveQ,
-        searchRetriedWithBase: false,
-        search,
-        urls: { unique: 0, sample: [] },
-        extract: { status: 200, version: "no_urls", eventsBeforeFilter: 0, sampleTrace: [] },
-        deduped: { count: 0 },
-        dateFiltering: { from, to, beforeCount: 0, allowUndated: false, afterCount: 0 },
-        filter: { kept: 0, reasons: { kept: 0, wrongCountry: 0, ambiguous: 0 } },
-        upsert: { saved: 0 }
-      });
-    }
-    if (debugEnabled) debug.urls = { unique: urls.length, sample: urls.slice(0, 3) };
-
-    // ============================================================================
-    // STEP 5: EXTRACT DETAILED EVENT INFORMATION
-    // ============================================================================
-    
-    // Extract detailed event information using shared service
-    const extractResult = await SearchService.extractEvents(urls.slice(0, 20)); // Limit to 20 URLs for performance
-    let { events = [], version: extractVersion, trace = [] } = extractResult;
-    if (debugEnabled) debug.extract = { status: 200, version: extractVersion, eventsBeforeFilter: events.length, sampleTrace: trace.slice(0,3) };
-    events = events as EventData[];
-
-    // if extraction failed hard, synthesize minimal events from search items
-    if (events.length === 0 && search.items.length > 0) {
-      events = search.items.slice(0, 10).map((it) => ({
-        source_url: it.link,
-        title: it.title || it.link,
-        starts_at: null,
-        ends_at: null,
-        city: null,
-        country: null,
-        organizer: null,
-      }));
-      debug.synthesizedFromSearch = true;
-    }
-
-    // ============================================================================
-    // STEP 6: DATA CLEANUP AND DEDUPLICATION
-    // ============================================================================
-    
-    // Remove duplicate events based on URL and title
-    events = dedupeEvents(events);
-    
-    // Sanitize events (remove 404s, backfill countries, normalize dates)
-    events = sanitizeEvents(events);
-    if (debugEnabled) debug.deduped = { count: events.length };
-
-    // ============================================================================
-    // STEP 7: FILTER BY COUNTRY AND DATE
-    // ============================================================================
-    
-    // Apply country-based filtering
-    const { kept, reasons } = postExtractFilter(events, country);
-    console.log(`Country filtering for ${country}:`, {
-      beforeCount: events.length,
-      afterCount: kept.length,
-      reasons: reasons,
-      sampleEvents: events.slice(0, 5).map(e => ({
-        title: e.title,
-        country: e.country,
-        city: e.city,
-        location: e.location,
-        venue: e.venue,
-        source_url: e.source_url
-      })),
-      allEvents: events.map(e => ({
-        title: e.title,
-        country: e.country,
-        city: e.city,
-        location: e.location,
-        venue: e.venue,
-        source_url: e.source_url
-      }))
+      ...debugPayload,
     });
-    events = kept;
-    const undatedCandidates: EventData[] = [];
-    
-    // Determine if we should allow undated items
-    // Allow undated items if we have good country matches or if we're searching for future events
-    const allowUndated = !!(debug as any)?.synthesizedFromSearch ||
-      (typeof (search as any)?.provider === 'string' && (((search as any).provider || '').includes('demo')) ) ||
-      (typeof (extractResult as any)?.note === 'string' && (extractResult as any).note.includes('no FIRECRAWL_KEY')) ||
-      (events.length > 0 && events.some(e => e.country || e.city)) || // Allow if we have location info
-      (events.length > 0); // Allow undated events for all searches - better to show something than nothing
-
-    // Apply date range filtering
-    if (debugEnabled) debug.dateFiltering = { from, to, beforeCount: events.length, allowUndated };
-    const toleranceDays = 7;
-    const toleranceMs = toleranceDays * 24 * 60 * 60 * 1000;
-    const rangeStartMs = new Date(from + "T00:00:00Z").getTime();
-    const rangeEndMs = new Date(to + "T23:59:59Z").getTime();
-    
-    console.log(`Date filtering:`, {
-      from, to,
-      beforeCount: events.length,
-      allowUndated,
-      rangeStartMs: new Date(rangeStartMs).toISOString(),
-      rangeEndMs: new Date(rangeEndMs).toISOString(),
-      sampleEvents: events.slice(0, 3).map(e => ({
-        title: e.title,
-        starts_at: e.starts_at,
-        hasDate: !!e.starts_at
-      }))
-    });
-    
-    events = events.filter((e: EventData) => {
-      // If no dates, keep the event when relaxed modes are active
-      if (!e.starts_at && !e.ends_at) {
-        if (allowUndated) return true;
-        undatedCandidates.push(e);
-        if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'no_dates', title: e.title }); }
-        return false;
-      }
-      
-      // If only start date, check if it's in range
-      if (e.starts_at && !e.ends_at) {
-        const startMs = new Date(e.starts_at).getTime();
-        const isInRange = startMs >= (rangeStartMs - toleranceMs) && startMs <= (rangeEndMs + toleranceMs);
-        if (!isInRange) {
-          if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'start_date_out_of_range', title: e.title, starts_at: e.starts_at }); }
-        }
-        return isInRange;
-      }
-      
-      // If only end date, check if it's in range
-      if (!e.starts_at && e.ends_at) {
-        const endMs = new Date(e.ends_at).getTime();
-        const isInRange = endMs >= (rangeStartMs - toleranceMs) && endMs <= (rangeEndMs + toleranceMs);
-        if (!isInRange) {
-          if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ reason: 'end_date_out_of_range', title: e.title, ends_at: e.ends_at }); }
-        }
-        return isInRange;
-      }
-      
-      // If both dates exist, check if the event overlaps with the requested range
-      if (e.starts_at && e.ends_at) {
-        const eventStart = new Date(e.starts_at).getTime();
-        const eventEnd = new Date(e.ends_at).getTime();
-        const rangeStart = rangeStartMs - toleranceMs;
-        const rangeEnd = rangeEndMs + toleranceMs;
-        
-        // Event overlaps if: event starts before range ends AND event ends after range starts
-        const overlaps = eventStart <= rangeEnd && eventEnd >= rangeStart;
-        if (!overlaps) {
-          if (debugEnabled) { debug.filteredOut = debug.filteredOut || []; debug.filteredOut.push({ 
-            reason: 'event_outside_range', 
-            title: e.title, 
-            starts_at: e.starts_at, 
-            ends_at: e.ends_at,
-            eventStart: new Date(eventStart).toISOString(),
-            eventEnd: new Date(eventEnd).toISOString(),
-            rangeStart: new Date(rangeStart).toISOString(),
-            rangeEnd: new Date(rangeEnd).toISOString()
-          }); }
-        }
-        return overlaps;
-      }
-      
-      return false;
-    });
-    
-    console.log(`After date filtering:`, {
-      afterCount: events.length,
-      undatedCandidates: undatedCandidates.length
-    });
-    
-    if (debugEnabled) debug.dateFiltering.afterCount = events.length;
-    if (events.length === 0 && undatedCandidates.length > 0) {
-      events = undatedCandidates.slice(0, 5);
-      if (debugEnabled) {
-        debug.dateFiltering.fallbackUndatedUsed = true;
-        debug.dateFiltering.undatedKept = events.length;
-      }
-    }
-    
-    // ============================================================================
-    // STEP 8: FINAL DATA SANITIZATION
-    // ============================================================================
-    
-    // Final cleanup before returning to client
-    for (const e of events) {
-      if (typeof e.starts_at === "string") e.starts_at = e.starts_at.slice(0,10);
-      if (typeof e.ends_at === "string") e.ends_at   = e.ends_at.slice(0,10);
-      if (e.title) e.title = e.title.replace(/\s+/g, " ").trim();
-    }
-    
-    if (debugEnabled) debug.filter = { kept: events.length, reasons };
-
-    // ============================================================================
-    // STEP 9: SAVE TO DATABASE (BEST-EFFORT)
-    // ============================================================================
-    
-    // Check if database is available for saving events
-    const canDb =
-      !!supabase &&
-      !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    const saved: string[] = [];
-    if (canDb) {
-      // Save each event to the database using upsert to avoid duplicates
-      for (const ev of events) {
-        const { data, error } = await supabase.rpc("upsert_event", { p: ev as any });
-        if (!error && data) saved.push(String(data));
-      }
-      if (debugEnabled) debug.upsert = { saved: saved.length };
-    } else {
-      if (debugEnabled) debug.upsert = { skipped: true, reason: "no supabase env" };
-    }
-
-    // ============================================================================
-    // RETURN FINAL RESPONSE
-    // ============================================================================
-    
-    const payload = { count: events.length, saved, events } as any;
-    if (debugEnabled) Object.assign(payload, debug);
-    return NextResponse.json(payload);
-  } catch (e: any) {
-    // Return error response with empty events array
-    // We return status 200 to avoid breaking the UI
-    return NextResponse.json({ error: e?.message || "run failed", debug: { crashed: true } }, { status: 200 });
+  } catch (err:any) {
+    return NextResponse.json({
+      error: err?.message ?? 'unknown_error',
+      debug: { crashed: true },
+    }, { status: 500 });
   }
 }

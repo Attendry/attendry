@@ -38,19 +38,19 @@ import { EventData, SearchConfig } from "@/lib/types/core";
 /**
  * Build enhanced search query with multiple strategies for better event discovery
  * 
- * @param userQuery - User's search query
+ * @param userText - User's search query
  * @param searchConfig - Search configuration with industry terms
  * @param country - Country code for geographic context
  * @param from - Start date for temporal context
  * @param to - End date for temporal context
  * @returns Enhanced search query string
  */
-function buildEnhancedQuery(userQuery: string, searchConfig: any, country: string, from: string, to: string): string {
+function buildEnhancedQuery(userText: string, searchConfig: any, country: string, from: string, to: string): string {
   const industryTerms = searchConfig.industryTerms || [];
   const currentYear = new Date().getFullYear();
   
   // Use user query if provided, otherwise use base query from config
-  let query = userQuery.trim() || searchConfig.baseQuery || 'conference';
+  let query = userText.trim() || searchConfig.baseQuery || 'conference';
   
   // Build comprehensive query using all available terms
   const queryParts: string[] = [];
