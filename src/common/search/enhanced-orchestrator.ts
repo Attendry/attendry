@@ -141,6 +141,8 @@ async function prioritizeUrls(urls: string[], country: string, location: string 
     
     const prompt = `You are a legal events expert. Given these URLs, return the top 10 most relevant for legal/compliance events ${locationContext}. 
 
+IMPORTANT: Only return URLs for events that are actually taking place ${locationContext}. Exclude events from other countries.
+
 URLs: ${urls.slice(0, 20).join(', ')}
 
 Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3"]`;
@@ -261,15 +263,13 @@ function extractDescription(content: string): string | null {
 }
 
 function extractDate(content: string): string | null {
-  // Look for common date patterns with more comprehensive matching
+  // Look for common date patterns with validation
   const datePatterns = [
-    // ISO dates
+    // ISO dates (yyyy-mm-dd)
     /(\d{4}-\d{2}-\d{2})/g,
-    // German dates (dd.mm.yyyy)
+    // German dates (dd.mm.yyyy) - validate day/month ranges
     /(\d{1,2}\.\d{1,2}\.\d{4})/g,
-    // US dates (mm/dd/yyyy)
-    /(\d{1,2}\/\d{1,2}\/\d{4})/g,
-    // European dates (dd/mm/yyyy)
+    // US dates (mm/dd/yyyy) - validate month/day ranges
     /(\d{1,2}\/\d{1,2}\/\d{4})/g,
     // German month names
     /(\d{1,2}\.\s*(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)\s*\d{4})/gi,
@@ -282,58 +282,94 @@ function extractDate(content: string): string | null {
   for (const pattern of datePatterns) {
     const matches = content.match(pattern);
     if (matches && matches.length > 0) {
-      // Return the first valid date found
-      const dateStr = matches[0];
-      
-      // Convert German month names to ISO format
-      if (dateStr.includes('januar') || dateStr.includes('january')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*(januar|january)\s*(\d{4})/gi, '$3-01-$1');
+      for (const dateStr of matches) {
+        try {
+          let isoDate = null;
+          
+          // Convert German month names to ISO format
+          if (dateStr.includes('januar') || dateStr.includes('january')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*(januar|january)\s*(\d{4})/gi, '$3-01-$1');
+          } else if (dateStr.includes('februar') || dateStr.includes('february')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*(februar|february)\s*(\d{4})/gi, '$3-02-$1');
+          } else if (dateStr.includes('märz') || dateStr.includes('march')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*(märz|march)\s*(\d{4})/gi, '$3-03-$1');
+          } else if (dateStr.includes('april')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*april\s*(\d{4})/gi, '$2-04-$1');
+          } else if (dateStr.includes('mai') || dateStr.includes('may')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*(mai|may)\s*(\d{4})/gi, '$3-05-$1');
+          } else if (dateStr.includes('juni') || dateStr.includes('june')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*(juni|june)\s*(\d{4})/gi, '$3-06-$1');
+          } else if (dateStr.includes('juli') || dateStr.includes('july')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*(juli|july)\s*(\d{4})/gi, '$3-07-$1');
+          } else if (dateStr.includes('august')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*august\s*(\d{4})/gi, '$2-08-$1');
+          } else if (dateStr.includes('september')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*september\s*(\d{4})/gi, '$2-09-$1');
+          } else if (dateStr.includes('oktober') || dateStr.includes('october')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*(oktober|october)\s*(\d{4})/gi, '$3-10-$1');
+          } else if (dateStr.includes('november')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*november\s*(\d{4})/gi, '$2-11-$1');
+          } else if (dateStr.includes('dezember') || dateStr.includes('december')) {
+            isoDate = dateStr.replace(/(\d{1,2})\.?\s*(dezember|december)\s*(\d{4})/gi, '$3-12-$1');
+          }
+          
+          // Handle relative dates
+          else if (dateStr.toLowerCase().includes('today') || dateStr.toLowerCase().includes('heute')) {
+            isoDate = new Date().toISOString().split('T')[0];
+          } else if (dateStr.toLowerCase().includes('tomorrow') || dateStr.toLowerCase().includes('morgen')) {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            isoDate = tomorrow.toISOString().split('T')[0];
+          }
+          
+          // Handle numeric dates
+          else if (dateStr.includes('-')) {
+            // ISO format - validate
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+              const year = parseInt(parts[0]);
+              const month = parseInt(parts[1]);
+              const day = parseInt(parts[2]);
+              if (year >= 2020 && year <= 2030 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                isoDate = dateStr;
+              }
+            }
+          } else if (dateStr.includes('.')) {
+            // German format (dd.mm.yyyy) - validate and convert
+            const parts = dateStr.split('.');
+            if (parts.length === 3) {
+              const day = parseInt(parts[0]);
+              const month = parseInt(parts[1]);
+              const year = parseInt(parts[2]);
+              if (year >= 2020 && year <= 2030 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                isoDate = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+              }
+            }
+          } else if (dateStr.includes('/')) {
+            // US format (mm/dd/yyyy) - validate and convert
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+              const month = parseInt(parts[0]);
+              const day = parseInt(parts[1]);
+              const year = parseInt(parts[2]);
+              if (year >= 2020 && year <= 2030 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                isoDate = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+              }
+            }
+          }
+          
+          // Validate the final date
+          if (isoDate) {
+            const testDate = new Date(isoDate);
+            if (!isNaN(testDate.getTime()) && testDate.getFullYear() >= 2020 && testDate.getFullYear() <= 2030) {
+              return isoDate;
+            }
+          }
+        } catch (error) {
+          // Skip invalid dates
+          continue;
+        }
       }
-      if (dateStr.includes('februar') || dateStr.includes('february')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*(februar|february)\s*(\d{4})/gi, '$3-02-$1');
-      }
-      if (dateStr.includes('märz') || dateStr.includes('march')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*(märz|march)\s*(\d{4})/gi, '$3-03-$1');
-      }
-      if (dateStr.includes('april')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*april\s*(\d{4})/gi, '$2-04-$1');
-      }
-      if (dateStr.includes('mai') || dateStr.includes('may')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*(mai|may)\s*(\d{4})/gi, '$3-05-$1');
-      }
-      if (dateStr.includes('juni') || dateStr.includes('june')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*(juni|june)\s*(\d{4})/gi, '$3-06-$1');
-      }
-      if (dateStr.includes('juli') || dateStr.includes('july')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*(juli|july)\s*(\d{4})/gi, '$3-07-$1');
-      }
-      if (dateStr.includes('august')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*august\s*(\d{4})/gi, '$2-08-$1');
-      }
-      if (dateStr.includes('september')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*september\s*(\d{4})/gi, '$2-09-$1');
-      }
-      if (dateStr.includes('oktober') || dateStr.includes('october')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*(oktober|october)\s*(\d{4})/gi, '$3-10-$1');
-      }
-      if (dateStr.includes('november')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*november\s*(\d{4})/gi, '$2-11-$1');
-      }
-      if (dateStr.includes('dezember') || dateStr.includes('december')) {
-        return dateStr.replace(/(\d{1,2})\.?\s*(dezember|december)\s*(\d{4})/gi, '$3-12-$1');
-      }
-      
-      // Handle relative dates
-      if (dateStr.toLowerCase().includes('today') || dateStr.toLowerCase().includes('heute')) {
-        return new Date().toISOString().split('T')[0];
-      }
-      if (dateStr.toLowerCase().includes('tomorrow') || dateStr.toLowerCase().includes('morgen')) {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        return tomorrow.toISOString().split('T')[0];
-      }
-      
-      return dateStr;
     }
   }
   
@@ -413,11 +449,11 @@ function extractLocation(content: string, url: string): { city: string | null; c
     }
   }
   
-  // Extract city from content
+  // Extract city from content with more aggressive German detection
   let city = null;
   const cityPatterns = [
-    // German cities
-    { pattern: /\b(Berlin|München|Frankfurt|Köln|Hamburg|Stuttgart|Düsseldorf|Leipzig|Hannover|Nürnberg|Bremen|Bonn|Essen|Mannheim|Münster)\b/i, country: 'DE' },
+    // German cities (prioritize these)
+    { pattern: /\b(Berlin|München|Frankfurt|Köln|Hamburg|Stuttgart|Düsseldorf|Leipzig|Hannover|Nürnberg|Bremen|Bonn|Essen|Mannheim|Münster|Dresden|Karlsruhe|Freiburg|Heidelberg|Ulm|Augsburg|Würzburg|Regensburg|Kiel|Lübeck|Rostock|Magdeburg|Potsdam|Cottbus|Chemnitz|Zwickau|Plauen|Gera|Jena|Erfurt|Weimar|Göttingen|Braunschweig|Wolfsburg|Osnabrück|Oldenburg|Wilhelmshaven|Bremerhaven|Kassel|Fulda|Marburg|Gießen|Darmstadt|Wiesbaden|Mainz|Koblenz|Trier|Saarbrücken|Kaiserslautern|Ludwigshafen|Mannheim|Heidelberg|Pforzheim|Reutlingen|Tübingen|Konstanz|Freiburg|Offenburg|Lörrach|Villingen|Schwenningen|Ravensburg|Friedrichshafen|Ulm|Neu-Ulm|Augsburg|Kempten|Memmingen|Lindau|Rosenheim|Traunstein|Berchtesgaden|Garmisch-Partenkirchen|Mittenwald|Oberstdorf|Füssen|Kempten|Memmingen|Lindau|Rosenheim|Traunstein|Berchtesgaden|Garmisch-Partenkirchen|Mittenwald|Oberstdorf|Füssen)\b/i, country: 'DE' },
     // Austrian cities
     { pattern: /\b(Wien|Salzburg|Graz|Innsbruck|Linz|Klagenfurt|Villach)\b/i, country: 'AT' },
     // Swiss cities
@@ -444,6 +480,35 @@ function extractLocation(content: string, url: string): { city: string | null; c
         country = cityCountry;
       }
       break;
+    }
+  }
+  
+  // Additional German indicators in content
+  if (!country && content) {
+    const germanIndicators = [
+      /\b(Deutschland|Germany)\b/i,
+      /\b(Bundesrepublik|BRD)\b/i,
+      /\b(Deutsche|Deutscher|Deutsche)\b/i,
+      /\b(Deutsch|Deutsche)\b/i,
+      /\b(EU|Europäische Union)\b/i,
+      /\b(Euro|€)\b/i,
+      /\b(DSGVO|GDPR)\b/i,
+      /\b(Bundesgerichtshof|BGH)\b/i,
+      /\b(Bundesverfassungsgericht|BVerfG)\b/i,
+      /\b(Bundestag|Bundesrat)\b/i,
+      /\b(Landgericht|Amtsgericht|Oberlandesgericht)\b/i,
+      /\b(Rechtsanwalt|Anwalt|Anwältin)\b/i,
+      /\b(Notar|Notarin)\b/i,
+      /\b(Steuerberater|Steuerberaterin)\b/i,
+      /\b(Wirtschaftsprüfer|Wirtschaftsprüferin)\b/i,
+      /\b(Compliance|Datenschutz|Whistleblowing)\b/i
+    ];
+    
+    for (const indicator of germanIndicators) {
+      if (indicator.test(content)) {
+        country = 'DE';
+        break;
+      }
     }
   }
   
@@ -602,6 +667,31 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', Math.min(prioritizedUrls.length, 10), ':', url);
     
     const details = await extractEventDetails(url);
+    
+    // Apply country filtering - if searching for specific country, only include events from that country
+    if (country && country !== 'EU') {
+      const eventCountry = details.country;
+      if (eventCountry && eventCountry !== country) {
+        console.log('[enhanced_orchestrator] Filtering out non-German event:', url, 'Country:', eventCountry);
+        continue; // Skip this event
+      }
+    }
+    
+    // Apply date filtering if timeframe is specified
+    if (effectiveDateFrom || effectiveDateTo) {
+      const eventDate = details.starts_at;
+      if (eventDate) {
+        if (effectiveDateFrom && eventDate < effectiveDateFrom) {
+          console.log('[enhanced_orchestrator] Filtering out event before date range:', url, 'Date:', eventDate);
+          continue;
+        }
+        if (effectiveDateTo && eventDate > effectiveDateTo) {
+          console.log('[enhanced_orchestrator] Filtering out event after date range:', url, 'Date:', eventDate);
+          continue;
+        }
+      }
+    }
+    
     events.push({
       id: `event_${i}`,
       title: details.title,
