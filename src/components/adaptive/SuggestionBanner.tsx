@@ -94,3 +94,4 @@ export const SuggestionBanner = ({
     </motion.div>
   );
 };
+

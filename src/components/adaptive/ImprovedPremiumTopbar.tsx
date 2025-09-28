@@ -140,3 +140,4 @@ const ImprovedPremiumTopbar = memo(() => {
 ImprovedPremiumTopbar.displayName = 'ImprovedPremiumTopbar';
 
 export { ImprovedPremiumTopbar };
+

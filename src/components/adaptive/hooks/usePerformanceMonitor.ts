@@ -46,3 +46,4 @@ export const usePerformanceMonitor = (componentName: string) => {
     metrics: metricsRef.current,
   };
 };
+

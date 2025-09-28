@@ -346,3 +346,4 @@ const ImprovedPremiumSearchModule = memo(() => {
 ImprovedPremiumSearchModule.displayName = 'ImprovedPremiumSearchModule';
 
 export { ImprovedPremiumSearchModule };
+

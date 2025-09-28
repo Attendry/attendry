@@ -226,3 +226,4 @@ const ImprovedPremiumSidebar = memo(() => {
 ImprovedPremiumSidebar.displayName = 'ImprovedPremiumSidebar';
 
 export { ImprovedPremiumSidebar };
+

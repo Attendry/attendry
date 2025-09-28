@@ -281,3 +281,4 @@ const handleUserAction = useCallback((action: string) => {
 - [ ] Consistent identity
 
 This design system ensures a premium, minimal, and confident tech aesthetic that stands out from generic SaaS templates while maintaining enterprise-grade quality and accessibility.
+

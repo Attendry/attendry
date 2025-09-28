@@ -159,10 +159,18 @@ SEARCH CONTEXT:
 - Timeframe: ${timeframeContext}
 
 TASK: From the URLs below, return the top 10 most relevant for ${industry} events that are:
-1. Actually taking place ${locationContext}
+1. Actually taking place ${locationContext} (events mentioning ${locationContext} or taking place there)
 2. ${timeframeContext}
 3. Match the search context: ${baseQuery}
-4. Are real events (conferences, workshops, seminars, etc.) - not general websites
+4. Are real events (conferences, workshops, seminars, exhibitions, trade shows, etc.) - not general websites, documentation, or non-event pages
+5. Exclude events that are clearly from other countries unless they're international events relevant to ${locationContext}
+
+IMPORTANT FILTERING RULES:
+- Prioritize events that are physically located ${locationContext}
+- Include international events that are relevant to ${locationContext} professionals
+- Exclude events that are clearly from other countries and not relevant to ${locationContext}
+- Focus on actual event pages, not documentation, news, or general information pages
+- Look for event-specific indicators: dates, venues, registration, speakers, agenda
 
 URLs: ${urls.slice(0, 20).join(', ')}
 
@@ -210,7 +218,7 @@ Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3
   }
 }
 
-// Industry-agnostic event extraction using Gemini
+// Event extraction using Firecrawl Extract (not Gemini)
 async function extractEventDetails(url: string, searchConfig: any): Promise<any> {
   try {
     const apiKey = process.env.FIRECRAWL_KEY || process.env.FIRECRAWL_API_KEY;
@@ -219,7 +227,8 @@ async function extractEventDetails(url: string, searchConfig: any): Promise<any>
       return { title: null, description: null, starts_at: null, country: null, venue: null };
     }
 
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    // Use Firecrawl Extract for structured data extraction
+    const response = await fetch('https://api.firecrawl.dev/v1/extract', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -227,61 +236,9 @@ async function extractEventDetails(url: string, searchConfig: any): Promise<any>
       },
       body: JSON.stringify({
         url,
-        formats: ['markdown'],
-        onlyMainContent: true,
-        waitFor: 1000
-      })
-    });
-
-    if (!response.ok) {
-      console.warn('[extract] Firecrawl scrape failed for', url, response.status);
-      return { title: null, description: null, starts_at: null, country: null, venue: null };
-    }
-
-    const data = await response.json();
-    const content = data.data?.markdown || '';
-    
-    // Use Gemini for intelligent extraction
-    const extractedData = await extractWithGemini(content, url, searchConfig);
-    
-    return extractedData;
-  } catch (error) {
-    console.error('[extract] Error extracting', url, error);
-    return { title: null, description: null, starts_at: null, country: null, venue: null };
-  }
-}
-
-// Use Gemini for intelligent event data extraction
-async function extractWithGemini(content: string, url: string, searchConfig: any): Promise<any> {
-  try {
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) {
-      // Fallback to simple extraction
-      return {
-        title: extractTitle(content, url),
-        description: extractDescription(content),
-        starts_at: extractDate(content),
-        country: extractLocation(content, url).country,
-        city: extractLocation(content, url).city,
-        location: null,
-        venue: extractVenue(content)
-      };
-    }
-
-    const industry = searchConfig.industry || 'general';
-    const baseQuery = searchConfig.baseQuery || '';
-    
-    const prompt = `You are an expert in extracting event information from web content.
-
-INDUSTRY CONTEXT: ${industry}
-SEARCH CONTEXT: ${baseQuery}
-
-Extract the following information from this web content for an ${industry} event:
-
-CONTENT:
-${content.substring(0, 4000)} // Limit content to avoid token limits
-
-Return a JSON object with:
+        extractorOptions: {
+          mode: 'llm-extraction',
+          extractionPrompt: `Extract event information from this webpage. Return a JSON object with:
 {
   "title": "Event title or null if not found",
   "description": "Brief event description or null if not found", 
@@ -291,41 +248,20 @@ Return a JSON object with:
   "venue": "Venue name or null if not found"
 }
 
-Focus on ${industry} events. If this is not an event page, return null for most fields.`;
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1
-        }
+Focus on ${searchConfig.industry || 'general'} events. If this is not an event page, return null for most fields.`
+        },
+        waitFor: 2000
       })
     });
 
     if (!response.ok) {
-      console.warn('[extract] Gemini extraction failed:', response.status);
-      return {
-        title: extractTitle(content, url),
-        description: extractDescription(content),
-        starts_at: extractDate(content),
-        country: extractLocation(content, url).country,
-        city: extractLocation(content, url).city,
-        location: null,
-        venue: extractVenue(content)
-      };
+      console.warn('[extract] Firecrawl extract failed for', url, response.status);
+      // Fallback to simple scraping
+      return await fallbackExtraction(url, apiKey);
     }
 
     const data = await response.json();
-    const extractedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    
-    if (!extractedText) {
-      throw new Error('No content in Gemini response');
-    }
-
-    const extracted = JSON.parse(extractedText);
+    const extracted = data.data?.extract || {};
     
     // Format location as "City, Country" if both available
     let locationFormatted = null;
@@ -345,17 +281,55 @@ Focus on ${industry} events. If this is not an event page, return null for most 
       venue: extracted.venue
     };
   } catch (error) {
-    console.error('[extract] Gemini extraction error:', error);
-    // Fallback to simple extraction
-    return {
-      title: extractTitle(content, url),
-      description: extractDescription(content),
-      starts_at: extractDate(content),
-      country: extractLocation(content, url).country,
-      city: extractLocation(content, url).city,
-      location: null,
-      venue: extractVenue(content)
-    };
+    console.error('[extract] Error extracting', url, error);
+    return { title: null, description: null, starts_at: null, country: null, venue: null };
+  }
+}
+
+// Fallback extraction using simple scraping
+async function fallbackExtraction(url: string, apiKey: string): Promise<any> {
+  try {
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['markdown'],
+        onlyMainContent: true,
+        waitFor: 1000
+      })
+    });
+
+    if (!response.ok) {
+      console.warn('[extract] Fallback scrape failed for', url, response.status);
+      return { title: null, description: null, starts_at: null, country: null, venue: null };
+    }
+
+    const data = await response.json();
+    const content = data.data?.markdown || '';
+    
+    // Use simple extraction helpers
+    const title = extractTitle(content, url);
+    const description = extractDescription(content);
+    const starts_at = extractDate(content);
+    const location = extractLocation(content, url);
+    const venue = extractVenue(content);
+
+    // Format location as "City, Country" if both available
+    let locationFormatted = null;
+    if (location.city && location.country) {
+      locationFormatted = `${location.city}, ${location.country}`;
+    } else if (location.country) {
+      locationFormatted = location.country;
+    }
+
+    return { title, description, starts_at, country: location.country, city: location.city, location: locationFormatted, venue };
+  } catch (error) {
+    console.error('[extract] Fallback extraction error:', error);
+    return { title: null, description: null, starts_at: null, country: null, venue: null };
   }
 }
 

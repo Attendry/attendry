@@ -31,3 +31,4 @@ export const ThemeProvider = ({ children, theme }: ThemeProviderProps) => {
     </ThemeContext.Provider>
   );
 };
+
