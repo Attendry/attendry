@@ -178,7 +178,7 @@ URLs: ${urls.slice(0, 20).join(', ')}
 Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3"]`;
 
     // Try the correct Gemini API endpoint with proper model name
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-001:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json'
@@ -287,9 +287,9 @@ Focus on ${searchConfig.industry || 'general'} events. If this is not an event p
       })
     });
 
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Extraction timeout')), 15000) // 15 second timeout
-    );
+                const timeoutPromise = new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Extraction timeout')), 8000) // 8 second timeout
+                );
 
     const response = await Promise.race([extractPromise, timeoutPromise]) as Response;
 
@@ -354,9 +354,9 @@ async function fallbackExtraction(url: string, apiKey: string): Promise<any> {
       })
     });
 
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Scrape timeout')), 10000) // 10 second timeout
-    );
+                const timeoutPromise = new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Scrape timeout')), 6000) // 6 second timeout
+                );
 
     const response = await Promise.race([scrapePromise, timeoutPromise]) as Response;
 
@@ -426,6 +426,9 @@ function extractDate(content: string): string | null {
     /(\d{1,2}\.\s*(januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)\s*\d{4})/gi,
     // English month names
     /(\d{1,2}\s*(january|february|march|april|may|june|july|august|september|october|november|december)\s*\d{4})/gi,
+    // Event-specific patterns: "August 3–6, 2025", "June 10th - June 13th"
+    /(august|september|october|november|december|january|february|march|april|may|june|july)\s+\d{1,2}[–-]\d{1,2},?\s+\d{4}/gi,
+    /(august|september|october|november|december|january|february|march|april|may|june|july)\s+\d{1,2}(?:st|nd|rd|th)?\s*[–-]\s*(august|september|october|november|december|january|february|march|april|may|june|july)\s+\d{1,2}(?:st|nd|rd|th)?/gi,
     // Relative dates
     /(today|heute|tomorrow|morgen|yesterday|gestern)/gi
   ];
@@ -904,14 +907,20 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         url.toLowerCase().includes('germany') || 
         url.toLowerCase().includes('deutschland');
       
-      // For now, be more lenient - only filter out if we have strong evidence it's NOT German
+      // Be stricter - filter out if we have evidence it's NOT German
       const isDefinitelyNotGerman = eventCountry && 
         !['DE', 'AT', 'CH'].includes(eventCountry) && 
         !urlSuggestsGerman && 
         !mentionsTargetCountry && 
         !isInGermanCity;
       
-      if (isDefinitelyNotGerman) {
+      // Additional check for obvious US cities
+      const isObviousUSCity = eventCity && 
+        ['kansas city', 'nashville', 'houston', 'chicago', 'new york', 'los angeles', 'san francisco', 'boston', 'atlanta', 'miami', 'seattle', 'denver'].includes(eventCity.toLowerCase());
+      
+      const shouldFilterOut = isDefinitelyNotGerman || isObviousUSCity;
+      
+      if (shouldFilterOut) {
         console.log('[enhanced_orchestrator] Filtering out non-German event:', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
         continue; // Skip this event
       } else {
