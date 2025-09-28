@@ -1,61 +1,66 @@
 // app/api/events/run/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { executeSearch } from '@/common/search/orchestrator';
+import { executeEnhancedSearch } from '@/common/search/enhanced-orchestrator';
 
-// Helper function to process search results and create basic event objects
-function processSearchResults(res: any, country: string | null, dateFrom: string | null, dateTo: string | null) {
-  // Create basic event objects from URLs
-  const basicEvents = res.items.map((url: string, index: number) => ({
-    id: `event_${index}`,
-    title: `Event from ${new URL(url).hostname}`,
-    source_url: url,
-    starts_at: null,
-    country: null,
-    venue: null,
-    description: null,
-    speakers: []
-  }));
+// Helper function to process enhanced search results
+function processEnhancedResults(res: any, country: string | null, dateFrom: string | null, dateTo: string | null) {
+  const events = res.events || [];
+  
+  // EU country codes for broader filtering
+  const euCountries = ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
+  
+  // Simple filtering based on country and date
+  const filteredEvents = events.filter((event: any) => {
+    // Country filtering - if country is 'EU', accept any EU country
+    if (country && event.country) {
+      if (country.toUpperCase() === 'EU') {
+        if (!euCountries.includes(event.country.toUpperCase())) {
+          return false;
+        }
+      } else if (event.country.toUpperCase() !== country.toUpperCase()) {
+        return false; 
+      }
+    }
 
-  // Simple filtering based on URL patterns for German events
-  const filteredEvents = basicEvents.filter((event: any) => {
-    const url = event.source_url.toLowerCase();
-    // Keep events from German domains or known legal event sites
-    return url.includes('.de') || 
-           url.includes('legal') || 
-           url.includes('conference') || 
-           url.includes('compliance') ||
-           url.includes('veranstaltung') ||
-           url.includes('konferenz');
+    // Date filtering (if dates provided)
+    if (dateFrom && event.starts_at && event.starts_at < dateFrom) {
+      return false;
+    }
+    if (dateTo && event.starts_at && event.starts_at > dateTo) {
+      return false;
+    }
+    
+        return true; 
   });
 
   return {
     count: filteredEvents.length,
     saved: [],
     events: filteredEvents,
-    marker: 'RUN_V4',
+    marker: 'RUN_V4_ENHANCED',
     country,
-    provider: res.providerUsed,
+    provider: 'enhanced_pipeline',
     searchConfig: { source: 'active', baseQueryUsed: true },
     effectiveQ: res.effectiveQ,
     searchRetriedWithBase: res.searchRetriedWithBase,
-    search: { status: 200, provider: res.providerUsed, items: res.items.length },
-    urls: { unique: res.items.length, sample: res.items.slice(0, 10) },
-    extract: { status: 200, version: 'basic_events', eventsBeforeFilter: basicEvents.length, sampleTrace: [] },
-    deduped: { count: res.items.length },
+    search: { status: 200, provider: 'enhanced_pipeline', items: events.length },
+    urls: { unique: events.length, sample: events.slice(0, 10).map((e: any) => e.source_url) },
+    extract: { status: 200, version: 'enhanced_extraction', eventsBeforeFilter: events.length, sampleTrace: [] },
+    deduped: { count: events.length },
     dateFiltering: {
-      from: dateFrom, to: dateTo, beforeCount: basicEvents.length, allowUndated: true, afterCount: filteredEvents.length
+      from: dateFrom, to: dateTo, beforeCount: events.length, allowUndated: true, afterCount: filteredEvents.length
     },
     filter: { 
       kept: filteredEvents.length, 
       reasons: { 
         kept: filteredEvents.length, 
-        wrongCountry: basicEvents.length - filteredEvents.length, 
+        wrongCountry: events.length - filteredEvents.length, 
         ambiguous: 0 
       } 
     },
     upsert: { saved: 0 },
-    providersTried: res.providersTried,
-    logs: res.logs,
+    providersTried: res.providersTried || ['enhanced_pipeline'],
+    logs: res.logs || [],
   };
 }
 
@@ -67,9 +72,19 @@ export async function GET(req: NextRequest) {
     const dateFrom: string | null = url.searchParams.get('dateFrom');
     const dateTo: string | null = url.searchParams.get('dateTo');
     const locale: 'de' | 'en' = (url.searchParams.get('locale') === 'en' ? 'en' : 'de');
+    const location: string | null = url.searchParams.get('location');
+    const timeframe: string | null = url.searchParams.get('timeframe');
 
-    const res = await executeSearch({ userText, country, dateFrom, dateTo, locale });
-    const result = processSearchResults(res, country, dateFrom, dateTo);
+    const res = await executeEnhancedSearch({ 
+      userText, 
+        country,
+      dateFrom, 
+      dateTo, 
+      locale, 
+      location, 
+      timeframe 
+    });
+    const result = processEnhancedResults(res, country, dateFrom, dateTo);
     return NextResponse.json(result);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'search_failed', debug: { crashed: true } }, { status: 500 });
@@ -84,9 +99,19 @@ export async function POST(req: NextRequest) {
     const dateFrom: string | null = body?.dateFrom ?? null;
     const dateTo: string | null = body?.dateTo ?? null;
     const locale: 'de' | 'en' = (body?.locale === 'en' ? 'en' : 'de');
+    const location: string | null = body?.location ?? null;
+    const timeframe: string | null = body?.timeframe ?? null;
 
-    const res = await executeSearch({ userText, country, dateFrom, dateTo, locale });
-    const result = processSearchResults(res, country, dateFrom, dateTo);
+    const res = await executeEnhancedSearch({ 
+      userText, 
+        country,
+      dateFrom, 
+      dateTo, 
+      locale, 
+      location, 
+      timeframe 
+    });
+    const result = processEnhancedResults(res, country, dateFrom, dateTo);
     return NextResponse.json(result);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'search_failed', debug: { crashed: true } }, { status: 500 });
