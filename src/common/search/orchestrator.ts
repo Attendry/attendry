@@ -38,8 +38,9 @@ export async function executeSearch(args: ExecArgs) {
     console.log('[orchestrator] Calling Firecrawl with query:', query);
     const res = await firecrawlSearch({ q: query, dateFrom, dateTo }); // existing helper
     console.log('[orchestrator] Firecrawl response:', JSON.stringify(res, null, 2));
-    const urls = extractUrlsFromFirecrawl(res?.items || res?.data || res?.webResults || []);
-    console.log('[orchestrator] Extracted Firecrawl URLs:', urls.length, urls.slice(0, 3));
+    // The provider already returns URLs in res.items, no need to extract
+    const urls = res?.items || [];
+    console.log('[orchestrator] Firecrawl URLs:', urls.length, urls.slice(0, 3));
     logs.push({ at: 'provider_result', provider: 'firecrawl', count: urls.length, q: query, debug: res.debug });
     return urls;
   };
@@ -49,8 +50,9 @@ export async function executeSearch(args: ExecArgs) {
     console.log('[orchestrator] Calling CSE with query:', query);
     const res = await cseSearch({ q: query, country: country || 'DE' }).catch(() => ({ items: [] }));
     console.log('[orchestrator] CSE response:', JSON.stringify(res, null, 2));
-    const urls = extractUrlsFromCSE(res?.items || []);
-    console.log('[orchestrator] Extracted CSE URLs:', urls.length, urls.slice(0, 3));
+    // The provider already returns URLs in res.items, no need to extract
+    const urls = res?.items || [];
+    console.log('[orchestrator] CSE URLs:', urls.length, urls.slice(0, 3));
     logs.push({ at: 'provider_result', provider: 'cse', count: urls.length, q: query, debug: res.debug });
     return urls;
   };
