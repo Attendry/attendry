@@ -4,6 +4,7 @@ import { buildSearchQuery } from './queryBuilder';
 import { extractUrlsFromFirecrawl, extractUrlsFromCSE, dedupe } from './normalize';
 import { search as firecrawlSearch } from '../../providers/firecrawl';
 import { search as cseSearch } from '../../providers/cse';
+import { search as databaseSearch } from '../../providers/database';
 
 type ExecArgs = {
   userText?: string;
@@ -54,13 +55,24 @@ export async function executeSearch(args: ExecArgs) {
     return urls;
   };
 
-  // Try firecrawl then cse (primary query)
+  // Try firecrawl then cse then database fallback
   let urls = await runFirecrawl(q);
-  let providerUsed: 'firecrawl' | 'cse' = 'firecrawl';
+  let providerUsed: 'firecrawl' | 'cse' | 'database' = 'firecrawl';
+  
   if (urls.length === 0) {
+    console.log('[orchestrator] Firecrawl returned 0 results, trying CSE...');
     const cseUrls = await runCSE(q);
     if (cseUrls.length) {
-      urls = cseUrls; providerUsed = 'cse';
+      urls = cseUrls; 
+      providerUsed = 'cse';
+    } else {
+      console.log('[orchestrator] CSE also returned 0 results, using database fallback...');
+      const dbUrls = await databaseSearch({ q, country: country || 'DE' });
+      if (dbUrls.length) {
+        urls = dbUrls;
+        providerUsed = 'database';
+        logs.push({ at: 'provider_result', provider: 'database', count: urls.length, q, debug: dbUrls.debug });
+      }
     }
   }
 

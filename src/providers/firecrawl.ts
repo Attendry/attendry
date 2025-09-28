@@ -2,6 +2,14 @@ import type { SearchParams } from './types';
 
 export async function search(params: { q: string; dateFrom?: string; dateTo?: string }) {
   try {
+    // Check for API key
+    const apiKey = process.env.FIRECRAWL_API_KEY;
+    
+    if (!apiKey) {
+      console.error('[firecrawl] Missing API key: FIRECRAWL_API_KEY not set');
+      return { items: [], debug: { error: 'Missing API key: FIRECRAWL_API_KEY not set', rawCount: 0 } };
+    }
+
     const body:any = {
       query: params.q,
       limit: 20,
@@ -26,7 +34,7 @@ export async function search(params: { q: string; dateFrom?: string; dateTo?: st
       method: 'POST', 
       headers: {
         'content-type':'application/json', 
-        'Authorization': `Bearer ${process.env.FIRECRAWL_API_KEY}`
+        'Authorization': `Bearer ${apiKey}`
       }, 
       body: JSON.stringify(body) 
     });

@@ -1,9 +1,23 @@
 export async function search(params: { q: string; country?: string }) {
   try {
+    // Check for API key - try both possible names
+    const apiKey = process.env.GOOGLE_CSE_KEY || process.env.GOOGLE_API_KEY;
+    const cx = process.env.GOOGLE_CSE_CX;
+    
+    if (!apiKey) {
+      console.error('[cse] Missing API key: GOOGLE_CSE_KEY or GOOGLE_API_KEY not set');
+      return { items: [], debug: { error: 'Missing API key: GOOGLE_CSE_KEY or GOOGLE_API_KEY not set', rawCount: 0 } };
+    }
+    
+    if (!cx) {
+      console.error('[cse] Missing CSE ID: GOOGLE_CSE_CX not set');
+      return { items: [], debug: { error: 'Missing CSE ID: GOOGLE_CSE_CX not set', rawCount: 0 } };
+    }
+
     const url = new URL('https://www.googleapis.com/customsearch/v1');
     url.searchParams.set('q', params.q);
-    url.searchParams.set('key', process.env.GOOGLE_API_KEY!);
-    url.searchParams.set('cx', process.env.GOOGLE_CSE_CX!);
+    url.searchParams.set('key', apiKey);
+    url.searchParams.set('cx', cx);
     url.searchParams.set('num', '10');
     url.searchParams.set('safe', 'off');
 

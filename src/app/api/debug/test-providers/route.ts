@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { search as firecrawlSearch } from '@/providers/firecrawl';
 import { search as cseSearch } from '@/providers/cse';
+import { search as databaseSearch } from '@/providers/database';
 
 export async function GET() {
   try {
@@ -18,14 +19,21 @@ export async function GET() {
     const cseResult = await cseSearch({ q: testQuery });
     console.log('CSE result:', cseResult);
     
+    // Test Database Fallback
+    console.log('Testing Database Fallback...');
+    const databaseResult = await databaseSearch({ q: testQuery });
+    console.log('Database result:', databaseResult);
+    
     return NextResponse.json({
       query: testQuery,
       firecrawl: firecrawlResult,
       cse: cseResult,
+      database: databaseResult,
       summary: {
         firecrawlUrls: firecrawlResult.items?.length || 0,
         cseUrls: cseResult.items?.length || 0,
-        totalUrls: (firecrawlResult.items?.length || 0) + (cseResult.items?.length || 0)
+        databaseUrls: databaseResult.items?.length || 0,
+        totalUrls: (firecrawlResult.items?.length || 0) + (cseResult.items?.length || 0) + (databaseResult.items?.length || 0)
       }
     });
   } catch (error) {
