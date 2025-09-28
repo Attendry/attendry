@@ -13,7 +13,7 @@ export async function search(params: { q: string; dateFrom?: string; dateTo?: st
     const body:any = {
       query: params.q,
       limit: 20,
-      sources: ['web'],
+      // Remove 'sources' parameter as it's not recognized in v1 API
       // Only pass typed dates if the backend actually supports them; otherwise omit.
       // DO NOT pass tbs/location unless behind a flag.
     };
