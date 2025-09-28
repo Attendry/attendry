@@ -177,9 +177,12 @@ URLs: ${urls.slice(0, 20).join(', ')}
 
 Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3"]`;
 
+    // Try the newer Gemini API endpoint
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
@@ -190,7 +193,10 @@ Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3
     });
 
     if (!response.ok) {
-      console.warn('[prioritization] Gemini API failed:', response.status);
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.warn('[prioritization] Gemini API failed:', response.status, errorText);
+      console.warn('[prioritization] API Key length:', apiKey?.length || 0);
+      console.warn('[prioritization] API Key starts with:', apiKey?.substring(0, 10) || 'N/A');
       return urls.slice(0, 10); // Return first 10 as fallback
     }
 
@@ -215,7 +221,23 @@ Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3
     return urls.slice(0, 10);
   } catch (error) {
     console.error('[prioritization] Error:', error);
-    return urls.slice(0, 10);
+    console.warn('[prioritization] Falling back to simple URL prioritization');
+    
+    // Simple fallback prioritization based on URL patterns
+    const prioritized = urls
+      .filter(url => {
+        const urlLower = url.toLowerCase();
+        // Prioritize German domains and event-specific URLs
+        return urlLower.includes('.de') || 
+               urlLower.includes('germany') || 
+               urlLower.includes('deutschland') ||
+               urlLower.includes('event') ||
+               urlLower.includes('conference') ||
+               urlLower.includes('summit');
+      })
+      .slice(0, 10);
+    
+    return prioritized.length > 0 ? prioritized : urls.slice(0, 10);
   }
 }
 
@@ -228,8 +250,8 @@ async function extractEventDetails(url: string, searchConfig: any): Promise<any>
       return { title: null, description: null, starts_at: null, country: null, venue: null };
     }
 
-    // Use Firecrawl Extract for structured data extraction
-    const response = await fetch('https://api.firecrawl.dev/v1/extract', {
+    // Use Promise.race to add timeout to prevent 300-second timeouts
+    const extractPromise = fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -237,9 +259,10 @@ async function extractEventDetails(url: string, searchConfig: any): Promise<any>
       },
       body: JSON.stringify({
         url,
-        extractorOptions: {
-          mode: 'llm-extraction',
-          extractionPrompt: `Extract event information from this webpage. Return a JSON object with:
+        formats: [
+          {
+            type: "json",
+            prompt: `Extract event information from this webpage. Return a JSON object with:
 {
   "title": "Event title or null if not found",
   "description": "Brief event description or null if not found", 
@@ -257,10 +280,18 @@ IMPORTANT LOCATION EXTRACTION:
 - For ${searchConfig.industry || 'general'} events, focus on events that are actually taking place in the specified location
 
 Focus on ${searchConfig.industry || 'general'} events. If this is not an event page, return null for most fields.`
-        },
-        waitFor: 2000
+          }
+        ],
+        onlyMainContent: true,
+        timeout: 30000
       })
     });
+
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Extraction timeout')), 15000) // 15 second timeout
+    );
+
+    const response = await Promise.race([extractPromise, timeoutPromise]) as Response;
 
     if (!response.ok) {
       console.warn('[extract] Firecrawl extract failed for', url, response.status);
@@ -268,8 +299,17 @@ Focus on ${searchConfig.industry || 'general'} events. If this is not an event p
       return await fallbackExtraction(url, apiKey);
     }
 
-    const data = await response.json();
-    const extracted = data.data?.extract || {};
+    let data;
+    try {
+      const responseText = await response.text();
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.warn('[extract] Failed to parse Firecrawl extract response for', url, parseError);
+      // Fallback to simple scraping
+      return await fallbackExtraction(url, apiKey);
+    }
+    
+    const extracted = data.data?.json || {};
     
     // Format location as "City, Country" if both available
     let locationFormatted = null;
@@ -290,6 +330,9 @@ Focus on ${searchConfig.industry || 'general'} events. If this is not an event p
     };
   } catch (error) {
     console.error('[extract] Error extracting', url, error);
+    if (error instanceof Error && error.message.includes('timeout')) {
+      console.warn('[extract] Extraction timed out for', url);
+    }
     return { title: null, description: null, starts_at: null, country: null, venue: null };
   }
 }
@@ -297,7 +340,7 @@ Focus on ${searchConfig.industry || 'general'} events. If this is not an event p
 // Fallback extraction using simple scraping
 async function fallbackExtraction(url: string, apiKey: string): Promise<any> {
   try {
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    const scrapePromise = fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -307,9 +350,15 @@ async function fallbackExtraction(url: string, apiKey: string): Promise<any> {
         url,
         formats: ['markdown'],
         onlyMainContent: true,
-        waitFor: 1000
+        timeout: 30000
       })
     });
+
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Scrape timeout')), 10000) // 10 second timeout
+    );
+
+    const response = await Promise.race([scrapePromise, timeoutPromise]) as Response;
 
     if (!response.ok) {
       console.warn('[extract] Fallback scrape failed for', url, response.status);
@@ -337,6 +386,9 @@ async function fallbackExtraction(url: string, apiKey: string): Promise<any> {
     return { title, description, starts_at, country: location.country, city: location.city, location: locationFormatted, venue };
   } catch (error) {
     console.error('[extract] Fallback extraction error:', error);
+    if (error instanceof Error && error.message.includes('timeout')) {
+      console.warn('[extract] Fallback extraction timed out for', url);
+    }
     return { title: null, description: null, starts_at: null, country: null, venue: null };
   }
 }
@@ -792,9 +844,9 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   console.log('[enhanced_orchestrator] Step 5: Extracting event details');
   const events = [];
   
-  for (let i = 0; i < Math.min(prioritizedUrls.length, 10); i++) {
+  for (let i = 0; i < Math.min(prioritizedUrls.length, 5); i++) {
     const url = prioritizedUrls[i];
-    console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', Math.min(prioritizedUrls.length, 10), ':', url);
+    console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', Math.min(prioritizedUrls.length, 5), ':', url);
     
     const details = await extractEventDetails(url, cfg);
     console.log('[enhanced_orchestrator] Extracted details:', {

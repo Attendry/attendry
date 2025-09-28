@@ -30,7 +30,7 @@ export async function search(params: { q: string; dateFrom?: string; dateTo?: st
 
     console.log('[firecrawl] Making request with body:', JSON.stringify(body, null, 2));
 
-    const res = await fetch('https://api.firecrawl.dev/v1/search', { 
+    const res = await fetch('https://api.firecrawl.dev/v2/search', { 
       method: 'POST', 
       headers: {
         'content-type':'application/json', 
