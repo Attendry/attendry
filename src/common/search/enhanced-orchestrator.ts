@@ -166,11 +166,12 @@ TASK: From the URLs below, return the top 10 most relevant for ${industry} event
 5. Exclude events that are clearly from other countries unless they're international events relevant to ${locationContext}
 
 IMPORTANT FILTERING RULES:
-- Prioritize events that are physically located ${locationContext}
-- Include international events that are relevant to ${locationContext} professionals
-- Exclude events that are clearly from other countries and not relevant to ${locationContext}
+- STRICTLY prioritize events that are physically located ${locationContext}
+- ONLY include international events if they explicitly mention ${locationContext} or are clearly relevant to ${locationContext} professionals
+- EXCLUDE events that are clearly from other countries (US, UK, etc.) unless they explicitly mention ${locationContext}
 - Focus on actual event pages, not documentation, news, or general information pages
 - Look for event-specific indicators: dates, venues, registration, speakers, agenda
+- For Germany search: prioritize events in German cities, German venues, or events explicitly mentioning Germany
 
 URLs: ${urls.slice(0, 20).join(', ')}
 
@@ -247,6 +248,13 @@ async function extractEventDetails(url: string, searchConfig: any): Promise<any>
   "city": "City name or null if not found",
   "venue": "Venue name or null if not found"
 }
+
+IMPORTANT LOCATION EXTRACTION:
+- Look for venue addresses, city names, country mentions
+- Check for German cities: Berlin, München, Frankfurt, Hamburg, Köln, Stuttgart, etc.
+- Check for German venues, German addresses, German postal codes
+- Look for country indicators in URLs (.de, .at, .ch) or content
+- For ${searchConfig.industry || 'general'} events, focus on events that are actually taking place in the specified location
 
 Focus on ${searchConfig.industry || 'general'} events. If this is not an event page, return null for most fields.`
         },
@@ -724,6 +732,19 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   console.log('[enhanced_orchestrator] Step 2: Filtering for event URLs');
   const eventUrls = urls.filter(url => {
     const urlLower = url.toLowerCase();
+    
+    // Block social media and non-event platforms
+    const blockedDomains = [
+      'linkedin.com', 'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
+      'youtube.com', 'tiktok.com', 'reddit.com', 'mumsnet.com'
+    ];
+    
+    const isBlocked = blockedDomains.some(domain => urlLower.includes(domain));
+    if (isBlocked) {
+      console.log('[enhanced_orchestrator] Blocked URL:', url);
+      return false;
+    }
+    
     // Look for event-related URL patterns
     const eventPatterns = [
       '/event', '/events', '/veranstaltung', '/veranstaltungen', '/konferenz', '/kongress',
@@ -757,13 +778,18 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   console.log('[enhanced_orchestrator] Filtered', urls.length, 'URLs to', eventUrls.length, 'event URLs');
   logs.push({ at: 'event_filtering', inputCount: urls.length, outputCount: eventUrls.length });
 
-  // Step 3: Prioritize URLs with Gemini
-  console.log('[enhanced_orchestrator] Step 3: Prioritizing URLs with Gemini');
-  const prioritizedUrls = await prioritizeUrls(eventUrls, cfg, country, location, timeframe);
-  logs.push({ at: 'prioritization', inputCount: eventUrls.length, outputCount: prioritizedUrls.length, location });
+  // Step 3: Deduplicate URLs
+  console.log('[enhanced_orchestrator] Step 3: Deduplicating URLs');
+  const uniqueUrls = [...new Set(eventUrls)];
+  console.log('[enhanced_orchestrator] Deduplicated', eventUrls.length, 'URLs to', uniqueUrls.length, 'unique URLs');
+  
+  // Step 4: Prioritize URLs with Gemini
+  console.log('[enhanced_orchestrator] Step 4: Prioritizing URLs with Gemini');
+  const prioritizedUrls = await prioritizeUrls(uniqueUrls, cfg, country, location, timeframe);
+  logs.push({ at: 'prioritization', inputCount: uniqueUrls.length, outputCount: prioritizedUrls.length, location });
 
-  // Step 4: Extract event details from prioritized URLs
-  console.log('[enhanced_orchestrator] Step 4: Extracting event details');
+  // Step 5: Extract event details from prioritized URLs
+  console.log('[enhanced_orchestrator] Step 5: Extracting event details');
   const events = [];
   
   for (let i = 0; i < Math.min(prioritizedUrls.length, 10); i++) {
@@ -772,11 +798,28 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     
     const details = await extractEventDetails(url, cfg);
     
-    // Apply country filtering - if searching for specific country, only include events from that country
+    // Apply strict country filtering - if searching for specific country, only include events from that country
     if (country && country !== 'EU') {
       const eventCountry = details.country;
-      if (eventCountry && eventCountry !== country) {
-        console.log('[enhanced_orchestrator] Filtering out non-German event:', url, 'Country:', eventCountry);
+      const eventCity = details.city;
+      const eventLocation = details.location;
+      
+      // Check if event is in the target country
+      const isInTargetCountry = eventCountry === country;
+      
+      // Check if event mentions target country in location
+      const mentionsTargetCountry = eventLocation && 
+        (eventLocation.toLowerCase().includes(country.toLowerCase()) ||
+         eventLocation.toLowerCase().includes('germany') ||
+         eventLocation.toLowerCase().includes('deutschland'));
+      
+      // Check if event is in a German city (for Germany searches)
+      const isInGermanCity = country === 'DE' && eventCity && 
+        ['berlin', 'münchen', 'frankfurt', 'hamburg', 'köln', 'stuttgart', 'düsseldorf', 'leipzig', 'hannover', 'nürnberg', 'bremen', 'bonn', 'essen', 'mannheim', 'münster'].some(city => 
+          eventCity.toLowerCase().includes(city.toLowerCase()));
+      
+      if (!isInTargetCountry && !mentionsTargetCountry && !isInGermanCity) {
+        console.log('[enhanced_orchestrator] Filtering out non-German event:', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
         continue; // Skip this event
       }
     }
