@@ -14,12 +14,22 @@ describe('POST /api/events/run', () => {
     expect(json.effectiveQ).toContain('(foo)');
   });
 
-  it('returns proper error for missing baseQuery', async () => {
+  it('never returns 400 for missing baseQuery - uses fallback', async () => {
     const req = new Request('http://test', { method: 'POST', body: JSON.stringify({ userText: 'test' }) });
     const res = await POST(req);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.error).toBe('baseQuery_missing');
+    expect(json.baseQuerySource).toBeDefined();
+    expect(['config.searchConfig.baseQuery', 'industry.default', 'safe.default']).toContain(json.baseQuerySource);
+  });
+
+  it('uses body baseQuery when provided', async () => {
+    const req = new Request('http://test', { method: 'POST', body: JSON.stringify({ baseQuery: '(foo OR bar)' }) });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.baseQuerySource).toBe('body.baseQuery');
+    expect(json.effectiveQ).toBe('(foo OR bar)');
   });
 
   it('handles invalid JSON gracefully', async () => {

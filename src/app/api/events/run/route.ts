@@ -27,6 +27,7 @@ import { z } from 'zod';
 import { cfg } from '@/common/config';
 import { executeSearch } from '@/services/search/orchestrator';
 import { buildSearchQuery } from '@/common/search/buildQuery';
+import { resolveBaseQuery } from '@/common/search/baseQuery';
 
 const BodySchema = z.object({
   userText: z.string().optional(),
@@ -45,50 +46,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'invalid_request', details: parsed.error.errors }, { status: 400 });
     }
 
-    const {
-      userText = '',                          // <-- canonical, replaces userQuery
-      baseQuery: baseQueryFromBody,
-      country,
-      dateFrom,
-      dateTo,
-    } = parsed.data;
+    const { userText = '', baseQuery: bodyBaseQuery, country, dateFrom, dateTo } = parsed.data;
 
-    // Use configured baseQuery if body not provided
-    const searchConfig = {
-      ...cfg.searchConfig,
-      baseQuery: baseQueryFromBody ?? cfg.searchConfig?.baseQuery ?? '',
-    };
+    const industry = cfg?.searchConfig?.industry ?? null;
+    const configBaseQuery = cfg?.searchConfig?.baseQuery ?? null;
+    const envDefault = process.env.DEFAULT_BASE_QUERY ?? null;
 
-    if (!searchConfig.baseQuery?.trim()) {
-      return NextResponse.json({ error: 'baseQuery_missing' }, { status: 400 });
-    }
-
-    // Build the actual query once (for debug only)
-    const effectiveQ = buildSearchQuery({
-      baseQuery: searchConfig.baseQuery,
-      userText,
+    const { baseQuery, source: baseQuerySource } = resolveBaseQuery({
+      bodyBaseQuery,
+      industry,
+      configBaseQuery,
+      envDefault,
     });
 
-    // Run orchestrator once; do not run any other fallbacks here.
+    const effectiveQ = buildSearchQuery({ baseQuery, userText });
+
     const { items, providerUsed, providersTried, logs } = await executeSearch({
-      baseQuery: searchConfig.baseQuery,
+      baseQuery,
       userText,
       country,
       dateFrom,
       dateTo,
     });
 
+    const urlsUnique = Array.from(new Set(items));
     const debugPayload = {
       marker: 'RUN_V4',
       country: country ?? null,
       provider: providerUsed,
-      searchConfig,
+      searchConfig: { industry, baseQuery },
+      baseQuerySource,
       effectiveQ,
       searchRetriedWithBase: false,
       search: { status: 200, provider: providerUsed, items: items.length },
-      urls: { unique: new Set(items).size, sample: items.slice(0, 5) },
+      urls: { unique: urlsUnique.length, sample: urlsUnique.slice(0, 5) },
       extract: { status: 200, version: items.length ? 'urls_only' : 'no_urls', eventsBeforeFilter: 0, sampleTrace: [] },
-      deduped: { count: new Set(items).size },
+      deduped: { count: urlsUnique.length },
       dateFiltering: {
         from: dateFrom ?? null,
         to: dateTo ?? null,
@@ -108,10 +101,10 @@ export async function POST(req: Request) {
         events: [],
       ...debugPayload,
     });
-  } catch (err:any) {
-    return NextResponse.json({
-      error: err?.message ?? 'unknown_error',
-      debug: { crashed: true },
-    }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message ?? 'unknown_error', debug: { crashed: true } },
+      { status: 500 }
+    );
   }
 }

@@ -13,6 +13,10 @@ const normalizeList = (v: string|string[]|undefined): string[] => {
 };
 
 export const cfg = {
+  searchConfig: {
+    industry: process.env.SEARCH_INDUSTRY ?? 'legal-compliance',
+    baseQuery: process.env.DEFAULT_BASE_QUERY ?? '',
+  },
   providers: normalizeList(raw.providers) as Provider[],
   // ...
 };
