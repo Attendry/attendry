@@ -797,12 +797,41 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', Math.min(prioritizedUrls.length, 10), ':', url);
     
     const details = await extractEventDetails(url, cfg);
+    console.log('[enhanced_orchestrator] Extracted details:', {
+      url,
+      title: details.title,
+      country: details.country,
+      city: details.city,
+      location: details.location,
+      venue: details.venue,
+      starts_at: details.starts_at
+    });
     
-    // Apply strict country filtering - if searching for specific country, only include events from that country
+    // If extraction completely failed, create a basic event object
+    if (!details.title && !details.description && !details.country && !details.city) {
+      console.log('[enhanced_orchestrator] Extraction failed, creating basic event object for:', url);
+      details.title = `Event from ${new URL(url).hostname}`;
+      details.description = `Event found at ${url}`;
+      details.country = null;
+      details.city = null;
+      details.location = null;
+      details.venue = null;
+      details.starts_at = null;
+    }
+    
+    // Apply country filtering - if searching for specific country, only include events from that country
     if (country && country !== 'EU') {
       const eventCountry = details.country;
       const eventCity = details.city;
       const eventLocation = details.location;
+      
+      console.log('[enhanced_orchestrator] Checking event location:', {
+        url,
+        eventCountry,
+        eventCity,
+        eventLocation,
+        targetCountry: country
+      });
       
       // Check if event is in the target country
       const isInTargetCountry = eventCountry === country;
@@ -818,9 +847,23 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         ['berlin', 'münchen', 'frankfurt', 'hamburg', 'köln', 'stuttgart', 'düsseldorf', 'leipzig', 'hannover', 'nürnberg', 'bremen', 'bonn', 'essen', 'mannheim', 'münster'].some(city => 
           eventCity.toLowerCase().includes(city.toLowerCase()));
       
-      if (!isInTargetCountry && !mentionsTargetCountry && !isInGermanCity) {
+      // Check if URL suggests German location
+      const urlSuggestsGerman = url.toLowerCase().includes('.de') || 
+        url.toLowerCase().includes('germany') || 
+        url.toLowerCase().includes('deutschland');
+      
+      // For now, be more lenient - only filter out if we have strong evidence it's NOT German
+      const isDefinitelyNotGerman = eventCountry && 
+        !['DE', 'AT', 'CH'].includes(eventCountry) && 
+        !urlSuggestsGerman && 
+        !mentionsTargetCountry && 
+        !isInGermanCity;
+      
+      if (isDefinitelyNotGerman) {
         console.log('[enhanced_orchestrator] Filtering out non-German event:', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
         continue; // Skip this event
+      } else {
+        console.log('[enhanced_orchestrator] Keeping event (German or ambiguous):', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
       }
     }
     
