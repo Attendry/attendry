@@ -97,14 +97,18 @@ const INDUSTRY_TEMPLATES: Record<string, ActiveConfig> = {
       BE: ['Belgium', 'Belgien', 'Brussels', 'Antwerpen', 'Gent']
     },
     cityKeywordsByCountry: {
-      DE: ['Berlin', 'München', 'Frankfurt', 'Hamburg', 'Köln', 'Stuttgart', 'Düsseldorf', 'Leipzig', 'Hannover', 'Nürnberg', 'Bremen', 'Bonn', 'Essen', 'Mannheim', 'Münster', 'Wiesbaden', 'Dresden'],
-      AT: ['Wien', 'Salzburg', 'Graz', 'Innsbruck', 'Linz'],
-      CH: ['Zürich', 'Bern', 'Basel', 'Genf', 'Lausanne'],
-      FR: ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice'],
-      IT: ['Roma', 'Milano', 'Torino', 'Firenze', 'Bologna'],
-      ES: ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao'],
-      NL: ['Amsterdam', 'Rotterdam', 'Den Haag', 'Utrecht', 'Eindhoven'],
-      BE: ['Brussels', 'Antwerp', 'Ghent', 'Bruges']
+      DE: [
+        'Berlin', 'München', 'Munich', 'Frankfurt', 'Hamburg', 'Köln', 'Cologne', 'Stuttgart', 'Düsseldorf', 'Duesseldorf',
+        'Leipzig', 'Hannover', 'Hanover', 'Nürnberg', 'Nuremberg', 'Bremen', 'Bonn', 'Essen', 'Mannheim', 'Münster', 'Munster',
+        'Wiesbaden', 'Dresden', 'Dortmund', 'Bochum', 'Karlsruhe', 'Aachen', 'Braunschweig', 'Chemnitz', 'Freiburg', 'Heidelberg'
+      ],
+      AT: ['Wien', 'Vienna', 'Salzburg', 'Graz', 'Innsbruck', 'Linz', 'Klagenfurt'],
+      CH: ['Zürich', 'Zurich', 'Bern', 'Basel', 'Genf', 'Geneva', 'Lausanne', 'Lugano', 'St. Gallen'],
+      FR: ['Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice', 'Bordeaux', 'Nantes', 'Lille'],
+      IT: ['Roma', 'Rome', 'Milano', 'Milan', 'Torino', 'Turin', 'Firenze', 'Florence', 'Bologna', 'Napoli', 'Naples'],
+      ES: ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Seville', 'Bilbao', 'Zaragoza', 'Malaga'],
+      NL: ['Amsterdam', 'Rotterdam', 'Den Haag', 'The Hague', 'Utrecht', 'Eindhoven', 'Groningen'],
+      BE: ['Brussels', 'Bruxelles', 'Antwerp', 'Gent', 'Ghent', 'Brugge', 'Bruges']
     },
     disqualifyCountryTerms: ['United States', 'USA', 'US', 'Canada', 'United Kingdom', 'UK'],
     disqualifyCityTerms: ['Kansas City', 'Nashville', 'Houston', 'Chicago', 'New York', 'Los Angeles', 'San Francisco', 'Boston', 'Atlanta', 'Miami', 'Seattle', 'Denver']

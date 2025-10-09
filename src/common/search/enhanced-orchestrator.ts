@@ -1259,7 +1259,7 @@ function extractLocation(content: string, url: string, config: ActiveConfig): { 
   const cityKeywords = config.cityKeywordsByCountry ?? {};
   for (const [countryCode, tokens] of Object.entries(cityKeywords)) {
     for (const token of tokens) {
-      if (includesToken(contentLower, [token])) {
+      if (includesToken(contentLower, [token]) || lowerUrl.includes(token.toLowerCase().replace(/\s+/g, '-'))) {
         city = token;
         countryFromCity = countryCode;
         break;
