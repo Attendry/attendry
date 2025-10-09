@@ -165,27 +165,34 @@ export default function Home() {
       </section>
 
       {/* Stats Section */}
-      <section className="py-16 bg-slate-50">
+      <section className="py-16 bg-neutral-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-            <div className="group">
-              <div className="text-4xl sm:text-5xl font-bold text-blue-600 mb-2 group-hover:scale-110 transition-transform duration-200">
-                500+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                title: 'Partner with us',
+                body: 'Upload your target account list to generate curated playbooks and signal-based event matches.',
+                action: 'Upload target accounts',
+              },
+              {
+                title: 'Activate your team',
+                body: 'Invite sales and marketing stakeholders to align on pipeline priorities and upcoming engagements.',
+                action: 'Invite teammates',
+              },
+              {
+                title: 'Learn the workflow',
+                body: 'Watch a 90-second briefing on how Attendry unlocks revenue opportunities for corporate GTM teams.',
+                action: 'Watch walkthrough',
+              },
+            ].map((card) => (
+              <div key={card.title} className="bg-white border border-neutral-200 rounded-lg p-6 flex flex-col">
+                <h3 className="text-lg font-semibold text-neutral-900 mb-2">{card.title}</h3>
+                <p className="text-sm text-neutral-600 flex-1">{card.body}</p>
+                <button className="mt-6 inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-700">
+                  {card.action}
+                </button>
               </div>
-              <div className="text-lg text-slate-600">Events Discovered</div>
-            </div>
-            <div className="group">
-              <div className="text-4xl sm:text-5xl font-bold text-blue-600 mb-2 group-hover:scale-110 transition-transform duration-200">
-                50+
-              </div>
-              <div className="text-lg text-slate-600">Industries Covered</div>
-            </div>
-            <div className="group">
-              <div className="text-4xl sm:text-5xl font-bold text-blue-600 mb-2 group-hover:scale-110 transition-transform duration-200">
-                24/7
-              </div>
-              <div className="text-lg text-slate-600">AI-Powered Search</div>
-            </div>
+            ))}
           </div>
         </div>
       </section>

@@ -13,6 +13,11 @@ import {
   Calendar,
   Building2,
   User,
+  Target,
+  Briefcase,
+  Settings2,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 
 /**
@@ -50,6 +55,11 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
   const [intent, setIntent] = useState<SearchIntent | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [selectedSegments, setSelectedSegments] = useState<string[]>(['All Segments']);
+  const [selectedRevenue, setSelectedRevenue] = useState<string>('All Tiers');
+  const [selectedJourneyStages, setSelectedJourneyStages] = useState<string[]>(['Awareness', 'Evaluation']);
+  const [crmSync, setCrmSync] = useState<{ salesforce: boolean; hubspot: boolean }>({ salesforce: false, hubspot: false });
 
   // Debounced query for NLP processing
   const debouncedQuery = useDebounce(query, 500);
@@ -101,6 +111,29 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
   // Handle suggestion selection
   const handleSuggestionSelect = useCallback((suggestion: string) => {
     setQuery(suggestion);
+  }, []);
+
+  const toggleSegment = useCallback((segment: string) => {
+    setSelectedSegments((prev) => {
+      if (segment === 'All Segments') {
+        return ['All Segments'];
+      }
+      const cleaned = prev.filter((item) => item !== 'All Segments');
+      if (cleaned.includes(segment)) {
+        const next = cleaned.filter((item) => item !== segment);
+        return next.length === 0 ? ['All Segments'] : next;
+      }
+      return [...cleaned, segment];
+    });
+  }, []);
+
+  const toggleJourneyStage = useCallback((stage: string) => {
+    setSelectedJourneyStages((prev) => {
+      if (prev.includes(stage)) {
+        return prev.filter((item) => item !== stage);
+      }
+      return [...prev, stage];
+    });
   }, []);
 
   // Get intent icon
@@ -180,6 +213,123 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
           </button>
         </div>
 
+        {/* Advanced Filters Toggle */}
+        <div className="flex items-center justify-between mt-3">
+          <button
+            type="button"
+            onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+            className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+          >
+            <Settings2 className={`h-4 w-4 transition-transform ${showAdvancedFilters ? 'rotate-90' : ''}`} />
+            Advanced ICP Filters
+            <ChevronDown className={`h-4 w-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            <span className="inline-flex items-center gap-1">
+              <Target className="h-3 w-3" /> Segments mapped to CRM personas
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Briefcase className="h-3 w-3" /> Revenue tiers synced nightly
+            </span>
+          </div>
+        </div>
+
+        {showAdvancedFilters && (
+          <div className="mt-3 border border-gray-200 rounded-lg p-4 space-y-4 bg-gray-50">
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ICP Segments</h4>
+              <div className="flex flex-wrap gap-2">
+                {['All Segments', 'Strategic Finance', 'Manufacturing Ops', 'Healthcare Compliance', 'Emerging SaaS'].map((segment) => {
+                  const isSelected = selectedSegments.includes(segment);
+                  return (
+                    <button
+                      key={segment}
+                      onClick={() => toggleSegment(segment)}
+                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                        isSelected ? 'bg-blue-100 text-blue-700' : 'bg-white text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {isSelected && <Check className="h-3 w-3" />}
+                      {segment}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Revenue Tier</h4>
+              <div className="flex flex-wrap gap-2">
+                {['All Tiers', '>$1B Strategic', '$250M-$1B Growth', '<$250M Emerging'].map((tier) => (
+                  <button
+                    key={tier}
+                    onClick={() => setSelectedRevenue(tier)}
+                    className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      selectedRevenue === tier ? 'bg-purple-100 text-purple-700' : 'bg-white text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {selectedRevenue === tier && <Check className="h-3 w-3" />}
+                    {tier}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Journey Stage</h4>
+              <div className="flex flex-wrap gap-2">
+                {['Awareness', 'Evaluation', 'Consideration', 'Expansion'].map((stage) => {
+                  const isSelected = selectedJourneyStages.includes(stage);
+                  return (
+                    <button
+                      key={stage}
+                      onClick={() => toggleJourneyStage(stage)}
+                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                        isSelected ? 'bg-green-100 text-green-700' : 'bg-white text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {isSelected && <Check className="h-3 w-3" />}
+                      {stage}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200 pt-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <span className="font-medium text-gray-700">CRM Sync (mock)</span>
+                  <span>Automated nightly sync with Salesforce & HubSpot</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-md ${
+                    crmSync.salesforce ? 'border-blue-500 text-blue-600' : 'border-gray-300 text-gray-600'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={crmSync.salesforce}
+                      onChange={(e) => setCrmSync((prev) => ({ ...prev, salesforce: e.target.checked }))}
+                    />
+                    Salesforce (mock)
+                  </label>
+                  <label className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-md ${
+                    crmSync.hubspot ? 'border-orange-500 text-orange-600' : 'border-gray-300 text-gray-600'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={crmSync.hubspot}
+                      onChange={(e) => setCrmSync((prev) => ({ ...prev, hubspot: e.target.checked }))}
+                    />
+                    HubSpot (mock)
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Intent Detection */}
         {intent && (
           <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -255,11 +405,11 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
         <p className="text-sm text-gray-600 mb-2">Try asking:</p>
         <div className="flex flex-wrap gap-2">
           {[
-            'Show me legal conferences in Munich next month',
-            'Find FinTech events in London',
-            'What events are happening in December?',
-            'Find speakers from Google',
-            'Show me compliance training workshops',
+            'Which strategic finance events unlock C-suite meetings next quarter?',
+            'Show EMEA manufacturing summits for $250M-$1B accounts',
+            'Find SaaS community events for Awareness-stage leads',
+            'List healthcare compliance workshops for evaluation stage prospects',
+            'Where are partner-led AI marketing programs for expansion accounts?',
           ].map((example, index) => (
             <button
               key={index}
