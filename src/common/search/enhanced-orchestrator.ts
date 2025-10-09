@@ -175,11 +175,59 @@ function normalizeDateInput(raw: unknown): string | null {
 
 type ExtractResponse = Record<string, unknown>;
 
-function extractCandidatePayload(raw: ExtractResponse | null | undefined): unknown {
+function extractCandidatePayload(raw: ExtractResponse | null | undefined, url: string): unknown {
   if (!raw) return null;
-  if (raw.json) return raw.json;
-  if (raw.outputs?.length) return raw.outputs[0]?.output ?? raw.outputs[0]?.content;
-  if (raw.outputs?.length) return raw.outputs[0]?.output ?? raw.outputs[0]?.content;
+
+  if (raw.json) {
+    logExtractionDebug(url, 'firecrawl_payload_json', {});
+    return raw.json;
+  }
+
+  const outputs = Array.isArray(raw.outputs) ? raw.outputs : [];
+  for (const [index, entry] of outputs.entries()) {
+    if (!entry || typeof entry !== 'object') continue;
+    const typed = entry as Record<string, unknown>;
+    if (typed.json) {
+      logExtractionDebug(url, 'firecrawl_payload_outputs_json', { index });
+      return typed.json;
+    }
+    if (typed.output && typeof typed.output === 'object') {
+      const output = typed.output as Record<string, unknown>;
+      if (typeof output.json === 'object') {
+        logExtractionDebug(url, 'firecrawl_payload_output_json', { index });
+        return output.json;
+      }
+      if (typeof output.text === 'string') {
+        logExtractionDebug(url, 'firecrawl_payload_output_text', { index });
+        return output.text;
+      }
+      if (typeof output.markdown === 'string') {
+        logExtractionDebug(url, 'firecrawl_payload_output_markdown', { index });
+        return output.markdown;
+      }
+    }
+    if (typed.content && typeof typed.content === 'object') {
+      const content = typed.content as Record<string, unknown>;
+      if (typeof content.json === 'object') {
+        logExtractionDebug(url, 'firecrawl_payload_content_json', { index });
+        return content.json;
+      }
+      if (typeof content.text === 'string') {
+        logExtractionDebug(url, 'firecrawl_payload_content_text', { index });
+        return content.text;
+      }
+      if (typeof content.markdown === 'string') {
+        logExtractionDebug(url, 'firecrawl_payload_content_markdown', { index });
+        return content.markdown;
+      }
+    }
+  }
+
+  if (raw.text && typeof raw.text === 'string') {
+    logExtractionDebug(url, 'firecrawl_payload_text', {});
+    return raw.text;
+  }
+
   return raw;
 }
 
@@ -575,11 +623,32 @@ function isExtractEmpty(value: ExtractedEventDetails | null | undefined): boolea
   return !value.title && !value.description && !value.starts_at && !value.country && !value.city && !value.location && !value.venue;
 }
 
+function logExtractionDebug(url: string, stage: string, data: Record<string, unknown>): void {
+  const payload = { url, ...data };
+  console.debug(`[extract_debug] ${stage}`, payload);
+}
+
+const HTML_FETCH_TIMEOUT = 5000;
+
+const FIRECRAWL_SCRAPE_ENDPOINT = 'https://api.firecrawl.dev/v2/scrape';
+const FIRECRAWL_RETRY_DELAYS = [0, 1000, 2500];
+
+const BROWSER_HEADERS: Record<string, string> = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 AttendryBot/1.0',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
+  'Cache-Control': 'no-cache'
+};
+
 async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), HTML_FETCH_TIMEOUT);
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: BROWSER_HEADERS,
+      redirect: 'follow'
+    });
     clearTimeout(timeout);
 
     if (!res.ok) {
@@ -587,7 +656,17 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
     }
 
     const html = await res.text();
+    if (!html || !html.trim()) {
+      console.warn('[extract] cheapHtmlScrape received empty body', { url });
+      return emptyExtractedDetails();
+    }
     const $ = cheerio.load(html);
+
+    logExtractionDebug(url, 'cheap_html_dom', {
+      hasH1: $('h1').length > 0,
+      hasLdJson: $('script[type="application/ld+json"]').length > 0,
+      titleSample: $('title').first().text().slice(0, 120)
+    });
 
     const title = $('meta[property="og:title"]').attr('content')
       || $('title').first().text()
@@ -620,6 +699,7 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
       $('span[itemprop="addressCountry"]').text(),
       $('[data-country]').attr('data-country'),
       $('[class*="country"]').first().text(),
+      extractCountryFromLdJson($)
     ].filter(Boolean) as string[];
 
     const venueCandidates = [
@@ -643,7 +723,10 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
       venue
     };
   } catch (error) {
-    console.warn('[extract] cheapHtmlScrape failed', { url, error });
+    console.warn('[extract] cheapHtmlScrape failed', {
+      url,
+      error: error instanceof Error ? { message: error.message, stack: error.stack } : error
+    });
     return emptyExtractedDetails();
   }
 }
@@ -672,6 +755,30 @@ function parseDateCandidates(candidates: string[]): string | null {
   for (const candidate of candidates) {
     const parsed = extractDate(candidate);
     if (parsed) return parsed;
+  }
+  return null;
+}
+
+function extractCountryFromLdJson($: cheerio.CheerioAPI): string | null {
+  const scripts = $('script[type="application/ld+json"]').toArray();
+  for (const script of scripts) {
+    const content = $(script).text();
+    if (!content) continue;
+    try {
+      const parsed = JSON.parse(content) as Record<string, unknown> | Record<string, unknown>[];
+      const objs = Array.isArray(parsed) ? parsed : [parsed];
+      for (const obj of objs) {
+        const address = (obj.address || (obj.location as Record<string, unknown> | undefined)?.address) as Record<string, unknown> | undefined;
+        if (address && typeof address === 'object') {
+          const country = address.addressCountry || address.country || address.countryCode;
+          if (typeof country === 'string' && country.trim()) {
+            return country.trim();
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[extract] Failed to parse LD+JSON for country', { error, url: $.root().find('title').text().slice(0, 120) });
+    }
   }
   return null;
 }
@@ -725,8 +832,13 @@ async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: A
       const raw = await response.text();
       const repaired = await tryJsonRepair(raw);
       const parsed = JSON.parse(repaired ?? raw) as ExtractResponse;
-      const candidate = extractCandidatePayload(parsed);
+      const candidate = extractCandidatePayload(parsed, url);
       const extracted = toExtractedEventDetails(candidate);
+      if (isExtractEmpty(extracted)) {
+        logExtractionDebug(url, 'firecrawl_json_empty', { attempt, snippet: raw.slice(0, 200) });
+      } else {
+        logExtractionDebug(url, 'firecrawl_json_success', { attempt, title: extracted.title, date: extracted.starts_at });
+      }
       return extracted;
     } catch (error) {
       console.warn('[extract] Firecrawl attempt failed', { url, attempt, error });
@@ -753,7 +865,7 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
         onlyMainContent: true,
         timeout: 10000
       })
-    }), 6000, 'firecrawl_fallback_timeout');
+    }), 10000, 'firecrawl_fallback_timeout');
 
     if (!response.ok) {
       console.warn('[extract] Fallback scrape failed', { url, status: response.status });
@@ -771,6 +883,7 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
 
     const content = inferMarkdownContent(data);
     if (!content) {
+      logExtractionDebug(url, 'firecrawl_markdown_empty', {});
       return emptyExtractedDetails();
     }
 
@@ -780,7 +893,7 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
     const locationGuess = extractLocation(content, url, searchConfig);
     const venue = extractVenue(content);
 
-    return {
+    const result = {
       title,
       description,
       starts_at,
@@ -789,6 +902,8 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
       location: formatLocation(locationGuess.city, locationGuess.country) ?? locationGuess.location,
       venue
     };
+    logExtractionDebug(url, 'firecrawl_markdown_success', { title: result.title, date: result.starts_at });
+    return result;
   } catch (error) {
     console.error('[extract] Fallback extraction error', { url, error });
     return emptyExtractedDetails();
