@@ -5,6 +5,7 @@ import { buildSearchQuery } from './queryBuilder';
 import { search as firecrawlSearch } from '../../providers/firecrawl';
 import { search as cseSearch } from '../../providers/cse';
 import { search as databaseSearch } from '../../providers/database';
+import { fetchCachedExtraction, upsertCachedExtraction } from './cache';
 
 type ExecArgs = {
   userText?: string;
@@ -567,6 +568,22 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
     const extracted = toExtractedEventDetails(extractedCandidate);
     const locationFormatted = formatLocation(extracted.city, extracted.country) ?? extracted.location;
 
+    await upsertCachedExtraction({
+      url,
+      eventDate: extracted.starts_at,
+      country: extracted.country,
+      city: extracted.city,
+      payload: {
+        title: extracted.title,
+        description: extracted.description,
+        starts_at: extracted.starts_at,
+        country: extracted.country,
+        city: extracted.city,
+        location: locationFormatted,
+        venue: extracted.venue
+      }
+    });
+
     const fallbackDetails = await fallbackExtraction(url, apiKey, searchConfig).catch((err: unknown) => {
       console.warn('[extract] Fallback extraction during merge failed', { url, err });
       return {
@@ -1037,6 +1054,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   console.log('[enhanced_orchestrator] Step 4: Prioritizing URLs with Gemini');
   const prioritizedResult = await prioritizeUrls(uniqueUrls, cfg, country, location, timeframe);
   const prioritized = prioritizedResult.items;
+  const geminiSucceeded = prioritizedResult.modelPath !== null && !prioritizedResult.fallbackReason;
   logs.push({
     at: 'prioritization',
     inputCount: uniqueUrls.length,
@@ -1047,6 +1065,17 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     reasons: prioritized.slice(0, 5).map(p => ({ url: p.url, score: p.score, reason: p.reason }))
   });
 
+  if (!geminiSucceeded) {
+    console.warn('[enhanced_orchestrator] Skipping extraction - Gemini prioritisation unavailable');
+    return {
+      events: [],
+      logs,
+      effectiveQ: q,
+      searchRetriedWithBase: false,
+      providersTried
+    };
+  }
+
   // Step 5: Extract event details from prioritized URLs
   console.log('[enhanced_orchestrator] Step 5: Extracting event details');
   const events: ScoredEvent[] = [];
@@ -1056,6 +1085,29 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   for (let i = 0; i < maxToExtract; i++) {
     const candidate = prioritized[i];
     const url = candidate.url;
+    const cached = await fetchCachedExtraction(url, null);
+    if (cached) {
+      events.push({
+        id: `event_${i}`,
+        title: cached.payload?.title ?? null,
+        source_url: url,
+        starts_at: cached.payload?.starts_at ?? null,
+        country: cached.payload?.country ?? null,
+        city: cached.payload?.city ?? null,
+        location: cached.payload?.location ?? null,
+        venue: cached.payload?.venue ?? null,
+        description: cached.payload?.description ?? null,
+        speakers: cached.payload?.speakers ?? [],
+        confidence: Math.min(Math.max(candidate.score, 0), 1),
+        confidence_reason: candidate.reason,
+        scoringTrace: {
+          geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
+          heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
+        }
+      });
+      continue;
+    }
+
     console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', maxToExtract, ':', url, 'score:', candidate.score.toFixed(3));
     
     try {
