@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/ssr";
 
 export async function POST(req: NextRequest) {
+  const res = NextResponse.next();
+
   try {
     const { email, password } = await req.json();
-    
+
     if (!email || !password) {
       return NextResponse.json({
         status: "error",
@@ -13,12 +14,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const supabase = createRouteHandlerClient({ cookies });
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const supabase = createRouteHandlerClient({ request: req, response: res });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       return NextResponse.json({
@@ -34,9 +31,9 @@ export async function POST(req: NextRequest) {
       }, { status: 401 });
     }
 
-    const response = NextResponse.json({
+    const success = NextResponse.json({
       status: "success",
-      message: "Session created and cookies will be set",
+      message: "Session created",
       user: {
         id: data.user?.id,
         email: data.user?.email
@@ -48,13 +45,16 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    return response;
+    res.cookies.getAll().forEach((cookie) => {
+      success.cookies.set(cookie);
+    });
 
+    return success;
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({
       status: "error",
-      message: "Cookie setting failed",
+      message: "Sign in failed",
       error: errorMessage
     }, { status: 500 });
   }
