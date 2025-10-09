@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
+
+function required(name: string, value: string | undefined) {
+  if (!value) {
+    throw new Error(`Missing environment variable: ${name}`);
+  }
+  return value;
+}
 
 export async function POST(req: NextRequest) {
-  const res = NextResponse.next();
-
   try {
     const { email, password } = await req.json();
 
@@ -14,7 +19,25 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const supabase = createRouteHandlerClient({ request: req, response: res });
+    const supabaseUrl = required("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL);
+    const supabaseAnonKey = required("NEXT_PUBLIC_SUPABASE_ANON_KEY", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
+    const pendingCookies: Array<{ name: string; value: string; options?: CookieOptions }> = [];
+
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        get(name: string) {
+          return req.cookies.get(name)?.value;
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          pendingCookies.push({ name, value, options });
+        },
+        remove(name: string, options: CookieOptions) {
+          pendingCookies.push({ name, value: "", options: { ...options, maxAge: 0 } });
+        }
+      }
+    });
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
@@ -31,7 +54,7 @@ export async function POST(req: NextRequest) {
       }, { status: 401 });
     }
 
-    const success = NextResponse.json({
+    const response = NextResponse.json({
       status: "success",
       message: "Session created",
       user: {
@@ -45,11 +68,19 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    res.cookies.getAll().forEach((cookie) => {
-      success.cookies.set(cookie);
+    pendingCookies.forEach(({ name, value, options }) => {
+      response.cookies.set({
+        name,
+        value,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        ...options
+      });
     });
 
-    return success;
+    return response;
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({
