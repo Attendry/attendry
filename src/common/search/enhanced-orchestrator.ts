@@ -262,6 +262,14 @@ function includesToken(haystack: string | null | undefined, tokens: string[]): b
   });
 }
 
+function extractJsonPayload(raw: string): string {
+  const fenceMatch = raw.match(/```(?:json)?\s*([^]*?)```/i);
+  if (fenceMatch && fenceMatch[1]) {
+    return fenceMatch[1].trim();
+  }
+  return raw.trim();
+}
+
 // Industry-agnostic Gemini prioritization
 async function prioritizeUrls(urls: string[], searchConfig: ActiveConfig, country: string, location: string | null, timeframe: string | null): Promise<PrioritizationResult> {
   try {
@@ -394,12 +402,13 @@ Include at most 10 items. Only include URLs you see in the list.`;
         reason: response.ok ? 'empty_response' : 'no_content'
       })),
       modelPath,
-      fallbackReason: content ? 'parse_failure' : 'no_content'
+      fallbackReason: response.ok ? 'empty_response' : 'no_content'
     };
     }
 
     try {
-      const prioritized = JSON.parse(content) as GeminiPrioritizedItem[];
+      const sanitized = extractJsonPayload(content);
+      const prioritized = JSON.parse(sanitized) as GeminiPrioritizedItem[];
       if (Array.isArray(prioritized)) {
         const normalized = prioritized
           .map((item, idx): PrioritizedUrl | null => {
@@ -424,6 +433,15 @@ Include at most 10 items. Only include URLs you see in the list.`;
       }
     } catch (parseError) {
       console.warn('[prioritization] Failed to parse Gemini response:', parseError);
+      return {
+        items: urls.slice(0, 10).map((url, idx) => ({
+          url,
+          score: 0.3 - idx * 0.02,
+          reason: 'parse_failure'
+        })),
+        modelPath,
+        fallbackReason: 'parse_failure'
+      };
     }
 
     return {
@@ -433,7 +451,7 @@ Include at most 10 items. Only include URLs you see in the list.`;
         reason: 'parse_failure'
       })),
       modelPath,
-      fallbackReason: content ? 'parse_failure' : 'no_content'
+      fallbackReason: 'parse_failure'
     };
   } catch (error) {
     console.error('[prioritization] Error:', error);
