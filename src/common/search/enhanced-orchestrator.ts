@@ -1,5 +1,6 @@
 // Enhanced orchestrator with full pipeline: Search → Prioritization → Extract
 import { loadActiveConfig, type ActiveConfig } from './config';
+import { tryJsonRepair } from '../utils/json';
 import { buildSearchQuery } from './queryBuilder';
 import { search as firecrawlSearch } from '../../providers/firecrawl';
 import { search as cseSearch } from '../../providers/cse';
@@ -329,20 +330,39 @@ Include at most 10 items. Only include URLs you see in the list.`;
       })
     });
 
+    let content: string | null = null;
+
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
-      console.warn('[prioritization] Gemini API failed:', response.status, errorText);
+      console.warn('[prioritization] Gemini API failed', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText.slice(0, 500),
+        modelPath,
+      });
       console.warn('[prioritization] API Key length:', apiKey?.length || 0);
       console.warn('[prioritization] API Key starts with:', apiKey?.substring(0, 10) || 'N/A');
-      return urls.slice(0, 10).map((url, idx) => ({
-        url,
-        score: 0.3 - idx * 0.02,
-        reason: 'fallback_first_pass'
-      }));
+    } else {
+      const rawText = await response.text();
+      try {
+        const repaired = await tryJsonRepair(rawText);
+        if (repaired) {
+          console.debug('[prioritization] Applied jsonrepair to Gemini response');
+        }
+        const data = JSON.parse(repaired ?? rawText) as {
+          candidates?: Array<{ content?: { parts?: Array<{ text?: string; functionCall?: { args?: Record<string, unknown> } }> } }>;
+        };
+        content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+        if (!content) {
+          const functionCall = data.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+          if (functionCall?.args && Array.isArray(functionCall.args.prioritizedUrls)) {
+            content = JSON.stringify(functionCall.args.prioritizedUrls);
+          }
+        }
+      } catch (err) {
+        console.warn('[prioritization] Failed to parse Gemini response JSON', err);
+      }
     }
-
-    const data = await response.json();
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (!content) {
       console.warn('[prioritization] No content in Gemini response');
@@ -463,17 +483,32 @@ Rules:
     const response = await Promise.race([extractPromise, timeoutPromise]) as Response;
 
     if (!response.ok) {
-      console.warn('[extract] Firecrawl extract failed for', url, response.status);
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.warn('[extract] Firecrawl extract failed', {
+        url,
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText.slice(0, 500),
+      });
       // Fallback to simple scraping
       return await fallbackExtraction(url, apiKey, searchConfig);
     }
 
-    let data;
+    let rawResponseText = '';
+    let data: ExtractResponse | null = null;
     try {
-      const responseText = await response.text();
-      data = JSON.parse(responseText);
+      rawResponseText = await response.text();
+      const repaired = await tryJsonRepair(rawResponseText);
+      if (repaired) {
+        console.debug('[extract] Applied jsonrepair to Firecrawl response', { url });
+      }
+      data = JSON.parse(repaired ?? rawResponseText) as ExtractResponse;
     } catch (parseError) {
-      console.warn('[extract] Failed to parse Firecrawl extract response for', url, parseError);
+      console.warn('[extract] Failed to parse Firecrawl extract response', {
+        url,
+        error: parseError,
+        snippet: rawResponseText.slice(0, 400),
+      });
       // Fallback to simple scraping
       return await fallbackExtraction(url, apiKey, searchConfig);
     }
