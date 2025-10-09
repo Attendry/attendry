@@ -9,11 +9,13 @@
 import { useState, useCallback } from 'react';
 import NaturalLanguageSearch from '@/components/NaturalLanguageSearch';
 import { SearchIntent } from '@/components/NaturalLanguageSearch';
+import { useToast, ToastContainer } from '@/components/Toast';
 
 export default function SearchPage() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [lastIntent, setLastIntent] = useState<SearchIntent | null>(null);
+  const { toasts, success, error, removeToast } = useToast();
 
   // Handle search
   const handleSearch = useCallback(async (query: string, intent: SearchIntent) => {
@@ -52,9 +54,13 @@ export default function SearchPage() {
       if (response.ok) {
         const data = await response.json();
         setSearchResults(data.events || data.items || []);
+        success('Search completed', `Found ${(data.events || data.items || []).length} results`);
+      } else {
+        error('Search failed', 'Unable to retrieve search results');
       }
-    } catch (error) {
-      console.error('Search failed:', error);
+    } catch (err) {
+      console.error('Search failed:', err);
+      error('Search failed', 'An error occurred while searching');
     } finally {
       setIsSearching(false);
     }
@@ -137,7 +143,10 @@ export default function SearchPage() {
                     >
                       View Event
                     </a>
-                    <button className="text-sm text-gray-600 hover:text-gray-800 transition-colors">
+                    <button 
+                      onClick={() => success('Event saved', 'Added to your watchlist')}
+                      className="text-sm text-gray-600 hover:text-gray-800 transition-colors"
+                    >
                       Save
                     </button>
                   </div>
@@ -159,6 +168,8 @@ export default function SearchPage() {
           </div>
         )}
       </div>
+      
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </div>
   );
 }

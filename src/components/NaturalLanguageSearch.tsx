@@ -8,6 +8,12 @@
 "use client";
 import { useState, useEffect, useCallback, memo } from 'react';
 import { useDebounce } from '@/lib/hooks/useDebounce';
+import {
+  MapPin,
+  Calendar,
+  Building2,
+  User,
+} from "lucide-react";
 
 /**
  * Search intent interface
@@ -195,23 +201,27 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
             {Object.keys(intent.entities).length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {intent.entities.location?.map((loc, index) => (
-                  <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    📍 {loc}
+                  <span key={index} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    <MapPin className="h-3 w-3" strokeWidth={2} />
+                    {loc}
                   </span>
                 ))}
                 {intent.entities.date?.map((date, index) => (
-                  <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    📅 {date}
+                  <span key={index} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <Calendar className="h-3 w-3" strokeWidth={2} />
+                    {date}
                   </span>
                 ))}
                 {intent.entities.industry?.map((industry, index) => (
-                  <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                    🏢 {industry}
+                  <span key={index} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    <Building2 className="h-3 w-3" strokeWidth={2} />
+                    {industry}
                   </span>
                 ))}
                 {intent.entities.speaker?.map((speaker, index) => (
-                  <span key={index} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                    👤 {speaker}
+                  <span key={index} className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                    <User className="h-3 w-3" strokeWidth={2} />
+                    {speaker}
                   </span>
                 ))}
               </div>
