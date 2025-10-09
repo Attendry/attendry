@@ -364,12 +364,18 @@ Include at most 10 items. Only include URLs you see in the list.`;
         };
         content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
         if (!content) {
-          const functionCall = data.candidates?.[0]?.content?.parts?.[0]?.functionCall;
-          if (functionCall?.args && Array.isArray(functionCall.args.prioritizedUrls)) {
-            content = JSON.stringify(functionCall.args.prioritizedUrls);
+          const firstCandidate = data.candidates?.[0];
+          const parts = firstCandidate?.content?.parts ?? [];
+          const maybeFunctionCallPart = parts.find((part) => {
+            if (!part || typeof part !== 'object') return false;
+            return 'functionCall' in part && typeof part.functionCall === 'object';
+          });
+          const maybeFunctionCall = (maybeFunctionCallPart as { functionCall?: { args?: Record<string, unknown> } } | undefined)?.functionCall;
+          if (maybeFunctionCall?.args && Array.isArray(maybeFunctionCall.args.prioritizedUrls)) {
+            content = JSON.stringify(maybeFunctionCall.args.prioritizedUrls);
           }
-          if (!content && functionCall?.args?.urls && Array.isArray(functionCall.args.urls)) {
-            content = JSON.stringify(functionCall.args.urls);
+          if (!content && maybeFunctionCall?.args?.urls && Array.isArray(maybeFunctionCall.args.urls)) {
+            content = JSON.stringify(maybeFunctionCall.args.urls);
           }
         }
       } catch (err) {
