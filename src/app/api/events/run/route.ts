@@ -148,7 +148,18 @@ function toApiEvent(raw: unknown): ApiEvent | null {
 }
 
 // Helper function to process enhanced search results
-function processEnhancedResults(res: EnhancedSearchResult, country: string | null, dateFrom: string | null, dateTo: string | null) {
+function locationMentionsCountry(location: string | null, countryCode: string | null): boolean {
+  if (!location || !countryCode) return false;
+  const normalized = location.toLowerCase();
+  const code = countryCode.toLowerCase();
+  const hints: Record<string, string[]> = {
+    de: ['germany', 'deutschland', 'berlin', 'frankfurt', 'munich', 'münchen', 'hamburg', 'stuttgart', 'köln', 'cologne']
+  };
+  const tokens = hints[code] ?? [code];
+  return tokens.some((token) => normalized.includes(token));
+}
+
+function processEnhancedResults(res: EnhancedSearchResult, country: string | null, dateFrom: string | null, dateTo: string | null, includeDebug = false) {
   const events: ApiEvent[] = Array.isArray(res.events)
     ? res.events.map(toApiEvent).filter((event): event is ApiEvent => !!event)
     : [];
@@ -165,7 +176,10 @@ const filteredEvents = sortedEvents.filter((event: ApiEvent) => {
 
     const countryMatch = (() => {
       if (!country) return true;
-      if (!eventCountry) return country.toUpperCase() === 'EU';
+      if (!eventCountry) {
+        if (country.toUpperCase() === 'EU') return true;
+        return locationMentionsCountry(event.location ?? null, country);
+      }
       if (country.toUpperCase() === 'EU') {
         return euCountries.includes(eventCountry.toUpperCase());
       }
@@ -187,7 +201,7 @@ const filteredEvents = sortedEvents.filter((event: ApiEvent) => {
         return true; 
   });
 
-  return {
+  const response = {
     count: filteredEvents.length,
     saved: [],
     events: filteredEvents,
@@ -231,6 +245,15 @@ const filteredEvents = sortedEvents.filter((event: ApiEvent) => {
       rejected: (res.logs ?? []).find((log) => log.at === 'extraction')?.rejected ?? []
     },
   };
+
+  if (includeDebug) {
+    return {
+      ...response,
+      debug: res
+    };
+  }
+
+  return response;
 }
 
 export async function GET(req: NextRequest) {
@@ -243,6 +266,7 @@ export async function GET(req: NextRequest) {
     const locale: 'de' | 'en' = (url.searchParams.get('locale') === 'en' ? 'en' : 'de');
     const location: string | null = url.searchParams.get('location');
     const timeframe: string | null = url.searchParams.get('timeframe');
+    const includeDebug = url.searchParams.get('debug') === '1';
 
     const res = await executeEnhancedSearch({ 
       userText, 
@@ -253,7 +277,7 @@ export async function GET(req: NextRequest) {
       location, 
       timeframe 
     });
-    const result = processEnhancedResults(res, country, dateFrom, dateTo);
+    const result = processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'search_failed';
@@ -271,6 +295,7 @@ export async function POST(req: NextRequest) {
     const locale: 'de' | 'en' = (body?.locale === 'en' ? 'en' : 'de');
     const location: string | null = body?.location ?? null;
     const timeframe: string | null = body?.timeframe ?? null;
+    const includeDebug = body?.debug === true;
 
     const res = await executeEnhancedSearch({ 
       userText, 
@@ -281,7 +306,7 @@ export async function POST(req: NextRequest) {
       location, 
       timeframe 
     });
-    const result = processEnhancedResults(res, country, dateFrom, dateTo);
+    const result = processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'search_failed';
