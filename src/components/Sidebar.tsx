@@ -1,11 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { usePathname } from "next/navigation";
+import {
+  Activity,
+  BarChart3,
+  Bell,
+  Bookmark,
+  Briefcase,
+  Calendar,
+  House,
+  Search,
+  Settings,
+  TrendingUp,
+} from "lucide-react";
 
 type UserLite = { id: string; email?: string | null };
+
+interface NavigationItem {
+  href: string;
+  label: string;
+  icon: typeof House;
+}
+
+interface NavigationGroup {
+  label: string;
+  items: NavigationItem[];
+}
 
 interface SidebarProps {
   isOpen: boolean;
@@ -41,25 +64,50 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     };
   }, []);
 
-  const navigationItems = [
-    { href: "/", label: "Home", icon: "🏠" },
-    { href: "/events", label: "Events", icon: "📅" },
-    { href: "/search", label: "Smart Search", icon: "🔍" },
-    { href: "/recommendations", label: "Recommendations", icon: "💡" },
-    { href: "/trending", label: "Trending", icon: "🔥" },
-    { href: "/compare", label: "Compare Events", icon: "⚖️" },
-    { href: "/predictions", label: "Predictions", icon: "🔮" },
-    { href: "/watchlist", label: "Watchlist", icon: "⭐" },
-    { href: "/profile", label: "Profile", icon: "👤" },
-    { href: "/activity", label: "Activity", icon: "📊" },
-    { href: "/notifications", label: "Notifications", icon: "🔔" },
-  ];
+  const navigationGroups = useMemo<NavigationGroup[]>(
+    () => [
+      {
+        label: "Discover Pipeline",
+        items: [
+          { href: "/", label: "Home", icon: House },
+          { href: "/search", label: "Smart Search", icon: Search },
+          {
+            href: "/recommendations",
+            label: "Market Intelligence",
+            icon: TrendingUp,
+          },
+        ],
+      },
+      {
+        label: "Evaluate Opportunities",
+        items: [
+          { href: "/compare", label: "Compare Events", icon: Briefcase },
+          { href: "/watchlist", label: "Watchlist", icon: Bookmark },
+          { href: "/activity", label: "Event Insights", icon: BarChart3 },
+        ],
+      },
+      {
+        label: "Plan & Execute",
+        items: [
+          { href: "/events", label: "Events Calendar", icon: Calendar },
+          { href: "/notifications", label: "Alerts", icon: Bell },
+        ],
+      },
+    ],
+    []
+  );
 
-  const adminItems = [
-    { href: "/admin", label: "Admin Dashboard", icon: "⚙️" },
-    { href: "/admin/analytics", label: "Analytics", icon: "📈" },
-    { href: "/admin/health", label: "System Health", icon: "🏥" },
-  ];
+  const adminGroup = useMemo<NavigationGroup>(
+    () => ({
+      label: "Admin & Health",
+      items: [
+        { href: "/admin", label: "Admin Dashboard", icon: Settings },
+        { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+        { href: "/admin/health", label: "System Health", icon: Activity },
+      ],
+    }),
+    []
+  );
 
   const isActive = (href: string) => {
     if (href === "/") {
@@ -112,56 +160,73 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 py-6 space-y-2 px-2 lg:px-4">
-            {navigationItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onClose}
-                className={`
-                  flex items-center rounded-lg text-sm font-medium transition-all duration-200
-                  justify-center lg:justify-start px-2 lg:px-4 py-3 lg:gap-3
-                  ${isActive(item.href)
-                    ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                  }
-                `}
-                title={item.label}
-              >
-                <span className="text-lg">{item.icon}</span>
-                <span className="hidden lg:inline">{item.label}</span>
-              </Link>
-            ))}
-
-            {/* Admin section - only show if user is authenticated */}
-            {authReady && user && (
-              <>
-                <div className="border-t border-gray-200 my-4"></div>
-                <div className="px-2 lg:px-4">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:block mb-2">
-                    Admin
+          <nav className="flex-1 py-6 space-y-6 px-2 lg:px-4">
+            {navigationGroups.map((group) => (
+              <div key={group.label}>
+                <div className="hidden lg:flex items-center justify-between px-4 mb-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    {group.label}
                   </h3>
                 </div>
-                {adminItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={onClose}
-                    className={`
-                      flex items-center rounded-lg text-sm font-medium transition-all duration-200
-                      justify-center lg:justify-start px-2 lg:px-4 py-3 lg:gap-3
-                      ${isActive(item.href)
-                        ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                      }
-                    `}
-                    title={item.label}
-                  >
-                    <span className="text-lg">{item.icon}</span>
-                    <span className="hidden lg:inline">{item.label}</span>
-                  </Link>
-                ))}
-              </>
+                <div className="space-y-1">
+                  {group.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={onClose}
+                        className={`
+                          flex items-center rounded-lg text-sm font-medium transition-all duration-200
+                          justify-center lg:justify-start px-2 lg:px-4 py-3 lg:gap-3
+                          ${isActive(item.href)
+                            ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
+                            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                          }
+                        `}
+                        title={item.label}
+                      >
+                        <Icon className="h-5 w-5" strokeWidth={1.8} />
+                        <span className="hidden lg:inline">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {authReady && user && (
+              <div>
+                <div className="hidden lg:flex items-center justify-between px-4 mb-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    {adminGroup.label}
+                  </h3>
+                </div>
+                <div className="space-y-1">
+                  {adminGroup.items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={onClose}
+                        className={`
+                          flex items-center rounded-lg text-sm font-medium transition-all duration-200
+                          justify-center lg:justify-start px-2 lg:px-4 py-3 lg:gap-3
+                          ${isActive(item.href)
+                            ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
+                            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                          }
+                        `}
+                        title={item.label}
+                      >
+                        <Icon className="h-5 w-5" strokeWidth={1.8} />
+                        <span className="hidden lg:inline">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </nav>
 
