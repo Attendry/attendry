@@ -1255,14 +1255,21 @@ function extractLocation(content: string, url: string, config: ActiveConfig): { 
   }
 
   let city: string | null = null;
-  if (country) {
-    const cityTokens = config.cityKeywordsByCountry?.[country] ?? [];
-    for (const token of cityTokens) {
+  let countryFromCity: string | null = null;
+  const cityKeywords = config.cityKeywordsByCountry ?? {};
+  for (const [countryCode, tokens] of Object.entries(cityKeywords)) {
+    for (const token of tokens) {
       if (includesToken(contentLower, [token])) {
         city = token;
+        countryFromCity = countryCode;
         break;
       }
     }
+    if (city) break;
+  }
+
+  if (!country && countryFromCity) {
+    country = countryFromCity;
   }
 
   const location = formatLocation(city, country);
