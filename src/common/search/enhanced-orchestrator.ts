@@ -1292,24 +1292,56 @@ function extractVenue(content: string): string | null {
   return null;
 }
 
-function discoverLinksFromHtml($: cheerio.CheerioAPI, baseUrl: string): string[] {
-  const anchors = $('a[href]').toArray();
-  const keywords = ['program', 'agenda', 'schedule', 'speakers', 'sponsors', 'partner', 'sessions'];
-  const base = new URL(baseUrl);
-  const results = new Set<string>();
+const LINK_SCORING: Array<{ weight: number; keywords: string[] }> = [
+  { weight: 5, keywords: ['program', 'agenda', 'schedule', 'sessions', 'tracks', 'day'] },
+  { weight: 5, keywords: ['speaker', 'speakers', 'presenter', 'faculty'] },
+  { weight: 4, keywords: ['sponsor', 'partner', 'exhibitor', 'booth'] },
+  { weight: 3, keywords: ['contact', 'practical', 'travel', 'venue', 'location', 'info', 'faq'] },
+  { weight: 2, keywords: ['about', 'details', 'overview', 'why-attend'] }
+];
 
-  anchors.forEach((element) => {
+function scoreLinkCandidate(url: string, text: string, classes: string | undefined): number {
+  const haystacks = [url.toLowerCase(), text.toLowerCase(), (classes ?? '').toLowerCase()];
+  let score = 0;
+  for (const group of LINK_SCORING) {
+    if (group.keywords.some((keyword) => haystacks.some((haystack) => haystack.includes(keyword)))) {
+      score += group.weight;
+    }
+  }
+  if (/download|pdf/.test(url)) score -= 2;
+  if (/register|ticket/.test(url)) score -= 1;
+  return score;
+}
+
+function discoverLinksFromHtml($: cheerio.CheerioAPI, baseUrl: string): string[] {
+  const base = new URL(baseUrl);
+  const candidates: Array<{ url: string; score: number }> = [];
+  const seen = new Set<string>();
+
+  $('a[href]').each((_, element) => {
     const href = $(element).attr('href');
     if (!href) return;
     const normalized = normalizeUrlRelative(base, href);
-    if (!normalized) return;
-    const lower = normalized.toLowerCase();
-    if (keywords.some((keyword) => lower.includes(keyword))) {
-      results.add(normalized);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+
+    const text = $(element).text().trim();
+    const classes = $(element).attr('class');
+    const score = scoreLinkCandidate(normalized, text, classes);
+    if (score > 0) {
+      candidates.push({ url: normalized, score });
     }
   });
 
-  return Array.from(results);
+  const maxLinks = 20;
+  candidates.sort((a, b) => b.score - a.score);
+  const selected = candidates.slice(0, maxLinks).map((candidate) => candidate.url);
+
+  if (selected.length) {
+    logExtractionDebug(baseUrl, 'link_discovery', { count: selected.length, samples: selected.slice(0, 5) });
+  }
+
+  return selected;
 }
 
 function normalizeUrlRelative(base: URL, href: string): string | null {
@@ -1349,13 +1381,14 @@ function extractLinksFromMarkdown(content: string, baseUrl: string): string[] {
   return Array.from(candidates);
 }
 
+const FALLBACK_SEGMENTS = ['program', 'agenda', 'speakers', 'sponsors', 'partner', 'contact', 'practical-information', 'venue', 'location'];
+
 async function discoverRelatedLinks(url: string, existing: string[]): Promise<string[]> {
   const already = new Set(existing);
   const base = new URL(url);
   if (already.size === 0) {
-    const segments = ['program', 'agenda', 'speakers', 'sponsors', 'partner'];
-    segments.forEach((segment) => {
-      const candidate = new URL(segment + '.html', base.origin + base.pathname.replace(/[^/]*$/, ''));
+    FALLBACK_SEGMENTS.forEach((segment) => {
+      const candidate = new URL(segment, base.origin + base.pathname.replace(/[^/]*$/, ''));
       already.add(candidate.toString());
     });
   }
