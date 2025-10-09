@@ -541,13 +541,15 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
           }
         ],
         onlyMainContent: true,
+        waitFor: 2000,
+        includeAssets: false,
         timeout: 30000
       })
     });
 
-                const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error('Extraction timeout')), 5000) // 5 second timeout
-                );
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Extraction timeout')), 8000)
+    );
 
     const response = await Promise.race([extractPromise, timeoutPromise]) as Response;
 
@@ -649,12 +651,12 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
         url,
         formats: ['markdown'],
         onlyMainContent: true,
-        timeout: 8000
+        timeout: 6000
       })
     });
 
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Scrape timeout')), 8000)
+      setTimeout(() => reject(new Error('Scrape timeout')), 6000)
     );
 
     const response = await Promise.race([scrapePromise, timeoutPromise]) as Response;
