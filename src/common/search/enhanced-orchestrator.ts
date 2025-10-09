@@ -1,6 +1,7 @@
 // Enhanced orchestrator with full pipeline: Search → Prioritization → Extract
 import { loadActiveConfig, type ActiveConfig } from './config';
 import { tryJsonRepair } from '../utils/json';
+import cheerio from 'cheerio';
 import { buildSearchQuery } from './queryBuilder';
 import { search as firecrawlSearch } from '../../providers/firecrawl';
 import { search as cseSearch } from '../../providers/cse';
@@ -172,18 +173,12 @@ function normalizeDateInput(raw: unknown): string | null {
   return null;
 }
 
-type ExtractResponse = {
-  data?: {
-    json?: unknown;
-    outputs?: Array<{ output?: unknown; content?: unknown }>;
-  };
-  outputs?: Array<{ output?: unknown; content?: unknown }>;
-};
+type ExtractResponse = Record<string, unknown>;
 
 function extractCandidatePayload(raw: ExtractResponse | null | undefined): unknown {
   if (!raw) return null;
-  if (raw.data?.json) return raw.data.json;
-  if (raw.data?.outputs?.length) return raw.data.outputs[0]?.output ?? raw.data.outputs[0]?.content;
+  if (raw.json) return raw.json;
+  if (raw.outputs?.length) return raw.outputs[0]?.output ?? raw.outputs[0]?.content;
   if (raw.outputs?.length) return raw.outputs[0]?.output ?? raw.outputs[0]?.content;
   return raw;
 }
@@ -513,135 +508,240 @@ Guidelines:
 - Trim whitespace from all strings.`;
 }
 
-// Event extraction using Firecrawl Extract (not Gemini)
 async function extractEventDetails(url: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
-  try {
-    const apiKey = process.env.FIRECRAWL_KEY || process.env.FIRECRAWL_API_KEY;
-    if (!apiKey) {
-      console.warn('[extract] No Firecrawl API key');
-      return { title: null, description: null, starts_at: null, country: null, venue: null };
-    }
+  const apiKey = getFirecrawlApiKey();
+  if (!apiKey) {
+    console.warn('[extract] No Firecrawl API key available');
+  }
 
-    // Use Promise.race to add timeout to prevent 300-second timeouts
-    const extractPromise = fetch('https://api.firecrawl.dev/v2/scrape', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        url,
-        formats: [
-          {
-            type: "json",
-            prompt: generateExtractionPrompt(searchConfig)
-          },
-          {
-            type: 'markdown'
-          }
-        ],
-        onlyMainContent: true,
-        waitFor: 2000,
-        includeAssets: false,
-        timeout: 30000
-      })
+  // Step 1: Cheap HTML fetch (avoids credits and captures basic info)
+  const basic = await cheapHtmlScrape(url).catch(err => {
+    console.warn('[extract] Cheap HTML scrape failed', { url, err });
+    return null;
+  });
+
+  let firecrawlResult: ExtractedEventDetails | null = null;
+  if (apiKey) {
+    firecrawlResult = await extractWithFirecrawl(url, apiKey, searchConfig).catch(err => {
+      console.warn('[extract] Firecrawl extraction ultimately failed', { url, err });
+      return null;
     });
+  }
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Extraction timeout')), 8000)
-    );
+  // Step 3: Markdown fallback via Firecrawl if JSON extraction missing key fields
+  if (apiKey && (!firecrawlResult || isExtractEmpty(firecrawlResult))) {
+    firecrawlResult = await fallbackExtraction(url, apiKey, searchConfig).catch(err => {
+      console.warn('[extract] Firecrawl fallback extraction failed', { url, err });
+      return null;
+    });
+  }
 
-    const response = await Promise.race([extractPromise, timeoutPromise]) as Response;
+  const merged = mergeDetails(basic ?? emptyExtractedDetails(), firecrawlResult ?? emptyExtractedDetails());
+  const normalizedLocation = merged.location ?? formatLocation(merged.city, merged.country);
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
-      console.warn('[extract] Firecrawl extract failed', {
-        url,
-        status: response.status,
-        statusText: response.statusText,
-        body: errorText.slice(0, 500),
-      });
-      // Fallback to simple scraping
-      return await fallbackExtraction(url, apiKey, searchConfig);
-    }
-
-    let rawResponseText = '';
-    let data: ExtractResponse | null = null;
-    try {
-      rawResponseText = await response.text();
-      const repaired = await tryJsonRepair(rawResponseText);
-      if (repaired) {
-        console.debug('[extract] Applied jsonrepair to Firecrawl response', { url });
-      }
-      data = JSON.parse(repaired ?? rawResponseText) as ExtractResponse;
-    } catch (parseError) {
-      console.warn('[extract] Failed to parse Firecrawl extract response', {
-        url,
-        error: parseError,
-        snippet: rawResponseText.slice(0, 400),
-      });
-      // Fallback to simple scraping
-      return await fallbackExtraction(url, apiKey, searchConfig);
-    }
-    
-    const extractedCandidate = extractCandidatePayload(data);
-    const extracted = toExtractedEventDetails(extractedCandidate);
-    const locationFormatted = formatLocation(extracted.city, extracted.country) ?? extracted.location;
-
+  if (merged.title || merged.description || merged.starts_at || merged.country || merged.city) {
     await upsertCachedExtraction({
       url,
-      eventDate: extracted.starts_at,
-      country: extracted.country,
-      city: extracted.city,
+      eventDate: merged.starts_at,
+      country: merged.country,
+      city: merged.city,
       payload: {
-        title: extracted.title,
-        description: extracted.description,
-        starts_at: extracted.starts_at,
-        country: extracted.country,
-        city: extracted.city,
-        location: locationFormatted,
-        venue: extracted.venue
+        ...merged,
+        location: normalizedLocation ?? merged.location ?? null
       }
     });
+  }
 
-    const fallbackDetails = await fallbackExtraction(url, apiKey, searchConfig).catch((err: unknown) => {
-      console.warn('[extract] Fallback extraction during merge failed', { url, err });
-      return {
-        title: null,
-        description: null,
-        starts_at: null,
-        country: null,
-        city: null,
-        location: null,
-        venue: null
-      } as ExtractedEventDetails;
-    });
-    const merged = mergeDetails({ ...extracted, location: locationFormatted }, fallbackDetails);
+  return {
+    ...merged,
+    location: normalizedLocation ?? merged.location ?? null
+  };
+}
+
+function emptyExtractedDetails(): ExtractedEventDetails {
+  return {
+    title: null,
+    description: null,
+    starts_at: null,
+    country: null,
+    city: null,
+    location: null,
+    venue: null
+  };
+}
+
+function isExtractEmpty(value: ExtractedEventDetails | null | undefined): boolean {
+  if (!value) return true;
+  return !value.title && !value.description && !value.starts_at && !value.country && !value.city && !value.location && !value.venue;
+}
+
+async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), HTML_FETCH_TIMEOUT);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+
+    const html = await res.text();
+    const $ = cheerio.load(html);
+
+    const title = $('meta[property="og:title"]').attr('content')
+      || $('title').first().text()
+      || $('h1').first().text()
+      || null;
+
+    const description = $('meta[name="description"]').attr('content')
+      || $('meta[property="og:description"]').attr('content')
+      || $('p').first().text()
+      || null;
+
+    const dateCandidates = [
+      $('meta[itemprop="startDate"]').attr('content'),
+      $('time[datetime]').attr('datetime'),
+      $('time').first().text(),
+      $('meta[name="event:start_date"]').attr('content'),
+    ].filter(Boolean) as string[];
+
+    const starts_at = parseDateCandidates(dateCandidates);
+
+    const cityCandidates = [
+      $('meta[itemprop="addressLocality"]').attr('content'),
+      $('span[itemprop="addressLocality"]').text(),
+      $('[data-city]').attr('data-city'),
+      $('[class*="city"]').first().text(),
+    ].filter(Boolean) as string[];
+
+    const countryCandidates = [
+      $('meta[itemprop="addressCountry"]').attr('content'),
+      $('span[itemprop="addressCountry"]').text(),
+      $('[data-country]').attr('data-country'),
+      $('[class*="country"]').first().text(),
+    ].filter(Boolean) as string[];
+
+    const venueCandidates = [
+      $('meta[itemprop="name"]').attr('content'),
+      $('span[itemprop="name"]').text(),
+      $('[data-venue]').attr('data-venue'),
+      $('[class*="venue"]').first().text(),
+    ].filter(Boolean) as string[];
+
+    const city = normalizeText(cityCandidates[0] ?? null);
+    const country = normalizeCountry(countryCandidates[0] ?? null);
+    const venue = normalizeText(venueCandidates[0] ?? null);
+
     return {
-      ...merged,
-      location: merged.location ?? formatLocation(merged.city, merged.country)
+      title: normalizeText(title),
+      description: normalizeText(description),
+      starts_at,
+      country,
+      city,
+      location: formatLocation(city, country),
+      venue
     };
   } catch (error) {
-    console.error('[extract] Error extracting', url, error);
-    if (error instanceof Error && error.message.includes('timeout')) {
-      console.warn('[extract] Extraction timed out for', url);
-    }
-    return {
-      title: null,
-      description: null,
-      starts_at: null,
-      country: null,
-      city: null,
-      location: null,
-      venue: null
-    };
+    console.warn('[extract] cheapHtmlScrape failed', { url, error });
+    return emptyExtractedDetails();
   }
 }
 
-// Fallback extraction using simple scraping
+function normalizeText(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function normalizeCountry(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const upper = trimmed.toUpperCase();
+  if (upper.length === 2) return upper;
+  const known: Record<string, string> = {
+    GERMANY: 'DE',
+    DE: 'DE',
+    DEUTSCHLAND: 'DE',
+  };
+  return known[upper] ?? null;
+}
+
+function parseDateCandidates(candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    const parsed = extractDate(candidate);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
+  for (let attempt = 0; attempt < FIRECRAWL_RETRY_DELAYS.length; attempt++) {
+    const delay = FIRECRAWL_RETRY_DELAYS[attempt];
+    if (delay) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    try {
+      const response = await withTimeout(fetch(FIRECRAWL_SCRAPE_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url,
+          formats: [
+            {
+              type: 'json',
+              prompt: generateExtractionPrompt(searchConfig)
+            },
+            {
+              type: 'markdown'
+            }
+          ],
+          onlyMainContent: true,
+          waitFor: 2000,
+          timeout: 20000
+        })
+      }), 8000, 'firecrawl_extract_timeout');
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => null);
+        console.warn('[extract] Firecrawl response not ok', {
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          body: body?.slice(0, 400),
+          attempt
+        });
+        if (attempt === FIRECRAWL_RETRY_DELAYS.length - 1) {
+          throw new Error(`Firecrawl returned ${response.status}`);
+        }
+        continue;
+      }
+
+      const raw = await response.text();
+      const repaired = await tryJsonRepair(raw);
+      const parsed = JSON.parse(repaired ?? raw) as ExtractResponse;
+      const candidate = extractCandidatePayload(parsed);
+      const extracted = toExtractedEventDetails(candidate);
+      return extracted;
+    } catch (error) {
+      console.warn('[extract] Firecrawl attempt failed', { url, attempt, error });
+      if (attempt === FIRECRAWL_RETRY_DELAYS.length - 1) {
+        throw error;
+      }
+    }
+  }
+
+  return emptyExtractedDetails();
+}
+
 async function fallbackExtraction(url: string, apiKey: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
   try {
-    const scrapePromise = fetch('https://api.firecrawl.dev/v2/scrape', {
+    const response = await withTimeout(fetch(FIRECRAWL_SCRAPE_ENDPOINT, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -651,58 +751,34 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
         url,
         formats: ['markdown'],
         onlyMainContent: true,
-        timeout: 6000
+        timeout: 10000
       })
-    });
-
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Scrape timeout')), 6000)
-    );
-
-    const response = await Promise.race([scrapePromise, timeoutPromise]) as Response;
+    }), 6000, 'firecrawl_fallback_timeout');
 
     if (!response.ok) {
-      console.warn('[extract] Fallback scrape failed for', url, response.status);
-      return {
-        title: null,
-        description: null,
-        starts_at: null,
-        country: null,
-        city: null,
-        location: null,
-        venue: null
-      };
+      console.warn('[extract] Fallback scrape failed', { url, status: response.status });
+      return emptyExtractedDetails();
     }
 
     const text = await response.text();
-    let data: ExtractResponse;
+    const repaired = await tryJsonRepair(text);
+    let data: ExtractResponse = {};
     try {
-      data = JSON.parse(text) as ExtractResponse;
-    } catch {
-      data = {};
+      data = JSON.parse(repaired ?? text) as ExtractResponse;
+    } catch (parseError) {
+      console.warn('[extract] Fallback parse failed', { url, parseError });
     }
 
-    const inferMarkdown = (value: unknown): string | null => {
-      if (typeof value === 'string') return value;
-      if (value && typeof value === 'object') {
-        const maybeMarkdown = (value as Record<string, unknown>).markdown;
-        if (typeof maybeMarkdown === 'string') return maybeMarkdown;
-      }
-      return null;
-    };
+    const content = inferMarkdownContent(data);
+    if (!content) {
+      return emptyExtractedDetails();
+    }
 
-    const content = inferMarkdown(data.data?.json) ??
-      inferMarkdown(data.data?.outputs?.[0]?.output) ??
-      inferMarkdown(data.data?.outputs?.[0]?.content) ?? '';
-    
-    // Use simple extraction helpers
     const title = extractTitle(content);
     const description = extractDescription(content);
     const starts_at = extractDate(content);
     const locationGuess = extractLocation(content, url, searchConfig);
     const venue = extractVenue(content);
-
-    const locationFormatted = formatLocation(locationGuess.city, locationGuess.country) ?? locationGuess.location;
 
     return {
       title,
@@ -710,24 +786,42 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
       starts_at,
       country: locationGuess.country,
       city: locationGuess.city,
-      location: locationFormatted,
+      location: formatLocation(locationGuess.city, locationGuess.country) ?? locationGuess.location,
       venue
     };
   } catch (error) {
-    console.error('[extract] Fallback extraction error:', error);
-    if (error instanceof Error && error.message.includes('timeout')) {
-      console.warn('[extract] Fallback extraction timed out for', url);
-    }
-    return {
-      title: null,
-      description: null,
-      starts_at: null,
-      country: null,
-      city: null,
-      location: null,
-      venue: null
-    };
+    console.error('[extract] Fallback extraction error', { url, error });
+    return emptyExtractedDetails();
   }
+}
+
+function inferMarkdownContent(value: ExtractResponse): string {
+  if (!value || typeof value !== 'object') return '';
+
+  const data = value as Record<string, unknown>;
+  const direct = typeof data.markdown === 'string' ? data.markdown : null;
+  if (direct) return direct;
+
+  const nestedJson = data.json as Record<string, unknown> | undefined;
+  if (nestedJson && typeof nestedJson.markdown === 'string') {
+    return nestedJson.markdown;
+  }
+
+  const outputs = Array.isArray((data.outputs)) ? data.outputs : [];
+  for (const entry of outputs) {
+    if (entry && typeof entry === 'object') {
+      const output = (entry as Record<string, unknown>).output;
+      const content = (entry as Record<string, unknown>).content;
+      if (output && typeof output === 'object' && typeof (output as Record<string, unknown>).markdown === 'string') {
+        return (output as Record<string, unknown>).markdown as string;
+      }
+      if (content && typeof content === 'object' && typeof (content as Record<string, unknown>).markdown === 'string') {
+        return (content as Record<string, unknown>).markdown as string;
+      }
+    }
+  }
+
+  return '';
 }
 
 // Simple extraction helpers
@@ -1167,15 +1261,20 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         url.toLowerCase().includes('deutschland');
 
       if (!matchesTarget && !mentionsTarget && !urlSuggestsTarget) {
-        console.log('[enhanced_orchestrator] Filtering out uncertain country match', {
-          url,
-          eventCountry,
-          eventCity,
-          eventLocation,
-          targetCountry: country,
-        });
-        rejected.push({ url, reason: 'country_ambiguous', score: candidate.score });
-        continue;
+        // Allow European tagged events when country is 'EU'
+        if (eventCountry?.toUpperCase() === 'EU') {
+          // Accept; the event is relevant to European audiences.
+        } else {
+      console.log('[enhanced_orchestrator] Filtering out uncertain country match', {
+        url,
+        eventCountry,
+        eventCity,
+        eventLocation,
+        targetCountry: country,
+      });
+      rejected.push({ url, reason: 'country_ambiguous', score: candidate.score });
+      continue;
+        }
       }
     }
     

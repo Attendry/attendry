@@ -21,14 +21,16 @@ export function computeExtractionKey(url: string, eventDate: string | null): str
 export async function fetchCachedExtraction(url: string, eventDate: string | null) {
   const normalized = normalizeUrl(url);
   const supabase = supabaseAdmin();
-  const { data, error } = await supabase
+  const query = supabase
     .from('event_extractions')
     .select('*')
     .eq('normalized_url', normalized)
-    .eq('event_date', eventDate ?? null)
     .order('refreshed_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+
+  const { data, error } = eventDate
+    ? await query.eq('event_date', eventDate)
+    : await query.is('event_date', null);
 
   if (error) {
     console.warn('[cache] Failed to fetch cached extraction', error);
@@ -51,7 +53,7 @@ export async function upsertCachedExtraction(input: {
     .upsert({
       url: input.url,
       normalized_url: normalized,
-      event_date: input.eventDate,
+      event_date: input.eventDate ?? null,
       country: input.country,
       locality: input.city,
       payload: input.payload,
