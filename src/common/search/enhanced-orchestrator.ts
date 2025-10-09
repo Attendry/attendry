@@ -1742,20 +1742,24 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         url.toLowerCase().includes('germany') ||
         url.toLowerCase().includes('deutschland');
 
+      const hasCity = Boolean(eventCity);
+      const europeanHint = !eventCountry && (details.description?.toLowerCase().includes('europe') || details.title?.toLowerCase().includes('europe'));
+
       if (!matchesTarget && !mentionsTarget && !urlSuggestsTarget) {
-        // Allow European tagged events when country is 'EU'
-        if (eventCountry?.toUpperCase() === 'EU') {
-          // Accept; the event is relevant to European audiences.
+        if (hasCity && !eventCountry) {
+          console.log('[enhanced_orchestrator] Accepting event with inferred city only', { url, eventCity });
+        } else if (eventCountry?.toUpperCase() === 'EU' || europeanHint) {
+          console.log('[enhanced_orchestrator] Accepting European-scoped event without explicit country', { url, eventCountry });
         } else {
-      console.log('[enhanced_orchestrator] Filtering out uncertain country match', {
-        url,
-        eventCountry,
-        eventCity,
-        eventLocation,
-        targetCountry: country,
-      });
-      rejected.push({ url, reason: 'country_ambiguous', score: candidate.score });
-      continue;
+          console.log('[enhanced_orchestrator] Filtering out uncertain country match', {
+            url,
+            eventCountry,
+            eventCity,
+            eventLocation,
+            targetCountry: country,
+          });
+          rejected.push({ url, reason: 'country_ambiguous', score: candidate.score });
+          continue;
         }
       }
     }
