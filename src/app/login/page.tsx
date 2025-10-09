@@ -5,6 +5,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
 export default function LoginPage() {
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [message, setMessage] = useState("");
   const [usePassword, setUsePassword] = useState(false);
   const [supabase, setSupabase] = useState<any>(null);
+  const router = useRouter();
 
   useEffect(() => {
     // Initialize Supabase client only on client side
@@ -64,46 +66,42 @@ export default function LoginPage() {
   }
 
   async function signInWithPassword() {
-    if (!supabase) return;
     if (!email || !password) {
       setMessage("Please enter both email and password");
       return;
     }
-    
+
     setIsLoading(true);
     setMessage("");
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch("/api/auth/set-cookies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
       });
-      
-      if (error) {
-        console.error('Sign-in error:', error);
-        
-        // Provide more specific error messages
-        if (error.message.includes('Invalid login credentials')) {
-          setMessage("Invalid email or password. Make sure you've created an account and confirmed your email.");
-        } else if (error.message.includes('Email not confirmed')) {
-          setMessage("Please check your email and click the confirmation link before signing in.");
-        } else {
-          setMessage(`Sign-in error: ${error.message}`);
-        }
+
+      const data = await response.json();
+
+      if (!response.ok || data.status !== "success") {
+        const errorMsg = data?.message || "Failed to sign in";
+        setMessage(`Sign-in error: ${errorMsg}`);
         return;
       }
-      
-      console.log('Sign-in successful:', data.user?.email);
-      
-      // Let Supabase handle the session naturally - no manual cookie setting needed
-      // The session should persist automatically with the updated browser client config
-      
-      // Redirect immediately - Supabase will handle session persistence
-      if (typeof window !== 'undefined') {
-        window.location.href = "/events";
+
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("testEmail", email);
+        } catch {
+          // ignore storage issues
+        }
       }
+
+      setMessage("Signed in successfully. Redirecting...");
+      router.push("/events");
+      router.refresh();
     } catch (error: any) {
-      console.error('Unexpected sign-in error:', error);
-      setMessage(`Unexpected error: ${error.message}`);
+      console.error("Unexpected sign-in error:", error);
+      setMessage(`Unexpected error: ${error.message || "Something went wrong"}`);
     } finally {
       setIsLoading(false);
     }
