@@ -315,7 +315,7 @@ Return a JSON array of objects, each with:
 
 Include at most 10 items. Only include URLs you see in the list.`;
 
-    const modelPath = process.env.GEMINI_MODEL_PATH || 'v1/models/gemini-1.5-flash-latest:generateContent';
+    const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-1.5-flash-latest:generateContent';
     const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`, {
       method: 'POST',
       headers: { 
@@ -324,7 +324,6 @@ Include at most 10 items. Only include URLs you see in the list.`;
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          responseMimeType: 'application/json',
           temperature: 0.1
         }
       })
@@ -332,18 +331,17 @@ Include at most 10 items. Only include URLs you see in the list.`;
 
     let content: string | null = null;
 
+    const rawText = await response.text();
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error');
       console.warn('[prioritization] Gemini API failed', {
         status: response.status,
         statusText: response.statusText,
-        body: errorText.slice(0, 500),
+        body: rawText.slice(0, 500),
         modelPath,
       });
       console.warn('[prioritization] API Key length:', apiKey?.length || 0);
       console.warn('[prioritization] API Key starts with:', apiKey?.substring(0, 10) || 'N/A');
     } else {
-      const rawText = await response.text();
       try {
         const repaired = await tryJsonRepair(rawText);
         if (repaired) {
@@ -358,6 +356,8 @@ Include at most 10 items. Only include URLs you see in the list.`;
           if (functionCall?.args && Array.isArray(functionCall.args.prioritizedUrls)) {
             content = JSON.stringify(functionCall.args.prioritizedUrls);
           }
+        } else if (functionCall?.args?.urls && Array.isArray(functionCall.args.urls)) {
+          content = JSON.stringify(functionCall.args.urls);
         }
       } catch (err) {
         console.warn('[prioritization] Failed to parse Gemini response JSON', err);
@@ -366,11 +366,12 @@ Include at most 10 items. Only include URLs you see in the list.`;
     
     if (!content) {
       console.warn('[prioritization] No content in Gemini response');
-      return urls.slice(0, 10).map((url, idx) => ({
-        url,
-        score: 0.3 - idx * 0.02,
-        reason: 'no_content'
-      }));
+    const defaultScore = 0.3;
+    return urls.slice(0, 10).map((url, idx) => ({
+      url,
+      score: Math.max(defaultScore - idx * 0.02, 0),
+      reason: response.ok ? 'empty_response' : 'no_content'
+    }));
     }
 
     try {
@@ -429,6 +430,33 @@ Include at most 10 items. Only include URLs you see in the list.`;
   }
 }
 
+function generateExtractionPrompt(searchConfig: ActiveConfig): string {
+  const allowedCountries = searchConfig.defaultCountries?.length
+    ? searchConfig.defaultCountries.join(', ')
+    : 'the target region';
+  const eventTerms = searchConfig.eventTerms?.join(', ') ?? 'events, conferences, summits';
+
+  return `Extract structured event details for ${searchConfig.industry ?? 'general'} topics.
+Return a JSON object with exactly these keys:
+{
+  "title": string | null,
+  "description": string | null,
+  "starts_at": string | null,
+  "country": string | null,
+  "city": string | null,
+  "location": string | null,
+  "venue": string | null
+}
+
+Guidelines:
+- Only keep pages that describe real ${eventTerms}.
+- Derive "starts_at" in ISO (YYYY-MM-DD) if any date is present; otherwise null.
+- Set "country" to the two-letter country code when identifiable; focus on ${allowedCountries}.
+- "location" should be a readable combination like "City, Country" when both are known.
+- Never invent data; leave fields null if uncertain.
+- Trim whitespace from all strings.`;
+}
+
 // Event extraction using Firecrawl Extract (not Gemini)
 async function extractEventDetails(url: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
   try {
@@ -450,25 +478,13 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
         formats: [
           {
             type: "json",
-            prompt: `You are extracting structured event information for the ${searchConfig.industry} industry.
-Return a compact JSON object with the following shape:
-{
-  "title": string | null,
-  "description": string | null,
-  "starts_at": string | null,
-  "country": string | null,
-  "city": string | null,
-  "location": string | null,
-  "venue": string | null
-}
-
-Rules:
-- Prefer ISO date format YYYY-MM-DD for "starts_at" when possible. If unavailable, return null.
-- Derive city/country from the page content or metadata. Use ISO country codes where possible.
-- "location" should be a human readable string (e.g. "Munich, Germany").
-- Only populate fields when the page clearly describes an actual event (conference, workshop, summit, seminar, etc.).
-- Leave any unknown field as null.
-- Avoid hallucinating information not present on the page.`
+            prompt: generateExtractionPrompt(searchConfig),
+            metadata: {
+              instruction: 'return_strict_json'
+            }
+          },
+          {
+            type: 'markdown'
           }
         ],
         onlyMainContent: true,
@@ -1035,64 +1051,23 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       const eventCountry = details.country;
       const eventCity = details.city;
       const eventLocation = details.location;
-      
-      console.log('[enhanced_orchestrator] Checking event location:', {
-        url,
-        eventCountry,
-        eventCity,
-        eventLocation,
-        targetCountry: country
-      });
-      
-      // Check if event mentions target country in location
-      const mentionsTargetCountry = eventLocation && 
-        (eventLocation.toLowerCase().includes(country.toLowerCase()) ||
-         eventLocation.toLowerCase().includes('germany') ||
-         eventLocation.toLowerCase().includes('deutschland'));
-      
-      // Check if event is in a German city (for Germany searches)
-      const isInGermanCity = country === 'DE' && eventCity && 
-        ['berlin', 'münchen', 'frankfurt', 'hamburg', 'köln', 'stuttgart', 'düsseldorf', 'leipzig', 'hannover', 'nürnberg', 'bremen', 'bonn', 'essen', 'mannheim', 'münster'].some(city => 
-          eventCity.toLowerCase().includes(city.toLowerCase()));
-      
-      // Check if URL suggests German location
-      const urlSuggestsGerman = url.toLowerCase().includes('.de') || 
-        url.toLowerCase().includes('germany') || 
+
+      const matchesTarget = eventCountry?.toUpperCase() === country.toUpperCase();
+      const mentionsTarget = eventLocation?.toLowerCase().includes(country.toLowerCase()) ?? false;
+      const urlSuggestsTarget = url.toLowerCase().includes('.' + country.toLowerCase()) ||
+        url.toLowerCase().includes('germany') ||
         url.toLowerCase().includes('deutschland');
-      
-      // Be stricter - filter out if we have evidence it's NOT German
-      const isDefinitelyNotGerman = eventCountry && 
-        !['DE', 'AT', 'CH'].includes(eventCountry) && 
-        !urlSuggestsGerman && 
-        !mentionsTargetCountry && 
-        !isInGermanCity;
-      
-      // Additional check for obvious US cities
-      const isObviousUSCity = eventCity && 
-        ['kansas city', 'nashville', 'houston', 'chicago', 'new york', 'los angeles', 'san francisco', 'boston', 'atlanta', 'miami', 'seattle', 'denver'].includes(eventCity.toLowerCase());
-      
-      // Also check URL for US city patterns
-      const urlContainsUSCity = url.toLowerCase().includes('kansas-city') || 
-        url.toLowerCase().includes('nashville') || 
-        url.toLowerCase().includes('houston') || 
-        url.toLowerCase().includes('chicago') || 
-        url.toLowerCase().includes('new-york') || 
-        url.toLowerCase().includes('los-angeles') || 
-        url.toLowerCase().includes('san-francisco') || 
-        url.toLowerCase().includes('boston') || 
-        url.toLowerCase().includes('atlanta') || 
-        url.toLowerCase().includes('miami') || 
-        url.toLowerCase().includes('seattle') || 
-        url.toLowerCase().includes('denver');
-      
-      const shouldFilterOut = isDefinitelyNotGerman || isObviousUSCity || urlContainsUSCity;
-      
-      if (shouldFilterOut) {
-        console.log('[enhanced_orchestrator] Filtering out non-German event:', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
-        rejected.push({ url, reason: 'country_mismatch', score: candidate.score });
+
+      if (!matchesTarget && !mentionsTarget && !urlSuggestsTarget) {
+        console.log('[enhanced_orchestrator] Filtering out uncertain country match', {
+          url,
+          eventCountry,
+          eventCity,
+          eventLocation,
+          targetCountry: country,
+        });
+        rejected.push({ url, reason: 'country_ambiguous', score: candidate.score });
         continue;
-      } else {
-        console.log('[enhanced_orchestrator] Keeping event (German or ambiguous):', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
       }
     }
     
