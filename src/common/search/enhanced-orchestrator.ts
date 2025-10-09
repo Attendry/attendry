@@ -102,6 +102,12 @@ type PrioritizedUrl = {
   reason?: string;
 };
 
+type PrioritizationResult = {
+  items: PrioritizedUrl[];
+  modelPath: string | null;
+  fallbackReason?: string;
+};
+
 type ScoredEvent = {
   id: string;
   title: string | null;
@@ -256,12 +262,16 @@ function includesToken(haystack: string | null | undefined, tokens: string[]): b
 }
 
 // Industry-agnostic Gemini prioritization
-async function prioritizeUrls(urls: string[], searchConfig: ActiveConfig, country: string, location: string | null, timeframe: string | null): Promise<PrioritizedUrl[]> {
+async function prioritizeUrls(urls: string[], searchConfig: ActiveConfig, country: string, location: string | null, timeframe: string | null): Promise<PrioritizationResult> {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       console.warn('[prioritization] No GEMINI_API_KEY, returning all URLs');
-      return urls.map((url, idx) => ({ url, score: 0.4 - idx * 0.01 }));
+      return {
+        items: urls.map((url, idx) => ({ url, score: 0.4 - idx * 0.01 })),
+        modelPath: null,
+        fallbackReason: 'api_key_missing'
+      };
     }
 
     // Build context from search config
@@ -315,7 +325,8 @@ Return a JSON array of objects, each with:
 
 Include at most 10 items. Only include URLs you see in the list.`;
 
-    const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-1.5-flash-latest:generateContent';
+    const modelPath = process.env.GEMINI_MODEL_PATH
+      || 'v1beta/models/gemini-1.5-flash:generateContent';
     const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`, {
       method: 'POST',
       headers: { 
@@ -332,6 +343,7 @@ Include at most 10 items. Only include URLs you see in the list.`;
     let content: string | null = null;
 
     const rawText = await response.text();
+    console.debug('[prioritization] Gemini raw response prefix', rawText.slice(0, 80));
     if (!response.ok) {
       console.warn('[prioritization] Gemini API failed', {
         status: response.status,
@@ -356,8 +368,9 @@ Include at most 10 items. Only include URLs you see in the list.`;
           if (functionCall?.args && Array.isArray(functionCall.args.prioritizedUrls)) {
             content = JSON.stringify(functionCall.args.prioritizedUrls);
           }
-        } else if (functionCall?.args?.urls && Array.isArray(functionCall.args.urls)) {
-          content = JSON.stringify(functionCall.args.urls);
+          if (!content && functionCall?.args?.urls && Array.isArray(functionCall.args.urls)) {
+            content = JSON.stringify(functionCall.args.urls);
+          }
         }
       } catch (err) {
         console.warn('[prioritization] Failed to parse Gemini response JSON', err);
@@ -367,11 +380,15 @@ Include at most 10 items. Only include URLs you see in the list.`;
     if (!content) {
       console.warn('[prioritization] No content in Gemini response');
     const defaultScore = 0.3;
-    return urls.slice(0, 10).map((url, idx) => ({
-      url,
-      score: Math.max(defaultScore - idx * 0.02, 0),
-      reason: response.ok ? 'empty_response' : 'no_content'
-    }));
+    return {
+      items: urls.slice(0, 10).map((url, idx) => ({
+        url,
+        score: Math.max(defaultScore - idx * 0.02, 0),
+        reason: response.ok ? 'empty_response' : 'no_content'
+      })),
+      modelPath,
+      fallbackReason: content ? 'parse_failure' : 'no_content'
+    };
     }
 
     try {
@@ -395,18 +412,22 @@ Include at most 10 items. Only include URLs you see in the list.`;
 
         if (normalized.length) {
           console.log('[prioritization] Successfully prioritized', normalized.length, 'URLs via Gemini');
-          return normalized;
+          return { items: normalized, modelPath };
         }
       }
     } catch (parseError) {
       console.warn('[prioritization] Failed to parse Gemini response:', parseError);
     }
 
-    return urls.slice(0, 10).map((url, idx) => ({
-      url,
-      score: 0.3 - idx * 0.02,
-      reason: 'parse_failure'
-    }));
+    return {
+      items: urls.slice(0, 10).map((url, idx) => ({
+        url,
+        score: 0.3 - idx * 0.02,
+        reason: 'parse_failure'
+      })),
+      modelPath,
+      fallbackReason: content ? 'parse_failure' : 'no_content'
+    };
   } catch (error) {
     console.error('[prioritization] Error:', error);
     console.warn('[prioritization] Falling back to simple URL prioritization');
@@ -424,9 +445,19 @@ Include at most 10 items. Only include URLs you see in the list.`;
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
     
-    return prioritized.length > 0
-      ? prioritized.map(item => ({ ...item, reason: 'fallback_heuristic' }))
-      : urls.slice(0, 10).map((url, idx) => ({ url, score: 0.1 - idx * 0.01, reason: 'fallback_default' }));
+    if (prioritized.length > 0) {
+      return {
+        items: prioritized.map(item => ({ ...item, reason: 'fallback_heuristic' })),
+        modelPath: null,
+        fallbackReason: 'error'
+      };
+    }
+
+    return {
+      items: urls.slice(0, 10).map((url, idx) => ({ url, score: 0.1 - idx * 0.01, reason: 'fallback_default' })),
+      modelPath: null,
+      fallbackReason: 'error'
+    };
   }
 }
 
@@ -478,10 +509,7 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
         formats: [
           {
             type: "json",
-            prompt: generateExtractionPrompt(searchConfig),
-            metadata: {
-              instruction: 'return_strict_json'
-            }
+            prompt: generateExtractionPrompt(searchConfig)
           },
           {
             type: 'markdown'
@@ -580,12 +608,12 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
         url,
         formats: ['markdown'],
         onlyMainContent: true,
-        timeout: 30000
+        timeout: 8000
       })
     });
 
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Scrape timeout')), 4000)
+      setTimeout(() => reject(new Error('Scrape timeout')), 8000)
     );
 
     const response = await Promise.race([scrapePromise, timeoutPromise]) as Response;
@@ -1001,13 +1029,15 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   
   // Step 4: Prioritize URLs with Gemini
   console.log('[enhanced_orchestrator] Step 4: Prioritizing URLs with Gemini');
-  const prioritized = await prioritizeUrls(uniqueUrls, cfg, country, location, timeframe);
+  const prioritizedResult = await prioritizeUrls(uniqueUrls, cfg, country, location, timeframe);
+  const prioritized = prioritizedResult.items;
   logs.push({
     at: 'prioritization',
     inputCount: uniqueUrls.length,
     outputCount: prioritized.length,
     location,
-    modelPath: process.env.GEMINI_MODEL_PATH || 'v1/models/gemini-1.5-flash-latest:generateContent',
+    modelPath: prioritizedResult.modelPath,
+    fallbackReason: prioritizedResult.fallbackReason,
     reasons: prioritized.slice(0, 5).map(p => ({ url: p.url, score: p.score, reason: p.reason }))
   });
 

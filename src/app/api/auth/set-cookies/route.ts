@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,9 +13,8 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const supabase = await supabaseServer();
+    const supabase = createRouteHandlerClient({ cookies });
     
-    // Sign in with email and password
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -34,7 +34,6 @@ export async function POST(req: NextRequest) {
       }, { status: 401 });
     }
 
-    // Create response with session data
     const response = NextResponse.json({
       status: "success",
       message: "Session created and cookies will be set",
@@ -43,13 +42,11 @@ export async function POST(req: NextRequest) {
         email: data.user?.email
       },
       session: {
-        accessToken: data.session.access_token ? 'present' : 'missing',
-        refreshToken: data.session.refresh_token ? 'present' : 'missing'
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at
       }
     });
-
-    // The Supabase server client should have already set the proper cookies
-    // through the supabaseServer() call above. No need to manually set cookies.
 
     return response;
 
