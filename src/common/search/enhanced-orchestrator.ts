@@ -124,13 +124,38 @@ function buildEventFocusedQuery(baseQuery: string, userText: string, location: s
   }
 }
 
+type PrioritizedUrl = {
+  url: string;
+  score: number;
+  reason?: string;
+};
+
+type ScoredEvent = {
+  id: string;
+  title: string | null;
+  source_url: string;
+  starts_at: string | null;
+  country: string | null;
+  city: string | null;
+  location: string | null;
+  venue: string | null;
+  description: string | null;
+  speakers: any[];
+  confidence: number;
+  confidence_reason?: string;
+  scoringTrace?: {
+    geminiScore?: number;
+    heuristicScore?: number;
+  };
+};
+
 // Industry-agnostic Gemini prioritization
-async function prioritizeUrls(urls: string[], searchConfig: any, country: string, location: string | null, timeframe: string | null): Promise<string[]> {
+async function prioritizeUrls(urls: string[], searchConfig: any, country: string, location: string | null, timeframe: string | null): Promise<PrioritizedUrl[]> {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       console.warn('[prioritization] No GEMINI_API_KEY, returning all URLs');
-      return urls;
+      return urls.map((url, idx) => ({ url, score: 0.4 - idx * 0.01 }));
     }
 
     // Build context from search config
@@ -173,12 +198,19 @@ IMPORTANT FILTERING RULES:
 - Look for event-specific indicators: dates, venues, registration, speakers, agenda
 - For Germany search: prioritize events in German cities, German venues, or events explicitly mentioning Germany
 
-URLs: ${urls.slice(0, 20).join(', ')}
+URLs: ${urls.slice(0, 20).join('\n')}
 
-Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3"]`;
+Return a JSON array of objects, each with:
+{
+  "url": "https://...",
+  "score": number between 0 and 1 (higher = more relevant),
+  "reason": "short explanation"
+}
 
-    // Try the correct Gemini API endpoint with proper model name
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+Include at most 10 items. Only include URLs you see in the list.`;
+
+    const modelPath = process.env.GEMINI_MODEL_PATH || 'v1/models/gemini-1.5-flash-latest:generateContent';
+    const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json'
@@ -197,7 +229,11 @@ Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3
       console.warn('[prioritization] Gemini API failed:', response.status, errorText);
       console.warn('[prioritization] API Key length:', apiKey?.length || 0);
       console.warn('[prioritization] API Key starts with:', apiKey?.substring(0, 10) || 'N/A');
-      return urls.slice(0, 10); // Return first 10 as fallback
+      return urls.slice(0, 10).map((url, idx) => ({
+        url,
+        score: 0.3 - idx * 0.02,
+        reason: 'fallback_first_pass'
+      }));
     }
 
     const data = await response.json();
@@ -205,39 +241,66 @@ Return only a JSON array of the most relevant URLs, like: ["url1", "url2", "url3
     
     if (!content) {
       console.warn('[prioritization] No content in Gemini response');
-      return urls.slice(0, 10);
+      return urls.slice(0, 10).map((url, idx) => ({
+        url,
+        score: 0.3 - idx * 0.02,
+        reason: 'no_content'
+      }));
     }
 
     try {
       const prioritized = JSON.parse(content);
       if (Array.isArray(prioritized)) {
-        console.log('[prioritization] Successfully prioritized', prioritized.length, 'URLs');
-        return prioritized;
+        const normalized = prioritized
+          .map((item: any, idx: number): PrioritizedUrl | null => {
+            if (typeof item === 'string') {
+              return { url: item, score: 0.5 - idx * 0.02, reason: 'string_result' };
+            }
+            if (!item || typeof item.url !== 'string') return null;
+            const score = typeof item.score === 'number' ? item.score : 0.5 - idx * 0.02;
+            return {
+              url: item.url,
+              score: Math.min(Math.max(score, 0), 1),
+              reason: typeof item.reason === 'string' ? item.reason : 'gemini'
+            };
+          })
+          .filter((item: PrioritizedUrl | null): item is PrioritizedUrl => !!item)
+          .filter(item => urls.includes(item.url));
+
+        if (normalized.length) {
+          console.log('[prioritization] Successfully prioritized', normalized.length, 'URLs via Gemini');
+          return normalized;
+        }
       }
     } catch (parseError) {
       console.warn('[prioritization] Failed to parse Gemini response:', parseError);
     }
 
-    return urls.slice(0, 10);
+    return urls.slice(0, 10).map((url, idx) => ({
+      url,
+      score: 0.3 - idx * 0.02,
+      reason: 'parse_failure'
+    }));
   } catch (error) {
     console.error('[prioritization] Error:', error);
     console.warn('[prioritization] Falling back to simple URL prioritization');
     
     // Simple fallback prioritization based on URL patterns
     const prioritized = urls
-      .filter(url => {
+      .map((url, idx) => {
         const urlLower = url.toLowerCase();
-        // Prioritize German domains and event-specific URLs
-        return urlLower.includes('.de') || 
-               urlLower.includes('germany') || 
-               urlLower.includes('deutschland') ||
-               urlLower.includes('event') ||
-               urlLower.includes('conference') ||
-               urlLower.includes('summit');
+        let score = 0.2 - idx * 0.01;
+        if (urlLower.includes('.de')) score += 0.4;
+        if (urlLower.includes('germany') || urlLower.includes('deutschland')) score += 0.3;
+        if (urlLower.includes('event') || urlLower.includes('conference') || urlLower.includes('summit')) score += 0.2;
+        return { url, score: Math.min(Math.max(score, 0), 1) };
       })
+      .sort((a, b) => b.score - a.score)
       .slice(0, 10);
     
-    return prioritized.length > 0 ? prioritized : urls.slice(0, 10);
+    return prioritized.length > 0
+      ? prioritized.map(item => ({ ...item, reason: 'fallback_heuristic' }))
+      : urls.slice(0, 10).map((url, idx) => ({ url, score: 0.1 - idx * 0.01, reason: 'fallback_default' }));
   }
 }
 
@@ -854,16 +917,26 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   
   // Step 4: Prioritize URLs with Gemini
   console.log('[enhanced_orchestrator] Step 4: Prioritizing URLs with Gemini');
-  const prioritizedUrls = await prioritizeUrls(uniqueUrls, cfg, country, location, timeframe);
-  logs.push({ at: 'prioritization', inputCount: uniqueUrls.length, outputCount: prioritizedUrls.length, location });
+  const prioritized = await prioritizeUrls(uniqueUrls, cfg, country, location, timeframe);
+  logs.push({
+    at: 'prioritization',
+    inputCount: uniqueUrls.length,
+    outputCount: prioritized.length,
+    location,
+    modelPath: process.env.GEMINI_MODEL_PATH || 'v1/models/gemini-1.5-flash-latest:generateContent',
+    reasons: prioritized.slice(0, 5).map(p => ({ url: p.url, score: p.score, reason: p.reason }))
+  });
 
   // Step 5: Extract event details from prioritized URLs
   console.log('[enhanced_orchestrator] Step 5: Extracting event details');
-  const events = [];
+  const events: ScoredEvent[] = [];
+  const rejected: Array<{ url: string; reason: string; score: number }> = [];
+  const maxToExtract = Math.min(prioritized.length, 6);
   
-  for (let i = 0; i < Math.min(prioritizedUrls.length, 5); i++) {
-    const url = prioritizedUrls[i];
-    console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', Math.min(prioritizedUrls.length, 5), ':', url);
+  for (let i = 0; i < maxToExtract; i++) {
+    const candidate = prioritized[i];
+    const url = candidate.url;
+    console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', maxToExtract, ':', url, 'score:', candidate.score.toFixed(3));
     
     try {
       const details = await extractEventDetails(url, cfg);
@@ -951,7 +1024,8 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       
       if (shouldFilterOut) {
         console.log('[enhanced_orchestrator] Filtering out non-German event:', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
-        continue; // Skip this event
+        rejected.push({ url, reason: 'country_mismatch', score: candidate.score });
+        continue;
       } else {
         console.log('[enhanced_orchestrator] Keeping event (German or ambiguous):', url, 'Country:', eventCountry, 'City:', eventCity, 'Location:', eventLocation);
       }
@@ -963,10 +1037,12 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       if (eventDate) {
         if (effectiveDateFrom && eventDate < effectiveDateFrom) {
           console.log('[enhanced_orchestrator] Filtering out event before date range:', url, 'Date:', eventDate);
+          rejected.push({ url, reason: 'before_date_range', score: candidate.score });
           continue;
         }
         if (effectiveDateTo && eventDate > effectiveDateTo) {
           console.log('[enhanced_orchestrator] Filtering out event after date range:', url, 'Date:', eventDate);
+          rejected.push({ url, reason: 'after_date_range', score: candidate.score });
           continue;
         }
       }
@@ -982,7 +1058,13 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         location: details.location,
         venue: details.venue,
         description: details.description,
-        speakers: []
+        speakers: [],
+        confidence: Math.min(Math.max(candidate.score, 0), 1),
+        confidence_reason: candidate.reason,
+        scoringTrace: {
+          geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
+          heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
+        }
       });
     } catch (error) {
       console.error('[enhanced_orchestrator] Error extracting event from', url, error);
@@ -997,21 +1079,37 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         location: null,
         venue: null,
         description: `Event found at ${url}`,
-        speakers: []
+        speakers: [],
+        confidence: Math.max(candidate.score * 0.4, 0.05),
+        confidence_reason: 'extraction_error',
+        scoringTrace: {
+          geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
+          heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
+        }
       });
     }
   }
 
-  logs.push({ at: 'extraction', inputCount: prioritizedUrls.length, outputCount: events.length });
+  const finalEvents = events
+    .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
+    .slice(0, 10);
+
+  logs.push({
+    at: 'extraction',
+    inputCount: prioritized.length,
+    outputCount: finalEvents.length,
+    keptUrls: finalEvents.map(e => ({ url: e.source_url, confidence: e.confidence, reason: e.confidence_reason })),
+    rejected
+  });
 
   console.log('[enhanced_orchestrator] Completed pipeline:', {
     searchUrls: urls.length,
-    prioritizedUrls: prioritizedUrls.length,
+    prioritizedUrls: prioritized.length,
     extractedEvents: events.length
   });
 
   return {
-    events,
+    events: finalEvents,
     logs,
     effectiveQ: q,
     searchRetriedWithBase: false,

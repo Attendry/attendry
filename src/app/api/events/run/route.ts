@@ -5,12 +5,15 @@ import { executeEnhancedSearch } from '@/common/search/enhanced-orchestrator';
 // Helper function to process enhanced search results
 function processEnhancedResults(res: any, country: string | null, dateFrom: string | null, dateTo: string | null) {
   const events = res.events || [];
+
+  // Sort by confidence desc if available
+  const sortedEvents = [...events].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
   
   // EU country codes for broader filtering
   const euCountries = ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
   
   // Simple filtering based on country and date
-  const filteredEvents = events.filter((event: any) => {
+  const filteredEvents = sortedEvents.filter((event: any) => {
     // Country filtering - if country is 'EU', accept any EU country
     if (country && event.country) {
       if (country.toUpperCase() === 'EU') {
@@ -43,9 +46,9 @@ function processEnhancedResults(res: any, country: string | null, dateFrom: stri
     searchConfig: { source: 'active', baseQueryUsed: true },
     effectiveQ: res.effectiveQ,
     searchRetriedWithBase: res.searchRetriedWithBase,
-    search: { status: 200, provider: 'enhanced_pipeline', items: events.length },
-    urls: { unique: events.length, sample: events.slice(0, 10).map((e: any) => e.source_url) },
-    extract: { status: 200, version: 'enhanced_extraction', eventsBeforeFilter: events.length, sampleTrace: [] },
+    search: { status: 200, provider: 'enhanced_pipeline', items: events.length, scored: true },
+    urls: { unique: events.length, sample: events.slice(0, 10).map((e: any) => ({ url: e.source_url, confidence: e.confidence ?? null })) },
+    extract: { status: 200, version: 'enhanced_extraction', eventsBeforeFilter: events.length, sampleTrace: [], confidenceRange: events.length ? { max: Math.max(...events.map((e: any) => e.confidence ?? 0)), min: Math.min(...events.map((e: any) => e.confidence ?? 0)) } : null },
     deduped: { count: events.length },
     dateFiltering: {
       from: dateFrom, to: dateTo, beforeCount: events.length, allowUndated: true, afterCount: filteredEvents.length
@@ -61,6 +64,10 @@ function processEnhancedResults(res: any, country: string | null, dateFrom: stri
     upsert: { saved: 0 },
     providersTried: res.providersTried || ['enhanced_pipeline'],
     logs: res.logs || [],
+    scoring: {
+      model: (res.logs || []).find((log: any) => log.at === 'prioritization')?.modelPath ?? null,
+      rejected: (res.logs || []).find((log: any) => log.at === 'extraction')?.rejected ?? []
+    },
   };
 }
 
