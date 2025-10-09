@@ -60,6 +60,22 @@ function ensureNumber(value: unknown): number | null {
   return null;
 }
 
+function normalizeCountryCode(value: string | null): string | null {
+  if (!value) return null;
+  const upper = value.trim().toUpperCase();
+  const aliases: Record<string, string> = {
+    DE: 'DE', GERMANY: 'DE', DEUTSCHLAND: 'DE',
+    AT: 'AT', AUSTRIA: 'AT', ÖSTERREICH: 'AT', OSTERREICH: 'AT',
+    CH: 'CH', SWITZERLAND: 'CH', SCHWEIZ: 'CH', SCHWEIZERISCHE: 'CH',
+    FR: 'FR', FRANCE: 'FR', FRANKREICH: 'FR',
+    IT: 'IT', ITALY: 'IT', ITALIEN: 'IT',
+    ES: 'ES', SPAIN: 'ES', SPANIEN: 'ES',
+    NL: 'NL', NETHERLANDS: 'NL', NIEDERLANDE: 'NL', HOLLAND: 'NL',
+    BE: 'BE', BELGIUM: 'BE', BELGIEN: 'BE'
+  };
+  return aliases[upper] ?? (upper.length === 2 ? upper : null);
+}
+
 function toApiSpeakers(raw: unknown): ApiSpeaker[] {
   if (!Array.isArray(raw)) return [];
   return raw
@@ -118,7 +134,7 @@ function toApiEvent(raw: unknown): ApiEvent | null {
   const title = ensureString(obj.title) ?? ensureString(details?.title);
   const description = ensureString(obj.description) ?? ensureString(details?.description);
   const starts_at = ensureString(obj.starts_at) ?? ensureString(details?.starts_at);
-  const country = ensureString(obj.country) ?? ensureString(details?.country);
+  const country = normalizeCountryCode(ensureString(obj.country) ?? ensureString(details?.country));
   const city = ensureString(obj.city) ?? ensureString(details?.city);
   const location = ensureString(obj.location) ?? ensureString(details?.location);
   const venue = ensureString(obj.venue) ?? ensureString(details?.venue);
