@@ -857,7 +857,8 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
     const country = normalizeCountry(countryCandidates[0] ?? null);
     const venue = normalizeText(venueCandidates[0] ?? null);
 
-    const discoveredLinks = discoverLinksFromHtml($, url);
+    const discoveredLinksResult = await discoverLinksFromHtml($, url);
+    const discoveredLinks = discoveredLinksResult.links;
 
     return {
       title: normalizeText(title),
@@ -870,7 +871,8 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
       sessions: [],
       speakers: [],
       sponsors: [],
-      relatedUrls: discoveredLinks
+      relatedUrls: discoveredLinks,
+      debugVisitedLinks: discoveredLinksResult.visited
     };
   } catch (error) {
     console.warn('[extract] cheapHtmlScrape failed', {
@@ -1293,12 +1295,23 @@ function extractVenue(content: string): string | null {
 }
 
 const LINK_SCORING: Array<{ weight: number; keywords: string[] }> = [
-  { weight: 5, keywords: ['program', 'agenda', 'schedule', 'sessions', 'tracks', 'day'] },
-  { weight: 5, keywords: ['speaker', 'speakers', 'presenter', 'faculty'] },
-  { weight: 4, keywords: ['sponsor', 'partner', 'exhibitor', 'booth'] },
-  { weight: 3, keywords: ['contact', 'practical', 'travel', 'venue', 'location', 'info', 'faq'] },
-  { weight: 2, keywords: ['about', 'details', 'overview', 'why-attend'] }
+  { weight: 6, keywords: ['program', 'agenda', 'schedule', 'sessions', 'tracks', 'day'] },
+  { weight: 6, keywords: ['speaker', 'speakers', 'presenter', 'faculty'] },
+  { weight: 5, keywords: ['sponsor', 'partner', 'exhibitor', 'booth'] },
+  { weight: 4, keywords: ['contact', 'practical', 'travel', 'venue', 'location', 'hotel', 'faq', 'info'] },
+  { weight: 3, keywords: ['about', 'details', 'overview', 'why-attend'] }
 ];
+
+const LINK_FETCH_THRESHOLD = 4;
+const LINK_MAX_DEPTH = 3;
+const LINK_MAX_FETCHES = 5;
+const LINK_MAX_RESULTS = 20;
+const LINK_FETCH_TIMEOUT = 2000;
+
+type DiscoveredLinksResult = {
+  links: string[];
+  visited: string[];
+};
 
 function scoreLinkCandidate(url: string, text: string, classes: string | undefined): number {
   const haystacks = [url.toLowerCase(), text.toLowerCase(), (classes ?? '').toLowerCase()];
@@ -1313,35 +1326,83 @@ function scoreLinkCandidate(url: string, text: string, classes: string | undefin
   return score;
 }
 
-function discoverLinksFromHtml($: cheerio.CheerioAPI, baseUrl: string): string[] {
+async function fetchPageContent(url: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), LINK_FETCH_TIMEOUT);
+  try {
+    const response = await fetch(url, { headers: BROWSER_HEADERS, signal: controller.signal });
+    if (!response.ok) return null;
+    return await response.text();
+  } catch (error) {
+    console.warn('[link_discovery] Failed to fetch', { url, error });
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function discoverLinksFromHtml($: cheerio.CheerioAPI, baseUrl: string): Promise<DiscoveredLinksResult> {
   const base = new URL(baseUrl);
-  const candidates: Array<{ url: string; score: number }> = [];
-  const seen = new Set<string>();
+  const candidateScores = new Map<string, number>();
+  const visitedPages = new Set<string>();
+  const queued = new Set<string>();
+  const queue: Array<{ url: string; depth: number }> = [];
+  const visitedLog: string[] = [];
 
-  $('a[href]').each((_, element) => {
-    const href = $(element).attr('href');
-    if (!href) return;
-    const normalized = normalizeUrlRelative(base, href);
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
+  const processAnchors = ($page: cheerio.CheerioAPI, sourceUrl: string, depth: number) => {
+    $page('a[href]').each((_, element) => {
+      const href = $page(element).attr('href');
+      if (!href) return;
+      const normalized = normalizeUrlRelative(base, href);
+      if (!normalized) return;
 
-    const text = $(element).text().trim();
-    const classes = $(element).attr('class');
-    const score = scoreLinkCandidate(normalized, text, classes);
-    if (score > 0) {
-      candidates.push({ url: normalized, score });
-    }
-  });
+      const text = $page(element).text().trim();
+      const classes = $page(element).attr('class');
+      const score = scoreLinkCandidate(normalized, text, classes);
+      if (score <= 0) return;
 
-  const maxLinks = 20;
-  candidates.sort((a, b) => b.score - a.score);
-  const selected = candidates.slice(0, maxLinks).map((candidate) => candidate.url);
+      const previous = candidateScores.get(normalized) ?? 0;
+      if (score > previous) {
+        candidateScores.set(normalized, score);
+      }
 
-  if (selected.length) {
-    logExtractionDebug(baseUrl, 'link_discovery', { count: selected.length, samples: selected.slice(0, 5) });
+      if (depth < LINK_MAX_DEPTH && score >= LINK_FETCH_THRESHOLD && !visitedPages.has(normalized) && !queued.has(normalized)) {
+        queue.push({ url: normalized, depth: depth + 1 });
+        queued.add(normalized);
+      }
+    });
+  };
+
+  processAnchors($, baseUrl, 0);
+
+  let fetches = 0;
+  while (queue.length && fetches < LINK_MAX_FETCHES) {
+    const { url, depth } = queue.shift()!;
+    if (visitedPages.has(url)) continue;
+    visitedPages.add(url);
+    visitedLog.push(url);
+    fetches += 1;
+
+    const html = await fetchPageContent(url);
+    if (!html) continue;
+    const child$ = cheerio.load(html);
+    processAnchors(child$, url, depth);
   }
 
-  return selected;
+  const sorted = Array.from(candidateScores.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, LINK_MAX_RESULTS)
+    .map(([url]) => url);
+
+  if (sorted.length || visitedLog.length) {
+    logExtractionDebug(baseUrl, 'link_discovery', {
+      count: sorted.length,
+      samples: sorted.slice(0, 5),
+      visited: visitedLog.slice(0, 5)
+    });
+  }
+
+  return { links: sorted, visited: visitedLog };
 }
 
 function normalizeUrlRelative(base: URL, href: string): string | null {
@@ -1388,8 +1449,8 @@ async function discoverRelatedLinks(url: string, existing: string[]): Promise<st
   const base = new URL(url);
   if (already.size === 0) {
     FALLBACK_SEGMENTS.forEach((segment) => {
-      const candidate = new URL(segment, base.origin + base.pathname.replace(/[^/]*$/, ''));
-      already.add(candidate.toString());
+      const candidateFallback = new URL(segment, base.origin + base.pathname.replace(/[^/]*$/, ''));
+      already.add(candidateFallback.toString());
     });
   }
   return Array.from(already);
