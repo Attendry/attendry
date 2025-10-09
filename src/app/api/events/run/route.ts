@@ -176,14 +176,18 @@ const filteredEvents = sortedEvents.filter((event: ApiEvent) => {
 
     const countryMatch = (() => {
       if (!country) return true;
-      if (!eventCountry) {
-        if (country.toUpperCase() === 'EU') return true;
-        return locationMentionsCountry(event.location ?? null, country);
-      }
-      if (country.toUpperCase() === 'EU') {
-        return euCountries.includes(eventCountry.toUpperCase());
-      }
-      return eventCountry.toUpperCase() === country.toUpperCase();
+    const target = country.toUpperCase();
+    if (!eventCountry) {
+      // If we don't know the country, keep the event unless we require a specific non-EU country.
+      // For EU, any European event is acceptable; otherwise rely on location hints.
+      if (target === 'EU') return true;
+      return locationMentionsCountry(event.location ?? null, country);
+    }
+    const eventUpper = eventCountry.toUpperCase();
+    if (target === 'EU') {
+      return euCountries.includes(eventUpper);
+    }
+    return eventUpper === target;
     })();
 
     if (!countryMatch) {
