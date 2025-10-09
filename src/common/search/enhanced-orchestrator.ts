@@ -1,3 +1,47 @@
+function normalizeSession(raw: unknown): ExtractedSession | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const title = getString(obj.title) ?? getString(obj.name);
+  const description = getString(obj.description) ?? null;
+  const starts_at = normalizeDateInput(getString(obj.starts_at) ?? getString(obj.startTime) ?? getString(obj.date) ?? null);
+  const ends_at = normalizeDateInput(getString(obj.ends_at) ?? getString(obj.endTime) ?? null);
+  const speakers = Array.isArray(obj.speakers)
+    ? obj.speakers.map((s) => typeof s === 'string' ? s : getString((s as Record<string, unknown>)?.name)).filter((s): s is string => !!s)
+    : [];
+
+  if (!title && !description && !starts_at && speakers.length === 0) return null;
+  return { title, description, starts_at, ends_at, speakers };
+}
+
+function normalizeSpeaker(raw: unknown): ExtractedSpeaker | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const name = getString(obj.name);
+  const title = getString(obj.title) ?? getString(obj.role);
+  const organization = getString(obj.organization) ?? getString(obj.company);
+  const bio = getString(obj.bio) ?? null;
+  const sessions = Array.isArray(obj.sessions)
+    ? obj.sessions.map((s) => typeof s === 'string' ? s : getString((s as Record<string, unknown>)?.title)).filter((s): s is string => !!s)
+    : [];
+
+  if (!name && !organization && !title && !bio) return null;
+  return { name, title, organization, bio, sessions };
+}
+
+function normalizeSponsor(raw: unknown): ExtractedSponsor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const name = getString(obj.name);
+  const tier = getString(obj.tier) ?? getString(obj.level);
+  const description = getString(obj.description) ?? null;
+
+  if (!name && !description) return null;
+  return { name, tier, description };
+}
+
+function getString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length ? value.trim() : null;
+}
 // Enhanced orchestrator with full pipeline: Search → Prioritization → Extract
 import { loadActiveConfig, type ActiveConfig } from './config';
 import { tryJsonRepair } from '../utils/json';
@@ -129,6 +173,28 @@ type ScoredEvent = {
   };
 };
 
+type ExtractedSession = {
+  title: string | null;
+  description: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  speakers: string[];
+};
+
+type ExtractedSpeaker = {
+  name: string | null;
+  title: string | null;
+  organization: string | null;
+  bio: string | null;
+  sessions?: string[];
+};
+
+type ExtractedSponsor = {
+  name: string | null;
+  tier: string | null;
+  description: string | null;
+};
+
 type ExtractedEventDetails = {
   title: string | null;
   description: string | null;
@@ -137,6 +203,10 @@ type ExtractedEventDetails = {
   city: string | null;
   location: string | null;
   venue: string | null;
+  sessions: ExtractedSession[];
+  speakers: ExtractedSpeaker[];
+  sponsors: ExtractedSponsor[];
+  relatedUrls: string[];
 };
 
 function normalizeDateInput(raw: unknown): string | null {
@@ -233,15 +303,7 @@ function extractCandidatePayload(raw: ExtractResponse | null | undefined, url: s
 
 function toExtractedEventDetails(source: unknown): ExtractedEventDetails {
   if (!source) {
-    return {
-      title: null,
-      description: null,
-      starts_at: null,
-      country: null,
-      city: null,
-      location: null,
-      venue: null
-    };
+    return emptyExtractedDetails();
   }
 
   let obj: Record<string, unknown> = {};
@@ -263,6 +325,13 @@ function toExtractedEventDetails(source: unknown): ExtractedEventDetails {
   const location = typeof obj.location === 'string' && obj.location.trim().length ? obj.location.trim() : null;
   const venue = typeof obj.venue === 'string' && obj.venue.trim().length ? obj.venue.trim() : null;
 
+  const sessions = Array.isArray(obj.sessions) ? obj.sessions.map(normalizeSession).filter(Boolean) as ExtractedSession[] : [];
+  const speakers = Array.isArray(obj.speakers) ? obj.speakers.map(normalizeSpeaker).filter(Boolean) as ExtractedSpeaker[] : [];
+  const sponsors = Array.isArray(obj.sponsors) ? obj.sponsors.map(normalizeSponsor).filter(Boolean) as ExtractedSponsor[] : [];
+  const relatedUrls = Array.isArray(obj.relatedUrls)
+    ? (obj.relatedUrls as unknown[]).map((entry) => typeof entry === 'string' ? entry : null).filter((entry): entry is string => !!entry)
+    : [];
+
   return {
     title,
     description,
@@ -270,7 +339,11 @@ function toExtractedEventDetails(source: unknown): ExtractedEventDetails {
     country,
     city,
     location,
-    venue
+    venue,
+    sessions,
+    speakers,
+    sponsors,
+    relatedUrls
   };
 }
 
@@ -282,8 +355,30 @@ function mergeDetails(primary: ExtractedEventDetails, fallback: ExtractedEventDe
     country: primary.country ?? fallback.country ?? null,
     city: primary.city ?? fallback.city ?? null,
     location: primary.location ?? fallback.location ?? null,
-    venue: primary.venue ?? fallback.venue ?? null
+    venue: primary.venue ?? fallback.venue ?? null,
+    sessions: mergeArray(primary.sessions, fallback.sessions, (session) => session.title ?? session.description ?? JSON.stringify(session)),
+    speakers: mergeArray(primary.speakers, fallback.speakers, (speaker) => speaker.name ?? JSON.stringify(speaker)),
+    sponsors: mergeArray(primary.sponsors, fallback.sponsors, (sponsor) => sponsor.name ?? JSON.stringify(sponsor)),
+    relatedUrls: mergeArray(primary.relatedUrls, fallback.relatedUrls)
   };
+}
+
+function mergeArray<T>(primary: T[] | null | undefined, fallback: T[] | null | undefined, keyFn?: (item: T) => string): T[] {
+  const result: T[] = [];
+  const seen = new Set<string>();
+  const key = (item: T, index: number) => keyFn ? keyFn(item) ?? `${index}` : JSON.stringify(item);
+
+  for (const list of [primary ?? [], fallback ?? []]) {
+    list.forEach((item, index) => {
+      const k = key(item, index);
+      if (!seen.has(k)) {
+        seen.add(k);
+        result.push(item);
+      }
+    });
+  }
+
+  return result;
 }
 
 function formatLocation(city?: string | null, country?: string | null): string | null {
@@ -535,8 +630,8 @@ function generateExtractionPrompt(searchConfig: ActiveConfig): string {
     : 'the target region';
   const eventTerms = searchConfig.eventTerms?.join(', ') ?? 'events, conferences, summits';
 
-  return `Extract structured event details for ${searchConfig.industry ?? 'general'} topics.
-Return a JSON object with exactly these keys:
+  return `Extract structured details for ${searchConfig.industry ?? 'general'} events.
+Return strict JSON with the following shape:
 {
   "title": string | null,
   "description": string | null,
@@ -544,15 +639,44 @@ Return a JSON object with exactly these keys:
   "country": string | null,
   "city": string | null,
   "location": string | null,
-  "venue": string | null
+  "venue": string | null,
+  "sessions": [
+    {
+      "title": string | null,
+      "description": string | null,
+      "starts_at": string | null,
+      "ends_at": string | null,
+      "speakers": string[]
+    }
+  ],
+  "speakers": [
+    {
+      "name": string | null,
+      "title": string | null,
+      "organization": string | null,
+      "bio": string | null,
+      "sessions": string[]
+    }
+  ],
+  "sponsors": [
+    {
+      "name": string | null,
+      "tier": string | null,
+      "description": string | null
+    }
+  ],
+  "relatedUrls": string[]
 }
 
-Guidelines:
-- Only keep pages that describe real ${eventTerms}.
-- Derive "starts_at" in ISO (YYYY-MM-DD) if any date is present; otherwise null.
-- Set "country" to the two-letter country code when identifiable; focus on ${allowedCountries}.
-- "location" should be a readable combination like "City, Country" when both are known.
-- Never invent data; leave fields null if uncertain.
+Instructions:
+- Identify if the page is about an actual ${eventTerms} and gather event-level info.
+- Derive "starts_at" in ISO (YYYY-MM-DD) when possible; otherwise null.
+- Use country ISO-2 code when identifiable; prefer ${allowedCountries}.
+- Extract sessions with titles, timing, and speaker names when available.
+- Extract speaker details (name, role, organization, bio snippets) linked to sessions if possible.
+- Extract sponsors or partners with tier/description when present.
+- Collect any in-domain links pointing to agenda, program, speakers, sponsors, or practical information pages in "relatedUrls".
+- Do not invent data; use null or empty arrays when uncertain.
 - Trim whitespace from all strings.`;
 }
 
@@ -595,14 +719,26 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
       city: merged.city,
       payload: {
         ...merged,
-        location: normalizedLocation ?? merged.location ?? null
+        location: normalizedLocation ?? merged.location ?? null,
+        sessions: merged.sessions,
+        speakers: merged.speakers,
+        sponsors: merged.sponsors,
+        relatedUrls: merged.relatedUrls
       }
     });
   }
 
+  const discoveredLinks = merged.relatedUrls.length > 0
+    ? merged.relatedUrls
+    : await discoverRelatedLinks(url, merged.relatedUrls);
+
+  const enrichment = await extractEnrichmentFromLinks(url, discoveredLinks, apiKey, searchConfig);
+  const enrichedMerged = mergeDetails(merged, enrichment);
+
   return {
-    ...merged,
-    location: normalizedLocation ?? merged.location ?? null
+    ...enrichedMerged,
+    location: normalizedLocation ?? enrichedMerged.location ?? null,
+    relatedUrls: discoveredLinks
   };
 }
 
@@ -614,13 +750,21 @@ function emptyExtractedDetails(): ExtractedEventDetails {
     country: null,
     city: null,
     location: null,
-    venue: null
+    venue: null,
+    sessions: [],
+    speakers: [],
+    sponsors: [],
+    relatedUrls: []
   };
 }
 
 function isExtractEmpty(value: ExtractedEventDetails | null | undefined): boolean {
   if (!value) return true;
-  return !value.title && !value.description && !value.starts_at && !value.country && !value.city && !value.location && !value.venue;
+  const coreEmpty = !value.title && !value.description && !value.starts_at && !value.country && !value.city && !value.location && !value.venue;
+  const enrichmentEmpty = (!value.sessions || value.sessions.length === 0)
+    && (!value.speakers || value.speakers.length === 0)
+    && (!value.sponsors || value.sponsors.length === 0);
+  return coreEmpty && enrichmentEmpty;
 }
 
 function logExtractionDebug(url: string, stage: string, data: Record<string, unknown>): void {
@@ -713,6 +857,8 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
     const country = normalizeCountry(countryCandidates[0] ?? null);
     const venue = normalizeText(venueCandidates[0] ?? null);
 
+    const discoveredLinks = discoverLinksFromHtml($, url);
+
     return {
       title: normalizeText(title),
       description: normalizeText(description),
@@ -720,7 +866,11 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
       country,
       city,
       location: formatLocation(city, country),
-      venue
+      venue,
+      sessions: [],
+      speakers: [],
+      sponsors: [],
+      relatedUrls: discoveredLinks
     };
   } catch (error) {
     console.warn('[extract] cheapHtmlScrape failed', {
@@ -834,6 +984,9 @@ async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: A
       const parsed = JSON.parse(repaired ?? raw) as ExtractResponse;
       const candidate = extractCandidatePayload(parsed, url);
       const extracted = toExtractedEventDetails(candidate);
+      if (Array.isArray(candidate?.relatedUrls) && candidate.relatedUrls.length > 0 && extracted.relatedUrls.length === 0) {
+        extracted.relatedUrls = candidate.relatedUrls.filter((entry: unknown): entry is string => typeof entry === 'string');
+      }
       if (isExtractEmpty(extracted)) {
         logExtractionDebug(url, 'firecrawl_json_empty', { attempt, snippet: raw.slice(0, 200) });
       } else {
@@ -893,14 +1046,20 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
     const locationGuess = extractLocation(content, url, searchConfig);
     const venue = extractVenue(content);
 
-    const result = {
+    const discoveredLinks = extractLinksFromMarkdown(content, url);
+
+    const result: ExtractedEventDetails = {
       title,
       description,
       starts_at,
       country: locationGuess.country,
       city: locationGuess.city,
       location: formatLocation(locationGuess.city, locationGuess.country) ?? locationGuess.location,
-      venue
+      venue,
+      sessions: [],
+      speakers: [],
+      sponsors: [],
+      relatedUrls: discoveredLinks
     };
     logExtractionDebug(url, 'firecrawl_markdown_success', { title: result.title, date: result.starts_at });
     return result;
@@ -1124,6 +1283,109 @@ function extractVenue(content: string): string | null {
   }
   
   return null;
+}
+
+function discoverLinksFromHtml($: cheerio.CheerioAPI, baseUrl: string): string[] {
+  const anchors = $('a[href]').toArray();
+  const keywords = ['program', 'agenda', 'schedule', 'speakers', 'sponsors', 'partner', 'sessions'];
+  const base = new URL(baseUrl);
+  const results = new Set<string>();
+
+  anchors.forEach((element) => {
+    const href = $(element).attr('href');
+    if (!href) return;
+    const normalized = normalizeUrlRelative(base, href);
+    if (!normalized) return;
+    const lower = normalized.toLowerCase();
+    if (keywords.some((keyword) => lower.includes(keyword))) {
+      results.add(normalized);
+    }
+  });
+
+  return Array.from(results);
+}
+
+function normalizeUrlRelative(base: URL, href: string): string | null {
+  try {
+    const normalized = new URL(href, base);
+    if (normalized.host !== base.host) return null;
+    normalized.hash = '';
+    return normalized.toString();
+  } catch (error) {
+    console.warn('[extract] Failed to normalize relative url', { href, error });
+    return null;
+  }
+}
+
+function extractLinksFromMarkdown(content: string, baseUrl: string): string[] {
+  const regex = /\((https?:[^)]+)\)/g;
+  const candidates = new Set<string>();
+  const base = new URL(baseUrl);
+  const keywords = ['program', 'agenda', 'schedule', 'speakers', 'sponsor', 'partner', 'sessions'];
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    const url = match[1];
+    try {
+      const parsed = new URL(url, base.origin);
+      if (parsed.host !== base.host) continue;
+      parsed.hash = '';
+      const normalized = parsed.toString();
+      if (keywords.some((keyword) => normalized.toLowerCase().includes(keyword))) {
+        candidates.add(normalized);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+async function discoverRelatedLinks(url: string, existing: string[]): Promise<string[]> {
+  const already = new Set(existing);
+  const base = new URL(url);
+  if (already.size === 0) {
+    const segments = ['program', 'agenda', 'speakers', 'sponsors', 'partner'];
+    segments.forEach((segment) => {
+      const candidate = new URL(segment + '.html', base.origin + base.pathname.replace(/[^/]*$/, ''));
+      already.add(candidate.toString());
+    });
+  }
+  return Array.from(already);
+}
+
+async function extractEnrichmentFromLinks(
+  parentUrl: string,
+  links: string[],
+  apiKey: string | null,
+  searchConfig: ActiveConfig
+): Promise<ExtractedEventDetails> {
+  if (links.length === 0) {
+    return emptyExtractedDetails();
+  }
+
+  const deduped = Array.from(new Set(links)).filter((link) => link !== parentUrl).slice(0, 5);
+  if (deduped.length === 0) {
+    return emptyExtractedDetails();
+  }
+
+  const primary: ExtractedEventDetails[] = [];
+
+  for (const link of deduped) {
+    const basic = await cheapHtmlScrape(link).catch(() => emptyExtractedDetails());
+    let firecrawl: ExtractedEventDetails | null = null;
+    if (apiKey) {
+      firecrawl = await extractWithFirecrawl(link, apiKey, searchConfig).catch(() => emptyExtractedDetails());
+    }
+    const merged = mergeDetails(basic, firecrawl ?? emptyExtractedDetails());
+    primary.push({
+      ...merged,
+      relatedUrls: merged.relatedUrls.length ? merged.relatedUrls : [link]
+    });
+  }
+
+  return primary.reduce((acc, curr) => mergeDetails(acc, curr), emptyExtractedDetails());
 }
 
 export async function executeEnhancedSearch(args: ExecArgs) {
