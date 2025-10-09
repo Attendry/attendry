@@ -327,7 +327,7 @@ Return a JSON array of objects, each with:
 Include at most 10 items. Only include URLs you see in the list.`;
 
     const modelPath = process.env.GEMINI_MODEL_PATH
-      || 'v1beta/models/gemini-1.5-flash:generateContent';
+      || 'v1/models/gemini-1.5-flash-latest:generateContent';
     const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`, {
       method: 'POST',
       headers: { 
