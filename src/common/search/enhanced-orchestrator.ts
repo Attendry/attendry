@@ -1,5 +1,5 @@
 // Enhanced orchestrator with full pipeline: Search → Prioritization → Extract
-import { loadActiveConfig } from './config';
+import { loadActiveConfig, type ActiveConfig } from './config';
 import { buildSearchQuery } from './queryBuilder';
 import { search as firecrawlSearch } from '../../providers/firecrawl';
 import { search as cseSearch } from '../../providers/cse';
@@ -15,7 +15,7 @@ type ExecArgs = {
   timeframe?: string | null; // 'next_7', 'next_14', 'next_30', 'past_7', 'past_14', 'past_30'
 };
 
-// Helper function to process timeframe into date range
+// Helper function to process timeframe into date range using config defaults
 function processTimeframe(timeframe: string | null): { dateFrom: string | null; dateTo: string | null } {
   if (!timeframe) return { dateFrom: null, dateTo: null };
   
@@ -58,70 +58,41 @@ function processTimeframe(timeframe: string | null): { dateFrom: string | null; 
   }
 }
 
-// Helper function to process location into country codes
-function processLocation(location: string | null): string[] {
-  if (!location) return ['DE']; // Default to Germany
-  
-  if (location.toUpperCase() === 'EU') {
-    return ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
+// Helper function to process location into country codes using config defaults
+function processLocation(location: string | null, config: ActiveConfig): string[] {
+  const normalizedLocation = location?.trim();
+  if (!normalizedLocation) {
+    return config.defaultCountries?.length ? config.defaultCountries : ['DE'];
   }
-  
-  // Single country code
-  return [location.toUpperCase()];
+
+  if (normalizedLocation.toUpperCase() === 'EU') {
+    return config.euCountries?.length ? config.euCountries : ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
+  }
+
+  return [normalizedLocation.toUpperCase()];
 }
 
-// Industry-agnostic event-focused query builder
-function buildEventFocusedQuery(baseQuery: string, userText: string, location: string | null, searchConfig: any): string {
-  const countries = processLocation(location);
-  
-  // Generic event terms (industry-agnostic)
-  const eventTerms = ['conference', 'event', 'summit', 'workshop', 'seminar', 'meeting', 'symposium', 'forum', 'exhibition', 'trade show', 'convention', 'congress'];
+// Event-focused query builder derived from search configuration
+function buildEventFocusedQuery(baseQuery: string, userText: string, location: string | null, searchConfig: ActiveConfig): string {
+  const countries = processLocation(location, searchConfig);
+  const eventTerms = searchConfig.eventTerms?.length
+    ? searchConfig.eventTerms
+    : ['conference', 'event', 'summit', 'workshop', 'seminar', 'meeting', 'symposium', 'forum', 'exhibition', 'trade show', 'convention', 'congress'];
   const eventQuery = `(${eventTerms.join(' OR ')})`;
-  
+
   if (countries.length === 1) {
-    // Single country - add country-specific terms
     const country = countries[0];
-    const countryTerms = {
-      'DE': ['Germany', 'Deutschland', 'Berlin', 'München', 'Frankfurt', 'Köln', 'Hamburg', 'Stuttgart', 'Düsseldorf', 'Leipzig', 'Hannover', 'Nürnberg', 'Bremen', 'Bonn', 'Essen', 'Mannheim', 'Münster'],
-      'AT': ['Austria', 'Österreich', 'Wien', 'Salzburg', 'Graz', 'Innsbruck', 'Linz', 'Klagenfurt', 'Villach'],
-      'CH': ['Switzerland', 'Schweiz', 'Zürich', 'Bern', 'Basel', 'Genf', 'Lausanne', 'Luzern', 'St. Gallen'],
-      'FR': ['France', 'Frankreich', 'Paris', 'Lyon', 'Marseille', 'Toulouse', 'Nice', 'Nantes', 'Strasbourg'],
-      'IT': ['Italy', 'Italien', 'Roma', 'Milano', 'Napoli', 'Torino', 'Firenze', 'Bologna', 'Genova'],
-      'ES': ['Spain', 'Spanien', 'Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao', 'Málaga', 'Zaragoza'],
-      'NL': ['Netherlands', 'Niederlande', 'Amsterdam', 'Rotterdam', 'Den Haag', 'Utrecht', 'Eindhoven', 'Tilburg', 'Groningen'],
-      'BE': ['Belgium', 'Belgien', 'Brussels', 'Brüssel', 'Antwerp', 'Antwerpen', 'Ghent', 'Gent', 'Bruges', 'Brugge'],
-      'LU': ['Luxembourg', 'Luxemburg'],
-      'DK': ['Denmark', 'Dänemark', 'Copenhagen', 'Kopenhagen', 'Aarhus', 'Odense', 'Aalborg'],
-      'SE': ['Sweden', 'Schweden', 'Stockholm', 'Göteborg', 'Malmö', 'Uppsala', 'Linköping', 'Örebro'],
-      'NO': ['Norway', 'Norwegen', 'Oslo', 'Bergen', 'Trondheim', 'Stavanger', 'Kristiansand'],
-      'FI': ['Finland', 'Finnland', 'Helsinki', 'Tampere', 'Turku', 'Oulu', 'Jyväskylä'],
-      'PL': ['Poland', 'Polen', 'Warsaw', 'Warschau', 'Krakow', 'Krakau', 'Gdansk', 'Wroclaw', 'Poznan'],
-      'CZ': ['Czech Republic', 'Tschechien', 'Prague', 'Prag', 'Brno', 'Ostrava', 'Plzen'],
-      'HU': ['Hungary', 'Ungarn', 'Budapest', 'Debrecen', 'Szeged', 'Miskolc', 'Pécs'],
-      'SK': ['Slovakia', 'Slowakei', 'Bratislava', 'Košice', 'Prešov', 'Žilina'],
-      'SI': ['Slovenia', 'Slowenien', 'Ljubljana', 'Maribor', 'Celje', 'Kranj'],
-      'HR': ['Croatia', 'Kroatien', 'Zagreb', 'Split', 'Rijeka', 'Osijek', 'Zadar'],
-      'BG': ['Bulgaria', 'Bulgarien', 'Sofia', 'Plovdiv', 'Varna', 'Burgas', 'Ruse'],
-      'RO': ['Romania', 'Rumänien', 'Bucharest', 'Bukarest', 'Cluj-Napoca', 'Timișoara', 'Iași'],
-      'EE': ['Estonia', 'Estland', 'Tallinn', 'Tartu', 'Narva', 'Pärnu'],
-      'LV': ['Latvia', 'Lettland', 'Riga', 'Daugavpils', 'Liepāja', 'Jelgava'],
-      'LT': ['Lithuania', 'Litauen', 'Vilnius', 'Kaunas', 'Klaipėda', 'Šiauliai'],
-      'MT': ['Malta', 'Valletta', 'Sliema', 'Birkirkara', 'Mosta'],
-      'CY': ['Cyprus', 'Zypern', 'Nicosia', 'Limassol', 'Larnaca', 'Paphos'],
-      'IE': ['Ireland', 'Irland', 'Dublin', 'Cork', 'Galway', 'Limerick', 'Waterford'],
-      'PT': ['Portugal', 'Lissabon', 'Porto', 'Coimbra', 'Braga', 'Aveiro'],
-      'GR': ['Greece', 'Griechenland', 'Athens', 'Athen', 'Thessaloniki', 'Patras', 'Heraklion']
-    };
-    
-    const terms = countryTerms[country] || [country];
-    const locationTerms = terms.slice(0, 5).join(' OR ');
-    return `${baseQuery} ${eventQuery} (${locationTerms})`;
-  } else {
-    // Multiple countries (EU) - add broader European terms
-    const euTerms = ['Europe', 'Europa', 'European', 'Europäisch', 'EU'];
-    const locationTerms = euTerms.join(' OR ');
+    const countryTermsSource = searchConfig.locationTermsByCountry?.[country];
+    const effectiveCountryTerms = countryTermsSource?.length ? countryTermsSource : [country];
+    const locationTerms = effectiveCountryTerms.slice(0, 8).join(' OR ');
     return `${baseQuery} ${eventQuery} (${locationTerms})`;
   }
+
+  const euTerms = searchConfig.euLocationTerms?.length
+    ? searchConfig.euLocationTerms
+    : ['Europe', 'Europa', 'European', 'Europäisch', 'EU'];
+  const locationTerms = euTerms.join(' OR ');
+  return `${baseQuery} ${eventQuery} (${locationTerms})`;
 }
 
 type PrioritizedUrl = {
@@ -140,7 +111,7 @@ type ScoredEvent = {
   location: string | null;
   venue: string | null;
   description: string | null;
-  speakers: any[];
+  speakers: unknown[];
   confidence: number;
   confidence_reason?: string;
   scoringTrace?: {
@@ -149,8 +120,142 @@ type ScoredEvent = {
   };
 };
 
+type ExtractedEventDetails = {
+  title: string | null;
+  description: string | null;
+  starts_at: string | null;
+  country: string | null;
+  city: string | null;
+  location: string | null;
+  venue: string | null;
+};
+
+function normalizeDateInput(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const value = raw.trim();
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+  const germanMatch = value.match(/^(\d{1,2})[.](\d{1,2})[.](\d{4})$/);
+  if (germanMatch) {
+    const [, d, m, y] = germanMatch;
+    const day = parseInt(d, 10);
+    const month = parseInt(m, 10);
+    const year = parseInt(y, 10);
+    if (year >= 2020 && year <= 2035 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    }
+  }
+  const usMatch = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (usMatch) {
+    const [, m, d, y] = usMatch;
+    const day = parseInt(d, 10);
+    const month = parseInt(m, 10);
+    const year = parseInt(y, 10);
+    if (year >= 2020 && year <= 2035 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+    }
+  }
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.valueOf())) {
+    return parsed.toISOString().split('T')[0];
+  }
+  return null;
+}
+
+type ExtractResponse = {
+  data?: {
+    json?: unknown;
+    outputs?: Array<{ output?: unknown; content?: unknown }>;
+  };
+  outputs?: Array<{ output?: unknown; content?: unknown }>;
+};
+
+function extractCandidatePayload(raw: ExtractResponse | null | undefined): unknown {
+  if (!raw) return null;
+  if (raw.data?.json) return raw.data.json;
+  if (raw.data?.outputs?.length) return raw.data.outputs[0]?.output ?? raw.data.outputs[0]?.content;
+  if (raw.outputs?.length) return raw.outputs[0]?.output ?? raw.outputs[0]?.content;
+  return raw;
+}
+
+function toExtractedEventDetails(source: unknown): ExtractedEventDetails {
+  if (!source) {
+    return {
+      title: null,
+      description: null,
+      starts_at: null,
+      country: null,
+      city: null,
+      location: null,
+      venue: null
+    };
+  }
+
+  let obj: Record<string, unknown> = {};
+  if (typeof source === 'string') {
+    try {
+      obj = JSON.parse(source) as Record<string, unknown>;
+    } catch {
+      obj = {};
+    }
+  } else if (typeof source === 'object') {
+    obj = source as Record<string, unknown>;
+  }
+
+  const title = typeof obj.title === 'string' && obj.title.trim().length ? obj.title.trim() : null;
+  const description = typeof obj.description === 'string' && obj.description.trim().length ? obj.description.trim() : null;
+  const startsAt = normalizeDateInput((obj.starts_at || obj.startDate || obj.date || obj.start_date || obj.start) as string | undefined);
+  const country = typeof obj.country === 'string' && obj.country.trim().length ? obj.country.trim().toUpperCase() : (typeof obj.countryCode === 'string' ? obj.countryCode.trim().toUpperCase() : null);
+  const city = typeof obj.city === 'string' && obj.city.trim().length ? obj.city.trim() : null;
+  const location = typeof obj.location === 'string' && obj.location.trim().length ? obj.location.trim() : null;
+  const venue = typeof obj.venue === 'string' && obj.venue.trim().length ? obj.venue.trim() : null;
+
+  return {
+    title,
+    description,
+    starts_at: startsAt,
+    country,
+    city,
+    location,
+    venue
+  };
+}
+
+function mergeDetails(primary: ExtractedEventDetails, fallback: ExtractedEventDetails): ExtractedEventDetails {
+  return {
+    title: primary.title ?? fallback.title ?? null,
+    description: primary.description ?? fallback.description ?? null,
+    starts_at: primary.starts_at ?? fallback.starts_at ?? null,
+    country: primary.country ?? fallback.country ?? null,
+    city: primary.city ?? fallback.city ?? null,
+    location: primary.location ?? fallback.location ?? null,
+    venue: primary.venue ?? fallback.venue ?? null
+  };
+}
+
+function formatLocation(city?: string | null, country?: string | null): string | null {
+  const trimmedCity = city?.trim();
+  const trimmedCountry = country?.trim();
+  if (trimmedCity && trimmedCountry) {
+    return `${trimmedCity}, ${trimmedCountry}`;
+  }
+  return trimmedCity ?? trimmedCountry ?? null;
+}
+
+function includesToken(haystack: string | null | undefined, tokens: string[]): boolean {
+  if (!haystack) return false;
+  const lowerHaystack = haystack.toLowerCase();
+  return tokens.some((token) => {
+    const normalized = token.toLowerCase();
+    const hyphenated = normalized.replace(/\s+/g, '-');
+    return lowerHaystack.includes(normalized) || lowerHaystack.includes(hyphenated);
+  });
+}
+
 // Industry-agnostic Gemini prioritization
-async function prioritizeUrls(urls: string[], searchConfig: any, country: string, location: string | null, timeframe: string | null): Promise<PrioritizedUrl[]> {
+async function prioritizeUrls(urls: string[], searchConfig: ActiveConfig, country: string, location: string | null, timeframe: string | null): Promise<PrioritizedUrl[]> {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -163,11 +268,11 @@ async function prioritizeUrls(urls: string[], searchConfig: any, country: string
     const baseQuery = searchConfig.baseQuery || '';
     const excludeTerms = searchConfig.excludeTerms || '';
     
-    // Process location context
-    const countries = processLocation(location);
+    // Process location context derived from config
+    const countries = processLocation(location, searchConfig);
     const locationContext = countries.length === 1 ? 
       `in ${countries[0]}` : 
-      `in European countries (${countries.slice(0, 5).join(', ')}...)`;
+      `in ${countries.slice(0, 5).join(', ')} countries`;
     
     // Process timeframe context
     const timeframeContext = timeframe ? 
@@ -249,10 +354,10 @@ Include at most 10 items. Only include URLs you see in the list.`;
     }
 
     try {
-      const prioritized = JSON.parse(content);
+      const prioritized = JSON.parse(content) as GeminiPrioritizedItem[];
       if (Array.isArray(prioritized)) {
         const normalized = prioritized
-          .map((item: any, idx: number): PrioritizedUrl | null => {
+          .map((item, idx): PrioritizedUrl | null => {
             if (typeof item === 'string') {
               return { url: item, score: 0.5 - idx * 0.02, reason: 'string_result' };
             }
@@ -305,7 +410,7 @@ Include at most 10 items. Only include URLs you see in the list.`;
 }
 
 // Event extraction using Firecrawl Extract (not Gemini)
-async function extractEventDetails(url: string, searchConfig: any): Promise<any> {
+async function extractEventDetails(url: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
   try {
     const apiKey = process.env.FIRECRAWL_KEY || process.env.FIRECRAWL_API_KEY;
     if (!apiKey) {
@@ -325,24 +430,25 @@ async function extractEventDetails(url: string, searchConfig: any): Promise<any>
         formats: [
           {
             type: "json",
-            prompt: `Extract event information from this webpage. Return a JSON object with:
+            prompt: `You are extracting structured event information for the ${searchConfig.industry} industry.
+Return a compact JSON object with the following shape:
 {
-  "title": "Event title or null if not found",
-  "description": "Brief event description or null if not found", 
-  "starts_at": "Event date in YYYY-MM-DD format or null if not found",
-  "country": "Country code (DE, AT, CH, etc.) or null if not found",
-  "city": "City name or null if not found",
-  "venue": "Venue name or null if not found"
+  "title": string | null,
+  "description": string | null,
+  "starts_at": string | null,
+  "country": string | null,
+  "city": string | null,
+  "location": string | null,
+  "venue": string | null
 }
 
-IMPORTANT LOCATION EXTRACTION:
-- Look for venue addresses, city names, country mentions
-- Check for German cities: Berlin, München, Frankfurt, Hamburg, Köln, Stuttgart, etc.
-- Check for German venues, German addresses, German postal codes
-- Look for country indicators in URLs (.de, .at, .ch) or content
-- For ${searchConfig.industry || 'general'} events, focus on events that are actually taking place in the specified location
-
-Focus on ${searchConfig.industry || 'general'} events. If this is not an event page, return null for most fields.`
+Rules:
+- Prefer ISO date format YYYY-MM-DD for "starts_at" when possible. If unavailable, return null.
+- Derive city/country from the page content or metadata. Use ISO country codes where possible.
+- "location" should be a human readable string (e.g. "Munich, Germany").
+- Only populate fields when the page clearly describes an actual event (conference, workshop, summit, seminar, etc.).
+- Leave any unknown field as null.
+- Avoid hallucinating information not present on the page.`
           }
         ],
         onlyMainContent: true,
@@ -359,7 +465,7 @@ Focus on ${searchConfig.industry || 'general'} events. If this is not an event p
     if (!response.ok) {
       console.warn('[extract] Firecrawl extract failed for', url, response.status);
       // Fallback to simple scraping
-      return await fallbackExtraction(url, apiKey);
+      return await fallbackExtraction(url, apiKey, searchConfig);
     }
 
     let data;
@@ -369,39 +475,49 @@ Focus on ${searchConfig.industry || 'general'} events. If this is not an event p
     } catch (parseError) {
       console.warn('[extract] Failed to parse Firecrawl extract response for', url, parseError);
       // Fallback to simple scraping
-      return await fallbackExtraction(url, apiKey);
+      return await fallbackExtraction(url, apiKey, searchConfig);
     }
     
-    const extracted = data.data?.json || {};
-    
-    // Format location as "City, Country" if both available
-    let locationFormatted = null;
-    if (extracted.city && extracted.country) {
-      locationFormatted = `${extracted.city}, ${extracted.country}`;
-    } else if (extracted.country) {
-      locationFormatted = extracted.country;
-    }
+    const extractedCandidate = extractCandidatePayload(data);
+    const extracted = toExtractedEventDetails(extractedCandidate);
+    const locationFormatted = formatLocation(extracted.city, extracted.country) ?? extracted.location;
 
+    const fallbackDetails = await fallbackExtraction(url, apiKey, searchConfig).catch((err: unknown) => {
+      console.warn('[extract] Fallback extraction during merge failed', { url, err });
+      return {
+        title: null,
+        description: null,
+        starts_at: null,
+        country: null,
+        city: null,
+        location: null,
+        venue: null
+      } as ExtractedEventDetails;
+    });
+    const merged = mergeDetails({ ...extracted, location: locationFormatted }, fallbackDetails);
     return {
-      title: extracted.title,
-      description: extracted.description,
-      starts_at: extracted.starts_at,
-      country: extracted.country,
-      city: extracted.city,
-      location: locationFormatted,
-      venue: extracted.venue
+      ...merged,
+      location: merged.location ?? formatLocation(merged.city, merged.country)
     };
   } catch (error) {
     console.error('[extract] Error extracting', url, error);
     if (error instanceof Error && error.message.includes('timeout')) {
       console.warn('[extract] Extraction timed out for', url);
     }
-    return { title: null, description: null, starts_at: null, country: null, venue: null };
+    return {
+      title: null,
+      description: null,
+      starts_at: null,
+      country: null,
+      city: null,
+      location: null,
+      venue: null
+    };
   }
 }
 
 // Fallback extraction using simple scraping
-async function fallbackExtraction(url: string, apiKey: string): Promise<any> {
+async function fallbackExtraction(url: string, apiKey: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
   try {
     const scrapePromise = fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
@@ -417,57 +533,86 @@ async function fallbackExtraction(url: string, apiKey: string): Promise<any> {
       })
     });
 
-                const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error('Scrape timeout')), 4000) // 4 second timeout
-                );
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Scrape timeout')), 4000)
+    );
 
     const response = await Promise.race([scrapePromise, timeoutPromise]) as Response;
 
     if (!response.ok) {
       console.warn('[extract] Fallback scrape failed for', url, response.status);
-      return { title: null, description: null, starts_at: null, country: null, venue: null };
+      return {
+        title: null,
+        description: null,
+        starts_at: null,
+        country: null,
+        city: null,
+        location: null,
+        venue: null
+      };
     }
 
-    const data = await response.json();
-    const content = data.data?.markdown || '';
+    const text = await response.text();
+    let data: ExtractResponse;
+    try {
+      data = JSON.parse(text) as ExtractResponse;
+    } catch {
+      data = {};
+    }
+
+    const inferMarkdown = (value: unknown): string | null => {
+      if (typeof value === 'string') return value;
+      if (value && typeof value === 'object') {
+        const maybeMarkdown = (value as Record<string, unknown>).markdown;
+        if (typeof maybeMarkdown === 'string') return maybeMarkdown;
+      }
+      return null;
+    };
+
+    const content = inferMarkdown(data.data?.json) ??
+      inferMarkdown(data.data?.outputs?.[0]?.output) ??
+      inferMarkdown(data.data?.outputs?.[0]?.content) ?? '';
     
     // Use simple extraction helpers
-    const title = extractTitle(content, url);
+    const title = extractTitle(content);
     const description = extractDescription(content);
     const starts_at = extractDate(content);
-    const location = extractLocation(content, url);
+    const locationGuess = extractLocation(content, url, searchConfig);
     const venue = extractVenue(content);
 
-    // Format location as "City, Country" if both available
-    let locationFormatted = null;
-    if (location.city && location.country) {
-      locationFormatted = `${location.city}, ${location.country}`;
-    } else if (location.country) {
-      locationFormatted = location.country;
-    }
+    const locationFormatted = formatLocation(locationGuess.city, locationGuess.country) ?? locationGuess.location;
 
-    return { title, description, starts_at, country: location.country, city: location.city, location: locationFormatted, venue };
+    return {
+      title,
+      description,
+      starts_at,
+      country: locationGuess.country,
+      city: locationGuess.city,
+      location: locationFormatted,
+      venue
+    };
   } catch (error) {
     console.error('[extract] Fallback extraction error:', error);
     if (error instanceof Error && error.message.includes('timeout')) {
       console.warn('[extract] Fallback extraction timed out for', url);
     }
-    return { title: null, description: null, starts_at: null, country: null, venue: null };
+    return {
+      title: null,
+      description: null,
+      starts_at: null,
+      country: null,
+      city: null,
+      location: null,
+      venue: null
+    };
   }
 }
 
 // Simple extraction helpers
-function extractTitle(content: string, url: string): string | null {
-  // Try to find title in markdown
+function extractTitle(content: string): string | null {
   const titleMatch = content.match(/^#\s+(.+)$/m);
   if (titleMatch) return titleMatch[1].trim();
-  
-  // Fallback to hostname
-  try {
-    return `Event from ${new URL(url).hostname}`;
-  } catch {
-    return 'Event';
-  }
+  return null;
 }
 
 function extractDescription(content: string): string | null {
@@ -582,7 +727,7 @@ function extractDate(content: string): string | null {
               return isoDate;
             }
           }
-        } catch (error) {
+        } catch {
           // Skip invalid dates
           continue;
         }
@@ -593,156 +738,45 @@ function extractDate(content: string): string | null {
   return null;
 }
 
-function extractLocation(content: string, url: string): { city: string | null; country: string | null } {
-  // Check URL for country indicators
-  let country = null;
-  if (url.includes('.de')) country = 'DE';
-  else if (url.includes('.at')) country = 'AT';
-  else if (url.includes('.ch')) country = 'CH';
-  else if (url.includes('.fr')) country = 'FR';
-  else if (url.includes('.it')) country = 'IT';
-  else if (url.includes('.es')) country = 'ES';
-  else if (url.includes('.nl')) country = 'NL';
-  else if (url.includes('.be')) country = 'BE';
-  else if (url.includes('.lu')) country = 'LU';
-  else if (url.includes('.dk')) country = 'DK';
-  else if (url.includes('.se')) country = 'SE';
-  else if (url.includes('.no')) country = 'NO';
-  else if (url.includes('.fi')) country = 'FI';
-  else if (url.includes('.pl')) country = 'PL';
-  else if (url.includes('.cz')) country = 'CZ';
-  else if (url.includes('.hu')) country = 'HU';
-  else if (url.includes('.sk')) country = 'SK';
-  else if (url.includes('.si')) country = 'SI';
-  else if (url.includes('.hr')) country = 'HR';
-  else if (url.includes('.bg')) country = 'BG';
-  else if (url.includes('.ro')) country = 'RO';
-  else if (url.includes('.ee')) country = 'EE';
-  else if (url.includes('.lv')) country = 'LV';
-  else if (url.includes('.lt')) country = 'LT';
-  else if (url.includes('.mt')) country = 'MT';
-  else if (url.includes('.cy')) country = 'CY';
-  else if (url.includes('.ie')) country = 'IE';
-  else if (url.includes('.pt')) country = 'PT';
-  else if (url.includes('.gr')) country = 'GR';
-  
-  // Check content for country mentions
-  const countryPatterns = [
-    { pattern: /\b(Germany|Deutschland)\b/i, country: 'DE' },
-    { pattern: /\b(Austria|Österreich)\b/i, country: 'AT' },
-    { pattern: /\b(Switzerland|Schweiz)\b/i, country: 'CH' },
-    { pattern: /\b(France|Frankreich)\b/i, country: 'FR' },
-    { pattern: /\b(Italy|Italien)\b/i, country: 'IT' },
-    { pattern: /\b(Spain|Spanien)\b/i, country: 'ES' },
-    { pattern: /\b(Netherlands|Niederlande)\b/i, country: 'NL' },
-    { pattern: /\b(Belgium|Belgien)\b/i, country: 'BE' },
-    { pattern: /\b(Luxembourg|Luxemburg)\b/i, country: 'LU' },
-    { pattern: /\b(Denmark|Dänemark)\b/i, country: 'DK' },
-    { pattern: /\b(Sweden|Schweden)\b/i, country: 'SE' },
-    { pattern: /\b(Norway|Norwegen)\b/i, country: 'NO' },
-    { pattern: /\b(Finland|Finnland)\b/i, country: 'FI' },
-    { pattern: /\b(Poland|Polen)\b/i, country: 'PL' },
-    { pattern: /\b(Czech Republic|Tschechien)\b/i, country: 'CZ' },
-    { pattern: /\b(Hungary|Ungarn)\b/i, country: 'HU' },
-    { pattern: /\b(Slovakia|Slowakei)\b/i, country: 'SK' },
-    { pattern: /\b(Slovenia|Slowenien)\b/i, country: 'SI' },
-    { pattern: /\b(Croatia|Kroatien)\b/i, country: 'HR' },
-    { pattern: /\b(Bulgaria|Bulgarien)\b/i, country: 'BG' },
-    { pattern: /\b(Romania|Rumänien)\b/i, country: 'RO' },
-    { pattern: /\b(Estonia|Estland)\b/i, country: 'EE' },
-    { pattern: /\b(Latvia|Lettland)\b/i, country: 'LV' },
-    { pattern: /\b(Lithuania|Litauen)\b/i, country: 'LT' },
-    { pattern: /\b(Malta)\b/i, country: 'MT' },
-    { pattern: /\b(Cyprus|Zypern)\b/i, country: 'CY' },
-    { pattern: /\b(Ireland|Irland)\b/i, country: 'IE' },
-    { pattern: /\b(Portugal)\b/i, country: 'PT' },
-    { pattern: /\b(Greece|Griechenland)\b/i, country: 'GR' }
-  ];
-  
-  for (const { pattern, country: patternCountry } of countryPatterns) {
-    if (pattern.test(content)) {
-      country = patternCountry;
+function extractLocation(content: string, url: string, config: ActiveConfig): { city: string | null; country: string | null; location: string | null } {
+  const lowerUrl = url.toLowerCase();
+  const locationTerms = config.locationTermsByCountry ?? {};
+  const countryTokens = Object.entries(locationTerms).flatMap(([countryCode, terms]) =>
+    terms.map((term) => ({ countryCode, term: term.toLowerCase() }))
+  );
+
+  let country: string | null = null;
+  for (const { countryCode, term } of countryTokens) {
+    const hyphenated = term.replace(/\s+/g, '-');
+    if (lowerUrl.includes(hyphenated) || lowerUrl.includes(term)) {
+      country = countryCode;
       break;
     }
   }
-  
-  // Extract city from content with more aggressive German detection
-  let city = null;
-  const cityPatterns = [
-    // German cities (prioritize these)
-    { pattern: /\b(Berlin|München|Frankfurt|Köln|Hamburg|Stuttgart|Düsseldorf|Leipzig|Hannover|Nürnberg|Bremen|Bonn|Essen|Mannheim|Münster|Dresden|Karlsruhe|Freiburg|Heidelberg|Ulm|Augsburg|Würzburg|Regensburg|Kiel|Lübeck|Rostock|Magdeburg|Potsdam|Cottbus|Chemnitz|Zwickau|Plauen|Gera|Jena|Erfurt|Weimar|Göttingen|Braunschweig|Wolfsburg|Osnabrück|Oldenburg|Wilhelmshaven|Bremerhaven|Kassel|Fulda|Marburg|Gießen|Darmstadt|Wiesbaden|Mainz|Koblenz|Trier|Saarbrücken|Kaiserslautern|Ludwigshafen|Mannheim|Heidelberg|Pforzheim|Reutlingen|Tübingen|Konstanz|Freiburg|Offenburg|Lörrach|Villingen|Schwenningen|Ravensburg|Friedrichshafen|Ulm|Neu-Ulm|Augsburg|Kempten|Memmingen|Lindau|Rosenheim|Traunstein|Berchtesgaden|Garmisch-Partenkirchen|Mittenwald|Oberstdorf|Füssen|Kempten|Memmingen|Lindau|Rosenheim|Traunstein|Berchtesgaden|Garmisch-Partenkirchen|Mittenwald|Oberstdorf|Füssen)\b/i, country: 'DE' },
-    // Austrian cities
-    { pattern: /\b(Wien|Salzburg|Graz|Innsbruck|Linz|Klagenfurt|Villach)\b/i, country: 'AT' },
-    // Swiss cities
-    { pattern: /\b(Zürich|Bern|Basel|Genf|Lausanne|Luzern|St\. Gallen)\b/i, country: 'CH' },
-    // French cities
-    { pattern: /\b(Paris|Lyon|Marseille|Toulouse|Nice|Nantes|Strasbourg)\b/i, country: 'FR' },
-    // Italian cities
-    { pattern: /\b(Roma|Milano|Napoli|Torino|Firenze|Bologna|Genova)\b/i, country: 'IT' },
-    // Spanish cities
-    { pattern: /\b(Madrid|Barcelona|Valencia|Sevilla|Bilbao|Málaga|Zaragoza)\b/i, country: 'ES' },
-    // Dutch cities
-    { pattern: /\b(Amsterdam|Rotterdam|Den Haag|Utrecht|Eindhoven|Tilburg|Groningen)\b/i, country: 'NL' },
-    // Belgian cities
-    { pattern: /\b(Brussels|Brüssel|Antwerp|Antwerpen|Ghent|Gent|Bruges|Brugge)\b/i, country: 'BE' },
-    // Other major EU cities
-    { pattern: /\b(Copenhagen|Kopenhagen|Stockholm|Oslo|Helsinki|Warsaw|Warschau|Prague|Prag|Budapest|Bratislava|Ljubljana|Zagreb|Sofia|Bucharest|Bukarest|Tallinn|Riga|Vilnius|Valletta|Nicosia|Dublin|Lissabon|Athens|Athen)\b/i, country: null }
-  ];
-  
-  for (const { pattern, country: cityCountry } of cityPatterns) {
-    const match = content.match(pattern);
-    if (match) {
-      city = match[0];
-      if (cityCountry && !country) {
-        country = cityCountry;
-      }
-      break;
-    }
-  }
-  
-  // Additional country indicators in content (industry-agnostic)
-  if (!country && content) {
-    const countryIndicators = [
-      { pattern: /\b(Deutschland|Germany)\b/i, country: 'DE' },
-      { pattern: /\b(Österreich|Austria)\b/i, country: 'AT' },
-      { pattern: /\b(Schweiz|Switzerland)\b/i, country: 'CH' },
-      { pattern: /\b(Frankreich|France)\b/i, country: 'FR' },
-      { pattern: /\b(Italien|Italy)\b/i, country: 'IT' },
-      { pattern: /\b(Spanien|Spain)\b/i, country: 'ES' },
-      { pattern: /\b(Niederlande|Netherlands)\b/i, country: 'NL' },
-      { pattern: /\b(Belgien|Belgium)\b/i, country: 'BE' },
-      { pattern: /\b(Luxemburg|Luxembourg)\b/i, country: 'LU' },
-      { pattern: /\b(Dänemark|Denmark)\b/i, country: 'DK' },
-      { pattern: /\b(Schweden|Sweden)\b/i, country: 'SE' },
-      { pattern: /\b(Norwegen|Norway)\b/i, country: 'NO' },
-      { pattern: /\b(Finnland|Finland)\b/i, country: 'FI' },
-      { pattern: /\b(Polen|Poland)\b/i, country: 'PL' },
-      { pattern: /\b(Tschechien|Czech Republic)\b/i, country: 'CZ' },
-      { pattern: /\b(Ungarn|Hungary)\b/i, country: 'HU' },
-      { pattern: /\b(Slowakei|Slovakia)\b/i, country: 'SK' },
-      { pattern: /\b(Slowenien|Slovenia)\b/i, country: 'SI' },
-      { pattern: /\b(Kroatien|Croatia)\b/i, country: 'HR' },
-      { pattern: /\b(Bulgarien|Bulgaria)\b/i, country: 'BG' },
-      { pattern: /\b(Rumänien|Romania)\b/i, country: 'RO' },
-      { pattern: /\b(Estland|Estonia)\b/i, country: 'EE' },
-      { pattern: /\b(Lettland|Latvia)\b/i, country: 'LV' },
-      { pattern: /\b(Litauen|Lithuania)\b/i, country: 'LT' },
-      { pattern: /\b(Malta)\b/i, country: 'MT' },
-      { pattern: /\b(Zypern|Cyprus)\b/i, country: 'CY' },
-      { pattern: /\b(Irland|Ireland)\b/i, country: 'IE' },
-      { pattern: /\b(Portugal)\b/i, country: 'PT' },
-      { pattern: /\b(Griechenland|Greece)\b/i, country: 'GR' }
-    ];
-    
-    for (const { pattern, country: indicatorCountry } of countryIndicators) {
-      if (pattern.test(content)) {
-        country = indicatorCountry;
+
+  const contentLower = content.toLowerCase();
+  if (!country) {
+    for (const { countryCode, term } of countryTokens) {
+      if (contentLower.includes(term)) {
+        country = countryCode;
         break;
       }
     }
   }
-  
-  return { city, country };
+
+  let city: string | null = null;
+  if (country) {
+    const cityTokens = config.cityKeywordsByCountry?.[country] ?? [];
+    for (const token of cityTokens) {
+      if (includesToken(contentLower, [token])) {
+        city = token;
+        break;
+      }
+    }
+  }
+
+  const location = formatLocation(city, country);
+  return { city, country, location };
 }
 
 function extractVenue(content: string): string | null {
@@ -767,7 +801,6 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     country = 'DE', 
     dateFrom = null, 
     dateTo = null, 
-    locale = 'de',
     location = null,
     timeframe = null
   } = args;
@@ -796,7 +829,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   });
 
   const providersTried: string[] = [];
-  const logs: any[] = [];
+  const logs: Array<Record<string, unknown>> = [];
 
   // Step 1: Search for URLs
   console.log('[enhanced_orchestrator] Step 1: Searching for URLs');
@@ -832,7 +865,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     try {
       providersTried.push('database');
       const dbRes = await databaseSearch({ q, country });
-      const dbUrls = dbRes?.items || [];
+      const dbUrls = Array.isArray(dbRes?.items) ? (dbRes.items as string[]) : [];
       urls = [...new Set([...urls, ...dbUrls])];
       logs.push({ at: 'search', provider: 'database', count: dbUrls.length, q });
       console.log('[enhanced_orchestrator] Database fallback added', dbUrls.length, 'URLs');
@@ -975,9 +1008,6 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         eventLocation,
         targetCountry: country
       });
-      
-      // Check if event is in the target country
-      const isInTargetCountry = eventCountry === country;
       
       // Check if event mentions target country in location
       const mentionsTargetCountry = eventLocation && 
