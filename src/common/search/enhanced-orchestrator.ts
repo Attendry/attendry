@@ -578,7 +578,8 @@ Include at most 10 items. Only include URLs you see in the list.`;
           reason: 'parse_failure'
         })),
         modelPath,
-        fallbackReason: 'parse_failure'
+        fallbackReason: 'parse_failure',
+        rawResponse: rawText.slice(0, 400)
       };
     }
 
@@ -1647,6 +1648,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   const prioritizedResult = await prioritizeUrls(uniqueUrls, cfg, country, location, timeframe);
   const prioritized = prioritizedResult.items;
   const geminiSucceeded = prioritizedResult.modelPath !== null && !prioritizedResult.fallbackReason;
+  const prioritizationMode = prioritizedResult.fallbackReason ? 'fallback' : 'gemini';
   logs.push({
     at: 'prioritization',
     inputCount: uniqueUrls.length,
@@ -1654,11 +1656,13 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     location,
     modelPath: prioritizedResult.modelPath,
     fallbackReason: prioritizedResult.fallbackReason,
+    prioritizationMode,
+    rawResponseSnippet: prioritizedResult.rawResponse ? prioritizedResult.rawResponse.slice(0, 200) : undefined,
     reasons: prioritized.slice(0, 5).map(p => ({ url: p.url, score: p.score, reason: p.reason }))
   });
 
-  if (!geminiSucceeded) {
-    console.warn('[enhanced_orchestrator] Skipping extraction - Gemini prioritisation unavailable');
+  if (!geminiSucceeded && prioritized.length === 0) {
+    console.warn('[enhanced_orchestrator] No prioritized URLs available, skipping extraction');
     return {
       events: [],
       logs,
