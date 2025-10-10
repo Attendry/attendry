@@ -67,30 +67,25 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const navigationGroups = useMemo<NavigationGroup[]>(
     () => [
       {
-        label: "Discover Pipeline",
+        label: "Hero Hub",
         items: [
-          { href: "/", label: "Home", icon: House },
-          { href: "/search", label: "Smart Search", icon: Search },
+          { href: "/events", label: "Event Hub", icon: Calendar },
+          { href: "/watchlist", label: "Watchlist", icon: Bookmark },
+          { href: "/activity", label: "Event Insights", icon: BarChart3 },
           {
             href: "/recommendations",
             label: "Market Intelligence",
             icon: TrendingUp,
           },
-        ],
-      },
-      {
-        label: "Evaluate Opportunities",
-        items: [
-          { href: "/compare", label: "Compare Events", icon: Briefcase },
-          { href: "/watchlist", label: "Watchlist", icon: Bookmark },
-          { href: "/activity", label: "Event Insights", icon: BarChart3 },
-        ],
-      },
-      {
-        label: "Plan & Execute",
-        items: [
-          { href: "/events", label: "Events Calendar", icon: Calendar },
           { href: "/notifications", label: "Alerts", icon: Bell },
+        ],
+      },
+      {
+        label: "Discover Pipeline",
+        items: [
+          { href: "/", label: "Home", icon: House },
+          { href: "/search", label: "Smart Search", icon: Search },
+          { href: "/compare", label: "Compare Events", icon: Briefcase },
         ],
       },
     ],
