@@ -89,8 +89,9 @@ async function processNaturalLanguageQuery(query: string): Promise<SearchIntent>
         keywords?: string[];
       };
       processedQuery: string;
-    }>({
-      prompt: `Analyze this search query and extract intent and entities: "${query}"
+    }>(
+      'prioritize',
+      `Analyze this search query and extract intent and entities: "${query}"
 
       Return a JSON object with:
       - intent: one of "event_search", "location_search", "date_search", "industry_search", "speaker_search"
@@ -103,12 +104,15 @@ async function processNaturalLanguageQuery(query: string): Promise<SearchIntent>
       - "Find FinTech events in London" -> intent: "event_search", entities: {location: ["London"], industry: ["FinTech"]}
       - "What events are happening in December?" -> intent: "date_search", entities: {date: ["December"]}
       - "Find speakers from Google" -> intent: "speaker_search", entities: {speaker: ["Google"]}`,
-      context: 'nlp_processing',
-      options: {
-        useCache: true,
-        batchProcessing: false,
+      {
+        context: 'nlp_processing',
+        originalQuery: query,
       },
-    });
+      {
+        useCache: true,
+        useBatching: false,
+      }
+    );
 
     return {
       type: aiResponse.intent as SearchIntent['type'],

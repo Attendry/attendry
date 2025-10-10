@@ -9,7 +9,19 @@ import { getCacheService, CACHE_CONFIGS } from '@/lib/cache';
 import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from './circuit-breaker';
 import { executeWithFallback } from './fallback-strategies';
 
-import type { JsonValue } from '@/lib/types/json';
+interface GeminiContentPart {
+  text?: string;
+}
+
+interface GeminiCandidate {
+  content?: {
+    parts?: GeminiContentPart[];
+  };
+}
+
+interface GeminiResponse {
+  candidates?: GeminiCandidate[];
+}
 
 /**
  * AI request types
@@ -179,20 +191,21 @@ export class OptimizedAIService {
     useCache: boolean
   ): Promise<T> {
     try {
-      const result = await executeWithFallback('gemini', async () => {
+      const response = await executeWithFallback('gemini', async () => {
         return await executeWithCircuitBreaker('gemini', () =>
           this.callGeminiAPI(prompt, data),
           CIRCUIT_BREAKER_CONFIGS.GEMINI
         );
       });
 
-      // Cache result if enabled
+      const parsedResult = this.extractJsonResult<T>(response);
+
       if (useCache) {
         const cacheKey = this.generateCacheKey(type, prompt, data);
-        await this.cacheService.set(cacheKey, result, CACHE_CONFIGS.AI_RESPONSES);
+        await this.cacheService.set(cacheKey, parsedResult, CACHE_CONFIGS.AI_RESPONSES);
       }
 
-      return result;
+      return parsedResult;
     } catch (error) {
       this.stats.failedRequests++;
       throw error;
@@ -357,34 +370,22 @@ export class OptimizedAIService {
   /**
    * Parse batch results
    */
-  private static parseBatchResults(result: any, requests: AIRequest[]): Array<{ success: boolean; data?: any; error?: string }> {
+  private static parseBatchResults(
+    result: unknown,
+    requests: AIRequest[]
+  ): Array<{ success: boolean; data?: any; error?: string }> {
     try {
-      if (Array.isArray(result)) {
-        return result.map((item, index) => ({
-          success: true,
-          data: item
-        }));
+      const parsed = this.extractJsonResult<any>(result);
+
+      if (!Array.isArray(parsed)) {
+        return requests.map(() => ({ success: true, data: parsed }));
       }
-      
-      // If result is not an array, try to parse it
-      const parsed = typeof result === 'string' ? JSON.parse(result) : result;
-      
-      if (Array.isArray(parsed)) {
-        return parsed.map((item, index) => ({
-          success: true,
-          data: item
-        }));
-      }
-      
-      // Single result for all requests
-      return requests.map(() => ({
-        success: true,
-        data: parsed
-      }));
+
+      return parsed.map((item: any) => ({ success: true, data: item }));
     } catch (error) {
       return requests.map(() => ({
         success: false,
-        error: 'Failed to parse batch results'
+        error: error instanceof Error ? error.message : 'Failed to parse batch results'
       }));
     }
   }
@@ -392,7 +393,7 @@ export class OptimizedAIService {
   /**
    * Call Gemini API
    */
-  private static async callGeminiAPI(prompt: string, data?: any): Promise<any> {
+  private static async callGeminiAPI(prompt: string, data?: any): Promise<GeminiResponse> {
     const apiKey = process.env.GEMINI_API_KEY;
     
     if (!apiKey) {
@@ -425,9 +426,8 @@ export class OptimizedAIService {
     if (!response.ok) {
       throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
     }
-
     const result = await response.json();
-    return result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return result as GeminiResponse;
   }
 
   /**
@@ -525,6 +525,46 @@ export class OptimizedAIService {
     if (this.batchTimer) {
       clearTimeout(this.batchTimer);
       this.batchTimer = null;
+    }
+  }
+
+  private static getFirstCandidateText(response: unknown): string {
+    const candidates = (response as GeminiResponse | undefined)?.candidates;
+    if (!candidates || candidates.length === 0) {
+      throw new Error('Gemini response missing candidates');
+    }
+
+    const parts = candidates[0]?.content?.parts;
+    if (!parts || parts.length === 0) {
+      throw new Error('Gemini response missing content parts');
+    }
+
+    const text = parts[0]?.text ?? '';
+    if (!text) {
+      throw new Error('Gemini response missing text content');
+    }
+
+    return text;
+  }
+
+  private static extractJsonResult<T>(response: unknown): T {
+    const text = this.getFirstCandidateText(response);
+
+    // The API often wraps JSON in Markdown fences; strip them conservatively
+    const cleaned = text
+      .replace(/```json\s*/gi, '')
+      .replace(/```/g, '')
+      .trim();
+
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      throw new Error('Gemini response did not contain JSON payload');
+    }
+
+    try {
+      return JSON.parse(jsonMatch[0]) as T;
+    } catch (error) {
+      throw new Error(`Failed to parse Gemini JSON response: ${(error as Error).message}`);
     }
   }
 }

@@ -205,8 +205,9 @@ async function generateEventTitle(industry: string, location: string, date: Date
   try {
     const aiResponse = await OptimizedAIService.processRequest<{
       title: string;
-    }>({
-      prompt: `Generate a realistic event title for a ${industry} event in ${location} scheduled for ${date.toLocaleDateString()}. 
+    }>(
+      'enhance',
+      `Generate a realistic event title for a ${industry} event in ${location} scheduled for ${date.toLocaleDateString()}.
       
       The title should be professional and follow common event naming conventions. Examples:
       - "Legal Tech Summit 2024"
@@ -215,12 +216,17 @@ async function generateEventTitle(industry: string, location: string, date: Date
       - "Cybersecurity Best Practices Workshop"
       
       Return only the title, no additional text.`,
-      context: 'event_title_generation',
-      options: {
-        useCache: true,
-        batchProcessing: false,
+      {
+        context: 'event_title_generation',
+        industry,
+        location,
+        scheduledDate: date.toISOString(),
       },
-    });
+      {
+        useCache: true,
+        useBatching: false,
+      }
+    );
 
     return aiResponse.title || `${industry} Event in ${location}`;
 

@@ -59,23 +59,27 @@ export class RequestDeduplicator {
   /**
    * Normalize parameters for consistent fingerprinting
    */
-  private normalizeParams(params: Record<string, any>): Record<string, any> {
+  private normalizeParams(params: Record<string, any> | undefined): Record<string, any> {
+    if (!params) return {};
+
     const normalized: Record<string, any> = {};
-    
+
     for (const [key, value] of Object.entries(params)) {
-      if (value === null || value === undefined) {
+      if (value === null || value === undefined) continue;
+
+      if (Array.isArray(value)) {
+        normalized[key] = value.slice().sort();
         continue;
       }
-      
-      if (typeof value === 'object' && !Array.isArray(value)) {
-        normalized[key] = this.normalizeParams(value);
-      } else if (Array.isArray(value)) {
-        normalized[key] = value.sort();
-      } else {
-        normalized[key] = value;
+
+      if (typeof value === 'object') {
+        normalized[key] = this.normalizeParams(value as Record<string, any>);
+        continue;
       }
+
+      normalized[key] = value;
     }
-    
+
     return normalized;
   }
 

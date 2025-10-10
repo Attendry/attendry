@@ -173,14 +173,19 @@ async function generateSimilarEventsRecommendation(savedEvents: any[], recentEve
     const aiResponse = await OptimizedAIService.processRequest<{
       similarEvents: string[];
       reason: string;
-    }>({
-      prompt: `Based on these saved events: "${savedEventTitles}", find similar events from the available events. Return the most similar event titles and explain why they are similar.`,
-      context: 'event_recommendation',
-      options: {
-        useCache: true,
-        batchProcessing: false,
+    }>(
+      'prioritize',
+      `Based on these saved events: "${savedEventTitles}", find similar events from the available events. Return the most similar event titles and explain why they are similar.`,
+      {
+        context: 'event_recommendation',
+        savedEvents,
+        recentEvents,
       },
-    });
+      {
+        useCache: true,
+        useBatching: false,
+      }
+    );
 
     if (aiResponse.similarEvents && aiResponse.similarEvents.length > 0) {
       const similarEvents = recentEvents.filter(event => 
