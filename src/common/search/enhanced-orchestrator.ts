@@ -217,6 +217,13 @@ type PrioritizationResult = {
   fallbackReason?: string;
 };
 
+type CountryGuardDecision = {
+  url: string;
+  status: 'keep' | 'drop';
+  reason?: string;
+  confidence?: number;
+};
+
 type ScoredEvent = {
   id: string;
   title: string | null;
@@ -275,6 +282,51 @@ type ExtractedEventDetails = {
   locationSource?: string | null;
   debugVisitedLinks?: string[];
 };
+
+async function classifyUrlsForCountry(
+  urls: string[],
+  searchConfig: ActiveConfig,
+  targetCountry: string | null
+): Promise<{ keep: string[]; drop: string[]; decisions: CountryGuardDecision[] }> {
+  if (!targetCountry || !urls.length) {
+    const allKeep = urls.map((url) => ({ url, status: 'keep' as const, reason: 'no_target_country', confidence: 0.1 }));
+    return { keep: urls, drop: [], decisions: allKeep };
+  }
+
+  const normalizedTarget = targetCountry.toUpperCase();
+  const keep: string[] = [];
+  const drop: string[] = [];
+  const decisions: CountryGuardDecision[] = [];
+
+  const locationTokens = searchConfig.locationTermsByCountry?.[normalizedTarget] ?? [];
+  const cityTokens = searchConfig.cityKeywordsByCountry?.[normalizedTarget] ?? [];
+  const normalizedTokens = Array.from(new Set([...locationTokens, ...cityTokens])).map((token) => token.toLowerCase());
+
+  for (const url of urls) {
+    const normalizedUrl = url.toLowerCase();
+    const matchesToken = normalizedTokens.some((token) => normalizedUrl.includes(token));
+    const matchesTld = normalizedUrl.includes(`.${normalizedTarget.toLowerCase()}`);
+
+    if (matchesToken || matchesTld) {
+      keep.push(url);
+      decisions.push({
+        url,
+        status: 'keep',
+        reason: matchesToken ? 'country_token_match' : 'country_tld_match',
+        confidence: matchesToken ? 0.7 : 0.6
+      });
+    } else {
+      drop.push(url);
+      decisions.push({ url, status: 'drop', reason: 'no_country_signal', confidence: 0.2 });
+    }
+  }
+
+  if (keep.length === 0) {
+    return { keep: urls, drop: [], decisions: urls.map((url) => ({ url, status: 'keep', reason: 'fallback_keep_all', confidence: 0.1 })) };
+  }
+
+  return { keep, drop, decisions };
+}
 
 function normalizeDateInput(raw: unknown): string | null {
   if (!raw || typeof raw !== 'string') return null;
@@ -1800,7 +1852,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   
   // Step 4: Prioritize URLs with Gemini
   console.log('[enhanced_orchestrator] Step 4: Prioritizing URLs with Gemini');
-  const countryGuard = await classifyUrlsForCountry(uniqueUrls, cfg, country, location);
+  const countryGuard = await classifyUrlsForCountry(uniqueUrls, cfg, country);
   const filteredByCountry = countryGuard.keep;
   const discardedByCountry = countryGuard.drop;
   const guardMeta = countryGuard.decisions.reduce<Record<string, { guardStatus?: 'keep' | 'drop'; guardReason?: string; guardConfidence?: number }>>((acc, decision) => {
