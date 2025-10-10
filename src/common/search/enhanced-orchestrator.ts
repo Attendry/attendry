@@ -532,6 +532,27 @@ function extractJsonPayload(raw: string): string {
 }
 
 // Industry-agnostic Gemini prioritization
+function normalizeTargetCountries(location: string | null, config: ActiveConfig): string[] {
+  if (location && location.trim().length) {
+    const normalized = location.trim().toUpperCase();
+
+    if (normalized === 'EU') {
+      if (config.euCountries?.length) {
+        return config.euCountries.map((code) => code.toUpperCase());
+      }
+      return ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
+    }
+
+    return [normalized];
+  }
+
+  if (config.defaultCountries?.length) {
+    return config.defaultCountries.map((code) => code.toUpperCase());
+  }
+
+  return ['DE'];
+}
+
 async function prioritizeUrls(urls: string[], searchConfig: ActiveConfig, country: string, location: string | null, timeframe: string | null): Promise<PrioritizationResult> {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -544,21 +565,20 @@ async function prioritizeUrls(urls: string[], searchConfig: ActiveConfig, countr
       };
     }
 
+    const targetCountries = normalizeTargetCountries(location, searchConfig);
+    const primaryCountry = targetCountries[0] ?? 'DE';
+    const locationContext = targetCountries.length === 1
+      ? `in ${primaryCountry}`
+      : `in ${targetCountries.slice(0, 5).join(', ')} countries`;
+
+    const timeframeLabel = timeframe
+      ? `within the ${timeframe.replace('_', ' ')} timeframe`
+      : 'within the specified timeframe';
+
     // Build context from search config
     const industry = searchConfig.industry || 'general';
     const baseQuery = searchConfig.baseQuery || '';
     const excludeTerms = searchConfig.excludeTerms || '';
-    
-    // Process location context derived from config
-    const countries = processLocation(location, searchConfig);
-    const locationContext = countries.length === 1 ? 
-      `in ${countries[0]}` : 
-      `in ${countries.slice(0, 5).join(', ')} countries`;
-    
-    // Process timeframe context
-    const timeframeContext = timeframe ? 
-      `within the ${timeframe.replace('_', ' ')} timeframe` : 
-      'within the specified timeframe';
     
     const prompt = `You are an expert in ${industry} events and conferences. 
 
@@ -567,11 +587,11 @@ SEARCH CONTEXT:
 - Base Query: ${baseQuery}
 - Exclude Terms: ${excludeTerms}
 - Location: ${locationContext}
-- Timeframe: ${timeframeContext}
+- Timeframe: ${timeframeLabel}
 
 TASK: From the URLs below, return the top 10 most relevant for ${industry} events that are:
 1. Actually taking place ${locationContext} (events mentioning ${locationContext} or taking place there)
-2. ${timeframeContext}
+2. ${timeframeLabel}
 3. Match the search context: ${baseQuery}
 4. Are real events (conferences, workshops, seminars, exhibitions, trade shows, etc.) - not general websites, documentation, or non-event pages
 5. Exclude events that are clearly from other countries unless they're international events relevant to ${locationContext}
@@ -2151,12 +2171,10 @@ function buildLocationContext(location: string | null, config: ActiveConfig): Lo
   let label = '';
 
   if (!normalized) {
-    countries = defaultCountries;
+    countries = normalizeTargetCountries(null, config);
     label = countries.join(', ');
   } else if (normalized.toUpperCase() === 'EU') {
-    countries = config.euCountries?.length
-      ? config.euCountries
-      : ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
+    countries = normalizeTargetCountries('EU', config);
     label = 'European Union';
   } else {
     countries = [normalized.toUpperCase()];
