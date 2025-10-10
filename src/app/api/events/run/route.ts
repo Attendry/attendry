@@ -346,14 +346,14 @@ export async function GET(req: NextRequest) {
 
     const res = await executeEnhancedSearch({ 
       userText, 
-        country,
+      country,
       dateFrom, 
       dateTo, 
       locale, 
       location, 
       timeframe 
     });
-    const result = processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+    const result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'search_failed';
@@ -375,14 +375,14 @@ export async function POST(req: NextRequest) {
 
     const res = await executeEnhancedSearch({ 
       userText, 
-        country,
+      country,
       dateFrom, 
       dateTo, 
       locale, 
       location, 
       timeframe 
     });
-    const result = processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+    const result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'search_failed';
