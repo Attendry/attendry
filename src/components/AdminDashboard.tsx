@@ -48,6 +48,97 @@ interface User {
 }
 
 /**
+ * Role and Module types
+ */
+type RoleKey = 'Seller' | 'Marketing' | 'Admin';
+type ModuleId = 'smartSearch' | 'accountSignals' | 'eventInsights' | 'accountWatchlist' | 'compareEvents' | 'eventsCalendar' | 'alerts' | 'adminOps';
+
+/**
+ * Role access interface
+ */
+interface RoleAccess {
+  smartSearch: boolean;
+  accountSignals: boolean;
+  eventInsights: boolean;
+  accountWatchlist: boolean;
+  compareEvents: boolean;
+  eventsCalendar: boolean;
+  alerts: boolean;
+  adminOps: boolean;
+}
+
+/**
+ * Module interface
+ */
+interface Module {
+  id: ModuleId;
+  label: string;
+}
+
+/**
+ * Default permissions
+ */
+const defaultPermissions = () => ({
+  roles: {
+    Seller: {
+      smartSearch: true,
+      accountSignals: true,
+      eventInsights: true,
+      accountWatchlist: true,
+      compareEvents: true,
+      eventsCalendar: true,
+      alerts: true,
+      adminOps: false,
+    },
+    Marketing: {
+      smartSearch: true,
+      accountSignals: true,
+      eventInsights: true,
+      accountWatchlist: true,
+      compareEvents: true,
+      eventsCalendar: true,
+      alerts: true,
+      adminOps: false,
+    },
+    Admin: {
+      smartSearch: true,
+      accountSignals: true,
+      eventInsights: true,
+      accountWatchlist: true,
+      compareEvents: true,
+      eventsCalendar: true,
+      alerts: true,
+      adminOps: true,
+    },
+  },
+  assignments: {
+    // Mock assignments for demonstration
+    'user123': 'Seller',
+    'user456': 'Marketing',
+    'user789': 'Admin',
+  },
+});
+
+/**
+ * Modules available for access control
+ */
+const MODULES: Module[] = [
+  { id: 'smartSearch', label: 'Smart Search' },
+  { id: 'accountSignals', label: 'Account Signals' },
+  { id: 'eventInsights', label: 'Event Insights' },
+  { id: 'accountWatchlist', label: 'Account Watchlist' },
+  { id: 'compareEvents', label: 'Compare Events' },
+  { id: 'eventsCalendar', label: 'Events Calendar' },
+  { id: 'alerts', label: 'Alerts' },
+  { id: 'adminOps', label: 'Admin Operations' },
+];
+
+/**
+ * Role options for user assignment
+ */
+const ROLE_OPTIONS: RoleKey[] = ['Seller', 'Marketing', 'Admin'];
+
+/**
  * Admin Dashboard Component
  */
 const AdminDashboard = memo(function AdminDashboard() {
@@ -94,6 +185,7 @@ const AdminDashboard = memo(function AdminDashboard() {
   const [savingMatrix, setSavingMatrix] = useState(false);
   const [savingAssignments, setSavingAssignments] = useState<Record<string, boolean>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Load dashboard data
   useEffect(() => {
@@ -117,10 +209,12 @@ const AdminDashboard = memo(function AdminDashboard() {
             setRoleAccess(matrix.roles);
           }
           if (matrix?.assignments) {
-            setRoleAssignments(matrix.assignments.reduce((acc: Record<string, RoleKey>, assignment: { userId: string; role: RoleKey }) => {
-              acc[assignment.userId] = assignment.role;
-              return acc;
-            }, {}));
+            setRoleAssignments(
+              matrix.assignments.reduce((acc: Record<string, RoleKey>, assignment: { userId: string; role: RoleKey }) => {
+                acc[assignment.userId] = assignment.role;
+                return acc;
+              }, {})
+            );
           }
         }
 
@@ -379,27 +473,27 @@ const AdminDashboard = memo(function AdminDashboard() {
                   const isSaving = savingAssignments[user.id];
                   return (
                     <tr key={user.id}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{user.email}</div>
-                        <div className="text-sm text-gray-500">ID: {user.id}</div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        user.is_active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {user.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatDate(user.created_at)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.last_sign_in_at ? formatDate(user.last_sign_in_at) : 'Never'}
-                    </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">{user.email}</div>
+                          <div className="text-sm text-gray-500">ID: {user.id}</div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          user.is_active
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {user.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatDate(user.created_at)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {user.last_sign_in_at ? formatDate(user.last_sign_in_at) : 'Never'}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center gap-3">
                           <select
@@ -532,6 +626,247 @@ const AdminDashboard = memo(function AdminDashboard() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'permissions' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Module Access Matrix</h2>
+                <p className="text-gray-600 mt-1">Control which roles can see and use each module</p>
+              </div>
+              <div className="inline-flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-3 py-1">
+                <span className="h-2 w-2 rounded-full bg-blue-500" />
+                Live preview (mock)
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Module
+                    </th>
+                    {ROLE_OPTIONS.map((role) => (
+                      <th key={role} className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        {role}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {MODULES.map((module) => (
+                    <tr key={module.id}>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                        <div>{module.label}</div>
+                        <p className="text-xs text-gray-500 mt-1">Controls access to {module.label.toLowerCase()} surfaces.</p>
+                      </td>
+                      {ROLE_OPTIONS.map((role) => (
+                        <td key={`${module.id}-${role}`} className="px-6 py-4 text-center">
+                          <label className="inline-flex items-center justify-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={roleAccess[role][module.id as keyof RoleAccess]}
+                              onChange={(e) => {
+                                setSuccessMessage(null);
+                                setErrorMessage(null);
+                                setRoleAccess((prev) => ({
+                                  ...prev,
+                                  [role]: {
+                                    ...prev[role],
+                                    [module.id]: e.target.checked,
+                                  },
+                                }));
+                              }}
+                              className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                            />
+                          </label>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-xs text-gray-500">
+                Changes sync to Supabase permissions. Connect SSO for real-time propagation.
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setRoleAccess(defaultPermissions().roles);
+                    setSuccessMessage('Module access reset to defaults');
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
+                >
+                  Reset defaults
+                </button>
+                <button
+                  onClick={async () => {
+                    setSavingMatrix(true);
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
+                    try {
+                      const payload = Object.entries(roleAccess).flatMap(([role, access]) =>
+                        Object.entries(access).map(([moduleId, enabled]) => ({
+                          role: role as RoleKey,
+                          moduleId: moduleId as ModuleId,
+                          enabled,
+                        }))
+                      );
+
+                      const response = await fetch('/api/admin/permissions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ modules: payload }),
+                      });
+
+                      if (!response.ok) throw new Error(await response.text());
+                      setSuccessMessage('Permissions saved successfully');
+                    } catch (error) {
+                      setErrorMessage(error instanceof Error ? error.message : 'Failed to save permissions');
+                    } finally {
+                      setSavingMatrix(false);
+                    }
+                  }}
+                  className={`px-4 py-2 text-sm font-medium text-white rounded-md shadow-sm transition-colors ${
+                    savingMatrix ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700'
+                  }`}
+                  disabled={savingMatrix}
+                >
+                  {savingMatrix ? 'Saving…' : 'Save configuration'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Role Assignment</h2>
+              <p className="text-gray-600 mt-1">Assign users to roles that determine their navigation and data access</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      User
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Created
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Sign In
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Role Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {users.map((user) => {
+                    const currentRole = roleAssignments[user.id] || 'Seller';
+                    const pendingRole = pendingRoleAssignments[user.id] || currentRole;
+                    const isSaving = savingAssignments[user.id];
+                    return (
+                      <tr key={user.id}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{user.email}</div>
+                            <div className="text-sm text-gray-500">ID: {user.id}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            user.is_active
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {user.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {formatDate(user.created_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {user.last_sign_in_at ? formatDate(user.last_sign_in_at) : 'Never'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <div className="text-xs text-gray-500">
+                              Current: <span className="font-semibold text-gray-700">{currentRole}</span>
+                            </div>
+                            <select
+                              value={pendingRole}
+                              onChange={(e) => {
+                                setSuccessMessage(null);
+                                setErrorMessage(null);
+                                setPendingRoleAssignments((prev) => ({
+                                  ...prev,
+                                  [user.id]: e.target.value as RoleKey,
+                                }));
+                              }}
+                              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              {ROLE_OPTIONS.map((role) => (
+                                <option key={role} value={role}>{role}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={async () => {
+                                const role = pendingRoleAssignments[user.id] || currentRole;
+                                setSavingAssignments((prev) => ({ ...prev, [user.id]: true }));
+                                setSuccessMessage(null);
+                                setErrorMessage(null);
+                                try {
+                                  const response = await fetch('/api/admin/permissions', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ roles: [{ userId: user.id, role }] }),
+                                  });
+                                  if (!response.ok) throw new Error(await response.text());
+                                  setSuccessMessage(`Updated ${user.email} to ${role}`);
+                                  setPendingRoleAssignments((prev) => {
+                                    const next = { ...prev };
+                                    delete next[user.id];
+                                    return next;
+                                  });
+                                  setRoleAssignments((prev) => ({ ...prev, [user.id]: role }));
+                                } catch (error) {
+                                  setErrorMessage(error instanceof Error ? error.message : 'Failed to update role');
+                                } finally {
+                                  setSavingAssignments((prev) => {
+                                    const next = { ...prev };
+                                    delete next[user.id];
+                                    return next;
+                                  });
+                                }
+                              }}
+                              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                isSaving ? 'text-blue-400 cursor-wait' : 'text-blue-600 hover:text-blue-700'
+                              }`}
+                              disabled={isSaving}
+                            >
+                              {isSaving ? 'Updating…' : 'Update'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-6 border-t border-gray-200 text-xs text-gray-500">
+              SSO integration (mock) required to propagate changes immediately. Otherwise, updates apply on next login.
             </div>
           </div>
         </div>

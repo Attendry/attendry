@@ -55,39 +55,4 @@ export async function requireModuleAccess(client: SupabaseClient, userId: string
 
   return role;
 }
-import { defaultPermissions, MODULE_IDS, type ModuleId, type RoleKey } from "@/lib/rbac";
-import type { SupabaseClient } from "@supabase/supabase-js";
-
-export async function requireModuleAccess(client: SupabaseClient, userId: string, moduleId: ModuleId) {
-  const { data: roleRow, error: roleError } = await client
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (roleError) throw roleError;
-
-  const role = (roleRow?.role as RoleKey) ?? "Seller";
-
-  const matrix = defaultPermissions();
-  const { data: overrides, error: modulesError } = await client
-    .from("role_modules")
-    .select("module_id, enabled")
-    .eq("role", role);
-
-  if (modulesError) throw modulesError;
-
-  overrides?.forEach((entry) => {
-    const id = entry.module_id as ModuleId;
-    if (MODULE_IDS.includes(id)) {
-      matrix.roles[role][id] = entry.enabled;
-    }
-  });
-
-  if (!matrix.roles[role][moduleId]) {
-    throw new Error("Forbidden");
-  }
-
-  return role;
-}
 

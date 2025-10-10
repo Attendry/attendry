@@ -9,6 +9,8 @@ import { getCacheService, CACHE_CONFIGS } from '@/lib/cache';
 import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from './circuit-breaker';
 import { executeWithFallback } from './fallback-strategies';
 
+import type { JsonValue } from '@/lib/types/json';
+
 /**
  * AI request types
  */
