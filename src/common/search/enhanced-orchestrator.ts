@@ -1,3 +1,5 @@
+import * as cheerio from 'cheerio';
+
 function normalizeSession(raw: unknown): ExtractedSession | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
@@ -45,7 +47,6 @@ function getString(value: unknown): string | null {
 // Enhanced orchestrator with full pipeline: Search → Prioritization → Extract
 import { loadActiveConfig, type ActiveConfig } from './config';
 import { tryJsonRepair } from '../utils/json';
-import cheerio from 'cheerio';
 import { buildSearchQuery } from './queryBuilder';
 import { search as firecrawlSearch } from '../../providers/firecrawl';
 import { search as cseSearch } from '../../providers/cse';
@@ -180,9 +181,9 @@ function buildEventFocusedQuery(
   timeframeContext: TimeframeContext,
   searchConfig: ActiveConfig
 ): string {
-  const eventTerms = searchConfig.eventTerms?.length
+  const eventTerms = Array.isArray(searchConfig.eventTerms) && searchConfig.eventTerms.length
     ? searchConfig.eventTerms
-    : ['conference', 'event', 'summit', 'workshop', 'seminar', 'meeting', 'symposium', 'forum', 'exhibition', 'trade show', 'convention', 'congress'];
+    : ['conference', 'event', 'summit', 'workshop', 'seminar', 'meeting', 'symposium', 'forum', 'exhibition', '"trade show"', '"trade fair"', 'convention', 'congress'];
   const eventQuery = `(${eventTerms.join(' OR ')})`;
 
   const segments = [baseQuery, eventQuery];
@@ -1663,7 +1664,9 @@ export async function executeEnhancedSearch(args: ExecArgs) {
 
   // Build event-focused query
   const baseQ = buildSearchQuery({ baseQuery, userText, excludeTerms });
-  const q = buildEventFocusedQuery(baseQ, userText, location, cfg);
+  const locationContext = buildLocationContext(location, cfg);
+  const timeframeContext = timeframeDates;
+  const q = buildEventFocusedQuery(baseQ, userText, locationContext, timeframeContext, cfg);
 
   console.log('[enhanced_orchestrator] Search parameters:', {
     userText,
@@ -2087,4 +2090,36 @@ function inferCountryFromText(text: string, config: ActiveConfig): { code: strin
     }
   }
   return null;
+}
+
+function buildLocationContext(location: string | null, config: ActiveConfig): LocationContext {
+  const normalized = location?.trim() ?? '';
+  const defaultCountries = config.defaultCountries?.length ? config.defaultCountries : ['DE'];
+  let countries: string[];
+  let label = '';
+
+  if (!normalized) {
+    countries = defaultCountries;
+    label = countries.join(', ');
+  } else if (normalized.toUpperCase() === 'EU') {
+    countries = config.euCountries?.length
+      ? config.euCountries
+      : ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
+    label = 'European Union';
+  } else {
+    countries = [normalized.toUpperCase()];
+    label = countries[0];
+  }
+
+  const primary = countries[0] ?? 'DE';
+  const locationTerms = config.locationTermsByCountry?.[primary] ?? [];
+  const cityTerms = config.cityKeywordsByCountry?.[primary] ?? [];
+  const tokens = [...locationTerms, ...cityTerms, primary].slice(0, 12);
+
+  return {
+    countries,
+    primary,
+    tokens,
+    label
+  };
 }
