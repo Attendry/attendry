@@ -37,7 +37,27 @@ export function prefilter(input: string[]): string[] {
       if (BLOCK_DOMAIN.some(rx => rx.test(u))) return false;
       const url = new URL(u);
       if (BLOCK_PATH.some(rx => rx.test(url.pathname))) return false;
-      return ALLOW.some(rx => rx.test(u)) || EVENT_HINT.test(u);
-    } catch { return false; }
+
+      // Prefer explicit allow-list matches
+      if (ALLOW.some(rx => rx.test(u))) {
+        return true;
+      }
+
+      // Otherwise keep the URL and let downstream guards decide unless the path is clearly noise
+      // A light heuristic: keep if the URL contains an event hint OR references a major city/location.
+      if (EVENT_HINT.test(u)) {
+        return true;
+      }
+
+      const CITY_HINTS = /(berlin|muenchen|munich|frankfurt|hamburg|koeln|cologne|stuttgart|duesseldorf|leipzig|germany|europe|brussels|paris|vienna|zurich|amsterdam)/i;
+      if (CITY_HINTS.test(u)) {
+        return true;
+      }
+
+      // Allow the remainder – later stages have stronger country/quality guards
+      return true;
+    } catch {
+      return false;
+    }
   });
 }

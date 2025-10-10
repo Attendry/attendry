@@ -11,6 +11,8 @@ import { EnhancedGeminiService, RankingResponse, SpeakersResponse } from './enha
 import { EnhancedFirecrawlService } from './enhanced-firecrawl-service';
 import { inferCountryAndDate } from '@/lib/utils/country-date-inference';
 import { SEARCH_THRESHOLDS } from '@/config/search-legal-de';
+import { ensureCorrelation } from '@/lib/obs/corr';
+import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
 
 export interface EnhancedSearchConfig {
   baseQuery: string;
@@ -80,7 +82,8 @@ export class EnhancedSearchService {
    * Main search method that orchestrates the entire pipeline
    */
   async search(config: EnhancedSearchConfig): Promise<EnhancedSearchResult> {
-    console.log('Starting enhanced search with config:', config);
+    const correlationId = ensureCorrelation();
+    console.log(JSON.stringify({ correlationId, at: 'enhanced_search_start', config }));
 
     const trace: EnhancedSearchTrace = {
       finalQueries: [],
@@ -139,6 +142,7 @@ export class EnhancedSearchService {
       const prioritizationResult = await this.geminiService.prioritizeUrls(
         searchResults.results.map(r => ({ url: r.url, title: r.title, snippet: r.snippet }))
       );
+      stageCounter('prioritization', searchResults.results, prioritizationResult.prioritizedUrls, [{ key: 'prioritized', count: prioritizationResult.prioritizedUrls.length, samples: prioritizationResult.prioritizedUrls.slice(0,3) }]);
 
       trace.prioritization.repairUsed = prioritizationResult.repairUsed;
       trace.prioritization.stats = prioritizationResult.prioritizationStats;
@@ -165,6 +169,8 @@ export class EnhancedSearchService {
 
       // Step 6: Apply final relevance guardrails
       const finalEvents = this.applyRelevanceGuardrails(processedEvents, trace);
+
+      stageCounter('final_events', processedEvents, finalEvents, [{ key: 'kept', count: finalEvents.length, samples: finalEvents.slice(0,3) }]);
 
       console.log('Enhanced search completed:', {
         totalEvents: finalEvents.length,
@@ -262,7 +268,8 @@ export class EnhancedSearchService {
    * Applies final relevance guardrails
    */
   private applyRelevanceGuardrails(events: any[], trace: EnhancedSearchTrace): any[] {
-    const filtered = events.filter(event => {
+    const filtered = events
+      .filter(event => {
       // Check confidence thresholds
       if (event.eventConfidence < SEARCH_THRESHOLDS.MIN_EVENT_CONFIDENCE) {
         trace.filters.reasons.push(`Low event confidence: ${event.eventConfidence}`);
@@ -274,19 +281,9 @@ export class EnhancedSearchService {
         return false;
       }
 
-      // Check country
-      if (event.country !== 'DE') {
-        trace.filters.reasons.push(`Non-German country: ${event.country}`);
-        return false;
-      }
-
-      return true;
-    });
-
-    // Sort by combined confidence
-    filtered.sort((a, b) => 
-      (b.eventConfidence + b.legalConfidence) - (a.eventConfidence + a.legalConfidence)
-    );
+        return true;
+      })
+      .sort((a, b) => (b.eventConfidence + b.legalConfidence) - (a.eventConfidence + a.legalConfidence));
 
     return filtered;
   }

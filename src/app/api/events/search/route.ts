@@ -29,6 +29,8 @@ import {
   ErrorResponse,
   SearchResultItem 
 } from "@/lib/types/api";
+import { withCorrelation, ensureCorrelation } from '@/lib/obs/corr';
+import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
 import { EventData, SearchConfig } from "@/lib/types/core";
 
 // ============================================================================
@@ -223,6 +225,7 @@ function setCachedResult(key: string, data: unknown) {
 
 // Durable cache helpers (Supabase)
 async function readSearchCacheDB(cacheKey: string) {
+  const correlationId = ensureCorrelation();
   try {
     const supabase = await supabaseServer();
     const { data, error } = await supabase
@@ -331,31 +334,37 @@ async function filterWithGemini(items: SearchResultItem[], dropTitleRegex: RegEx
 
   // Fallback to regex filtering when Gemini API key is not available
   if (!process.env.GEMINI_API_KEY) {
-    const base = items.filter((item: SearchResultItem) => {
+    return items.filter((item: SearchResultItem) => {
       const text = `${item.title || ""} ${item.snippet || ""}`;
-      
-      // Filter out obvious non-events (404 pages, error pages)
+
       if (dropTitleRegex.test(text)) {
         return false;
       }
-      
-      // Filter out banned hosts (forums, social media, etc.)
+
       try {
         const h = new URL(item.link).hostname.toLowerCase();
         if (banHosts.has(h)) {
           return false;
         }
-      } catch { 
-        return false; // Invalid URLs are filtered out
+      } catch {
+        return false;
       }
-      
-      // Use comprehensive regex to identify event-related content
-      // This includes event keywords in multiple languages and date indicators
-      const EVENT_HINT_FALLBACK = /\b(agenda|programm|program|anmeldung|register|speakers?|konferenz|kongress|symposium|conference|summit|forum|veranstaltung|event|termin|schedule|meeting|workshop|seminar|training|webinar|exhibition|trade show|expo|convention|gathering|networking|roundtable|panel|keynote|presentation|session|breakout|track|day|2024|2025|january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
-      const hasEventHint = EVENT_HINT_FALLBACK.test(text);
-      return hasEventHint;
+
+      // Keep softer criteria: allow if we see any event signal OR a known location token;
+      // otherwise allow marketing/landing pages so later stages can judge.
+      const EVENT_HINT_FALLBACK = /\b(agenda|programm|program|anmeldung|register|speakers?|konferenz|kongress|symposium|conference|summit|forum|veranstaltung|event|termin|schedule|meeting|workshop|seminar|training|webinar|exhibition|trade show|expo|convention|gathering|networking|roundtable|panel|keynote|presentation|session|breakout|track|day|2024|2025|2026|2027|january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+      if (EVENT_HINT_FALLBACK.test(text)) {
+        return true;
+      }
+
+      const LOCATION_HINT = /\b(germany|deutschland|berlin|münchen|munich|frankfurt|hamburg|köln|cologne|stuttgart|düsseldorf|leipzig|paris|brussels|vienna|zurich|amsterdam|europe)\b/i;
+      if (LOCATION_HINT.test(text)) {
+        return true;
+      }
+
+      // Let remaining pages pass through for downstream filtering
+      return true;
     });
-    return [...preApproved, ...base];
   }
 
   try {
@@ -705,7 +714,8 @@ function filterEventsByDate(events: EventItem[], from?: string, to?: string): Ev
  * @returns JSON response with search results
  */
 export async function POST(req: NextRequest): Promise<NextResponse<EventSearchResponse | ErrorResponse>> {
-  try {
+  return withCorrelation(async () => {
+    try {
     // Parse request parameters with defaults
     const requestData: EventSearchRequest = await req.json();
     const { 
@@ -723,10 +733,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     const cacheKey = getCacheKey(q, country, from, to);
     const cachedResult = getCachedResult(cacheKey) || await readSearchCacheDB(cacheKey);
     if (cachedResult) {
-      console.log(JSON.stringify({ at: "search", cache: "hit", key: cacheKey }));
+      console.log(JSON.stringify({ correlationId, at: "search", cache: "hit", key: cacheKey }));
+      stageCounter('cache', [], [], [{ key: 'cache_hit', count: 1, samples: [cacheKey] }]);
       return NextResponse.json({ ...cachedResult, cached: true });
     }
-    console.log(JSON.stringify({ at: "search", cache: "miss", key: cacheKey }));
+    console.log(JSON.stringify({ correlationId, at: "search", cache: "miss", key: cacheKey }));
 
     // Load search configuration for enhanced query building
     let searchConfig = { industryTerms: [], baseQuery: "", excludeTerms: "" } as any;
@@ -828,12 +839,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     // Make the actual search request to Google Custom Search API
     const url = `https://www.googleapis.com/customsearch/v1?${params}`;
     console.log(JSON.stringify({ at: "search", real: "calling_cse", query: enhancedQuery, url: url }));
-    const res = await fetchWithRetry(url, { cache: "no-store", timeoutMs: 10000, retries: 2 });
+    const res = await fetchWithRetry(url, { cache: "no-store", timeoutMs: 10000, retries: 2, service: 'google_cse', operation: 'events_search' });
     const data = await res.json();
-    console.log(JSON.stringify({ at: "search", real: "cse_result", status: res.status, items: data.items?.length || 0 }));
+    const rawItems = data.items || [];
+    console.log(JSON.stringify({ correlationId, at: "search", real: "cse_result", status: res.status, items: rawItems.length }));
+    stageCounter('provider:cse', [], rawItems, [{ key: 'returned', count: rawItems.length, samples: rawItems.slice(0,3) }]);
 
     // Transform Google's response into our standardized format
-    let items: SearchResultItem[] = (data.items || []).map((it: any) => ({
+    let items: SearchResultItem[] = rawItems.map((it: any) => ({
       title: it.title || "", 
       link: it.link || "", 
       snippet: it.snippet || ""
@@ -863,9 +876,27 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
       "tiktok.com","www.tiktok.com"
     ]);
 
+    const beforeFilterCount = items.length;
+    const dropReasons: Reason[] = [];
+    const collectDrop = (key: string, sample: SearchResultItem) => {
+      let entry = dropReasons.find(r => r.key === key);
+      if (!entry) {
+        entry = { key, count: 0, samples: [] };
+        dropReasons.push(entry);
+      }
+      entry.count += 1;
+      entry.samples.push(sample);
+    };
+
     // Use Gemini AI for intelligent event filtering
     // This provides much more accurate filtering than regex-based approaches
     let filteredItems = await filterWithGemini(items, DROP_TITLE, BAN_HOSTS, searchConfig);
+    const droppedCount = beforeFilterCount - filteredItems.length;
+    if (droppedCount > 0) {
+      collectDrop('gemini_filtered', items.find(item => !filteredItems.includes(item)) || items[0] || { title: '', link: '', snippet: '' });
+    }
+    stageCounter('filter:gemini', items, filteredItems, dropReasons);
+    logSuppressedSamples('filter:gemini', dropReasons);
 
     // Optional: rerank topK using Gemini context if requested
     if (rerank && filteredItems.length > 0 && process.env.GEMINI_API_KEY) {
@@ -908,10 +939,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
       console.error("Failed to save search results:", error);
     });
     
+    stageCounter('response', filteredItems, filteredItems, [{ key: 'final', count: filteredItems.length, samples: filteredItems.slice(0,3) }]);
     return NextResponse.json(result);
   } catch (e: unknown) {
+    console.error(JSON.stringify({ correlationId, at: 'search_error', error: e instanceof Error ? e.message : String(e) }));
     // Return error response with empty items array
     // We return status 200 to avoid breaking the UI
     return NextResponse.json({ error: (e as Error)?.message || "search failed", items: [] }, { status: 200 });
   }
+  });
 }
