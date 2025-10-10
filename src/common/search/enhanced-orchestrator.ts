@@ -316,8 +316,9 @@ async function classifyUrlsForCountry(
         confidence: matchesToken ? 0.7 : 0.6
       });
     } else {
-      drop.push(url);
-      decisions.push({ url, status: 'drop', reason: 'no_country_signal', confidence: 0.2 });
+      // Do not drop aggressively here; let prioritization/extraction decide.
+      keep.push(url);
+      decisions.push({ url, status: 'keep', reason: 'no_country_signal_soft_keep', confidence: 0.2 });
     }
   }
 
