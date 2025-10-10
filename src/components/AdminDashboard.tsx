@@ -56,20 +56,72 @@ const AdminDashboard = memo(function AdminDashboard() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'analytics' | 'system'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'permissions' | 'analytics' | 'system'>('overview');
+  const [roleAccess, setRoleAccess] = useState<Record<RoleKey, RoleAccess>>({
+    Seller: {
+      smartSearch: true,
+      accountSignals: true,
+      eventInsights: true,
+      accountWatchlist: true,
+      compareEvents: true,
+      eventsCalendar: true,
+      alerts: true,
+      adminOps: false,
+    },
+    Marketing: {
+      smartSearch: true,
+      accountSignals: true,
+      eventInsights: true,
+      accountWatchlist: true,
+      compareEvents: true,
+      eventsCalendar: true,
+      alerts: true,
+      adminOps: false,
+    },
+    Admin: {
+      smartSearch: true,
+      accountSignals: true,
+      eventInsights: true,
+      accountWatchlist: true,
+      compareEvents: true,
+      eventsCalendar: true,
+      alerts: true,
+      adminOps: true,
+    },
+  });
+  const [pendingRoleAssignments, setPendingRoleAssignments] = useState<Record<string, RoleKey>>({});
+  const [roleAssignments, setRoleAssignments] = useState<Record<string, RoleKey>>({});
+  const [savingMatrix, setSavingMatrix] = useState(false);
+  const [savingAssignments, setSavingAssignments] = useState<Record<string, boolean>>({});
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Load dashboard data
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [metricsResponse, usersResponse] = await Promise.all([
+        const [metricsResponse, usersResponse, permissionsResponse] = await Promise.all([
           fetch('/api/admin/metrics'),
           fetch('/api/admin/users'),
+          fetch('/api/admin/permissions'),
         ]);
 
         if (metricsResponse.ok) {
           const metricsData = await metricsResponse.json();
           setMetrics(metricsData);
+        }
+
+        if (permissionsResponse.ok) {
+          const permissionsData = await permissionsResponse.json();
+          const matrix = permissionsData.permissions;
+          if (matrix?.roles) {
+            setRoleAccess(matrix.roles);
+          }
+          if (matrix?.assignments) {
+            setRoleAssignments(matrix.assignments.reduce((acc: Record<string, RoleKey>, assignment: { userId: string; role: RoleKey }) => {
+              acc[assignment.userId] = assignment.role;
+              return acc;
+            }, {}));
+          }
         }
 
         if (usersResponse.ok) {
@@ -133,31 +185,51 @@ const AdminDashboard = memo(function AdminDashboard() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
-        <p className="text-gray-600">Manage users, monitor system health, and view analytics</p>
+    <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
+          <p className="text-gray-600">Manage users, monitor system health, and view analytics</p>
+        </div>
+        <div className="flex flex-col gap-2">
+          {successMessage && (
+            <div className="inline-flex items-center gap-2 px-3 py-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg">
+              <span className="h-2.5 w-2.5 rounded-full bg-green-500" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+          {errorMessage && (
+            <div className="inline-flex items-center gap-2 px-3 py-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg">
+              <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="mb-8">
-        <nav className="flex space-x-8">
+      <div className="mb-4 border-b border-gray-200">
+        <nav className="flex flex-wrap gap-4 text-sm font-medium text-gray-500">
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'users', label: 'Users' },
+            { id: 'permissions', label: 'Permissions' },
             { id: 'analytics', label: 'Analytics' },
             { id: 'system', label: 'System' },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              className={`relative pb-2 transition-colors ${
+                activeTab === tab.id ? 'text-blue-600' : 'hover:text-gray-700'
               }`}
             >
               {tab.label}
+              <span
+                className={`absolute left-0 right-0 bottom-0 h-0.5 rounded-full transition-opacity ${
+                  activeTab === tab.id ? 'bg-blue-500 opacity-100' : 'opacity-0'
+                }`}
+              />
             </button>
           ))}
         </nav>
@@ -274,7 +346,7 @@ const AdminDashboard = memo(function AdminDashboard() {
 
       {/* Users Tab */}
       {activeTab === 'users' && (
-        <div className="bg-white border border-gray-200 rounded-lg">
+        <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
           <div className="p-6 border-b border-gray-200">
             <h2 className="text-xl font-semibold text-gray-900">User Management</h2>
             <p className="text-gray-600 mt-1">Manage user accounts and permissions</p>
@@ -301,8 +373,12 @@ const AdminDashboard = memo(function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {users.map((user) => (
-                  <tr key={user.id}>
+                {users.map((user) => {
+                  const currentRole = roleAssignments[user.id] || 'Seller';
+                  const pendingRole = pendingRoleAssignments[user.id] || currentRole;
+                  const isSaving = savingAssignments[user.id];
+                  return (
+                    <tr key={user.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
                         <div className="text-sm font-medium text-gray-900">{user.email}</div>
@@ -324,16 +400,62 @@ const AdminDashboard = memo(function AdminDashboard() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {user.last_sign_in_at ? formatDate(user.last_sign_in_at) : 'Never'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button className="text-blue-600 hover:text-blue-900 mr-3">
-                        Edit
-                      </button>
-                      <button className="text-red-600 hover:text-red-900">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center gap-3">
+                          <select
+                            value={pendingRole}
+                            onChange={(e) => setPendingRoleAssignments((prev) => ({
+                              ...prev,
+                              [user.id]: e.target.value as RoleKey,
+                            }))}
+                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {ROLE_OPTIONS.map((role) => (
+                              <option key={role} value={role}>{role}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={async () => {
+                              const role = pendingRoleAssignments[user.id] || currentRole;
+                              setSavingAssignments((prev) => ({ ...prev, [user.id]: true }));
+                              setSuccessMessage(null);
+                              setErrorMessage(null);
+                              try {
+                                const response = await fetch('/api/admin/permissions', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ roles: [{ userId: user.id, role }] }),
+                                });
+                                if (!response.ok) throw new Error(await response.text());
+                                setSuccessMessage(`Updated ${user.email} to ${role}`);
+                                setPendingRoleAssignments((prev) => {
+                                  const next = { ...prev };
+                                  delete next[user.id];
+                                  return next;
+                                });
+                                setRoleAssignments((prev) => ({ ...prev, [user.id]: role }));
+                              } catch (error) {
+                                setErrorMessage(error instanceof Error ? error.message : 'Failed to update role');
+                              } finally {
+                                setSavingAssignments((prev) => {
+                                  const next = { ...prev };
+                                  delete next[user.id];
+                                  return next;
+                                });
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                              isSaving ? 'text-blue-400 cursor-wait' : 'text-blue-600 hover:text-blue-700'
+                            }`}
+                            disabled={isSaving}
+                          >
+                            {isSaving ? 'Updating…' : 'Update'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -343,7 +465,7 @@ const AdminDashboard = memo(function AdminDashboard() {
       {/* Analytics Tab */}
       {activeTab === 'analytics' && metrics && (
         <div className="space-y-6">
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Statistics</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center">
@@ -361,7 +483,7 @@ const AdminDashboard = memo(function AdminDashboard() {
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Search Analytics</h2>
             <div className="text-center py-8">
               <p className="text-gray-500">Search analytics will be displayed here</p>
@@ -373,7 +495,7 @@ const AdminDashboard = memo(function AdminDashboard() {
       {/* System Tab */}
       {activeTab === 'system' && metrics && (
         <div className="space-y-6">
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">System Monitoring</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>

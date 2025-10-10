@@ -1,6 +1,7 @@
 // app/api/events/run/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { executeEnhancedSearch } from '@/common/search/enhanced-orchestrator';
+import { loadActiveConfig, type ActiveConfig } from '@/common/search/config';
 
 type ApiSpeaker = {
   name: string | null;
@@ -37,6 +38,11 @@ type ApiEvent = {
   sessions: ApiSession[];
   speakers: ApiSpeaker[];
   sponsors: ApiSponsor[];
+  countrySource?: string | null;
+  citySource?: string | null;
+  locationSource?: string | null;
+  relatedUrls?: string[];
+  acceptedByCountryGate?: boolean;
 };
 
 type EnhancedSearchResult = {
@@ -56,6 +62,16 @@ function ensureNumber(value: unknown): number | null {
   if (typeof value === 'string') {
     const parsed = Number(value);
     if (!Number.isNaN(parsed)) return parsed;
+  }
+  return null;
+}
+
+function ensureBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
   }
   return null;
 }
@@ -140,6 +156,15 @@ function toApiEvent(raw: unknown): ApiEvent | null {
   const venue = ensureString(obj.venue) ?? ensureString(details?.venue);
   const confidence = ensureNumber(obj.confidence);
   const confidence_reason = ensureString(obj.confidence_reason);
+  const countrySource = ensureString((obj as Record<string, unknown>).countrySource ?? (details?.countrySource as unknown));
+  const citySource = ensureString((obj as Record<string, unknown>).citySource ?? (details?.citySource as unknown));
+  const locationSource = ensureString((obj as Record<string, unknown>).locationSource ?? (details?.locationSource as unknown));
+  const acceptedByCountryGate = ensureBoolean((obj as Record<string, unknown>).acceptedByCountryGate);
+  const relatedUrls = Array.isArray((obj as Record<string, unknown>).relatedUrls ?? details?.relatedUrls)
+    ? ((obj as Record<string, unknown>).relatedUrls ?? details?.relatedUrls as unknown[])
+        .map((item) => ensureString(item))
+        .filter((u): u is string => !!u)
+    : [];
 
   const sessions = toApiSessions(obj.sessions ?? details?.sessions ?? []);
   const speakers = toApiSpeakers(obj.speakers ?? details?.speakers ?? []);
@@ -159,66 +184,97 @@ function toApiEvent(raw: unknown): ApiEvent | null {
     confidence_reason,
     sessions,
     speakers,
-    sponsors
+    sponsors,
+    countrySource,
+    citySource,
+    locationSource,
+    relatedUrls,
+    acceptedByCountryGate: acceptedByCountryGate ?? undefined
   };
 }
 
 // Helper function to process enhanced search results
-function locationMentionsCountry(location: string | null, countryCode: string | null): boolean {
-  if (!location || !countryCode) return false;
-  const normalized = location.toLowerCase();
-  const code = countryCode.toLowerCase();
-  const hints: Record<string, string[]> = {
-    de: ['germany', 'deutschland', 'berlin', 'frankfurt', 'munich', 'münchen', 'hamburg', 'stuttgart', 'köln', 'cologne']
+const locationHintsCache: Record<string, string[]> = {};
+
+function getCountryHints(countryCode: string | null, cfg: ActiveConfig): string[] {
+  if (!countryCode) return [];
+  const upper = countryCode.toUpperCase();
+  const cacheKey = `${cfg.id ?? 'default'}:${upper}`;
+  if (locationHintsCache[cacheKey]) return locationHintsCache[cacheKey];
+  const locationTerms = cfg.locationTermsByCountry?.[upper] ?? [];
+  const cityTerms = cfg.cityKeywordsByCountry?.[upper] ?? [];
+  const manualAliases: Record<string, string[]> = {
+    DE: ['germany', 'deutschland'],
+    AT: ['austria', 'österreich', 'osterreich'],
+    CH: ['switzerland', 'schweiz'],
+    FR: ['france', 'frankreich'],
+    IT: ['italy', 'italien'],
+    ES: ['spain', 'spanien'],
+    NL: ['netherlands', 'niederlande', 'holland'],
+    BE: ['belgium', 'belgien']
   };
-  const tokens = hints[code] ?? [code];
-  return tokens.some((token) => normalized.includes(token));
+  const hints = Array.from(new Set([...locationTerms, ...cityTerms, upper, upper.toLowerCase(), ...(manualAliases[upper] ?? [])]))
+    .map((term) => term.toLowerCase())
+    .filter(Boolean);
+  locationHintsCache[cacheKey] = hints;
+  return hints;
 }
 
-function processEnhancedResults(res: EnhancedSearchResult, country: string | null, dateFrom: string | null, dateTo: string | null, includeDebug = false) {
+function locationMentionsCountry(location: string | null, countryCode: string | null, cfg: ActiveConfig): boolean {
+  if (!location || !countryCode) return false;
+  const normalized = location.toLowerCase();
+  const tokens = getCountryHints(countryCode, cfg);
+  return tokens.some((token) => token && normalized.includes(token));
+}
+
+async function processEnhancedResults(res: EnhancedSearchResult, country: string | null, dateFrom: string | null, dateTo: string | null, includeDebug = false) {
   const events: ApiEvent[] = Array.isArray(res.events)
     ? res.events.map(toApiEvent).filter((event): event is ApiEvent => !!event)
     : [];
 
-  // Sort by confidence desc if available
   const sortedEvents = [...events].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
-  
-  // EU country codes for broader filtering
   const euCountries = ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
-  
-  // Simple filtering based on country and date
-const filteredEvents = sortedEvents.filter((event: ApiEvent) => {
+  const cfg = await loadActiveConfig();
+
+  const filteredEvents = sortedEvents.filter((event: ApiEvent) => {
     const eventCountry = event.country ?? null;
 
     const countryMatch = (() => {
       if (!country) return true;
-    const target = country.toUpperCase();
-    if (!eventCountry) {
-      // If we don't know the country, keep the event unless we require a specific non-EU country.
-      // For EU, any European event is acceptable; otherwise rely on location hints.
-      if (target === 'EU') return true;
-      return locationMentionsCountry(event.location ?? null, country);
-    }
-    const eventUpper = eventCountry.toUpperCase();
-    if (target === 'EU') {
-      return euCountries.includes(eventUpper);
-    }
-    return eventUpper === target;
+      const target = country.toUpperCase();
+      if (!eventCountry) {
+        if (target === 'EU') return true;
+        const hints = [event.location, event.city].filter(Boolean).map((value) => value?.toLowerCase() ?? '');
+        if (event.relatedUrls?.length) {
+          hints.push(event.relatedUrls.join(' ').toLowerCase());
+        }
+        return hints.some((hint) => locationMentionsCountry(hint, country, cfg));
+      }
+      const eventUpper = eventCountry.toUpperCase();
+      if (target === 'EU') {
+        return euCountries.includes(eventUpper);
+      }
+      if (eventUpper === target) return true;
+
+      const fallbackHints: string[] = [];
+      if (event.location) fallbackHints.push(event.location.toLowerCase());
+      if (event.city) fallbackHints.push(event.city.toLowerCase());
+      if (event.relatedUrls?.length) fallbackHints.push(event.relatedUrls.join(' ').toLowerCase());
+      return fallbackHints.some((hint) => locationMentionsCountry(hint, country, cfg));
     })();
 
     if (!countryMatch) {
       return false;
     }
 
-    // Date filtering (if dates provided)
     if (dateFrom && event.starts_at && event.starts_at < dateFrom) {
       return false;
     }
     if (dateTo && event.starts_at && event.starts_at > dateTo) {
       return false;
     }
-    
-        return true; 
+
+    return true;
   });
 
   const response = {

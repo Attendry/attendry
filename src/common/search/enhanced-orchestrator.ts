@@ -62,84 +62,146 @@ type ExecArgs = {
   timeframe?: string | null; // 'next_7', 'next_14', 'next_30', 'past_7', 'past_14', 'past_30'
 };
 
-// Helper function to process timeframe into date range using config defaults
-function processTimeframe(timeframe: string | null): { dateFrom: string | null; dateTo: string | null } {
-  if (!timeframe) return { dateFrom: null, dateTo: null };
-  
+type TimeframeContext = {
+  dateFrom: string | null;
+  dateTo: string | null;
+  tokens: string[];
+  label: string | null;
+  kind: 'next' | 'past' | null;
+  days: number | null;
+};
+
+type LocationContext = {
+  countries: string[];
+  primary: string;
+  tokens: string[];
+  label: string;
+};
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+function processTimeframe(timeframe: string | null): TimeframeContext {
+  if (!timeframe) {
+    return { dateFrom: null, dateTo: null, tokens: [], label: null, kind: null, days: null };
+  }
+
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  
-  switch (timeframe) {
-    case 'next_7':
-      return {
-        dateFrom: today.toISOString().split('T')[0],
-        dateTo: new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      };
-    case 'next_14':
-      return {
-        dateFrom: today.toISOString().split('T')[0],
-        dateTo: new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      };
-    case 'next_30':
-      return {
-        dateFrom: today.toISOString().split('T')[0],
-        dateTo: new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      };
-    case 'past_7':
-      return {
-        dateFrom: new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        dateTo: today.toISOString().split('T')[0]
-      };
-    case 'past_14':
-      return {
-        dateFrom: new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        dateTo: today.toISOString().split('T')[0]
-      };
-    case 'past_30':
-      return {
-        dateFrom: new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        dateTo: today.toISOString().split('T')[0]
-      };
-    default:
-      return { dateFrom: null, dateTo: null };
+  const windows: Record<string, { direction: 'next' | 'past'; days: number }> = {
+    next_7: { direction: 'next', days: 7 },
+    next_14: { direction: 'next', days: 14 },
+    next_30: { direction: 'next', days: 30 },
+    past_7: { direction: 'past', days: 7 },
+    past_14: { direction: 'past', days: 14 },
+    past_30: { direction: 'past', days: 30 }
+  };
+
+  const win = windows[timeframe];
+  if (!win) {
+    return { dateFrom: null, dateTo: null, tokens: [], label: null, kind: null, days: null };
   }
+
+  const { direction, days } = win;
+  const offset = days * MS_PER_DAY;
+  const rangeStart = direction === 'next' ? today : new Date(today.getTime() - offset);
+  const rangeEnd = direction === 'next' ? new Date(today.getTime() + offset) : today;
+
+  const dateFrom = rangeStart.toISOString().split('T')[0];
+  const dateTo = rangeEnd.toISOString().split('T')[0];
+
+  const tokens = buildTimeframeTokens(rangeStart, rangeEnd, direction, days);
+  const label = direction === 'next' ? `next ${days} days` : `past ${days} days`;
+
+  return {
+    dateFrom,
+    dateTo,
+    tokens,
+    label,
+    kind: direction,
+    days
+  };
 }
 
-// Helper function to process location into country codes using config defaults
-function processLocation(location: string | null, config: ActiveConfig): string[] {
-  const normalizedLocation = location?.trim();
-  if (!normalizedLocation) {
-    return config.defaultCountries?.length ? config.defaultCountries : ['DE'];
+function buildTimeframeTokens(rangeStart: Date, rangeEnd: Date, direction: 'next' | 'past', days: number): string[] {
+  const tokens = new Set<string>();
+  const startISO = rangeStart.toISOString().split('T')[0];
+  const endISO = rangeEnd.toISOString().split('T')[0];
+  tokens.add(startISO);
+  tokens.add(endISO);
+  tokens.add(formatDotDate(rangeStart));
+  tokens.add(formatDotDate(rangeEnd));
+
+  const monthFormatterDe = new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' });
+  const monthFormatterEn = new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' });
+  tokens.add(monthFormatterDe.format(rangeStart));
+  tokens.add(monthFormatterDe.format(rangeEnd));
+  tokens.add(monthFormatterEn.format(rangeStart));
+  tokens.add(monthFormatterEn.format(rangeEnd));
+
+  if (direction === 'next') {
+    tokens.add(`kommenden ${days} Tagen`);
+    tokens.add(`nächsten ${days} Tage`);
+    tokens.add(`next ${days} days`);
+    tokens.add('upcoming');
+  } else {
+    tokens.add(`letzten ${days} Tage`);
+    tokens.add(`vergangenen ${days} Tagen`);
+    tokens.add(`past ${days} days`);
+    tokens.add('recent');
   }
 
-  if (normalizedLocation.toUpperCase() === 'EU') {
-    return config.euCountries?.length ? config.euCountries : ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
+  tokens.add(`${rangeStart.getFullYear()}`);
+  if (rangeStart.getFullYear() !== rangeEnd.getFullYear()) {
+    tokens.add(`${rangeEnd.getFullYear()}`);
   }
 
-  return [normalizedLocation.toUpperCase()];
+  return Array.from(tokens).filter(Boolean).slice(0, 10);
 }
 
-// Event-focused query builder derived from search configuration
-function buildEventFocusedQuery(baseQuery: string, userText: string, location: string | null, searchConfig: ActiveConfig): string {
-  const countries = processLocation(location, searchConfig);
+function formatDotDate(date: Date): string {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
+function quoteToken(token: string): string {
+  const trimmed = token.trim();
+  if (!trimmed) return '';
+  if (/^".*"$/.test(trimmed)) return trimmed;
+  if (/\s/.test(trimmed)) return `"${trimmed}"`;
+  return trimmed;
+}
+
+function buildEventFocusedQuery(
+  baseQuery: string,
+  userText: string,
+  locationContext: LocationContext,
+  timeframeContext: TimeframeContext,
+  searchConfig: ActiveConfig
+): string {
   const eventTerms = searchConfig.eventTerms?.length
     ? searchConfig.eventTerms
     : ['conference', 'event', 'summit', 'workshop', 'seminar', 'meeting', 'symposium', 'forum', 'exhibition', 'trade show', 'convention', 'congress'];
   const eventQuery = `(${eventTerms.join(' OR ')})`;
 
-  if (countries.length === 1) {
-    const country = countries[0];
-    const countryTermsSource = searchConfig.locationTermsByCountry?.[country];
-    const effectiveCountryTerms = countryTermsSource?.length ? countryTermsSource : [country];
-    const locationTerms = effectiveCountryTerms.slice(0, 8).join(' OR ');
-    return `${baseQuery} ${eventQuery} (${locationTerms})`;
+  const segments = [baseQuery, eventQuery];
+
+  if (locationContext.tokens.length) {
+    const locTokens = locationContext.tokens.map(quoteToken).filter(Boolean);
+    if (locTokens.length) {
+      segments.push(`(${locTokens.join(' OR ')})`);
+    }
   }
 
-  const euTerms = searchConfig.euLocationTerms?.length
-    ? searchConfig.euLocationTerms
-    : ['Europe', 'Europa', 'European', 'Europäisch', 'EU'];
-  const locationTerms = euTerms.join(' OR ');
-  return `${baseQuery} ${eventQuery} (${locationTerms})`;
+  if (timeframeContext.tokens.length) {
+    const timeTokens = timeframeContext.tokens.map(quoteToken).filter(Boolean);
+    if (timeTokens.length) {
+      segments.push(`(${timeTokens.join(' OR ')})`);
+    }
+  }
+
+  return segments.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 type PrioritizedUrl = {
@@ -207,6 +269,10 @@ type ExtractedEventDetails = {
   speakers: ExtractedSpeaker[];
   sponsors: ExtractedSponsor[];
   relatedUrls: string[];
+  countrySource?: string | null;
+  citySource?: string | null;
+  locationSource?: string | null;
+  debugVisitedLinks?: string[];
 };
 
 function normalizeDateInput(raw: unknown): string | null {
@@ -353,13 +419,17 @@ function mergeDetails(primary: ExtractedEventDetails, fallback: ExtractedEventDe
     description: primary.description ?? fallback.description ?? null,
     starts_at: primary.starts_at ?? fallback.starts_at ?? null,
     country: primary.country ?? fallback.country ?? null,
+    countrySource: primary.country ? primary.countrySource ?? 'primary' : fallback.country ? fallback.countrySource ?? 'fallback' : null,
     city: primary.city ?? fallback.city ?? null,
+    citySource: primary.city ? primary.citySource ?? 'primary' : fallback.city ? fallback.citySource ?? 'fallback' : null,
     location: primary.location ?? fallback.location ?? null,
+    locationSource: primary.location ? primary.locationSource ?? 'primary' : fallback.location ? fallback.locationSource ?? 'fallback' : null,
     venue: primary.venue ?? fallback.venue ?? null,
     sessions: mergeArray(primary.sessions, fallback.sessions, (session) => session.title ?? session.description ?? JSON.stringify(session)),
     speakers: mergeArray(primary.speakers, fallback.speakers, (speaker) => speaker.name ?? JSON.stringify(speaker)),
     sponsors: mergeArray(primary.sponsors, fallback.sponsors, (sponsor) => sponsor.name ?? JSON.stringify(sponsor)),
-    relatedUrls: mergeArray(primary.relatedUrls, fallback.relatedUrls)
+    relatedUrls: mergeArray(primary.relatedUrls, fallback.relatedUrls),
+    debugVisitedLinks: mergeArray(primary.debugVisitedLinks ?? [], fallback.debugVisitedLinks ?? [])
   };
 }
 
@@ -688,7 +758,7 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
   }
 
   // Step 1: Cheap HTML fetch (avoids credits and captures basic info)
-  const basic = await cheapHtmlScrape(url).catch(err => {
+  const basic = await cheapHtmlScrape(url, searchConfig).catch(err => {
     console.warn('[extract] Cheap HTML scrape failed', { url, err });
     return null;
   });
@@ -721,10 +791,14 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
       payload: {
         ...merged,
         location: normalizedLocation ?? merged.location ?? null,
+        locationSource: merged.locationSource,
+        countrySource: merged.countrySource,
+        citySource: merged.citySource,
         sessions: merged.sessions,
         speakers: merged.speakers,
         sponsors: merged.sponsors,
-        relatedUrls: merged.relatedUrls
+        relatedUrls: merged.relatedUrls,
+        debugVisitedLinks: merged.debugVisitedLinks
       }
     });
   }
@@ -736,10 +810,14 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
   const enrichment = await extractEnrichmentFromLinks(url, discoveredLinks, apiKey, searchConfig);
   const enrichedMerged = mergeDetails(merged, enrichment);
 
-  return {
+  const result = {
     ...enrichedMerged,
     location: normalizedLocation ?? enrichedMerged.location ?? null,
     relatedUrls: discoveredLinks
+  };
+  return {
+    ...result,
+    debugVisitedLinks: mergeArray(result.debugVisitedLinks ?? [], merged.debugVisitedLinks ?? [], (value) => value)
   };
 }
 
@@ -755,7 +833,8 @@ function emptyExtractedDetails(): ExtractedEventDetails {
     sessions: [],
     speakers: [],
     sponsors: [],
-    relatedUrls: []
+    relatedUrls: [],
+    debugVisitedLinks: []
   };
 }
 
@@ -785,7 +864,7 @@ const BROWSER_HEADERS: Record<string, string> = {
   'Cache-Control': 'no-cache'
 };
 
-async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
+async function cheapHtmlScrape(url: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), HTML_FETCH_TIMEOUT);
@@ -839,12 +918,13 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
       $('[class*="city"]').first().text(),
     ].filter(Boolean) as string[];
 
+    const ldMeta = extractCountryFromLdJson($, searchConfig);
     const countryCandidates = [
       $('meta[itemprop="addressCountry"]').attr('content'),
       $('span[itemprop="addressCountry"]').text(),
       $('[data-country]').attr('data-country'),
       $('[class*="country"]').first().text(),
-      extractCountryFromLdJson($)
+      ldMeta.country
     ].filter(Boolean) as string[];
 
     const venueCandidates = [
@@ -855,8 +935,43 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
     ].filter(Boolean) as string[];
 
     const city = normalizeText(cityCandidates[0] ?? null);
-    const country = normalizeCountry(countryCandidates[0] ?? null);
     const venue = normalizeText(venueCandidates[0] ?? null);
+
+    let country: string | null = ldMeta.country ? normalizeCountry(ldMeta.country) : null;
+    let countrySource: string | null = country ? (ldMeta.source ?? 'ld_json') : null;
+    if (!country && countryCandidates.length > 0) {
+      const normalizedCandidate = normalizeCountry(countryCandidates[0]);
+      if (normalizedCandidate) {
+        country = normalizedCandidate;
+        countrySource = 'meta';
+      }
+    }
+
+    if (!country) {
+      const footerText = $('footer').text().toLowerCase();
+      if (footerText) {
+        const configCountries = Object.entries(searchConfig.locationTermsByCountry ?? {});
+        for (const [countryCode, terms] of configCountries) {
+          if (includesToken(footerText, terms)) {
+            country = countryCode;
+            countrySource = 'footer';
+            break;
+          }
+        }
+      }
+      if (!country) {
+        const bodyText = $('body').text().toLowerCase();
+        const inferred = inferCountryFromText(bodyText, searchConfig);
+        if (inferred) {
+          country = inferred.code;
+          countrySource = inferred.source;
+        }
+      }
+    }
+
+    const citySource = city ? (countrySource ?? 'content') : null;
+    const location = formatLocation(city, country);
+    const locationSource = location ? (city && country ? 'city_country' : city ? 'city_only' : 'country_only') : null;
 
     const discoveredLinksResult = await discoverLinksFromHtml($, url);
     const discoveredLinks = discoveredLinksResult.links;
@@ -866,8 +981,11 @@ async function cheapHtmlScrape(url: string): Promise<ExtractedEventDetails> {
       description: normalizeText(description),
       starts_at,
       country,
+      countrySource,
       city,
-      location: formatLocation(city, country),
+      citySource,
+      location,
+      locationSource,
       venue,
       sessions: [],
       speakers: [],
@@ -890,18 +1008,35 @@ function normalizeText(value: string | null | undefined): string | null {
   return trimmed.length ? trimmed : null;
 }
 
+const COUNTRY_ALIASES: Record<string, string> = {
+  GERMANY: 'DE',
+  DEUTSCHLAND: 'DE',
+  FRANCE: 'FR',
+  FRANKREICH: 'FR',
+  ITALY: 'IT',
+  ITALIEN: 'IT',
+  SPAIN: 'ES',
+  SPANIEN: 'ES',
+  NETHERLANDS: 'NL',
+  NIEDERLANDE: 'NL',
+  HOLLAND: 'NL',
+  BELGIUM: 'BE',
+  BELGIEN: 'BE',
+  AUSTRIA: 'AT',
+  ÖSTERREICH: 'AT',
+  OSTERREICH: 'AT',
+  SWITZERLAND: 'CH',
+  SCHWEIZ: 'CH',
+  SCHWEIZERISCHE: 'CH'
+};
+
 function normalizeCountry(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   const upper = trimmed.toUpperCase();
   if (upper.length === 2) return upper;
-  const known: Record<string, string> = {
-    GERMANY: 'DE',
-    DE: 'DE',
-    DEUTSCHLAND: 'DE',
-  };
-  return known[upper] ?? null;
+  return COUNTRY_ALIASES[upper] ?? null;
 }
 
 function parseDateCandidates(candidates: string[]): string | null {
@@ -912,7 +1047,7 @@ function parseDateCandidates(candidates: string[]): string | null {
   return null;
 }
 
-function extractCountryFromLdJson($: cheerio.CheerioAPI): string | null {
+function extractCountryFromLdJson($: cheerio.CheerioAPI, searchConfig: ActiveConfig): { country: string | null; source: string | null } {
   const scripts = $('script[type="application/ld+json"]').toArray();
   for (const script of scripts) {
     const content = $(script).text();
@@ -925,7 +1060,15 @@ function extractCountryFromLdJson($: cheerio.CheerioAPI): string | null {
         if (address && typeof address === 'object') {
           const country = address.addressCountry || address.country || address.countryCode;
           if (typeof country === 'string' && country.trim()) {
-            return country.trim();
+            const normalized = normalizeCountry(country);
+            if (normalized) {
+              return { country: normalized, source: 'ld_json' };
+            }
+            const inferred = inferCountryFromText(String(country), searchConfig);
+            if (inferred) {
+              return { country: inferred.code, source: `ld_json_${inferred.source}` };
+            }
+            return { country: country.trim(), source: 'ld_json_raw' };
           }
         }
       }
@@ -933,7 +1076,7 @@ function extractCountryFromLdJson($: cheerio.CheerioAPI): string | null {
       console.warn('[extract] Failed to parse LD+JSON for country', { error, url: $.root().find('title').text().slice(0, 120) });
     }
   }
-  return null;
+  return { country: null, source: null };
 }
 
 async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
@@ -1056,8 +1199,11 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
       description,
       starts_at,
       country: locationGuess.country,
+      countrySource: locationGuess.countrySource,
       city: locationGuess.city,
+      citySource: locationGuess.citySource,
       location: formatLocation(locationGuess.city, locationGuess.country) ?? locationGuess.location,
+      locationSource: locationGuess.locationSource,
       venue,
       sessions: [],
       speakers: [],
@@ -1258,12 +1404,14 @@ function extractLocation(content: string, url: string, config: ActiveConfig): { 
   }
 
   let city: string | null = null;
+  let citySource: string | null = null;
   let countryFromCity: string | null = null;
   const cityKeywords = config.cityKeywordsByCountry ?? {};
   for (const [countryCode, tokens] of Object.entries(cityKeywords)) {
     for (const token of tokens) {
       if (includesToken(contentLower, [token]) || lowerUrl.includes(token.toLowerCase().replace(/\s+/g, '-'))) {
         city = token;
+        citySource = includesToken(contentLower, [token]) ? 'content' : 'url';
         countryFromCity = countryCode;
         break;
       }
@@ -1273,10 +1421,14 @@ function extractLocation(content: string, url: string, config: ActiveConfig): { 
 
   if (!country && countryFromCity) {
     country = countryFromCity;
+    countrySource = 'city_inference';
   }
 
   const location = formatLocation(city, country);
-  return { city, country, location };
+  const locationSource = location
+    ? city && country ? 'city_country' : city ? 'city_only' : 'country_only'
+    : null;
+  return { city, citySource, country, countrySource, location, locationSource };
 }
 
 function extractVenue(content: string): string | null {
@@ -1475,7 +1627,7 @@ async function extractEnrichmentFromLinks(
   const primary: ExtractedEventDetails[] = [];
 
   for (const link of deduped) {
-    const basic = await cheapHtmlScrape(link).catch(() => emptyExtractedDetails());
+    const basic = await cheapHtmlScrape(link, searchConfig).catch(() => emptyExtractedDetails());
     let firecrawl: ExtractedEventDetails | null = null;
     if (apiKey) {
       firecrawl = await extractWithFirecrawl(link, apiKey, searchConfig).catch(() => emptyExtractedDetails());
@@ -1645,20 +1797,55 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   
   // Step 4: Prioritize URLs with Gemini
   console.log('[enhanced_orchestrator] Step 4: Prioritizing URLs with Gemini');
-  const prioritizedResult = await prioritizeUrls(uniqueUrls, cfg, country, location, timeframe);
+  const countryGuard = await classifyUrlsForCountry(uniqueUrls, cfg, country, location);
+  const filteredByCountry = countryGuard.keep;
+  const discardedByCountry = countryGuard.drop;
+  const guardMeta = countryGuard.decisions.reduce<Record<string, { guardStatus?: 'keep' | 'drop'; guardReason?: string; guardConfidence?: number }>>((acc, decision) => {
+    if (!decision?.url) return acc;
+    acc[decision.url] = {
+      guardStatus: decision.status,
+      guardReason: decision.reason,
+      guardConfidence: decision.confidence
+    };
+    return acc;
+  }, {});
+  if (discardedByCountry.length) {
+    logs.push({
+      at: 'country_guard',
+      dropped: discardedByCountry,
+      keptCount: filteredByCountry.length,
+      originalCount: uniqueUrls.length
+    });
+  }
+  if (!filteredByCountry.length) {
+    console.warn('[enhanced_orchestrator] All URLs dropped by country guard');
+    return {
+      events: [],
+      logs,
+      effectiveQ: q,
+      searchRetriedWithBase: false,
+      providersTried
+    };
+  }
+  const prioritizedResult = await prioritizeUrls(filteredByCountry, cfg, country, location, timeframe, guardMeta);
   const prioritized = prioritizedResult.items;
   const geminiSucceeded = prioritizedResult.modelPath !== null && !prioritizedResult.fallbackReason;
   const prioritizationMode = prioritizedResult.fallbackReason ? 'fallback' : 'gemini';
   logs.push({
     at: 'prioritization',
-    inputCount: uniqueUrls.length,
+    inputCount: filteredByCountry.length,
     outputCount: prioritized.length,
     location,
     modelPath: prioritizedResult.modelPath,
     fallbackReason: prioritizedResult.fallbackReason,
     prioritizationMode,
     rawResponseSnippet: prioritizedResult.rawResponse ? prioritizedResult.rawResponse.slice(0, 200) : undefined,
-    reasons: prioritized.slice(0, 5).map(p => ({ url: p.url, score: p.score, reason: p.reason }))
+    reasons: prioritized.slice(0, 5).map(p => ({ url: p.url, score: p.score, reason: p.reason })),
+    guard: {
+      target: prioritizedResult.countryContext?.target ?? country ?? null,
+      decisions: countryGuard.decisions,
+      dropped: discardedByCountry
+    }
   });
 
   if (!geminiSucceeded && prioritized.length === 0) {
@@ -1683,19 +1870,33 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     const url = candidate.url;
     const cached = await fetchCachedExtraction(url, null);
     if (cached) {
+      const payload = (cached[0]?.payload ?? {}) as Record<string, unknown>;
+      const sessions = Array.isArray(payload.sessions) ? payload.sessions as ExtractedSession[] : [];
+      const speakers = Array.isArray(payload.speakers) ? payload.speakers as ExtractedSpeaker[] : [];
+      const sponsors = Array.isArray(payload.sponsors) ? payload.sponsors as ExtractedSponsor[] : [];
+      const relatedUrls = Array.isArray(payload.relatedUrls) ? payload.relatedUrls.filter((entry: unknown): entry is string => typeof entry === 'string') : [];
+      const debugVisitedLinks = Array.isArray(payload.debugVisitedLinks) ? payload.debugVisitedLinks.filter((entry: unknown): entry is string => typeof entry === 'string') : [];
       events.push({
         id: `event_${i}`,
-        title: cached.payload?.title ?? null,
+        title: payload.title as string ?? null,
         source_url: url,
-        starts_at: cached.payload?.starts_at ?? null,
-        country: cached.payload?.country ?? null,
-        city: cached.payload?.city ?? null,
-        location: cached.payload?.location ?? null,
-        venue: cached.payload?.venue ?? null,
-        description: cached.payload?.description ?? null,
-        speakers: cached.payload?.speakers ?? [],
+        starts_at: payload.starts_at as string ?? null,
+        country: payload.country as string ?? null,
+        city: payload.city as string ?? null,
+        location: payload.location as string ?? null,
+        venue: payload.venue as string ?? null,
+        description: payload.description as string ?? null,
+        sessions,
+        speakers,
+        sponsors,
         confidence: Math.min(Math.max(candidate.score, 0), 1),
         confidence_reason: candidate.reason,
+        countrySource: payload.countrySource as string ?? null,
+        citySource: payload.citySource as string ?? null,
+        locationSource: payload.locationSource as string ?? null,
+        acceptedByCountryGate: guardMeta[url]?.guardStatus === 'keep',
+        relatedUrls,
+        debugVisitedLinks,
         scoringTrace: {
           geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
           heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
@@ -1715,7 +1916,10 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         city: details.city,
         location: details.location,
         venue: details.venue,
-        starts_at: details.starts_at
+        starts_at: details.starts_at,
+        countrySource: details.countrySource,
+        locationSource: details.locationSource,
+        citySource: details.citySource
       });
     
     // If extraction completely failed, create a basic event object
@@ -1791,9 +1995,18 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         location: details.location,
         venue: details.venue,
         description: details.description,
-        speakers: [],
+        sessions: details.sessions,
+        speakers: details.speakers,
+        sponsors: details.sponsors,
         confidence: Math.min(Math.max(candidate.score, 0), 1),
         confidence_reason: candidate.reason,
+        countrySource: details.countrySource ?? null,
+        citySource: details.citySource ?? null,
+        locationSource: details.locationSource ?? null,
+        acceptedByCountryGate: guardMeta[url]?.guardStatus === 'keep',
+        relatedUrls: details.relatedUrls,
+        debugVisitedLinks: details.debugVisitedLinks,
+        details,
         scoringTrace: {
           geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
           heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
@@ -1809,7 +2022,9 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         starts_at: null,
         country: null,
         city: null,
+        citySource: null,
         location: null,
+        locationSource: null,
         venue: null,
         description: `Event found at ${url}`,
         speakers: [],
@@ -1818,7 +2033,13 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         scoringTrace: {
           geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
           heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
-        }
+        },
+        countrySource: null,
+        citySource: null,
+        locationSource: null,
+        acceptedByCountryGate: guardMeta[url]?.guardStatus === 'keep',
+        relatedUrls: [],
+        debugVisitedLinks: []
       });
     }
   }
@@ -1848,4 +2069,22 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     searchRetriedWithBase: false,
     providersTried
   };
+}
+
+function inferCountryFromText(text: string, config: ActiveConfig): { code: string; source: string } | null {
+  if (!text) return null;
+  const normalized = text.toLowerCase();
+  const locationTerms = config.locationTermsByCountry ?? {};
+  for (const [code, terms] of Object.entries(locationTerms)) {
+    if (includesToken(normalized, terms)) {
+      return { code, source: 'location_terms' };
+    }
+  }
+  const cityTerms = config.cityKeywordsByCountry ?? {};
+  for (const [code, cities] of Object.entries(cityTerms)) {
+    if (includesToken(normalized, cities)) {
+      return { code, source: 'city_terms' };
+    }
+  }
+  return null;
 }
