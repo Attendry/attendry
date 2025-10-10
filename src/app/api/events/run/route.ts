@@ -260,7 +260,21 @@ async function processEnhancedResults(res: EnhancedSearchResult, country: string
       if (event.location) fallbackHints.push(event.location.toLowerCase());
       if (event.city) fallbackHints.push(event.city.toLowerCase());
       if (event.relatedUrls?.length) fallbackHints.push(event.relatedUrls.join(' ').toLowerCase());
-      return fallbackHints.some((hint) => locationMentionsCountry(hint, country, cfg));
+      if (event.title) fallbackHints.push(event.title.toLowerCase());
+      if (event.description) fallbackHints.push(event.description.toLowerCase());
+
+      if (fallbackHints.some((hint) => locationMentionsCountry(hint, country, cfg))) {
+        return true;
+      }
+
+      if (euCountries.includes(target)) {
+        const broadEuropeKeywords = ['europe', 'european union', 'eu-wide', 'eu'];
+        if (fallbackHints.some((hint) => broadEuropeKeywords.some((keyword) => hint.includes(keyword)))) {
+          return true;
+        }
+      }
+
+      return false;
     })();
 
     if (!countryMatch) {
