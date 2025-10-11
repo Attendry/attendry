@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { executeSearch } from '@/common/search/orchestrator';
+import { executeEnhancedSearch } from '@/common/search/enhanced-orchestrator';
 
 export async function GET() {
   try {
     console.log('Testing full search pipeline...');
     
-    const result = await executeSearch({
+    const result = await executeEnhancedSearch({
       userText: 'legal conference 2025',
       country: 'DE',
       dateFrom: null,
@@ -19,11 +19,10 @@ export async function GET() {
       success: true,
       result,
       summary: {
-        totalUrls: result.items.length,
-        providerUsed: result.providerUsed,
+        totalEvents: result.events.length,
         providersTried: result.providersTried,
-        hasResults: result.items.length > 0,
-        sampleUrls: result.items.slice(0, 5)
+        hasResults: result.events.length > 0,
+        sampleEvents: result.events.slice(0, 3).map(e => ({ title: e.title, url: e.source_url }))
       }
     });
   } catch (error) {

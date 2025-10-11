@@ -832,7 +832,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerExtrac
   try {
     const requestData: SpeakerExtractionRequest = await req.json();
     const { url, includePast = false } = requestData;
-    if (!url) return NextResponse.json({ error: "url required" }, { status: 400 });
+    if (!url) return NextResponse.json({ 
+      error: "url required", 
+      timestamp: new Date().toISOString() 
+    } as ErrorResponse, { status: 400 });
 
     // 1) Load main HTML (for title + link discovery)
     let html = "";
@@ -956,8 +959,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerExtrac
       speakers: final,
       qualityStats,
       version: "speakers_v3"
-    });
+    } as SpeakerExtractionResponse);
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "failed" }, { status: 500 });
+    return NextResponse.json({ 
+      error: e?.message || "failed", 
+      timestamp: new Date().toISOString() 
+    } as ErrorResponse, { status: 500 });
   }
 }

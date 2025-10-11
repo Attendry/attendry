@@ -72,7 +72,7 @@ export async function fetchEvents(
 
   if (!res.ok) {
     const error = await safeReadJson(res);
-    throw new Error(error?.error ?? "Search failed");
+    throw new Error(typeof error?.error === 'string' ? error.error : "Search failed");
   }
 
   return (await res.json()) as EventsSearchResponse;

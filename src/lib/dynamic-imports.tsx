@@ -54,7 +54,6 @@ export function createDynamicImport<T = any>(
   return dynamic(importFn, {
     loading: loading as any,
     ssr,
-    suspense,
   });
 }
 
@@ -66,7 +65,7 @@ export const DynamicImports = {
   EventCard: createDynamicImport(() => import('@/components/EventCard')),
   
   // Layout components
-  Header: createDynamicImport(() => import('@/components/Header')),
+  Header: createDynamicImport(() => import('@/components/Header').then(mod => ({ default: mod.Header }))),
   
   // Page components
   EventsClient: createDynamicImport(() => import('@/app/(protected)/events/EventsClient')),

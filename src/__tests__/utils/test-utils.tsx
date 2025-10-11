@@ -60,7 +60,36 @@ export const mockRequest = (body: any = {}) => ({
   json: jest.fn().mockResolvedValue(body),
   headers: new Headers(),
   url: 'http://localhost:3000/api/test',
-});
+  cookies: new Map(),
+  nextUrl: new URL('http://localhost:3000/api/test'),
+  page: jest.fn(),
+  ua: jest.fn(),
+  geo: jest.fn(),
+  ip: jest.fn(),
+  method: 'GET',
+  body: null,
+  bodyUsed: false,
+  arrayBuffer: jest.fn(),
+  blob: jest.fn(),
+  formData: jest.fn(),
+  text: jest.fn(),
+  clone: jest.fn(),
+  signal: new AbortController().signal,
+  redirect: jest.fn(),
+  cache: 'default',
+  credentials: 'same-origin',
+  destination: 'document',
+  integrity: '',
+  keepalive: false,
+  mode: 'cors',
+  referrer: '',
+  referrerPolicy: 'no-referrer',
+  duplex: 'half',
+  priority: 'auto',
+  size: 0,
+  type: 'navigate',
+  url: 'http://localhost:3000/api/test'
+} as any);
 
 /**
  * Mock Next.js response object
@@ -376,4 +405,44 @@ export const setupTestEnvironment = () => {
   afterEach(() => {
     jest.clearAllMocks();
   });
+};
+
+/**
+ * Mock user profile data
+ */
+export const mockUserProfile = {
+  id: 'user123',
+  email: 'test@example.com',
+  full_name: 'Test User',
+  company: 'Test Company',
+  competitors: ['Competitor A', 'Competitor B'],
+  icp_terms: ['legal', 'compliance'],
+  industry_terms: ['technology', 'software'],
+  use_in_basic_search: true,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z'
+};
+
+/**
+ * Mock event data
+ */
+export const mockEventData = {
+  id: 'event123',
+  title: 'Test Legal Conference',
+  description: 'A test legal conference',
+  starts_at: '2024-06-01T09:00:00Z',
+  location: 'Berlin, Germany',
+  city: 'Berlin',
+  source_url: 'https://example.com/event',
+  speakers: [
+    {
+      name: 'John Doe',
+      title: 'Legal Expert',
+      org: 'Law Firm',
+      bio: 'Expert in legal matters',
+      confidence: 0.9
+    }
+  ],
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z'
 };

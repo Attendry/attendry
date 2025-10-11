@@ -29,7 +29,7 @@ describe('/api/events/run', () => {
   });
 
   it('should run event discovery for valid request', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.runEventDiscovery.mockResolvedValue({
       events: [mockEventData],
       total: 1,
@@ -65,7 +65,7 @@ describe('/api/events/run', () => {
   });
 
   it('should handle discovery service errors', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.runEventDiscovery.mockRejectedValue(new Error('Discovery failed'));
 
     const request = mockRequest({ query: 'legal conference' });
@@ -77,7 +77,7 @@ describe('/api/events/run', () => {
   });
 
   it('should pass parameters to discovery service', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.runEventDiscovery.mockResolvedValue({
       events: [],
       total: 0,
@@ -121,7 +121,7 @@ describe('/api/events/run', () => {
   });
 
   it('should handle discovery timeout', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.runEventDiscovery.mockImplementation(
       () => new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), 100)
@@ -158,7 +158,7 @@ describe('/api/events/run', () => {
   });
 
   it('should return proper response format', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.runEventDiscovery.mockResolvedValue({
       events: [mockEventData],
       total: 1,
@@ -187,7 +187,7 @@ describe('/api/events/run', () => {
   });
 
   it('should handle discovery with no results', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.runEventDiscovery.mockResolvedValue({
       events: [],
       total: 0,
@@ -204,7 +204,7 @@ describe('/api/events/run', () => {
   });
 
   it('should handle discovery with errors', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.runEventDiscovery.mockResolvedValue({
       events: [mockEventData],
       total: 1,

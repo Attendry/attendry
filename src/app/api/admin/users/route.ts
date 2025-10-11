@@ -22,7 +22,7 @@ interface User {
 /**
  * GET /api/admin/users
  */
-export async function GET(): Promise<NextResponse<{ users: User[] }>> {
+export async function GET(): Promise<NextResponse<{ users: User[] } | { error: string }>> {
   try {
     const supabase = await supabaseServer();
     

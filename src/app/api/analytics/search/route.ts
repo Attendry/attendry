@@ -31,7 +31,7 @@ interface SearchAnalytics {
 /**
  * GET /api/analytics/search
  */
-export async function GET(req: NextRequest): Promise<NextResponse<SearchAnalytics>> {
+export async function GET(req: NextRequest): Promise<NextResponse<SearchAnalytics | { error: string }>> {
   try {
     const supabase = await supabaseServer();
     

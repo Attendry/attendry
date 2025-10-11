@@ -4,7 +4,7 @@
  * Prevents future creep of unsolicited augmentation terms.
  */
 
-import { buildQueries, buildTierQueries } from '@/search/query-builder';
+import { buildQueries, buildTierQueries } from '@/search/query';
 import { assertNoBlockedAugmentation, validateQueryProvenance } from '@/search/provenance-guard';
 
 describe('query builder', () => {

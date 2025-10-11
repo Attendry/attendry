@@ -15,8 +15,7 @@ import {
   ArrowRight,
   X
 } from 'lucide-react';
-import { useAdaptive } from '../PremiumAdaptiveDashboard';
-import { usePerformanceMonitor } from '../hooks/usePerformanceMonitor';
+import { useAdaptive } from './PremiumAdaptiveDashboard';
 import { fetchEvents } from '@/lib/search/client';
 
 interface SearchFilters {
@@ -70,9 +69,7 @@ const INDUSTRIES = [
 
 const ImprovedPremiumSearchModule = memo(() => {
   const { updateUserBehavior, userBehavior } = useAdaptive();
-  const { recordRender } = usePerformanceMonitor('ImprovedPremiumSearchModule');
-  
-  recordRender();
+  // Performance monitoring removed - hook not available
   
   const [filters, setFilters] = useState<SearchFilters>({
     location: '',

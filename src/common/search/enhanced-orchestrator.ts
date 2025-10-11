@@ -232,6 +232,8 @@ import { search as cseSearch } from '../../providers/cse';
 import { search as databaseSearch } from '../../providers/database';
 import { fetchCachedExtraction, upsertCachedExtraction } from './cache';
 import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
+import { RetryService } from '@/lib/services/retry-service';
+import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from '@/lib/services/circuit-breaker';
 
 type ExecArgs = {
   userText?: string;
@@ -391,10 +393,20 @@ type PrioritizedUrl = {
   reason?: string;
 };
 
+type GeminiPrioritizedItem = {
+  url: string;
+  score: number;
+  reason?: string;
+} | string;
+
 type PrioritizationResult = {
   items: PrioritizedUrl[];
   modelPath: string | null;
   fallbackReason?: string;
+  rawResponse?: string;
+  countryContext?: {
+    target?: string;
+  };
 };
 
 type CountryGuardDecision = {
@@ -421,6 +433,15 @@ type ScoredEvent = {
     geminiScore?: number;
     heuristicScore?: number;
   };
+  sessions?: ExtractedSession[];
+  citySource?: string | null;
+  locationSource?: string | null;
+  sponsors?: unknown[];
+  countrySource?: string | null;
+  relatedUrls?: string[];
+  debugVisitedLinks?: string[];
+  acceptedByCountryGate?: boolean;
+  details?: any;
 };
 
 type ExtractedSession = {
@@ -1206,7 +1227,7 @@ async function cheapHtmlScrape(url: string, searchConfig: ActiveConfig): Promise
       $('[class*="city"]').first().text(),
     ].filter(Boolean) as string[];
 
-    const ldMeta = extractCountryFromLdJson($, searchConfig);
+    const ldMeta = extractCountryFromLdJson($ as cheerio.CheerioAPI, searchConfig);
     const countryCandidates = [
       $('meta[itemprop="addressCountry"]').attr('content'),
       $('span[itemprop="addressCountry"]').text(),
@@ -1261,7 +1282,7 @@ async function cheapHtmlScrape(url: string, searchConfig: ActiveConfig): Promise
     const location = formatLocation(city, country);
     const locationSource = location ? (city && country ? 'city_country' : city ? 'city_only' : 'country_only') : null;
 
-    const discoveredLinksResult = await discoverLinksFromHtml($, url);
+    const discoveredLinksResult = await discoverLinksFromHtml($ as cheerio.CheerioAPI, url);
     const discoveredLinks = discoveredLinksResult.links;
 
     const speakerNames = new Set<string>();
@@ -1272,7 +1293,7 @@ async function cheapHtmlScrape(url: string, searchConfig: ActiveConfig): Promise
     const considerNode = (node: cheerio.Element) => {
       const text = $(node).text();
       const parsed = parseSpeakerText(text);
-      if (parsed && !speakerNames.has(parsed.name)) {
+      if (parsed && parsed.name && !speakerNames.has(parsed.name)) {
         speakerNames.add(parsed.name);
         inlineSpeakers.push(parsed);
       }
@@ -1476,7 +1497,7 @@ async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: A
       });
       
       const extracted = toExtractedEventDetails(candidate);
-      if (Array.isArray(candidate?.relatedUrls) && candidate.relatedUrls.length > 0 && extracted.relatedUrls.length === 0) {
+      if (candidate && typeof candidate === 'object' && 'relatedUrls' in candidate && Array.isArray(candidate.relatedUrls) && candidate.relatedUrls.length > 0 && extracted.relatedUrls.length === 0) {
         extracted.relatedUrls = candidate.relatedUrls.filter((entry: unknown): entry is string => typeof entry === 'string');
       }
       if (isExtractEmpty(extracted)) {
@@ -1751,7 +1772,7 @@ function extractDate(content: string): string | null {
   return null;
 }
 
-function extractLocation(content: string, url: string, config: ActiveConfig): { city: string | null; country: string | null; location: string | null } {
+function extractLocation(content: string, url: string, config: ActiveConfig): { city: string | null; country: string | null; location: string | null; citySource: string | null; countrySource: string | null; locationSource: string | null } {
   const lowerUrl = url.toLowerCase();
   const locationTerms = config.locationTermsByCountry ?? {};
   const countryTokens = Object.entries(locationTerms).flatMap(([countryCode, terms]) =>
@@ -1759,10 +1780,12 @@ function extractLocation(content: string, url: string, config: ActiveConfig): { 
   );
 
   let country: string | null = null;
+  let countrySource: string | null = null;
   for (const { countryCode, term } of countryTokens) {
     const hyphenated = term.replace(/\s+/g, '-');
     if (lowerUrl.includes(hyphenated) || lowerUrl.includes(term)) {
       country = countryCode;
+      countrySource = 'url';
       break;
     }
   }
@@ -1802,7 +1825,7 @@ function extractLocation(content: string, url: string, config: ActiveConfig): { 
   const locationSource = location
     ? city && country ? 'city_country' : city ? 'city_only' : 'country_only'
     : null;
-  return { city, citySource, country, countrySource, location, locationSource };
+  return { city, citySource: city ? 'content' : null, country, countrySource, location, locationSource };
 }
 
 function extractVenue(content: string): string | null {
@@ -1913,7 +1936,7 @@ async function discoverLinksFromHtml($: cheerio.CheerioAPI, baseUrl: string): Pr
     const html = await fetchPageContent(url);
     if (!html) continue;
     const child$ = cheerio.load(html);
-    processAnchors(child$, url, depth);
+    processAnchors(child$ as cheerio.CheerioAPI, url, depth);
   }
 
   const sorted = Array.from(candidateScores.entries())
@@ -2107,28 +2130,62 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   console.log('[enhanced_orchestrator] Step 1: Searching for URLs');
   let urls: string[] = [];
   
-  // Try Firecrawl first
+  // Try Firecrawl first with retry and circuit breaker
   try {
     providersTried.push('firecrawl');
-    const firecrawlRes = await firecrawlSearch({ q, dateFrom: effectiveDateFrom, dateTo: effectiveDateTo });
-    urls = firecrawlRes?.items || [];
-    logs.push({ at: 'search', provider: 'firecrawl', count: urls.length, q, dateFrom: effectiveDateFrom, dateTo: effectiveDateTo });
-    console.log('[enhanced_orchestrator] Firecrawl found', urls.length, 'URLs');
+    const firecrawlRes = await RetryService.executeWithRetry(
+      'firecrawl',
+      'search',
+      () => executeWithCircuitBreaker(
+        'firecrawl',
+        () => firecrawlSearch({ q, dateFrom: effectiveDateFrom || undefined, dateTo: effectiveDateTo || undefined }),
+        CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+      )
+    );
+    urls = firecrawlRes.data?.items || [];
+    logs.push({ 
+      at: 'search', 
+      provider: 'firecrawl', 
+      count: urls.length, 
+      q, 
+      dateFrom: effectiveDateFrom, 
+      dateTo: effectiveDateTo,
+      retryAttempts: firecrawlRes.metrics.attempts,
+      totalDelayMs: firecrawlRes.metrics.totalDelayMs
+    });
+    console.log('[enhanced_orchestrator] Firecrawl found', urls.length, 'URLs (attempts:', firecrawlRes.metrics.attempts, ')');
   } catch (error) {
     console.warn('[enhanced_orchestrator] Firecrawl failed:', error);
+    logs.push({ at: 'search_error', provider: 'firecrawl', error: error instanceof Error ? error.message : String(error) });
   }
 
   // Try CSE if Firecrawl didn't return enough
   if (urls.length < 10) {
     try {
       providersTried.push('cse');
-      const cseRes = await cseSearch({ q, country });
-      const cseUrls = cseRes?.items || [];
+      const cseRes = await RetryService.executeWithRetry(
+        'google_cse',
+        'search',
+        () => executeWithCircuitBreaker(
+          'google_cse',
+          () => cseSearch({ q, country: country || undefined }),
+          CIRCUIT_BREAKER_CONFIGS.GOOGLE_CSE
+        )
+      );
+      const cseUrls = cseRes.data?.items || [];
       urls = [...new Set([...urls, ...cseUrls])]; // Dedupe
-      logs.push({ at: 'search', provider: 'cse', count: cseUrls.length, q });
-      console.log('[enhanced_orchestrator] CSE added', cseUrls.length, 'more URLs');
+      logs.push({ 
+        at: 'search', 
+        provider: 'cse', 
+        count: cseUrls.length, 
+        q,
+        retryAttempts: cseRes.metrics.attempts,
+        totalDelayMs: cseRes.metrics.totalDelayMs
+      });
+      console.log('[enhanced_orchestrator] CSE added', cseUrls.length, 'more URLs (attempts:', cseRes.metrics.attempts, ')');
     } catch (error) {
       console.warn('[enhanced_orchestrator] CSE failed:', error);
+      logs.push({ at: 'search_error', provider: 'cse', error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -2136,13 +2193,29 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   if (urls.length < 5) {
     try {
       providersTried.push('database');
-      const dbRes = await databaseSearch({ q, country });
-      const dbUrls = Array.isArray(dbRes?.items) ? (dbRes.items as string[]) : [];
+      const dbRes = await RetryService.executeWithRetry(
+        'supabase',
+        'search',
+        () => executeWithCircuitBreaker(
+          'supabase',
+          () => databaseSearch({ q, country: country || undefined }),
+          CIRCUIT_BREAKER_CONFIGS.SUPABASE
+        )
+      );
+      const dbUrls = Array.isArray(dbRes.data?.items) ? (dbRes.data.items as string[]) : [];
       urls = [...new Set([...urls, ...dbUrls])];
-      logs.push({ at: 'search', provider: 'database', count: dbUrls.length, q });
-      console.log('[enhanced_orchestrator] Database fallback added', dbUrls.length, 'URLs');
+      logs.push({ 
+        at: 'search', 
+        provider: 'database', 
+        count: dbUrls.length, 
+        q,
+        retryAttempts: dbRes.metrics.attempts,
+        totalDelayMs: dbRes.metrics.totalDelayMs
+      });
+      console.log('[enhanced_orchestrator] Database fallback added', dbUrls.length, 'URLs (attempts:', dbRes.metrics.attempts, ')');
     } catch (error) {
       console.warn('[enhanced_orchestrator] Database fallback failed:', error);
+      logs.push({ at: 'search_error', provider: 'database', error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -2252,7 +2325,26 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       providersTried
     };
   }
-  const prioritizedResult = await prioritizeUrls(filteredByCountry, cfg, country, locationInput, timeframe);
+  const prioritizedResult = await RetryService.executeWithRetry(
+    'gemini',
+    'prioritize',
+    () => executeWithCircuitBreaker(
+      'gemini',
+      () => prioritizeUrls(filteredByCountry, cfg, country || 'DE', locationInput, timeframe),
+      CIRCUIT_BREAKER_CONFIGS.GEMINI
+    )
+  ).then(result => result.data).catch(error => {
+    console.warn('[enhanced_orchestrator] Gemini prioritization failed, using fallback:', error);
+    logs.push({ at: 'prioritization_error', error: error instanceof Error ? error.message : String(error) });
+    // Return fallback result
+    return {
+      items: filteredByCountry.map(url => ({ url, score: 0.5, reason: 'fallback' })),
+      modelPath: null,
+      fallbackReason: 'gemini_failed',
+      rawResponse: null,
+      countryContext: { target: country || 'DE' }
+    };
+  });
   const prioritized = prioritizedResult.items;
   const geminiSucceeded = prioritizedResult.modelPath !== null && !prioritizedResult.fallbackReason;
   const prioritizationMode = prioritizedResult.fallbackReason ? 'fallback' : 'gemini';
@@ -2512,8 +2604,6 @@ export async function executeEnhancedSearch(args: ExecArgs) {
           heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
         },
         countrySource: null,
-        citySource: null,
-        locationSource: null,
         acceptedByCountryGate: guardMeta[url]?.guardStatus === 'keep',
         relatedUrls: [],
         debugVisitedLinks: []

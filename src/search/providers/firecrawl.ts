@@ -9,5 +9,5 @@ import { FirecrawlSearchService } from '../../lib/services/firecrawl-search-serv
 export async function firecrawlSearch(q: string, params: any): Promise<string[]> {
   console.info(JSON.stringify({ at:'sending_to_firecrawl', query:q, len:q.length }));
   const res = await FirecrawlSearchService.searchEvents({ query: q, ...params });
-  return (res?.webResults ?? []).map((r: any) => r.url).filter(Boolean);
+  return (res?.items ?? []).map((r: any) => r.url).filter(Boolean);
 }

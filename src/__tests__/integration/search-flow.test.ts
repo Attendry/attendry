@@ -33,7 +33,7 @@ describe('Search Flow Integration', () => {
 
   describe('Search API Integration', () => {
     it('should handle complete search flow', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.executeSearch.mockResolvedValue(mockSearchResults);
 
       const request = mockRequest({ query: 'legal conference' });
@@ -46,7 +46,7 @@ describe('Search Flow Integration', () => {
     });
 
     it('should handle search with filters', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.executeSearch.mockResolvedValue(mockSearchResults);
 
       const request = mockRequest({ 
@@ -65,7 +65,7 @@ describe('Search Flow Integration', () => {
     });
 
     it('should handle search pagination', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.executeSearch.mockResolvedValue(mockSearchResults);
 
       const request = mockRequest({ 
@@ -82,7 +82,7 @@ describe('Search Flow Integration', () => {
     });
 
     it('should handle search errors', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.executeSearch.mockRejectedValue(new Error('Search failed'));
 
       const request = mockRequest({ query: 'legal conference' });
@@ -94,7 +94,7 @@ describe('Search Flow Integration', () => {
     });
 
     it('should handle search with empty results', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.executeSearch.mockResolvedValue({
         events: [],
         total: 0,
@@ -112,7 +112,7 @@ describe('Search Flow Integration', () => {
 
   describe('Event Discovery API Integration', () => {
     it('should handle complete discovery flow', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.runEventDiscovery.mockResolvedValue({
         events: [mockEventData],
         total: 1,
@@ -134,7 +134,7 @@ describe('Search Flow Integration', () => {
     });
 
     it('should handle discovery with filters', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.runEventDiscovery.mockResolvedValue({
         events: [mockEventData],
         total: 1,
@@ -160,7 +160,7 @@ describe('Search Flow Integration', () => {
     });
 
     it('should handle discovery errors', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.runEventDiscovery.mockRejectedValue(new Error('Discovery failed'));
 
       const request = mockRequest({ query: 'legal conference' });
@@ -172,7 +172,7 @@ describe('Search Flow Integration', () => {
     });
 
     it('should handle discovery with no results', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.runEventDiscovery.mockResolvedValue({
         events: [],
         total: 0,
@@ -194,7 +194,7 @@ describe('Search Flow Integration', () => {
     });
 
     it('should handle discovery with errors', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.runEventDiscovery.mockResolvedValue({
         events: [mockEventData],
         total: 1,
@@ -217,7 +217,7 @@ describe('Search Flow Integration', () => {
 
   describe('Search and Discovery Flow Integration', () => {
     it('should handle search followed by discovery', async () => {
-      const mockSearchService = require('@/lib/services/search-service');
+      const mockSearchService = await import('@/lib/services/search-service');
       mockSearchService.executeSearch.mockResolvedValue(mockSearchResults);
       mockSearchService.runEventDiscovery.mockResolvedValue({
         events: [mockEventData],

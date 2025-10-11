@@ -177,7 +177,7 @@ export function optimizeSearchQuery(
   return {
     optimizedQuery: queries[0] || baseQuery,
     queries,
-    excludedTerms: optimizedExcludeTerms,
+    excludedTerms: optimizedExcludeTerms ? optimizedExcludeTerms.split(',').map(term => term.trim()).filter(Boolean) : [],
     tldPreference: enableTldPreference
   };
 }

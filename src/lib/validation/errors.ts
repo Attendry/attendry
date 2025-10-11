@@ -69,7 +69,7 @@ export class ValidationError extends ApiError {
   toResponse(): NextResponse<ValidationErrorResponse> {
     const response: ValidationErrorResponse = {
       error: this.message,
-      code: this.code,
+      code: "VALIDATION_ERROR" as const,
       details: {
         errors: this.errors,
         schema: this.schema,
@@ -338,7 +338,7 @@ export function formatZodError(error: ZodError): Array<{
   value?: any;
   code: string;
 }> {
-  return error.errors.map((err) => ({
+  return error.issues.map((err) => ({
     field: err.path.join('.'),
     message: err.message,
     value: err.input,

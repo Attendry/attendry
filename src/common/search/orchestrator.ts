@@ -40,24 +40,24 @@ export async function executeSearch(args: ExecArgs) {
   const runFirecrawl = async (query: string) => {
     providersTried.push('firecrawl');
     console.log(JSON.stringify({ correlationId, at: 'provider_call', provider: 'firecrawl', query }));
-    const res = await firecrawlSearch({ q: query, dateFrom, dateTo }); // existing helper
+    const res = await firecrawlSearch({ q: query, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }); // existing helper
     console.log(JSON.stringify({ correlationId, at: 'provider_response', provider: 'firecrawl', rawCount: res?.items?.length || 0, debug: res?.debug }));
     // The provider already returns URLs in res.items, no need to extract
     const urls = res?.items || [];
     stageCounter('provider:firecrawl', [], urls, [{ key: 'returned', count: urls.length, samples: urls.slice(0, 3) }]);
-    logs.push({ at: 'provider_result', provider: 'firecrawl', count: urls.length, q: query, debug: res.debug });
+    logs.push({ at: 'provider_result', provider: 'firecrawl', count: urls.length, q: query, debug: res?.debug });
     return urls;
   };
 
   const runCSE = async (query: string) => {
     providersTried.push('cse');
     console.log(JSON.stringify({ correlationId, at: 'provider_call', provider: 'cse', query }));
-    const res = await cseSearch({ q: query, country: country || 'DE' }).catch(() => ({ items: [] }));
+    const res = await cseSearch({ q: query, country: country || 'DE' }).catch(() => ({ items: [], debug: { error: 'CSE search failed' } }));
     console.log(JSON.stringify({ correlationId, at: 'provider_response', provider: 'cse', rawCount: res?.items?.length || 0, debug: res?.debug }));
     // The provider already returns URLs in res.items, no need to extract
     const urls = res?.items || [];
     stageCounter('provider:cse', [], urls, [{ key: 'returned', count: urls.length, samples: urls.slice(0, 3) }]);
-    logs.push({ at: 'provider_result', provider: 'cse', count: urls.length, q: query, debug: res.debug });
+    logs.push({ at: 'provider_result', provider: 'cse', count: urls.length, q: query, debug: res?.debug });
     return urls;
   };
 
@@ -73,11 +73,11 @@ export async function executeSearch(args: ExecArgs) {
       providerUsed = 'cse';
     } else {
       console.log('[orchestrator] CSE also returned 0 results, using database fallback...');
-      const dbUrls = await databaseSearch({ q, country: country || 'DE' });
-      if (dbUrls.length) {
-        urls = dbUrls;
+      const dbResult = await databaseSearch({ q, country: country || 'DE' });
+      if (dbResult.items && dbResult.items.length) {
+        urls = dbResult.items;
         providerUsed = 'database';
-        logs.push({ at: 'provider_result', provider: 'database', count: urls.length, q, debug: dbUrls.debug });
+        logs.push({ at: 'provider_result', provider: 'database', count: urls.length, q, debug: dbResult.debug });
       }
     }
   }

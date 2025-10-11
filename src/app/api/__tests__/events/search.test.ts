@@ -29,7 +29,7 @@ describe('/api/events/search', () => {
   });
 
   it('should return search results for valid query', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.executeSearch.mockResolvedValue(mockSearchResults);
 
     const request = mockRequest({ query: 'legal conference' });
@@ -60,7 +60,7 @@ describe('/api/events/search', () => {
   });
 
   it('should handle search service errors', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.executeSearch.mockRejectedValue(new Error('Search failed'));
 
     const request = mockRequest({ query: 'legal conference' });
@@ -84,7 +84,7 @@ describe('/api/events/search', () => {
   });
 
   it('should pass query parameters to search service', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.executeSearch.mockResolvedValue(mockSearchResults);
 
     const request = mockRequest({ 
@@ -120,7 +120,7 @@ describe('/api/events/search', () => {
   });
 
   it('should handle search service timeout', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.executeSearch.mockImplementation(
       () => new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), 100)
@@ -145,7 +145,7 @@ describe('/api/events/search', () => {
   });
 
   it('should handle special characters in query', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.executeSearch.mockResolvedValue(mockSearchResults);
 
     const request = mockRequest({ query: 'legal & compliance conference' });
@@ -160,7 +160,7 @@ describe('/api/events/search', () => {
   });
 
   it('should return proper response format', async () => {
-    const mockSearchService = require('@/lib/services/search-service');
+    const mockSearchService = await import('@/lib/services/search-service');
     mockSearchService.executeSearch.mockResolvedValue(mockSearchResults);
 
     const request = mockRequest({ query: 'legal conference' });

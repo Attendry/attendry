@@ -71,7 +71,7 @@ export async function runSearchOrchestrator(
     );
     
     if (queryOptimization.queries.length > 1) {
-      traceNote(trace.queries, `Query split into ${queryOptimization.queries.length} parts`);
+      traceNote(trace, `Query split into ${queryOptimization.queries.length} parts`);
     }
     
     // Step 2: Execute search tiers
@@ -98,7 +98,7 @@ export async function runSearchOrchestrator(
         if (fallbackResults.length > 0) {
           searchResults.push(...fallbackResults);
           fallbackUsed = true;
-          traceNote(trace.queries, `Fallback query used: ${fallbackQuery}`);
+          traceNote(trace, `Fallback query used: ${fallbackQuery}`);
           break;
         }
       }

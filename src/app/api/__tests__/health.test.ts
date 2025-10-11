@@ -9,8 +9,16 @@ import { GET } from '../health/route';
 import { mockRequest, mockResponse } from '../../../../__tests__/utils/test-utils';
 
 // Mock dependencies
-jest.mock('@/lib/services/health-service', () => ({
-  checkSystemHealth: jest.fn(),
+jest.mock('@/lib/services/gemini-service', () => ({
+  GeminiService: {
+    checkHealth: jest.fn(),
+  },
+}));
+
+jest.mock('@/lib/services/firecrawl-search-service', () => ({
+  FirecrawlSearchService: {
+    checkHealth: jest.fn(),
+  },
 }));
 
 jest.mock('@/lib/supabase-server', () => ({
@@ -27,8 +35,10 @@ describe('/api/health', () => {
   });
 
   it('should return healthy status when all services are up', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
-    mockHealthService.checkSystemHealth.mockResolvedValue({
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
+    mockGeminiService.GeminiService.checkHealth.mockResolvedValue({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {
@@ -50,8 +60,10 @@ describe('/api/health', () => {
   });
 
   it('should return degraded status when some services are down', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
-    mockHealthService.checkSystemHealth.mockResolvedValue({
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
+    mockGeminiService.GeminiService.checkHealth.mockResolvedValue({
       status: 'degraded',
       timestamp: new Date().toISOString(),
       services: {
@@ -72,8 +84,10 @@ describe('/api/health', () => {
   });
 
   it('should return unhealthy status when critical services are down', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
-    mockHealthService.checkSystemHealth.mockResolvedValue({
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
+    mockGeminiService.GeminiService.checkHealth.mockResolvedValue({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       services: {
@@ -94,7 +108,9 @@ describe('/api/health', () => {
   });
 
   it('should handle health service errors', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
     mockHealthService.checkSystemHealth.mockRejectedValue(new Error('Health check failed'));
 
     const request = mockRequest({});
@@ -106,8 +122,10 @@ describe('/api/health', () => {
   });
 
   it('should return proper response format', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
-    mockHealthService.checkSystemHealth.mockResolvedValue({
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
+    mockGeminiService.GeminiService.checkHealth.mockResolvedValue({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {
@@ -136,8 +154,10 @@ describe('/api/health', () => {
   });
 
   it('should include response times for services', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
-    mockHealthService.checkSystemHealth.mockResolvedValue({
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
+    mockGeminiService.GeminiService.checkHealth.mockResolvedValue({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {
@@ -161,8 +181,10 @@ describe('/api/health', () => {
   });
 
   it('should handle database connection errors', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
-    mockHealthService.checkSystemHealth.mockResolvedValue({
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
+    mockGeminiService.GeminiService.checkHealth.mockResolvedValue({
       status: 'degraded',
       timestamp: new Date().toISOString(),
       services: {
@@ -183,8 +205,10 @@ describe('/api/health', () => {
   });
 
   it('should include system uptime', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
-    mockHealthService.checkSystemHealth.mockResolvedValue({
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
+    mockGeminiService.GeminiService.checkHealth.mockResolvedValue({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {
@@ -205,8 +229,10 @@ describe('/api/health', () => {
   });
 
   it('should include version information', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
-    mockHealthService.checkSystemHealth.mockResolvedValue({
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
+    mockGeminiService.GeminiService.checkHealth.mockResolvedValue({
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {
@@ -227,7 +253,9 @@ describe('/api/health', () => {
   });
 
   it('should handle health check timeout', async () => {
-    const mockHealthService = require('@/lib/services/health-service');
+    // Mock the services directly since there's no health service
+    const mockGeminiService = await import('@/lib/services/gemini-service');
+    const mockFirecrawlService = await import('@/lib/services/firecrawl-search-service');
     mockHealthService.checkSystemHealth.mockImplementation(
       () => new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout')), 100)

@@ -27,6 +27,8 @@ export interface SearchConfig {
   industryTerms: string[];
   icpTerms: string[];
   is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // Default industry templates
@@ -62,6 +64,8 @@ const INDUSTRY_TEMPLATES = {
  */
 export class ConfigService {
   private static cacheService = getCacheService();
+  private static configCache: any = null;
+  private static configCacheTime: number = 0;
 
   /**
    * Get search configuration with caching
@@ -107,7 +111,7 @@ export class ConfigService {
 
         return {
           config,
-          templates: {} // No longer using hardcoded templates
+          templates: INDUSTRY_TEMPLATES
         };
       }
     } catch (dbError) {
@@ -132,7 +136,7 @@ export class ConfigService {
 
     return {
       config: defaultConfig,
-      templates: {} // No longer using hardcoded templates
+      templates: INDUSTRY_TEMPLATES
     };
   }
 

@@ -6,7 +6,7 @@
  */
 
 "use client";
-import { useState, useEffect, useCallback, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { EventData } from '@/lib/types/core';
 
 /**

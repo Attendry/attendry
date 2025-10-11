@@ -35,13 +35,7 @@ interface Event {
   venue?: string;                   // Event venue
   organizer?: string;               // Event organizer
   topics?: string[];                // Event topics/themes
-  speakers?: Array<{
-    name: string | null;
-    title: string | null;
-    org: string | null;
-    bio: string | null;
-    confidence: number;
-  }>;         // Array of speaker objects
+  speakers?: SpeakerData[];         // Array of speaker objects
   sponsors?: any[];                 // Array of sponsor objects
   participating_organizations?: string[]; // Participating organizations
   partners?: string[];              // Event partners
@@ -78,13 +72,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   const [open, setOpen] = useState(false);                     // Whether event details are expanded
   const [includePast, setIncludePast] = useState(false);       // Whether to include past speakers
   const [loadingSpeakers, setLoadingSpeakers] = useState(false); // Loading state for speaker extraction
-  const [speakers, setSpeakers] = useState<Array<{
-    name: string | null;
-    title: string | null;
-    org: string | null;
-    bio: string | null;
-    confidence: number;
-  }> | null>(null); // Extracted speaker data
+  const [speakers, setSpeakers] = useState<SpeakerData[] | null>(null); // Extracted speaker data
   const [followed, setFollowed] = useState<string[]>([]);       // List of followed speakers
 
   // ============================================================================

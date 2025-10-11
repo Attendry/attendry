@@ -12,7 +12,6 @@ import { getServiceQueue, RATE_LIMIT_CONFIGS } from "@/lib/services/request-queu
 import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/services/circuit-breaker";
 import { executeWithFallback } from "@/lib/services/fallback-strategies";
 import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
-import { runSearch } from "@/search/orchestrator";
 import { buildSearchQuery } from "@/search/query";
 import { cseSearch } from "@/search/providers/cse";
 import { searchCacheKey } from "@/search/cache";
@@ -243,23 +242,23 @@ export class SearchService {
   /**
    * Safe JSON parsing with repair and fallback
    */
-  static safeParse<T=any>(s: string): T | null {
+  static async safeParse<T=any>(s: string): Promise<T | null> {
     try { return JSON.parse(s) as T; } catch {}
     try { 
       // Try jsonrepair if available
-      const { jsonrepair } = require('jsonrepair');
+      const { jsonrepair } = await import('jsonrepair');
       return JSON.parse(jsonrepair(s)) as T; 
     } catch {}
     try { 
       // Try json5 if available
-      const { parse: parseJson5 } = require('json5');
+      const { parse: parseJson5 } = await import('json5');
       return parseJson5(s) as T; 
     } catch {}
     // last-ditch: extract first {...} block
     const m = s.match(/\{[\s\S]*\}$/m);
     if (m) { 
       try { 
-        const { jsonrepair } = require('jsonrepair');
+        const { jsonrepair } = await import('jsonrepair');
         return JSON.parse(jsonrepair(m[0])) as T; 
       } catch {} 
     }
@@ -1007,7 +1006,13 @@ export class SearchService {
         starts_at: event.starts_at || undefined,
         location: event.location || event.city || undefined,
         city: event.city || undefined,
-        speakers: event.speakers // Include existing speakers
+        speakers: event.speakers ? event.speakers.map(speaker => ({
+          name: speaker.name || '',
+          org: speaker.org || '',
+          title: speaker.title || '',
+          session_title: '',
+          confidence: 0.5
+        })) : undefined
       }));
 
       // Record estimated token usage
@@ -2511,3 +2516,7 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
     return false;
   }
 }
+
+// Export static methods for external use
+export const executeSearch = SearchService.executeSearch.bind(SearchService);
+export const runEventDiscovery = SearchService.runEventDiscovery.bind(SearchService);

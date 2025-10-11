@@ -99,6 +99,13 @@ export class BatchGeminiService {
       starts_at?: string;
       location?: string;
       city?: string;
+      speakers?: Array<{
+        name: string;
+        org: string;
+        title: string;
+        session_title: string;
+        confidence: number;
+      }>;
     }>,
     config: Partial<BatchProcessingConfig> = {}
   ): Promise<BatchResult<SpeakerExtractionResult>> {
@@ -124,7 +131,13 @@ export class BatchGeminiService {
       return {
         results: events.map(event => ({
           eventId: event.id,
-          speakers: event.speakers || [],
+          speakers: (event.speakers || []).map(speaker => ({
+            name: speaker.name,
+            org: speaker.org || '',
+            title: speaker.title || '',
+            session_title: speaker.session_title || '',
+            confidence: speaker.confidence || 0
+          })),
           success: true
         })),
         stats: {
@@ -178,7 +191,7 @@ export class BatchGeminiService {
     for (const event of eventsWithSpeakers) {
       results.push({
         eventId: event.id,
-        speakers: event.speakers,
+        speakers: event.speakers || [],
         success: true
       });
     }

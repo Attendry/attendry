@@ -43,7 +43,7 @@ interface NLPResponse {
 /**
  * POST /api/search/nlp
  */
-export async function POST(req: NextRequest): Promise<NextResponse<NLPResponse>> {
+export async function POST(req: NextRequest): Promise<NextResponse<NLPResponse | { error: string }>> {
   try {
     const { query }: NLPRequest = await req.json();
 

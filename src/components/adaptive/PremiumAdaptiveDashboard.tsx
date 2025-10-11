@@ -22,6 +22,8 @@ export interface UserBehavior {
   searchHistory: string[];
   preferredLocations: string[];
   preferredIndustries: string[];
+  typingCount?: number;
+  taskClicks?: number;
 }
 
 export interface AdaptiveContextType {
@@ -216,5 +218,5 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
 };
 
 export const PremiumAdaptiveDashboard = () => {
-  return <AdaptiveProvider />;
+  return <AdaptiveProvider>{null}</AdaptiveProvider>;
 };

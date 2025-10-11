@@ -45,10 +45,10 @@ export async function runSearch(opts: {
     catch { return await cseSearch(q); }
   }
 
-  for (const t of tiers) {
-    assertClean(t.q);
-    const result = await providerOnce(t.q);
-    stageCounter(`tier:${t.tier}`, [], result, [{ key: 'returned', count: result.length, samples: result.slice(0,3) }]);
+  for (const [index, query] of tiers.entries()) {
+    assertClean(query);
+    const result = await providerOnce(query);
+    stageCounter(`tier:${index}`, [], result, [{ key: 'returned', count: result.length, samples: result.slice(0,3) }]);
     urlsAll.push(...result);
   }
 

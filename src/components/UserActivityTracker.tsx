@@ -166,15 +166,15 @@ const UserActivityTracker = memo(function UserActivityTracker() {
       totalEventViews: eventViews.length,
       totalSavedEvents: savedEvents.length,
       mostSearchedTerms: Object.entries(searchTerms)
-        .sort(([,a], [,b]) => b - a)
+        .sort(([,a], [,b]) => (b as number) - (a as number))
         .slice(0, 5)
         .map(([term]) => term),
       mostViewedIndustries: Object.entries(industries)
-        .sort(([,a], [,b]) => b - a)
+        .sort(([,a], [,b]) => (b as number) - (a as number))
         .slice(0, 5)
         .map(([industry]) => industry),
       mostViewedLocations: Object.entries(locations)
-        .sort(([,a], [,b]) => b - a)
+        .sort(([,a], [,b]) => (b as number) - (a as number))
         .slice(0, 5)
         .map(([location]) => location),
       lastActivity: activities.length > 0 ? Math.max(...activities.map(a => a.timestamp)) : 0,

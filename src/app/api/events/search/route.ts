@@ -26,12 +26,11 @@ import { GeminiService } from "@/lib/services/gemini-service";
 import { 
   EventSearchRequest, 
   EventSearchResponse, 
-  ErrorResponse,
-  SearchResultItem 
+  ErrorResponse
 } from "@/lib/types/api";
 import { withCorrelation, ensureCorrelation } from '@/lib/obs/corr';
 import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
-import { EventData, SearchConfig } from "@/lib/types/core";
+import { EventData, SearchConfig, SearchResultItem } from "@/lib/types/core";
 
 // ============================================================================
 // ENHANCED QUERY BUILDING
@@ -673,7 +672,7 @@ function buildDateRestrict(from?: string, to?: string) {
  * @param to - End date for filtering (optional)
  * @returns Filtered array of events within the date range
  */
-function filterEventsByDate(events: EventItem[], from?: string, to?: string): EventItem[] {
+function filterEventsByDate(events: EventData[], from?: string, to?: string): EventData[] {
   if (!from && !to) return events;
   
   const today = new Date();
@@ -715,6 +714,7 @@ function filterEventsByDate(events: EventItem[], from?: string, to?: string): Ev
  */
 export async function POST(req: NextRequest): Promise<NextResponse<EventSearchResponse | ErrorResponse>> {
   return withCorrelation(async () => {
+    const correlationId = ensureCorrelation();
     try {
     // Parse request parameters with defaults
     const requestData: EventSearchRequest = await req.json();

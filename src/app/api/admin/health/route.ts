@@ -31,7 +31,7 @@ interface HealthResponse {
 /**
  * GET /api/admin/health
  */
-export async function GET(): Promise<NextResponse<HealthResponse>> {
+export async function GET(): Promise<NextResponse<HealthResponse | { error: string }>> {
   try {
     const supabase = await supabaseServer();
     

@@ -9,10 +9,17 @@
 export * from './schemas';
 
 // Export middleware and utilities
-export * from './middleware';
+export { 
+  createValidationMiddleware, 
+  generateRequestId, 
+  withErrorHandling 
+} from './middleware';
 
 // Export error classes and handlers
-export * from './errors';
+export { 
+  ValidationError, 
+  isValidationError 
+} from './errors';
 
 // Re-export commonly used types
 export type {
@@ -40,7 +47,6 @@ export type {
 
 // Re-export commonly used error classes
 export {
-  ValidationError,
   AuthenticationError,
   AuthorizationError,
   NotFoundError,
@@ -54,7 +60,6 @@ export {
 
 // Re-export commonly used utilities
 export {
-  createValidationMiddleware,
   validateRequest,
   validateRequestAsync,
   handleValidationError,
@@ -62,8 +67,6 @@ export {
   safeJsonParse,
   validateQueryParams,
   createValidatedRouteHandler,
-  withErrorHandling,
-  generateRequestId,
 } from './middleware';
 
 export {

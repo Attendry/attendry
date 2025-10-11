@@ -102,7 +102,7 @@ describe('Debug Search Integration', () => {
 
     it('should handle search failures gracefully', async () => {
       // Mock search failure
-      const { executeAllTiers } = require('@/lib/search/tier-guardrails');
+      const { executeAllTiers } = await import('@/lib/search/tier-guardrails');
       executeAllTiers.mockResolvedValueOnce([]);
 
       const config = {
@@ -261,7 +261,7 @@ describe('Debug Search Integration', () => {
   describe('Error Handling', () => {
     it('should handle complete system failure', async () => {
       // Mock complete failure
-      const { executeAllTiers } = require('@/lib/search/tier-guardrails');
+      const { executeAllTiers } = await import('@/lib/search/tier-guardrails');
       executeAllTiers.mockRejectedValueOnce(new Error('Complete system failure'));
 
       const config = {

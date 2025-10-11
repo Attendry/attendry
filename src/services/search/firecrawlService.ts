@@ -7,6 +7,8 @@
 import { buildEffectiveQuery } from '@/search/query';
 import { withTimeoutAndRetry } from '@/utils/net/withTimeoutAndRetry';
 import { logger } from '@/utils/logger';
+import { RetryService } from '@/lib/services/retry-service';
+import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from '@/lib/services/circuit-breaker';
 
 type FirecrawlArgs = {
   baseQuery: string;
@@ -51,10 +53,15 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
         const res = await doFirecrawl({ ...fcParams, timeoutMs });
         if (res?.items?.length) return res;
       } catch (e: any) {
+        console.warn('[firecrawl] Search attempt failed:', e?.message || e);
         // Only swallow timeouts; rethrow others
-        if (!String(e?.name ?? e).toLowerCase().includes('timeout')) throw e;
+        if (!String(e?.name ?? e).toLowerCase().includes('timeout')) {
+          console.error('[firecrawl] Non-timeout error, rethrowing:', e);
+          throw e;
+        }
       }
     }
+    console.warn('[firecrawl] All retry attempts failed, returning empty results');
     return { items: [] };
   }
 
@@ -62,9 +69,36 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
 }
 
 
-// Placeholder for actual Firecrawl client call
+// Actual Firecrawl client call using the proper service with retry and circuit breaker
 async function doFirecrawl(params: any) {
-  // This would be your actual Firecrawl API call
-  // For now, return a mock response
-  return { items: [] };
+  const { FirecrawlSearchService } = await import('../../lib/services/firecrawl-search-service');
+  
+  try {
+    const result = await RetryService.executeWithRetry(
+      'firecrawl',
+      'searchEvents',
+      () => executeWithCircuitBreaker(
+        'firecrawl',
+        () => FirecrawlSearchService.searchEvents({
+          query: params.query,
+          country: params.country || 'DE',
+          from: params.dateFrom,
+          to: params.dateTo,
+          maxResults: params.limit || 15
+        }),
+        CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+      )
+    );
+    
+    return {
+      items: result.data.items?.map((item: any) => ({
+        url: item.url || item.link,
+        title: item.title,
+        snippet: item.snippet || item.description
+      })) || []
+    };
+  } catch (error) {
+    console.warn('[firecrawl] Search failed after retries and circuit breaker:', error);
+    return { items: [] };
+  }
 }

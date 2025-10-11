@@ -36,7 +36,7 @@ describe('GeminiService', () => {
 
   describe('extractEventData', () => {
     it('should extract event data from content', async () => {
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockResolvedValue({
           response: {
@@ -55,7 +55,7 @@ describe('GeminiService', () => {
     });
 
     it('should handle extraction errors gracefully', async () => {
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockRejectedValue(new Error('Extraction failed')),
       };
@@ -67,7 +67,7 @@ describe('GeminiService', () => {
     });
 
     it('should use cached results when available', async () => {
-      const mockCacheService = require('@/lib/cache');
+      const mockCacheService = await import('@/lib/cache');
       mockCacheService.getCacheService.mockReturnValue({
         get: jest.fn().mockResolvedValue([mockEventData]),
         set: jest.fn(),
@@ -80,14 +80,14 @@ describe('GeminiService', () => {
     });
 
     it('should cache results after successful extraction', async () => {
-      const mockCacheService = require('@/lib/cache');
+      const mockCacheService = await import('@/lib/cache');
       const mockSet = jest.fn();
       mockCacheService.getCacheService.mockReturnValue({
         get: jest.fn().mockResolvedValue(null),
         set: mockSet,
       });
 
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockResolvedValue({
           response: {
@@ -105,7 +105,7 @@ describe('GeminiService', () => {
     });
 
     it('should handle invalid JSON response', async () => {
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockResolvedValue({
           response: {
@@ -133,7 +133,7 @@ describe('GeminiService', () => {
     });
 
     it('should handle extraction with multiple events', async () => {
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockResolvedValue({
           response: {
@@ -151,7 +151,7 @@ describe('GeminiService', () => {
     });
 
     it('should handle extraction with no events', async () => {
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockResolvedValue({
           response: {
@@ -171,7 +171,7 @@ describe('GeminiService', () => {
 
   describe('prioritizeUrlsWithGemini', () => {
     it('should prioritize URLs based on relevance', async () => {
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockResolvedValue({
           response: {
@@ -194,7 +194,7 @@ describe('GeminiService', () => {
     });
 
     it('should handle prioritization errors gracefully', async () => {
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockRejectedValue(new Error('Prioritization failed')),
       };
@@ -206,7 +206,7 @@ describe('GeminiService', () => {
     });
 
     it('should use cached results when available', async () => {
-      const mockCacheService = require('@/lib/cache');
+      const mockCacheService = await import('@/lib/cache');
       mockCacheService.getCacheService.mockReturnValue({
         get: jest.fn().mockResolvedValue({
           prioritizedUrls: ['url1', 'url2'],
@@ -249,7 +249,7 @@ describe('GeminiService', () => {
     });
 
     it('should handle prioritization with single URL', async () => {
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockResolvedValue({
           response: {
@@ -272,7 +272,7 @@ describe('GeminiService', () => {
 
     it('should handle prioritization with many URLs', async () => {
       const urls = Array.from({ length: 100 }, (_, i) => `url${i}`);
-      const mockGoogleAI = require('@google/generative-ai');
+      const mockGoogleAI = await import('@google/generative-ai');
       const mockModel = {
         generateContent: jest.fn().mockResolvedValue({
           response: {

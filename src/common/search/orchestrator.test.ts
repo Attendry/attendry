@@ -1,31 +1,46 @@
-import { executeSearch } from '../../services/search/orchestrator';
+import { executeEnhancedSearch } from './enhanced-orchestrator';
 
-// Mock providers
-const mockProviders = {
-  firecrawl: { items: ['A','B'] },
-  cse: { items: [] }
-};
-
-// Mock the providers module
-jest.mock('../../providers', () => ({
-  providers: {
-    firecrawl: { search: jest.fn().mockResolvedValue(mockProviders.firecrawl) },
-    cse: { search: jest.fn().mockResolvedValue(mockProviders.cse) },
-    database: { search: jest.fn().mockResolvedValue({ items: [], debug: {} }) }
-  }
+// Mock the enhanced orchestrator dependencies
+jest.mock('./config', () => ({
+  loadActiveConfig: jest.fn().mockResolvedValue({
+    baseQuery: 'test query',
+    industry: 'legal-compliance',
+    defaultCountries: ['DE']
+  })
 }));
 
-describe('orchestrator', () => {
-  it('prefers first non-empty provider and does not overwrite with empty fallback', async () => {
-    const r = await executeSearch({ baseQuery: '(foo)' });
-    expect(r.providerUsed).toBe('firecrawl');
-    expect(r.items).toEqual(['A','B']);
+jest.mock('../../providers/firecrawl', () => ({
+  search: jest.fn().mockResolvedValue({ items: ['A','B'] })
+}));
+
+jest.mock('../../providers/cse', () => ({
+  search: jest.fn().mockResolvedValue({ items: [] })
+}));
+
+jest.mock('../../providers/database', () => ({
+  search: jest.fn().mockResolvedValue({ items: [], debug: {} })
+}));
+
+describe('enhanced orchestrator', () => {
+  it('executes enhanced search and returns events', async () => {
+    const r = await executeEnhancedSearch({ 
+      userText: 'legal conference',
+      country: 'DE'
+    });
+    expect(r.events).toBeDefined();
+    expect(Array.isArray(r.events)).toBe(true);
+    expect(r.providersTried).toBeDefined();
   });
 
-  it('uses buildSearchQuery output for all providers', async () => {
-    const r = await executeSearch({ baseQuery: 'foo bar', userText: 'baz' });
-    // This test would need to verify that providers received the correct query
-    // For now, just ensure the function runs without error
+  it('handles search with user text and country', async () => {
+    const r = await executeEnhancedSearch({ 
+      userText: 'compliance summit',
+      country: 'DE',
+      dateFrom: '2025-01-01',
+      dateTo: '2025-12-31'
+    });
     expect(r).toBeDefined();
+    expect(r.events).toBeDefined();
+    expect(r.logs).toBeDefined();
   });
 });

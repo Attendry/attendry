@@ -21,6 +21,8 @@ export interface UserBehavior {
   searchHistory: string[];
   preferredLocations: string[];
   preferredIndustries: string[];
+  typingCount?: number;
+  taskClicks?: number;
 }
 
 export interface AdaptiveContextType {

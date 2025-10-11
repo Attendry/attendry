@@ -8,38 +8,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ZodSchema, ZodError } from 'zod';
 import { ValidationErrorResponse } from './schemas';
+import { ValidationError } from './errors';
 
-/**
- * Custom error class for validation errors
- */
-export class ValidationError extends Error {
-  public readonly code = 'VALIDATION_ERROR';
-  public readonly statusCode = 400;
-  public readonly errors: Array<{
-    field: string;
-    message: string;
-    value?: any;
-    code: string;
-  }>;
-
-  constructor(
-    message: string,
-    errors: Array<{
-      field: string;
-      message: string;
-      value?: any;
-      code: string;
-    }>,
-    schema: string
-  ) {
-    super(message);
-    this.name = 'ValidationError';
-    this.errors = errors;
-    this.schema = schema;
-  }
-
-  public readonly schema: string;
-}
 
 /**
  * Convert Zod error to validation error format
@@ -50,7 +20,7 @@ function formatZodError(error: ZodError): Array<{
   value?: any;
   code: string;
 }> {
-  return error.errors.map((err) => ({
+  return error.issues.map((err) => ({
     field: err.path.join('.'),
     message: err.message,
     value: err.input,
@@ -82,7 +52,7 @@ function createValidationErrorResponse(
 /**
  * Generate a unique request ID for tracking
  */
-function generateRequestId(): string {
+export function generateRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
@@ -369,4 +339,32 @@ export function extractValidationErrors(error: unknown): Array<{
     message: error instanceof Error ? error.message : 'Unknown error',
     code: 'unknown_error',
   }];
+}
+
+/**
+ * Error handling wrapper for API routes
+ */
+export function withErrorHandling<T extends any[]>(
+  handler: (...args: T) => Promise<Response>
+) {
+  return async (...args: T): Promise<Response> => {
+    try {
+      return await handler(...args);
+    } catch (error) {
+      console.error('API Error:', error);
+      
+      if (error instanceof ValidationError) {
+        return error.toResponse();
+      }
+      
+      return NextResponse.json(
+        {
+          error: 'Internal server error',
+          code: 'INTERNAL_ERROR',
+          timestamp: new Date().toISOString(),
+        },
+        { status: 500 }
+      );
+    }
+  };
 }

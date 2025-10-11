@@ -11,7 +11,7 @@ import { mockRequest, mockUserProfile } from '../utils/test-utils';
 
 // Mock dependencies
 jest.mock('@/lib/supabase-server', () => ({
-  createClient: jest.fn(() => ({
+  supabaseServer: jest.fn(() => ({
     auth: {
       getUser: jest.fn(),
     },
@@ -40,7 +40,7 @@ describe('Authentication Flow Integration', () => {
 
   describe('Profile Management Integration', () => {
     it('should handle complete profile flow', async () => {
-      const mockSupabase = require('@/lib/supabase-server');
+      const mockSupabase = await import('@/lib/supabase-server');
       const mockClient = {
         auth: {
           getUser: jest.fn().mockResolvedValue({
@@ -55,10 +55,9 @@ describe('Authentication Flow Integration', () => {
           }),
         })),
       };
-      mockSupabase.createClient.mockReturnValue(mockClient);
+      (mockSupabase.supabaseServer as jest.Mock).mockResolvedValue(mockClient);
 
-      const request = mockRequest({});
-      const response = await profileGET(request as NextRequest);
+      const response = await profileGET();
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -66,7 +65,7 @@ describe('Authentication Flow Integration', () => {
     });
 
     it('should handle profile save flow', async () => {
-      const mockSupabase = require('@/lib/supabase-server');
+      const mockSupabase = await import('@/lib/supabase-server');
       const mockClient = {
         auth: {
           getUser: jest.fn().mockResolvedValue({
@@ -81,13 +80,13 @@ describe('Authentication Flow Integration', () => {
           }),
         })),
       };
-      mockSupabase.createClient.mockReturnValue(mockClient);
+      (mockSupabase.supabaseServer as jest.Mock).mockResolvedValue(mockClient);
 
       const request = mockRequest({
         profile: mockUserProfile,
       });
       
-      const response = await profilePOST(request as NextRequest);
+      const response = await profilePOST(request as unknown as NextRequest);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -102,8 +101,7 @@ describe('Authentication Flow Integration', () => {
         delete: jest.fn(),
       });
 
-      const request = mockRequest({});
-      const response = await profileGET(request as NextRequest);
+      const response = await profileGET();
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -111,7 +109,7 @@ describe('Authentication Flow Integration', () => {
     });
 
     it('should handle profile save with cache invalidation', async () => {
-      const mockSupabase = require('@/lib/supabase-server');
+      const mockSupabase = await import('@/lib/supabase-server');
       const mockClient = {
         auth: {
           getUser: jest.fn().mockResolvedValue({
@@ -126,7 +124,7 @@ describe('Authentication Flow Integration', () => {
           }),
         })),
       };
-      mockSupabase.createClient.mockReturnValue(mockClient);
+      (mockSupabase.supabaseServer as jest.Mock).mockResolvedValue(mockClient);
 
       const mockCacheService = require('@/lib/cache');
       const mockDelete = jest.fn();
@@ -146,7 +144,7 @@ describe('Authentication Flow Integration', () => {
     });
 
     it('should handle profile get errors', async () => {
-      const mockSupabase = require('@/lib/supabase-server');
+      const mockSupabase = await import('@/lib/supabase-server');
       const mockClient = {
         auth: {
           getUser: jest.fn().mockResolvedValue({
@@ -155,10 +153,9 @@ describe('Authentication Flow Integration', () => {
           }),
         },
       };
-      mockSupabase.createClient.mockReturnValue(mockClient);
+      (mockSupabase.supabaseServer as jest.Mock).mockResolvedValue(mockClient);
 
-      const request = mockRequest({});
-      const response = await profileGET(request as NextRequest);
+      const response = await profileGET();
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -166,7 +163,7 @@ describe('Authentication Flow Integration', () => {
     });
 
     it('should handle profile save errors', async () => {
-      const mockSupabase = require('@/lib/supabase-server');
+      const mockSupabase = await import('@/lib/supabase-server');
       const mockClient = {
         auth: {
           getUser: jest.fn().mockResolvedValue({
@@ -175,13 +172,13 @@ describe('Authentication Flow Integration', () => {
           }),
         },
       };
-      mockSupabase.createClient.mockReturnValue(mockClient);
+      (mockSupabase.supabaseServer as jest.Mock).mockResolvedValue(mockClient);
 
       const request = mockRequest({
         profile: mockUserProfile,
       });
       
-      const response = await profilePOST(request as NextRequest);
+      const response = await profilePOST(request as unknown as NextRequest);
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -189,7 +186,7 @@ describe('Authentication Flow Integration', () => {
     });
 
     it('should handle profile get with database errors', async () => {
-      const mockSupabase = require('@/lib/supabase-server');
+      const mockSupabase = await import('@/lib/supabase-server');
       const mockClient = {
         auth: {
           getUser: jest.fn().mockResolvedValue({
@@ -204,10 +201,9 @@ describe('Authentication Flow Integration', () => {
           }),
         })),
       };
-      mockSupabase.createClient.mockReturnValue(mockClient);
+      (mockSupabase.supabaseServer as jest.Mock).mockResolvedValue(mockClient);
 
-      const request = mockRequest({});
-      const response = await profileGET(request as NextRequest);
+      const response = await profileGET();
 
       expect(response.status).toBe(500);
       const data = await response.json();
@@ -215,7 +211,7 @@ describe('Authentication Flow Integration', () => {
     });
 
     it('should handle profile save with database errors', async () => {
-      const mockSupabase = require('@/lib/supabase-server');
+      const mockSupabase = await import('@/lib/supabase-server');
       const mockClient = {
         auth: {
           getUser: jest.fn().mockResolvedValue({
@@ -230,13 +226,13 @@ describe('Authentication Flow Integration', () => {
           }),
         })),
       };
-      mockSupabase.createClient.mockReturnValue(mockClient);
+      (mockSupabase.supabaseServer as jest.Mock).mockResolvedValue(mockClient);
 
       const request = mockRequest({
         profile: mockUserProfile,
       });
       
-      const response = await profilePOST(request as NextRequest);
+      const response = await profilePOST(request as unknown as NextRequest);
 
       expect(response.status).toBe(500);
       const data = await response.json();
@@ -248,7 +244,7 @@ describe('Authentication Flow Integration', () => {
         json: jest.fn().mockRejectedValue(new Error('Invalid JSON')),
       } as any;
 
-      const response = await profileGET(request);
+      const response = await profileGET();
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -268,7 +264,7 @@ describe('Authentication Flow Integration', () => {
     });
 
     it('should handle profile get with missing profile', async () => {
-      const mockSupabase = require('@/lib/supabase-server');
+      const mockSupabase = await import('@/lib/supabase-server');
       const mockClient = {
         auth: {
           getUser: jest.fn().mockResolvedValue({
@@ -283,10 +279,9 @@ describe('Authentication Flow Integration', () => {
           }),
         })),
       };
-      mockSupabase.createClient.mockReturnValue(mockClient);
+      (mockSupabase.supabaseServer as jest.Mock).mockResolvedValue(mockClient);
 
-      const request = mockRequest({});
-      const response = await profileGET(request as NextRequest);
+      const response = await profileGET();
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -301,7 +296,7 @@ describe('Authentication Flow Integration', () => {
         },
       });
       
-      const response = await profilePOST(request as NextRequest);
+      const response = await profilePOST(request as unknown as NextRequest);
 
       expect(response.status).toBe(400);
       const data = await response.json();

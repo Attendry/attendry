@@ -50,10 +50,10 @@ describe('SearchService', () => {
 
   describe('executeSearch', () => {
     it('should execute search and return results', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
-      const mockCircuitBreaker = require('@/lib/services/circuit-breaker');
-      const mockFallbackStrategies = require('@/lib/services/fallback-strategies');
-      const mockOptimizedAI = require('@/lib/services/optimized-ai-service');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
+      const mockCircuitBreaker = await import('@/lib/services/circuit-breaker');
+      const mockFallbackStrategies = await import('@/lib/services/fallback-strategies');
+      const mockOptimizedAI = await import('@/lib/services/optimized-ai-service');
 
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue(mockSearchResults);
       mockCircuitBreaker.executeWithCircuitBreaker.mockResolvedValue(mockSearchResults);
@@ -74,7 +74,7 @@ describe('SearchService', () => {
     });
 
     it('should handle search errors gracefully', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockRejectedValue(new Error('Search failed'));
 
       await expect(searchService.executeSearch({
@@ -83,7 +83,7 @@ describe('SearchService', () => {
     });
 
     it('should use cached results when available', async () => {
-      const mockCacheService = require('@/lib/cache');
+      const mockCacheService = await import('@/lib/cache');
       mockCacheService.getCacheService.mockReturnValue({
         get: jest.fn().mockResolvedValue(mockSearchResults),
         set: jest.fn(),
@@ -98,14 +98,14 @@ describe('SearchService', () => {
     });
 
     it('should cache results after successful search', async () => {
-      const mockCacheService = require('@/lib/cache');
+      const mockCacheService = await import('@/lib/cache');
       const mockSet = jest.fn();
       mockCacheService.getCacheService.mockReturnValue({
         get: jest.fn().mockResolvedValue(null),
         set: mockSet,
       });
 
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue(mockSearchResults);
 
       await searchService.executeSearch({
@@ -116,10 +116,10 @@ describe('SearchService', () => {
     });
 
     it('should handle circuit breaker failures', async () => {
-      const mockCircuitBreaker = require('@/lib/services/circuit-breaker');
+      const mockCircuitBreaker = await import('@/lib/services/circuit-breaker');
       mockCircuitBreaker.executeWithCircuitBreaker.mockRejectedValue(new Error('Circuit breaker open'));
 
-      const mockFallbackStrategies = require('@/lib/services/fallback-strategies');
+      const mockFallbackStrategies = await import('@/lib/services/fallback-strategies');
       mockFallbackStrategies.executeWithFallback.mockResolvedValue(mockSearchResults);
 
       const result = await searchService.executeSearch({
@@ -131,10 +131,10 @@ describe('SearchService', () => {
     });
 
     it('should handle AI service failures', async () => {
-      const mockOptimizedAI = require('@/lib/services/optimized-ai-service');
+      const mockOptimizedAI = await import('@/lib/services/optimized-ai-service');
       mockOptimizedAI.OptimizedAIService.processRequest.mockRejectedValue(new Error('AI service failed'));
 
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue(mockSearchResults);
 
       const result = await searchService.executeSearch({
@@ -151,7 +151,7 @@ describe('SearchService', () => {
     });
 
     it('should handle empty search results', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue({
         events: [],
         total: 0,
@@ -166,7 +166,7 @@ describe('SearchService', () => {
     });
 
     it('should handle search with filters', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue(mockSearchResults);
 
       const result = await searchService.executeSearch({
@@ -181,7 +181,7 @@ describe('SearchService', () => {
     });
 
     it('should handle search pagination', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue(mockSearchResults);
 
       const result = await searchService.executeSearch({
@@ -196,10 +196,10 @@ describe('SearchService', () => {
 
   describe('runEventDiscovery', () => {
     it('should run event discovery and return results', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
-      const mockCircuitBreaker = require('@/lib/services/circuit-breaker');
-      const mockFallbackStrategies = require('@/lib/services/fallback-strategies');
-      const mockOptimizedAI = require('@/lib/services/optimized-ai-service');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
+      const mockCircuitBreaker = await import('@/lib/services/circuit-breaker');
+      const mockFallbackStrategies = await import('@/lib/services/fallback-strategies');
+      const mockOptimizedAI = await import('@/lib/services/optimized-ai-service');
 
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue(mockSearchResults);
       mockCircuitBreaker.executeWithCircuitBreaker.mockResolvedValue(mockSearchResults);
@@ -221,7 +221,7 @@ describe('SearchService', () => {
     });
 
     it('should handle discovery errors gracefully', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockRejectedValue(new Error('Discovery failed'));
 
       await expect(searchService.runEventDiscovery({
@@ -230,7 +230,7 @@ describe('SearchService', () => {
     });
 
     it('should return discovery statistics', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue(mockSearchResults);
 
       const result = await searchService.runEventDiscovery({
@@ -245,7 +245,7 @@ describe('SearchService', () => {
     });
 
     it('should handle discovery with no results', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue({
         events: [],
         total: 0,
@@ -260,7 +260,7 @@ describe('SearchService', () => {
     });
 
     it('should handle discovery with errors', async () => {
-      const mockRequestDeduplicator = require('@/lib/services/request-deduplicator');
+      const mockRequestDeduplicator = await import('@/lib/services/request-deduplicator');
       mockRequestDeduplicator.deduplicateRequest.mockResolvedValue(mockSearchResults);
 
       const result = await searchService.runEventDiscovery({

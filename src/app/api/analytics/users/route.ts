@@ -29,7 +29,7 @@ interface UserAnalytics {
 /**
  * GET /api/analytics/users
  */
-export async function GET(req: NextRequest): Promise<NextResponse<UserAnalytics>> {
+export async function GET(req: NextRequest): Promise<NextResponse<UserAnalytics | { error: string }>> {
   try {
     const supabase = await supabaseServer();
     

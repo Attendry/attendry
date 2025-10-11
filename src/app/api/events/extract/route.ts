@@ -891,7 +891,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventExtracti
     if (!key) {
       // No FIRECRAWL_KEY found, returning minimal events
       const out = urls.map((u: string) => shape(u, { title: null, country: guessCountryFromHost(u) }));
-      return NextResponse.json({ version: "extract_v5", events: out, trace, note: "no FIRECRAWL_KEY" });
+      return NextResponse.json({ version: "extract_v5", events: out as EventData[], trace, note: "no FIRECRAWL_KEY" });
     }
 
     const targets = urls.slice(0, 15);

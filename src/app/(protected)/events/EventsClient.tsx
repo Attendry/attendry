@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
+import React, { useEffect, useMemo, useState, useCallback, memo } from "react";
 import EventCard from "@/components/EventCard";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import AdvancedSearch from "@/components/AdvancedSearch";

@@ -37,7 +37,7 @@ interface DashboardMetrics {
 /**
  * GET /api/admin/metrics
  */
-export async function GET(): Promise<NextResponse<DashboardMetrics>> {
+export async function GET(): Promise<NextResponse<DashboardMetrics | { error: string }>> {
   try {
     const supabase = await supabaseServer();
     

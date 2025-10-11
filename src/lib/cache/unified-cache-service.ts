@@ -11,7 +11,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 /**
  * Cache configuration
  */
-interface CacheConfig {
+export interface CacheConfig {
   ttl: number; // Time to live in seconds
   prefix: string; // Key prefix for namespacing
   fallbackToDb?: boolean; // Whether to fallback to database cache
@@ -20,7 +20,7 @@ interface CacheConfig {
 /**
  * Cache entry structure
  */
-interface CacheEntry<T = any> {
+export interface CacheEntry<T = any> {
   data: T;
   timestamp: number;
   ttl: number;
@@ -30,7 +30,7 @@ interface CacheEntry<T = any> {
 /**
  * Cache statistics
  */
-interface CacheStats {
+export interface CacheStats {
   hits: number;
   misses: number;
   errors: number;
@@ -78,7 +78,7 @@ export class UnifiedCacheService {
           
           // Try to restore to Redis
           await this.redis.set(redisKey, JSON.stringify(dbData), config.ttl);
-          return dbData;
+          return dbData as T;
         }
       }
 
@@ -190,7 +190,7 @@ export class UnifiedCacheService {
           if (dbData) {
             this.stats.hits++;
             this.stats.fallbacks++;
-            result[originalKey] = dbData;
+            result[originalKey] = dbData as T;
           } else {
             this.stats.misses++;
             result[originalKey] = null;

@@ -1,5 +1,5 @@
 // common/search/config.ts
-import { supabaseAdmin } from '@/lib/supabase-admin';
+import { supabaseAdmin } from '../../lib/supabase-admin';
 
 export type ActiveConfig = {
   id: string;
@@ -141,9 +141,9 @@ export async function loadActiveConfig(): Promise<ActiveConfig> {
       const disqualifyCountryTerms = toArray(cfg.disqualifyCountryTerms || cfg.disqualify_country_terms);
       const disqualifyCityTerms = toArray(cfg.disqualifyCityTerms || cfg.disqualify_city_terms);
       cached = { 
-        id: cfg.id,
-        name: cfg.name,
-        industry: cfg.industry,
+        id: cfg.id || '',
+        name: cfg.name || '',
+        industry: cfg.industry || '',
         baseQuery,
         excludeTerms,
         eventTerms,

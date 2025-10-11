@@ -28,7 +28,7 @@ interface EventAnalytics {
 /**
  * GET /api/analytics/events
  */
-export async function GET(req: NextRequest): Promise<NextResponse<EventAnalytics>> {
+export async function GET(req: NextRequest): Promise<NextResponse<EventAnalytics | { error: string }>> {
   try {
     const supabase = await supabaseServer();
     

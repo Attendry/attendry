@@ -32,7 +32,7 @@ interface SystemAnalytics {
 /**
  * GET /api/analytics/system
  */
-export async function GET(req: NextRequest): Promise<NextResponse<SystemAnalytics>> {
+export async function GET(req: NextRequest): Promise<NextResponse<SystemAnalytics | { error: string }>> {
   try {
     const supabase = await supabaseServer();
     
