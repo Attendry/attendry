@@ -92,7 +92,6 @@ export async function GET(): Promise<NextResponse<{ users: User[] }>> {
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const supabase = await supabaseServer();
-    const supabase = await supabaseServer();
     
     const {
       data: { session },
