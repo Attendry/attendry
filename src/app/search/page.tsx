@@ -10,6 +10,50 @@ import { useState, useCallback } from 'react';
 import NaturalLanguageSearch from '@/components/NaturalLanguageSearch';
 import { SearchIntent } from '@/components/NaturalLanguageSearch';
 import { useToast, ToastContainer } from '@/components/Toast';
+import EventCard from '@/components/EventCard';
+
+// Helper function to calculate date ranges
+function calculateDateRange(timeframe: string): { from: string; to: string } {
+  const today = new Date();
+  const from = new Date(today);
+  const to = new Date(today);
+  
+  switch (timeframe) {
+    case 'past-7':
+      from.setDate(today.getDate() - 7);
+      to.setDate(today.getDate() - 1);
+      break;
+    case 'past-14':
+      from.setDate(today.getDate() - 14);
+      to.setDate(today.getDate() - 1);
+      break;
+    case 'past-30':
+      from.setDate(today.getDate() - 30);
+      to.setDate(today.getDate() - 1);
+      break;
+    case 'next-7':
+      from.setDate(today.getDate());
+      to.setDate(today.getDate() + 7);
+      break;
+    case 'next-14':
+      from.setDate(today.getDate());
+      to.setDate(today.getDate() + 14);
+      break;
+    case 'next-30':
+      from.setDate(today.getDate());
+      to.setDate(today.getDate() + 30);
+      break;
+    default:
+      // Default to next 30 days
+      from.setDate(today.getDate());
+      to.setDate(today.getDate() + 30);
+  }
+  
+  return {
+    from: from.toISOString().split('T')[0],
+    to: to.toISOString().split('T')[0]
+  };
+}
 
 export default function SearchPage() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -23,38 +67,52 @@ export default function SearchPage() {
     setLastIntent(intent);
 
     try {
-      // Build search parameters based on intent
-      const searchParams = new URLSearchParams();
-      searchParams.set('q', query);
-
+      // Determine country from location entities or default to DE
+      let country = 'DE';
       if (intent.entities.location?.length) {
-        searchParams.set('location', intent.entities.location.join(','));
+        const location = intent.entities.location[0].toLowerCase();
+        if (location.includes('germany') || location.includes('deutschland')) country = 'DE';
+        else if (location.includes('austria') || location.includes('österreich')) country = 'AT';
+        else if (location.includes('switzerland') || location.includes('schweiz')) country = 'CH';
+        else if (location.includes('france') || location.includes('frankreich')) country = 'FR';
+        else if (location.includes('italy') || location.includes('italien')) country = 'IT';
+        else if (location.includes('spain') || location.includes('spanien')) country = 'ES';
+        else if (location.includes('netherlands') || location.includes('niederlande')) country = 'NL';
+        else if (location.includes('belgium') || location.includes('belgien')) country = 'BE';
       }
 
+      // Calculate date range based on intent or default to next 30 days
+      let dateRange = calculateDateRange('next-30');
       if (intent.entities.date?.length) {
-        searchParams.set('date', intent.entities.date.join(','));
+        const dateStr = intent.entities.date[0].toLowerCase();
+        if (dateStr.includes('past') || dateStr.includes('last')) {
+          if (dateStr.includes('7')) dateRange = calculateDateRange('past-7');
+          else if (dateStr.includes('14')) dateRange = calculateDateRange('past-14');
+          else if (dateStr.includes('30')) dateRange = calculateDateRange('past-30');
+        } else if (dateStr.includes('next') || dateStr.includes('upcoming')) {
+          if (dateStr.includes('7')) dateRange = calculateDateRange('next-7');
+          else if (dateStr.includes('14')) dateRange = calculateDateRange('next-14');
+          else if (dateStr.includes('30')) dateRange = calculateDateRange('next-30');
+        }
       }
 
-      if (intent.entities.industry?.length) {
-        searchParams.set('industry', intent.entities.industry.join(','));
-      }
-
-      // Call the appropriate search endpoint based on intent
-      let endpoint = '/api/events/search';
-      if (intent.type === 'speaker_search') {
-        endpoint = '/api/events/speakers';
-      }
-
-      const response = await fetch(`${endpoint}?${searchParams.toString()}`, {
+      // Call the /api/events/run endpoint with proper parameters
+      const response = await fetch('/api/events/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({
+          userText: query,
+          country,
+          dateFrom: dateRange.from,
+          dateTo: dateRange.to,
+          locale: 'de' // Default to German locale
+        }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        setSearchResults(data.events || data.items || []);
-        success('Search completed', `Found ${(data.events || data.items || []).length} results`);
+        setSearchResults(data.events || []);
+        success('Search completed', `Found ${(data.events || []).length} results`);
       } else {
         error('Search failed', 'Unable to retrieve search results');
       }
@@ -108,49 +166,10 @@ export default function SearchPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {searchResults.map((event, index) => (
-                <div key={event.id || index} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
-                  <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{event.title}</h3>
-                  
-                  {event.starts_at && (
-                    <div className="flex items-center space-x-2 mb-2">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span className="text-sm text-gray-600">
-                        {new Date(event.starts_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  )}
-
-                  {(event.city || event.country) && (
-                    <div className="flex items-center space-x-2 mb-2">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                      </svg>
-                      <span className="text-sm text-gray-600">
-                        {[event.city, event.country].filter(Boolean).join(', ')}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between mt-3">
-                    <a
-                      href={event.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
-                    >
-                      View Event
-                    </a>
-                    <button 
-                      onClick={() => success('Event saved', 'Added to your watchlist')}
-                      className="text-sm text-gray-600 hover:text-gray-800 transition-colors"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
+                <EventCard 
+                  key={event.id || event.source_url || index} 
+                  ev={event}
+                />
               ))}
             </div>
           </div>

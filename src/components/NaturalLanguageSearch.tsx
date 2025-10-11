@@ -23,7 +23,7 @@ import {
 /**
  * Search intent interface
  */
-interface SearchIntent {
+export interface SearchIntent {
   type: 'event_search' | 'location_search' | 'date_search' | 'industry_search' | 'speaker_search';
   confidence: number;
   entities: {
