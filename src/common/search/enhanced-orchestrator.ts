@@ -2019,7 +2019,20 @@ async function extractEnrichmentFromLinks(
     return emptyExtractedDetails();
   }
 
-  const deduped = Array.from(new Set(links)).filter((link) => link !== parentUrl).slice(0, 3); // Reduced from 8 to 3
+  // Prioritize speaker-related links for faster extraction
+  const speakerLinks = links.filter(link => 
+    /speaker|talent|faculty|referenten|program.*speaker/i.test(link) ||
+    /speaker|talent|faculty|referenten/i.test(new URL(link).pathname)
+  );
+  
+  const otherLinks = links.filter(link => 
+    !/speaker|talent|faculty|referenten|program.*speaker/i.test(link) &&
+    !/speaker|talent|faculty|referenten/i.test(new URL(link).pathname)
+  );
+  
+  // Prioritize speaker links, then other links, limit to 2 total for faster processing
+  const deduped = Array.from(new Set([...speakerLinks.slice(0, 2), ...otherLinks.slice(0, 1)]))
+    .filter((link) => link !== parentUrl);
   if (deduped.length === 0) {
     return emptyExtractedDetails();
   }
@@ -2048,7 +2061,7 @@ async function extractEnrichmentFromLinks(
       })();
       
       const timeoutPromise = new Promise<ExtractedEventDetails>((_, reject) => {
-        setTimeout(() => reject(new Error(`Enrichment timeout for ${link}`)), 30000); // 30 seconds per link
+        setTimeout(() => reject(new Error(`Enrichment timeout for ${link}`)), 20000); // 20 seconds per link
       });
       
       const merged = await Promise.race([enrichmentPromise, timeoutPromise]);
@@ -2061,10 +2074,21 @@ async function extractEnrichmentFromLinks(
       
       if (isSpeakerPage) {
         console.log('[extractEnrichmentFromLinks] Detected speaker page, fetching speakers:', link);
-        const siteSpeakers = await fetchSpeakersFromSite(link).catch(() => []);
-        if (siteSpeakers.length) {
-          merged.speakers = mergeArray(merged.speakers, siteSpeakers, (speaker) => speaker.name ?? JSON.stringify(speaker));
-          console.log('[extractEnrichmentFromLinks] Found speakers:', siteSpeakers.length, 'from', link);
+        try {
+          // Add timeout to speaker extraction to prevent hanging
+          const speakerPromise = fetchSpeakersFromSite(link);
+          const speakerTimeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error(`Speaker extraction timeout for ${link}`)), 10000); // 10 seconds for speaker extraction
+          });
+          
+          const siteSpeakers = await Promise.race([speakerPromise, speakerTimeoutPromise]);
+          if (siteSpeakers.length) {
+            merged.speakers = mergeArray(merged.speakers, siteSpeakers, (speaker) => speaker.name ?? JSON.stringify(speaker));
+            console.log('[extractEnrichmentFromLinks] Found speakers:', siteSpeakers.length, 'from', link);
+          }
+        } catch (error) {
+          console.warn('[extractEnrichmentFromLinks] Speaker extraction failed for:', link, error);
+          // Continue without speakers rather than failing completely
         }
       }
     }
@@ -2512,7 +2536,7 @@ async function performEnhancedSearch(args: ExecArgs) {
       // Add timeout to individual extractions to prevent hanging
       const extractionPromise = extractEventDetails(url, cfg);
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Extraction timeout for ${url}`)), 45000); // 45 seconds per URL
+        setTimeout(() => reject(new Error(`Extraction timeout for ${url}`)), 60000); // 60 seconds per URL
       });
       
       const details = await Promise.race([extractionPromise, timeoutPromise]);
@@ -2638,10 +2662,35 @@ async function performEnhancedSearch(args: ExecArgs) {
       });
     } catch (error) {
       console.error('[enhanced_orchestrator] Error extracting event from', url, error);
-      // Create a basic event object even if extraction fails
+      
+      // Try to extract basic information from the URL and create a more useful fallback
+      const urlObj = new URL(url);
+      const hostname = urlObj.hostname;
+      const pathname = urlObj.pathname;
+      
+      // Extract potential event title from URL path
+      let fallbackTitle = `Event from ${hostname}`;
+      if (pathname.includes('conference') || pathname.includes('summit') || pathname.includes('event')) {
+        fallbackTitle = pathname.split('/').pop()?.replace(/[-_]/g, ' ') || fallbackTitle;
+        fallbackTitle = fallbackTitle.charAt(0).toUpperCase() + fallbackTitle.slice(1);
+      }
+      
+      // Try to extract basic speakers from URL if it's a speaker page
+      let fallbackSpeakers: any[] = [];
+      if (/speaker|talent|faculty|referenten/i.test(pathname)) {
+        // For speaker pages, try to extract speaker names from URL or create placeholder
+        fallbackSpeakers = [{
+          name: 'Speakers available',
+          title: null,
+          org: null,
+          bio: null,
+          confidence: 0.3
+        }];
+      }
+      
       events.push({
         id: `event_${i}`,
-        title: `Event from ${new URL(url).hostname}`,
+        title: fallbackTitle,
         source_url: url,
         starts_at: null,
         country: null,
@@ -2650,10 +2699,10 @@ async function performEnhancedSearch(args: ExecArgs) {
         location: null,
         locationSource: null,
         venue: null,
-        description: `Event found at ${url}`,
-        speakers: [],
+        description: `Event found at ${url}. ${fallbackSpeakers.length > 0 ? 'Speaker information available on the website.' : ''}`,
+        speakers: fallbackSpeakers,
         confidence: Math.max(candidate.score * 0.4, 0.05),
-        confidence_reason: 'extraction_error',
+        confidence_reason: 'extraction_error_with_fallback',
         scoringTrace: {
           geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
           heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
