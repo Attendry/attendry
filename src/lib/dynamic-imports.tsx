@@ -69,7 +69,7 @@ export const DynamicImports = {
   Header: createDynamicImport(() => import('@/components/Header')),
   
   // Page components
-  EventsClient: createDynamicImport(() => import('@/app/events/EventsClient')),
+  EventsClient: createDynamicImport(() => import('@/app/(protected)/events/EventsClient')),
   
   // Admin components (lazy loaded for admin users only)
   AdminDashboard: createDynamicImport(() => import('@/components/AdminDashboard'), { ssr: false }),

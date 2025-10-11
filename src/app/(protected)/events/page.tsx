@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabase-server";
-import EventsClient from "@/app/events/EventsClient";
+import EventsClient from "@/app/(protected)/events/EventsClient";
 
 // Force dynamic rendering since we use cookies for authentication
 export const dynamic = 'force-dynamic';
