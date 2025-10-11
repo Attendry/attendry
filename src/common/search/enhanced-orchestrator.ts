@@ -1433,7 +1433,7 @@ async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: A
           ],
           onlyMainContent: true,
           waitFor: 2000,
-          timeout: 20000
+          timeout: 30000
         })
       });
 
@@ -1446,6 +1446,14 @@ async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: A
           body: body?.slice(0, 400),
           attempt
         });
+        
+        // For timeout errors (408), try fewer retries with longer delays
+        if (response.status === 408 && attempt < 2) {
+          console.log('[extract] Firecrawl timeout, retrying with longer delay', { url, attempt });
+          await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
+          continue;
+        }
+        
         if (attempt === FIRECRAWL_RETRY_DELAYS.length - 1) {
           throw new Error(`Firecrawl returned ${response.status}`);
         }
@@ -1501,7 +1509,14 @@ async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: A
     } catch (error) {
       console.warn('[extract] Firecrawl attempt failed', { url, attempt, error });
       if (attempt === FIRECRAWL_RETRY_DELAYS.length - 1) {
-        throw error;
+        // If all Firecrawl attempts failed, try cheap HTML fallback
+        console.log('[extract] All Firecrawl attempts failed, trying cheap HTML fallback', { url });
+        try {
+          return await cheapHtmlScrape(url, searchConfig);
+        } catch (fallbackError) {
+          console.warn('[extract] Cheap HTML fallback also failed', { url, fallbackError });
+          throw error; // Throw original Firecrawl error
+        }
       }
     }
   }
@@ -1521,7 +1536,7 @@ async function fallbackExtraction(url: string, apiKey: string, searchConfig: Act
         url,
         formats: ['markdown'],
         onlyMainContent: true,
-        timeout: 10000
+        timeout: 15000
       })
     });
 
@@ -2385,11 +2400,26 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       const eventCity = details.city;
       const eventLocation = details.location;
 
-      const matchesTarget = eventCountry?.toUpperCase() === country.toUpperCase();
+      // Normalize country codes for comparison (UK -> GB, etc.)
+      const normalizeCountryCode = (code: string | null | undefined): string | null => {
+        if (!code) return null;
+        const upper = code.toUpperCase();
+        // Map common country code variations
+        if (upper === 'UK') return 'GB';
+        if (upper === 'USA' || upper === 'US') return 'US';
+        if (upper === 'DEUTSCHLAND') return 'DE';
+        return upper;
+      };
+
+      const normalizedEventCountry = normalizeCountryCode(eventCountry);
+      const normalizedTargetCountry = normalizeCountryCode(country);
+
+      const matchesTarget = normalizedEventCountry === normalizedTargetCountry;
       const mentionsTarget = eventLocation?.toLowerCase().includes(country.toLowerCase()) ?? false;
       const urlSuggestsTarget = url.toLowerCase().includes('.' + country.toLowerCase()) ||
         url.toLowerCase().includes('germany') ||
-        url.toLowerCase().includes('deutschland');
+        url.toLowerCase().includes('deutschland') ||
+        (country.toLowerCase() === 'gb' && (url.toLowerCase().includes('uk') || url.toLowerCase().includes('britain')));
 
       const hasCity = Boolean(eventCity);
       const europeanHint = (details.description?.toLowerCase().includes('europe') || details.title?.toLowerCase().includes('europe') || url.toLowerCase().includes('european'));
@@ -2399,15 +2429,15 @@ export async function executeEnhancedSearch(args: ExecArgs) {
           console.log('[enhanced_orchestrator] Accepting event with inferred city only', { url, eventCity });
         } else if (eventCountry?.toUpperCase() === 'EU' || europeanHint) {
           console.log('[enhanced_orchestrator] Accepting European-scoped event without explicit country', { url, eventCountry, europeanHint });
-        } else if (country?.toLowerCase() === 'de' && (eventCountry?.toUpperCase() === 'FR' || eventCountry?.toUpperCase() === 'BE' || eventCountry?.toUpperCase() === 'CH' || eventCountry?.toUpperCase() === 'AT' || eventCountry?.toUpperCase() === 'NL')) {
-          console.log('[enhanced_orchestrator] Accepting neighboring European country event for German search', { url, eventCountry, targetCountry: country });
         } else {
           console.log('[enhanced_orchestrator] Filtering out uncertain country match', {
             url,
             eventCountry,
+            normalizedEventCountry,
             eventCity,
             eventLocation,
             targetCountry: country,
+            normalizedTargetCountry,
           });
           rejected.push({ url, reason: 'country_ambiguous', score: candidate.score });
           continue;
