@@ -2362,13 +2362,13 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         url.toLowerCase().includes('deutschland');
 
       const hasCity = Boolean(eventCity);
-      const europeanHint = !eventCountry && (details.description?.toLowerCase().includes('europe') || details.title?.toLowerCase().includes('europe'));
+      const europeanHint = (details.description?.toLowerCase().includes('europe') || details.title?.toLowerCase().includes('europe') || url.toLowerCase().includes('european'));
 
       if (!matchesTarget && !mentionsTarget && !urlSuggestsTarget) {
         if (hasCity && !eventCountry) {
           console.log('[enhanced_orchestrator] Accepting event with inferred city only', { url, eventCity });
         } else if (eventCountry?.toUpperCase() === 'EU' || europeanHint) {
-          console.log('[enhanced_orchestrator] Accepting European-scoped event without explicit country', { url, eventCountry });
+          console.log('[enhanced_orchestrator] Accepting European-scoped event without explicit country', { url, eventCountry, europeanHint });
         } else {
           console.log('[enhanced_orchestrator] Filtering out uncertain country match', {
             url,
