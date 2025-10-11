@@ -26,7 +26,8 @@ import { SpeakerData } from "@/lib/types/core";
  * Event data structure interface
  */
 interface Event {
-  title?: string;                    // Event title
+  id?: string;                      // Event ID
+  title?: string;                   // Event title
   starts_at?: string;               // Start date (ISO format)
   ends_at?: string;                 // End date (ISO format)
   city?: string;                    // Event city
@@ -34,12 +35,15 @@ interface Event {
   venue?: string;                   // Event venue
   organizer?: string;               // Event organizer
   topics?: string[];                // Event topics/themes
-  speakers?: any[];                 // Array of speaker objects
+  speakers?: SpeakerData[];         // Array of speaker objects
   sponsors?: any[];                 // Array of sponsor objects
   participating_organizations?: string[]; // Participating organizations
   partners?: string[];              // Event partners
   competitors?: string[];           // Industry competitors
   source_url: string;              // Source URL of the event
+  description?: string;             // Event description
+  confidence?: number;              // Event confidence score
+  confidence_reason?: string;       // Confidence reason
 }
 
 /**
@@ -70,6 +74,17 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   const [loadingSpeakers, setLoadingSpeakers] = useState(false); // Loading state for speaker extraction
   const [speakers, setSpeakers] = useState<SpeakerData[] | null>(null); // Extracted speaker data
   const [followed, setFollowed] = useState<string[]>([]);       // List of followed speakers
+
+  // ============================================================================
+  // DEBUG: Log event data to understand what we're receiving
+  // ============================================================================
+  console.log('EventCard received event:', {
+    title: ev.title,
+    speakers: ev.speakers,
+    speakersLength: ev.speakers?.length,
+    speakersType: typeof ev.speakers,
+    speakersIsArray: Array.isArray(ev.speakers)
+  });
 
   // ============================================================================
   // COMPUTED VALUES (Memoized for performance)
@@ -169,11 +184,14 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   const toggleOpen = useCallback(() => {
     const next = !open;
     setOpen(next);
+    console.log('toggleOpen called:', { next, speakers, evSpeakers: ev.speakers, evSpeakersLength: ev.speakers?.length });
     if (next && speakers == null) {
       // First check if speakers are already available in the event data
       if (ev.speakers && ev.speakers.length > 0) {
+        console.log('Setting speakers from event data:', ev.speakers);
         setSpeakers(ev.speakers);
       } else {
+        console.log('No speakers in event data, loading via API');
         // If no speakers in event data, load them via API
         loadSpeakers(includePast);
       }
@@ -420,6 +438,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
 
           {!loadingSpeakers && speakers && speakers.length > 0 && (
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {(() => { console.log('Rendering speakers:', speakers); return null; })()}
               {speakers.map((p, idx) => (
                 <EnhancedSpeakerCard 
                   key={p.name + (p.org || "") + idx} 
