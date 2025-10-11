@@ -5,7 +5,15 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 // Force Node.js runtime for middleware to avoid Edge Runtime issues with Supabase
 export const runtime = 'nodejs';
 
-const AUTH_PATH_PREFIXES = ['/watchlist', '/api/watchlist'];
+// Public paths that don't require authentication
+const PUBLIC_PATHS = ['/', '/login', '/auth'];
+
+// Paths that require authentication (all protected routes)
+const PROTECTED_PATH_PREFIXES = [
+  '/accessibility', '/activity', '/adaptive', '/admin', '/compare', 
+  '/designs', '/events', '/notifications', '/predictions', '/premium-adaptive',
+  '/profile', '/recommendations', '/search', '/test', '/trending', '/watchlist'
+];
 
 const ADMIN_PATH_PREFIXES = ['/admin', '/api/admin'];
 
@@ -58,9 +66,14 @@ export async function middleware(req: NextRequest) {
 
   const pathname = req.nextUrl.pathname;
 
-  const requiresAuth = AUTH_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  // Check if this is a public path
+  const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(path + '/'));
+  
+  // Check if this is a protected path
+  const requiresAuth = PROTECTED_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
   const requiresAdmin = ADMIN_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
+  // Redirect unauthenticated users trying to access protected routes
   if (!session && (requiresAuth || requiresAdmin)) {
     const redirectUrl = new URL('/login', req.url);
     redirectUrl.searchParams.set('redirectedFrom', pathname);

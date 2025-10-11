@@ -145,7 +145,7 @@ export default function LoginPage() {
         alignItems: "center", 
         justifyContent: "center",
         padding: "2rem",
-        background: "linear-gradient(135deg, var(--muted) 0%, var(--background) 100%)"
+        background: "linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%)"
       }}>
         <div style={{ 
           textAlign: "center",
@@ -173,7 +173,7 @@ export default function LoginPage() {
       alignItems: "center", 
       justifyContent: "center",
       padding: "2rem",
-      background: "linear-gradient(135deg, var(--muted) 0%, var(--background) 100%)"
+      background: "linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%)"
     }}>
       <div style={{ 
         width: "100%", 
@@ -191,13 +191,13 @@ export default function LoginPage() {
             color: "var(--foreground)",
             marginBottom: "0.5rem"
           }}>
-            Welcome to Attendry
+            Welcome Back
           </h1>
           <p style={{
             fontSize: "1rem",
             color: "var(--muted-foreground)"
           }}>
-            Sign in to discover and track events
+            Sign in to continue discovering events that drive your growth
           </p>
         </div>
 
