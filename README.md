@@ -1,4 +1,27 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Attendry - Event Search Platform
+
+This is a [Next.js](https://nextjs.org) project for searching and discovering professional events, conferences, and summits.
+
+## Search Pipeline Architecture
+
+The application uses two distinct search pipelines:
+
+### Enhanced Pipeline (`/api/events/run`)
+- **Used by**: Main search UI (`/search` page)
+- **Features**: 
+  - Multi-provider search (Firecrawl, Google CSE)
+  - AI-powered content extraction and speaker detection
+  - Related page discovery and enrichment
+  - Advanced filtering and scoring
+- **Data Sources**: Firecrawl scraping, Google Custom Search, Gemini AI
+
+### Legacy Pipeline (`/api/events/search`)
+- **Used by**: Basic search endpoints and legacy integrations
+- **Features**: 
+  - Google Custom Search Engine only
+  - Basic filtering and caching
+  - Limited content extraction
+- **Data Sources**: Google Custom Search Engine
 
 ## Getting Started
 
@@ -16,9 +39,22 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Required environment variables:
+- `GOOGLE_CSE_KEY` - Google Custom Search API key
+- `GOOGLE_CSE_CX` - Google Custom Search Engine ID
+- `FIRECRAWL_API_KEY` - Firecrawl API key for content extraction
+- `GEMINI_API_KEY` - Google Gemini API key for AI processing
+
+## Search Debugging
+
+The enhanced pipeline includes comprehensive logging and instrumentation:
+- `stageCounter` tracks input/output counts at each processing stage
+- `logSuppressedSamples` captures examples of filtered content
+- Correlation IDs link related log entries across the pipeline
+
+Check Vercel logs for detailed pipeline execution traces.
 
 ## Learn More
 
