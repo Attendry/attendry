@@ -28,7 +28,13 @@ export interface EventsSearchResponseEvent {
   confidence: number | null;
   confidence_reason?: string | null;
   sessions: Array<Record<string, unknown>>;
-  speakers: Array<Record<string, unknown>>;
+  speakers: Array<{
+    name: string | null;
+    title: string | null;
+    org: string | null;
+    bio: string | null;
+    confidence: number;
+  }>;
   sponsors: Array<Record<string, unknown>>;
   countrySource?: string | null;
   citySource?: string | null;
