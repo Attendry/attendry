@@ -17,7 +17,7 @@
  */
 
 "use client";
-import { useState, useMemo, useCallback, memo } from "react";
+import React, { useState, useMemo, useCallback, memo } from "react";
 import AttendeeCard from "./AttendeeCard";
 import EnhancedSpeakerCard from "./EnhancedSpeakerCard"; // Speaker card component
 import { SpeakerData } from "@/lib/types/core";
@@ -85,6 +85,16 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
     speakersType: typeof ev.speakers,
     speakersIsArray: Array.isArray(ev.speakers)
   });
+
+  // ============================================================================
+  // DEBUG: Force speakers to be set if they exist in event data
+  // ============================================================================
+  React.useEffect(() => {
+    if (ev.speakers && ev.speakers.length > 0 && speakers === null) {
+      console.log('DEBUG: Auto-setting speakers from event data:', ev.speakers);
+      setSpeakers(ev.speakers);
+    }
+  }, [ev.speakers, speakers]);
 
   // ============================================================================
   // COMPUTED VALUES (Memoized for performance)
@@ -436,9 +446,24 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
             </div>
           )}
 
-          {!loadingSpeakers && speakers && speakers.length > 0 && (
+          {/* DEBUG: Always show speakers if they exist */}
+          {speakers && speakers.length > 0 && (
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {(() => { console.log('Rendering speakers:', speakers); return null; })()}
+              {speakers.map((p, idx) => (
+                <EnhancedSpeakerCard 
+                  key={p.name + (p.org || "") + idx} 
+                  speaker={p} 
+                  sessionTitle={p.session || p.speech_title}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Original conditional rendering */}
+          {!loadingSpeakers && speakers && speakers.length > 0 && (
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {(() => { console.log('Rendering speakers (original):', speakers); return null; })()}
               {speakers.map((p, idx) => (
                 <EnhancedSpeakerCard 
                   key={p.name + (p.org || "") + idx} 
