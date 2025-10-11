@@ -160,8 +160,9 @@ function normalizeCountryCode(value: string | null): string | null {
 }
 
 function toApiSpeakers(raw: unknown): ApiSpeaker[] {
+  console.log('toApiSpeakers called with:', { raw, isArray: Array.isArray(raw), length: Array.isArray(raw) ? raw.length : 'not array' });
   if (!Array.isArray(raw)) return [];
-  return raw
+  const result = raw
     .map((entry) => {
       if (!entry || typeof entry !== 'object') return null;
       const speaker = entry as Record<string, unknown>;
@@ -181,6 +182,9 @@ function toApiSpeakers(raw: unknown): ApiSpeaker[] {
       return { name, title, org, bio: bio || null, confidence } satisfies ApiSpeaker;
     })
     .filter((speaker): speaker is ApiSpeaker => !!speaker);
+  
+  console.log('toApiSpeakers returning:', { result, length: result.length });
+  return result;
 }
 
 function toApiSessions(raw: unknown): ApiSession[] {
@@ -220,6 +224,15 @@ function toApiEvent(raw: unknown): ApiEvent | null {
   const details = obj.details && typeof obj.details === 'object' ? (obj.details as Record<string, unknown>) : undefined;
   const sourceUrl = ensureString(obj.source_url) ?? ensureString(obj.url) ?? ensureString(details?.source_url ?? details?.url);
   if (!sourceUrl) return null;
+
+  // DEBUG: Log the raw event data to see what we're processing
+  console.log('toApiEvent processing:', {
+    title: obj.title,
+    speakers: obj.speakers,
+    speakersLength: Array.isArray(obj.speakers) ? obj.speakers.length : 'not array',
+    speakersType: typeof obj.speakers,
+    details: details ? { speakers: details.speakers } : 'no details'
+  });
 
   const id = ensureString(obj.id) ?? ensureString(details?.id) ?? sourceUrl;
   const title = ensureString(obj.title) ?? ensureString(details?.title);
