@@ -1409,14 +1409,46 @@ async function extractWithFirecrawl(url: string, apiKey: string, searchConfig: A
       const repaired = await tryJsonRepair(raw);
       const parsed = JSON.parse(repaired ?? raw) as ExtractResponse;
       const candidate = extractCandidatePayload(parsed, url);
+      
+      // Enhanced logging for debugging
+      console.log('[extract] Firecrawl raw response sample:', {
+        url,
+        rawLength: raw.length,
+        hasJson: !!parsed.json,
+        hasOutputs: Array.isArray(parsed.outputs),
+        candidateType: typeof candidate,
+        candidateKeys: candidate && typeof candidate === 'object' ? Object.keys(candidate) : null
+      });
+      
       const extracted = toExtractedEventDetails(candidate);
       if (Array.isArray(candidate?.relatedUrls) && candidate.relatedUrls.length > 0 && extracted.relatedUrls.length === 0) {
         extracted.relatedUrls = candidate.relatedUrls.filter((entry: unknown): entry is string => typeof entry === 'string');
       }
       if (isExtractEmpty(extracted)) {
         logExtractionDebug(url, 'firecrawl_json_empty', { attempt, snippet: raw.slice(0, 200) });
+        console.log('[extract] Firecrawl extraction returned empty result:', {
+          url,
+          attempt,
+          extracted: {
+            title: extracted.title,
+            description: extracted.description,
+            speakers: extracted.speakers?.length || 0,
+            sessions: extracted.sessions?.length || 0
+          }
+        });
       } else {
         logExtractionDebug(url, 'firecrawl_json_success', { attempt, title: extracted.title, date: extracted.starts_at });
+        console.log('[extract] Firecrawl extraction successful:', {
+          url,
+          attempt,
+          extracted: {
+            title: extracted.title,
+            description: extracted.description,
+            speakers: extracted.speakers?.length || 0,
+            sessions: extracted.sessions?.length || 0,
+            speakerNames: extracted.speakers?.map(s => s.name).filter(Boolean) || []
+          }
+        });
       }
       return extracted;
     } catch (error) {
