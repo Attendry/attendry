@@ -146,7 +146,13 @@ async function fetchSpeakersFromSite(url: string): Promise<ExtractedSpeaker[]> {
           const titleElement = $(element).find('p').first();
           if (nameElement.length && titleElement.length) {
             const name = nameElement.text().trim();
-            const title = titleElement.text().trim();
+            const titleText = titleElement.html() || '';
+            
+            // Split title and company by <br> tag
+            const parts = titleText.split(/<br\s*\/?>/i);
+            const title = parts[0] ? parts[0].replace(/<[^>]*>/g, '').trim() : '';
+            const company = parts[1] ? parts[1].replace(/<[^>]*>/g, '').trim() : '';
+            
             if (name && name.length > 2) {
               const key = name.toLowerCase();
               if (!candidates.has(key)) {
@@ -154,7 +160,7 @@ async function fetchSpeakersFromSite(url: string): Promise<ExtractedSpeaker[]> {
                 speakers.push({
                   name,
                   title: title || null,
-                  organization: null,
+                  organization: company || null,
                   bio: null
                 });
               }
