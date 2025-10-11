@@ -925,7 +925,8 @@ function generateExtractionPrompt(searchConfig: ActiveConfig): string {
     : 'the target region';
   const eventTerms = searchConfig.eventTerms?.join(', ') ?? 'events, conferences, summits';
 
-  return `Extract structured details for ${searchConfig.industry ?? 'general'} events.
+  return `You are an expert event data extractor. Extract ALL available information from this webpage about ${searchConfig.industry ?? 'general'} events.
+Be thorough and extract every piece of information you can find. Look carefully through the entire page content.
 Return strict JSON with the following shape:
 {
   "title": string | null,
@@ -975,14 +976,21 @@ Instructions:
 - Look for speaker photos with captions or speaker cards with names and titles.
 - Extract sponsors or partners with tier/description when present.
 - Collect any in-domain links pointing to agenda, program, speakers, sponsors, or practical information pages in "relatedUrls".
+- IMPORTANT: Look for ANY mention of people, names, presenters, or speakers anywhere on the page.
+- Look in headers, footers, sidebars, and all content areas for speaker information.
+- Check for "Meet the speakers", "Our speakers", "Keynote speakers", "Panelists", "Presenters" sections.
+- Extract names from speaker cards, speaker grids, or any structured speaker listings.
 - Do not invent data; use null or empty arrays when uncertain.
 - Trim whitespace from all strings.`;
 }
 
 async function extractEventDetails(url: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
+  console.log('[extract] Starting extractEventDetails for URL:', url);
   const apiKey = process.env.FIRECRAWL_API_KEY || null;
   if (!apiKey) {
     console.warn('[extract] No Firecrawl API key available');
+  } else {
+    console.log('[extract] Firecrawl API key is available');
   }
 
   // Step 1: Cheap HTML fetch (avoids credits and captures basic info)
@@ -1009,6 +1017,15 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
 
   const primarySources = [basic, firecrawlResult].filter(Boolean) as ExtractedEventDetails[];
   const merged = mergeDetails(basic ?? emptyExtractedDetails(), firecrawlResult ?? emptyExtractedDetails());
+  
+  console.log('[extract] Final extraction result for URL:', url, {
+    title: merged.title,
+    description: merged.description,
+    speakers: merged.speakers?.length || 0,
+    sessions: merged.sessions?.length || 0,
+    speakerNames: merged.speakers?.map(s => s.name).filter(Boolean) || []
+  });
+  
   stageCounter(
     'extract:primary',
     primarySources,
@@ -2232,7 +2249,9 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     const candidate = prioritized[i];
     const url = candidate.url;
     const cached = await fetchCachedExtraction(url, null);
+    console.log('[enhanced_orchestrator] Cache check for URL:', url, 'cached:', !!cached);
     if (cached) {
+      console.log('[enhanced_orchestrator] Using cached result for URL:', url, 'payload keys:', Object.keys(cached[0]?.payload ?? {}));
       const payload = (cached[0]?.payload ?? {}) as Record<string, unknown>;
       const sessions = Array.isArray(payload.sessions) ? payload.sessions as ExtractedSession[] : [];
       const speakers = Array.isArray(payload.speakers) ? payload.speakers as ExtractedSpeaker[] : [];
@@ -2268,9 +2287,11 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       continue;
     }
 
+    console.log('[enhanced_orchestrator] No cache found, doing fresh extraction for URL:', url);
     console.log('[enhanced_orchestrator] Extracting', i + 1, 'of', maxToExtract, ':', url, 'score:', candidate.score.toFixed(3));
     
     try {
+      console.log('[enhanced_orchestrator] Starting extraction for URL:', url);
       const details = await extractEventDetails(url, cfg);
       console.log('[enhanced_orchestrator] Extracted details:', {
         url,
