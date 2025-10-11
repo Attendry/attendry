@@ -5,6 +5,10 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 // Force Node.js runtime for middleware to avoid Edge Runtime issues with Supabase
 export const runtime = 'nodejs';
 
+const AUTH_PATH_PREFIXES = ['/watchlist', '/api/watchlist'];
+
+const ADMIN_PATH_PREFIXES = ['/admin', '/api/admin'];
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: { headers: req.headers } });
 
@@ -48,8 +52,33 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // Touch auth so refresh tokens are applied to response cookies when needed
-  await supabase.auth.getUser().catch(() => null);
+  const {
+    data: { session },
+  } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+
+  const pathname = req.nextUrl.pathname;
+
+  const requiresAuth = AUTH_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  const requiresAdmin = ADMIN_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+
+  if (!session && (requiresAuth || requiresAdmin)) {
+    const redirectUrl = new URL('/login', req.url);
+    redirectUrl.searchParams.set('redirectedFrom', pathname);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (session && requiresAdmin) {
+    const { data: roleRow, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    const role = error ? null : (roleRow?.role as string | null);
+    if (role !== 'Admin') {
+      return NextResponse.redirect(new URL('/', req.url));
+    }
+  }
 
   return res;
 }

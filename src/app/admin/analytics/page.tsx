@@ -5,23 +5,26 @@
  * for administrators.
  */
 
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { getServerSession } from '@/lib/auth/server-session';
+import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import AnalyticsDashboard from '@/components/AnalyticsDashboard';
 
 export default async function AnalyticsPage() {
-  const supabase = createServerComponentClient({ cookies });
+  const { supabase, session } = await getServerSession();
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    redirect('/login');
+  if (!session || !supabase) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 pt-10">
+          <UnauthenticatedNotice
+            feature="Admin Analytics"
+            description="Sign in with an admin account to access detailed analytics. Demo panels remain available without signing in."
+          />
+        </div>
+      </div>
+    );
   }
 
-  // Check if user is admin
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
@@ -29,7 +32,17 @@ export default async function AnalyticsPage() {
     .single();
 
   if (!profile || !profile.is_admin) {
-    redirect('/');
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 pt-10">
+          <UnauthenticatedNotice
+            feature="Admin Analytics"
+            description="Analytics are limited to admin users. Reach out to the admin team if you need additional privileges."
+            loginHref="/"
+          />
+        </div>
+      </div>
+    );
   }
 
   return (

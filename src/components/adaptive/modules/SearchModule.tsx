@@ -15,6 +15,7 @@ import {
 import { useAdaptive } from '../AdaptiveDashboard';
 import { SuggestionBanner } from '../SuggestionBanner';
 import { usePerformanceMonitor } from '../hooks/usePerformanceMonitor';
+import { fetchEvents } from '@/lib/search/client';
 
 interface SearchFilters {
   location: string;
@@ -94,22 +95,16 @@ const SearchModule = memo(() => {
           to = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       }
 
-      const response = await fetch('/api/events/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          q: filters.keywords,
-          country: filters.location,
-          from,
-          to,
-          provider: 'cse'
-        })
+      const data = await fetchEvents({
+        userText: filters.keywords || 'conference',
+        country: filters.location || null,
+        dateFrom: from,
+        dateTo: to,
+        locale: 'de',
+        location: filters.location || null,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setSearchResults(data.events || []);
-      }
+      setSearchResults(data.events || []);
     } catch (error) {
       console.error('Search failed:', error);
     } finally {

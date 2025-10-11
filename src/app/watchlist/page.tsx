@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-type WatchItem = { id: string; label: string | null; kind: "company" | "attendee"; created_at: string };
+type WatchItem = { id: string; label: string | null; kind: "company" | "attendee"; created_at: string; owner?: string };
 
 export default function Watchlist() {
   const [authReady, setAuthReady] = useState(false);
@@ -37,6 +37,7 @@ export default function Watchlist() {
     const { data, error } = await supabase
       .from("watchlists")
       .select("*")
+      .eq("owner", userId)
       .order("created_at", { ascending: false });
     if (error) setStatus(`Error: ${error.message}`); else setItems((data ?? []) as WatchItem[]);
   }
@@ -53,6 +54,7 @@ export default function Watchlist() {
     setStatus("adding…");
     const supabase = supabaseBrowser();
     const { data, error } = await supabase.rpc("add_watchlist_item", {
+      p_owner: userId,
       p_kind: "attendee",
       p_label: label || "Keynote speakers",
       p_ref_id: "00000000-0000-0000-0000-000000000000",

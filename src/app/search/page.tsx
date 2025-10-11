@@ -11,6 +11,7 @@ import NaturalLanguageSearch from '@/components/NaturalLanguageSearch';
 import { SearchIntent } from '@/components/NaturalLanguageSearch';
 import { useToast, ToastContainer } from '@/components/Toast';
 import EventCard from '@/components/EventCard';
+import { fetchEvents } from '@/lib/search/client';
 
 // Helper function to calculate date ranges
 function calculateDateRange(timeframe: string): { from: string; to: string } {
@@ -96,26 +97,16 @@ export default function SearchPage() {
         }
       }
 
-      // Call the /api/events/run endpoint with proper parameters
-      const response = await fetch('/api/events/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userText: query,
-          country,
-          dateFrom: dateRange.from,
-          dateTo: dateRange.to,
-          locale: 'de' // Default to German locale
-        }),
+      const data = await fetchEvents({
+        userText: query || 'conference',
+        country,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        locale: 'de'
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setSearchResults(data.events || []);
-        success('Search completed', `Found ${(data.events || []).length} results`);
-      } else {
-        error('Search failed', 'Unable to retrieve search results');
-      }
+      setSearchResults(data.events || []);
+      success('Search completed', `Found ${(data.events || []).length} results`);
     } catch (err) {
       console.error('Search failed:', err);
       error('Search failed', 'An error occurred while searching');

@@ -6,8 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { supabaseServer } from '@/lib/supabase-server';
 import { EventData } from '@/lib/types/core';
 import { OptimizedAIService } from '@/lib/services/optimized-ai-service';
 
@@ -48,7 +47,7 @@ interface RecommendationsResponse {
  */
 export async function GET(): Promise<NextResponse<RecommendationsResponse>> {
   try {
-    const supabase = createServerComponentClient({ cookies });
+    const supabase = await supabaseServer();
     
     const {
       data: { session },

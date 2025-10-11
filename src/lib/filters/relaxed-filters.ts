@@ -7,6 +7,7 @@
 
 import { FLAGS } from '@/config/flags';
 import { traceNote, updateStageStat, type SearchTrace } from '@/lib/trace';
+import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
 
 export interface FilterableEvent {
   title?: string;
@@ -50,6 +51,7 @@ export function filterByCountryRelaxed(
   const germanDomains = new Set(['.de', '.at', '.ch']);
   const germanKeywords = ['german', 'deutsch', 'deutschland', 'österreich', 'schweiz'];
   
+  const reasons: Reason[] = [];
   const filtered = items.filter(item => {
     const country = item.country?.toLowerCase();
     const url = item.url?.toLowerCase() || '';
@@ -63,33 +65,38 @@ export function filterByCountryRelaxed(
     
     // German domain check
     if (germanDomains.has(url.split('.').pop() || '')) {
+      reasons.push({ key: 'german_domain', count: 1, samples: [item] });
       return true;
     }
     
     // German language content check
     const content = `${title} ${description}`;
     if (germanKeywords.some(keyword => content.includes(keyword))) {
+      reasons.push({ key: 'german_keyword', count: 1, samples: [item] });
       return true;
     }
     
     // German city mentions
     const germanCities = ['berlin', 'münchen', 'hamburg', 'köln', 'frankfurt', 'stuttgart', 'düsseldorf', 'dortmund', 'essen', 'leipzig', 'bremen', 'dresden', 'hannover', 'nürnberg', 'duisburg', 'bochum', 'wuppertal', 'bielefeld', 'bonn', 'münster', 'karlsruhe', 'mannheim', 'augsburg', 'wiesbaden', 'gelsenkirchen', 'mönchengladbach', 'braunschweig', 'chemnitz', 'kiel', 'aachen', 'halle', 'magdeburg', 'freiburg', 'krefeld', 'lübeck', 'oberhausen', 'erfurt', 'mainz', 'rostock', 'kassel', 'hagen', 'hamm', 'saarbrücken', 'mülheim', 'potsdam', 'ludwigshafen', 'oldenburg', 'leverkusen', 'osnabrück', 'solingen', 'heidelberg', 'herne', 'neuss', 'darmstadt', 'paderborn', 'regensburg', 'ingolstadt', 'würzburg', 'fürth', 'wolfsburg', 'offenbach', 'ulm', 'heilbronn', 'pforzheim', 'göttingen', 'bottrop', 'trier', 'recklinghausen', 'reutlingen', 'bremerhaven', 'koblenz', 'bergisch gladbach', 'jena', 'remscheid', 'erlangen', 'moers', 'siegen', 'hildesheim', 'salzgitter'];
     if (germanCities.some(city => content.includes(city))) {
+      reasons.push({ key: 'german_city', count: 1, samples: [item] });
       return true;
     }
     
     return false;
   });
 
-  const reasons = [];
+  const notes: string[] = [];
   if (targetCountry.toLowerCase() === 'de') {
-    reasons.push('German-speaking countries (DE, AT, CH)');
-    reasons.push('German domains (.de, .at, .ch)');
-    reasons.push('German language content');
-    reasons.push('German city mentions');
+    notes.push('German-speaking countries (DE, AT, CH)');
+    notes.push('German domains (.de, .at, .ch)');
+    notes.push('German language content');
+    notes.push('German city mentions');
   }
 
-  updateStageStat(trace.filters.country, initialCount, filtered.length, ...reasons);
+  updateStageStat(trace.filters.country, initialCount, filtered.length, ...notes);
+  stageCounter('filter:country', items, filtered, reasons);
+  logSuppressedSamples('filter:country', reasons);
   return filtered;
 }
 
@@ -151,13 +158,21 @@ export function filterByDateRelaxed(
     finalItems = [...validDateItems, ...undatedItems];
   }
 
-  const reasons = [
+  const reasonsSummary = [
     `Valid dates: ${validDateItems.length}`,
     `Undated candidates: ${undatedItems.length}`,
     FLAGS.ALLOW_UNDATED ? 'Undated items included' : 'Undated items excluded'
   ];
 
-  updateStageStat(trace.filters.date, initialCount, finalItems.length, ...reasons);
+  updateStageStat(trace.filters.date, initialCount, finalItems.length, ...reasonsSummary);
+  stageCounter('filter:date', items, finalItems, [
+    { key: 'valid_dates', count: validDateItems.length, samples: validDateItems.slice(0, 3) },
+    { key: 'undated', count: undatedItems.length, samples: undatedItems.slice(0, 3) }
+  ]);
+  logSuppressedSamples('filter:date', [
+    { key: 'valid_dates', count: validDateItems.length, samples: validDateItems.slice(0, 3) },
+    { key: 'undated', count: undatedItems.length, samples: undatedItems.slice(0, 3) }
+  ]);
   return finalItems;
 }
 
@@ -204,6 +219,13 @@ export function filterByLegalHeuristics(
 
   updateStageStat(trace.filters.legalHeuristics, initialCount, filtered.length,
     `Legal + event keyword filtering`);
+  const legalDropReason: Reason = {
+    key: 'legal_keyword',
+    count: initialCount - filtered.length,
+    samples: items.filter(item => !filtered.includes(item)).slice(0,3)
+  };
+  stageCounter('filter:legal', items, filtered, [legalDropReason]);
+  logSuppressedSamples('filter:legal', [legalDropReason]);
   
   return filtered;
 }
@@ -242,8 +264,12 @@ export function deduplicateRelaxed(
     deduplicated.push(item);
   });
 
+  const dropped = initialCount - deduplicated.length;
   updateStageStat(trace.filters.dedupe, initialCount, deduplicated.length,
     `URL and title-based deduplication`);
+  const dedupeReason: Reason = { key: 'duplicate', count: dropped, samples: items.filter(item => !deduplicated.includes(item)).slice(0,3) };
+  stageCounter('filter:dedupe', items, deduplicated, [dedupeReason]);
+  logSuppressedSamples('filter:dedupe', [dedupeReason]);
   
   return deduplicated;
 }

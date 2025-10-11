@@ -5,8 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { supabaseServer } from '@/lib/supabase-server';
 
 /**
  * User interface
@@ -25,7 +24,7 @@ interface User {
  */
 export async function GET(): Promise<NextResponse<{ users: User[] }>> {
   try {
-    const supabase = createServerComponentClient({ cookies });
+    const supabase = await supabaseServer();
     
     const {
       data: { session },
@@ -92,7 +91,8 @@ export async function GET(): Promise<NextResponse<{ users: User[] }>> {
  */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const supabase = createServerComponentClient({ cookies });
+    const supabase = await supabaseServer();
+    const supabase = await supabaseServer();
     
     const {
       data: { session },

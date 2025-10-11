@@ -6,8 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { supabaseServer } from '@/lib/supabase-server';
 
 /**
  * Health check interface
@@ -34,7 +33,7 @@ interface HealthResponse {
  */
 export async function GET(): Promise<NextResponse<HealthResponse>> {
   try {
-    const supabase = createServerComponentClient({ cookies });
+    const supabase = await supabaseServer();
     
     const {
       data: { session },

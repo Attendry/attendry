@@ -20,6 +20,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<WatchlistAddR
     const { kind, label, ref_id } = requestData;
     
     const { data, error } = await supabase.rpc("add_watchlist_item", {
+      p_owner: userRes.user.id,
       p_kind: String(kind || "event"),
       p_label: String(label || "Untitled"),
       p_ref_id: String(ref_id || ""),

@@ -17,7 +17,13 @@ export function buildSearchQuery(opts: BuildQueryOpts): string {
   }
   const bq = wrap(opts.baseQuery);
   const ut = (opts.userText ?? '').trim();
-  if (ut) return wrap(ut);
+  if (ut) {
+    const safeUt = ut.replace(/\s+OR\s+/gi, ' OR ')
+      .replace(/\s+AND\s+/gi, ' AND ')
+      .replace(/["'`]+/g, '"')
+      .trim();
+    return wrap(safeUt);
+  }
 
   const ex = (opts.excludeTerms ?? '').trim();
   if (!ex) return bq;

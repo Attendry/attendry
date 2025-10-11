@@ -133,10 +133,7 @@ export class EnhancedSearchService {
       // Merge search trace
       Object.assign(trace, searchResults.trace);
 
-      if (searchResults.results.length === 0) {
-        console.warn('No search results found');
-        return { events: [], trace };
-      }
+      // Allow pipeline to proceed even when search results are empty so the caller can evaluate fallback behaviour.
 
       // Step 3: Prioritize URLs with Gemini
       const prioritizationResult = await this.geminiService.prioritizeUrls(

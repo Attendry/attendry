@@ -5,8 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { supabaseServer } from '@/lib/supabase-server';
 
 /**
  * User analytics interface
@@ -32,7 +31,7 @@ interface UserAnalytics {
  */
 export async function GET(req: NextRequest): Promise<NextResponse<UserAnalytics>> {
   try {
-    const supabase = createServerComponentClient({ cookies });
+    const supabase = await supabaseServer();
     
     const {
       data: { session },

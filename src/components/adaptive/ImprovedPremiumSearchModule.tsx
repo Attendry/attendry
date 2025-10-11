@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAdaptive } from '../PremiumAdaptiveDashboard';
 import { usePerformanceMonitor } from '../hooks/usePerformanceMonitor';
+import { fetchEvents } from '@/lib/search/client';
 
 interface SearchFilters {
   location: string;
@@ -91,18 +92,19 @@ const ImprovedPremiumSearchModule = memo(() => {
     });
 
     try {
-      const response = await fetch('/api/events/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: filters.keywords,
-          location: filters.location,
-          dateRange: filters.dateRange,
-          industry: filters.industry
-        })
+      const today = new Date();
+      const from = today.toISOString().split('T')[0];
+      const to = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const data = await fetchEvents({
+        userText: filters.keywords || 'conference',
+        country: filters.location || null,
+        dateFrom: from,
+        dateTo: to,
+        locale: 'de',
+        location: filters.location || null,
       });
-      
-      const data = await response.json();
+
       setSearchResults(data.events || []);
     } catch (error) {
       console.error('Search error:', error);

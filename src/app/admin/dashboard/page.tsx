@@ -5,23 +5,26 @@
  * user management, analytics, and system monitoring.
  */
 
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { getServerSession } from '@/lib/auth/server-session';
+import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import AdminDashboard from '@/components/AdminDashboard';
 
 export default async function AdminDashboardPage() {
-  const supabase = createServerComponentClient({ cookies });
+  const { supabase, session } = await getServerSession();
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    redirect('/login');
+  if (!session || !supabase) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 pt-10">
+          <UnauthenticatedNotice
+            feature="Admin Dashboard"
+            description="Admin analytics require authentication. Sign in with an admin account to manage users, track health, and review metrics."
+          />
+        </div>
+      </div>
+    );
   }
 
-  // Check if user is admin
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
@@ -29,7 +32,17 @@ export default async function AdminDashboardPage() {
     .single();
 
   if (!profile || !profile.is_admin) {
-    redirect('/');
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 pt-10">
+          <UnauthenticatedNotice
+            feature="Admin Dashboard"
+            description="This area is restricted to admin users. Please contact an administrator if you need elevated access."
+            loginHref="/"
+          />
+        </div>
+      </div>
+    );
   }
 
   return (

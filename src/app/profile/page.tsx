@@ -4,24 +4,23 @@
  * This page displays the user profile and preferences management interface.
  */
 
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { getServerSession } from '@/lib/auth/server-session';
+import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import UserProfile from '@/components/UserProfile';
 
 export default async function ProfilePage() {
-  const supabase = createServerComponentClient({ cookies });
-
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    redirect('/login');
-  }
+  const { session } = await getServerSession();
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {!session && (
+        <div className="mx-auto max-w-3xl px-4 pt-10">
+          <UnauthenticatedNotice
+            feature="Profile Customization"
+            description="Sign in to personalize industries, locations, and notification preferences. You can browse the demo profile layout without signing in."
+          />
+        </div>
+      )}
       <UserProfile />
     </div>
   );

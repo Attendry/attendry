@@ -5,23 +5,26 @@
  * for administrators.
  */
 
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { getServerSession } from '@/lib/auth/server-session';
+import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import SystemHealthMonitor from '@/components/SystemHealthMonitor';
 
 export default async function SystemHealthPage() {
-  const supabase = createServerComponentClient({ cookies });
+  const { supabase, session } = await getServerSession();
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    redirect('/login');
+  if (!session || !supabase) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 pt-10">
+          <UnauthenticatedNotice
+            feature="System Health"
+            description="Sign in as an admin to monitor system health across services."
+          />
+        </div>
+      </div>
+    );
   }
 
-  // Check if user is admin
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
@@ -29,7 +32,17 @@ export default async function SystemHealthPage() {
     .single();
 
   if (!profile || !profile.is_admin) {
-    redirect('/');
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <div className="mx-auto max-w-3xl px-4 pt-10">
+          <UnauthenticatedNotice
+            feature="System Health"
+            description="This dashboard is limited to admin users."
+            loginHref="/"
+          />
+        </div>
+      </div>
+    );
   }
 
   return (

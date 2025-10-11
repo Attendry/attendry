@@ -5,8 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { supabaseServer } from '@/lib/supabase-server';
 
 /**
  * Search analytics interface
@@ -34,7 +33,7 @@ interface SearchAnalytics {
  */
 export async function GET(req: NextRequest): Promise<NextResponse<SearchAnalytics>> {
   try {
-    const supabase = createServerComponentClient({ cookies });
+    const supabase = await supabaseServer();
     
     const {
       data: { session },

@@ -6,8 +6,8 @@
  */
 
 "use client";
-import { useState, useEffect, useCallback, memo } from 'react';
-// import { useUser } from '@supabase/auth-helpers-react';
+import { useState, useEffect, useCallback, memo, useMemo } from 'react';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 /**
  * Activity event types
@@ -51,8 +51,6 @@ interface ActivitySummary {
  * User Activity Tracker Component
  */
 const UserActivityTracker = memo(function UserActivityTracker() {
-  // const { user } = useUser();
-  const user = null; // Mock for now
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
   const [summary, setSummary] = useState<ActivitySummary>({
     totalSearches: 0,
@@ -65,6 +63,7 @@ const UserActivityTracker = memo(function UserActivityTracker() {
     sessionCount: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Generate session ID
   const sessionId = useMemo(() => {
@@ -82,7 +81,34 @@ const UserActivityTracker = memo(function UserActivityTracker() {
   // Load user activity
   useEffect(() => {
     const loadActivity = async () => {
-      if (!user) return;
+      const supabase = supabaseBrowser();
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
+      if (error) {
+        console.warn('UserActivityTracker: failed to load session', error);
+      }
+
+      if (!session?.user) {
+        setIsAuthenticated(false);
+        setActivities([]);
+        setSummary({
+          totalSearches: 0,
+          totalEventViews: 0,
+          totalSavedEvents: 0,
+          mostSearchedTerms: [],
+          mostViewedIndustries: [],
+          mostViewedLocations: [],
+          lastActivity: 0,
+          sessionCount: 0,
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      setIsAuthenticated(true);
 
       try {
         const response = await fetch('/api/profile/get');
@@ -95,13 +121,13 @@ const UserActivityTracker = memo(function UserActivityTracker() {
         }
       } catch (error) {
         console.error('Failed to load user activity:', error);
-      } finally {
-        setIsLoading(false);
       }
+
+      setIsLoading(false);
     };
 
     loadActivity();
-  }, [user]);
+  }, []);
 
   // Calculate activity summary
   const calculateSummary = useCallback((activities: ActivityEvent[]): ActivitySummary => {
@@ -158,7 +184,7 @@ const UserActivityTracker = memo(function UserActivityTracker() {
 
   // Track activity
   const trackActivity = useCallback(async (type: ActivityType, data: Record<string, any> = {}) => {
-    if (!user) return;
+    if (!isAuthenticated) return;
 
     const activity: ActivityEvent = {
       id: `activity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -187,7 +213,7 @@ const UserActivityTracker = memo(function UserActivityTracker() {
     } catch (error) {
       console.error('Failed to save activity:', error);
     }
-  }, [user, activities, sessionId, calculateSummary]);
+  }, [isAuthenticated, activities, sessionId, calculateSummary]);
 
   // Format timestamp
   const formatTimestamp = useCallback((timestamp: number) => {

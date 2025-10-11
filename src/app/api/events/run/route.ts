@@ -3,6 +3,72 @@ import { NextRequest, NextResponse } from 'next/server';
 import { executeEnhancedSearch } from '@/common/search/enhanced-orchestrator';
 import { loadActiveConfig, type ActiveConfig } from '@/common/search/config';
 
+const DEMO_FALLBACK_EVENTS: Array<Omit<ApiEvent, 'id'>> = [
+  {
+    title: 'Legal Tech Conference 2025',
+    source_url: 'https://legaltechconf.com/2025',
+    starts_at: '2025-03-15',
+    country: 'DE',
+    city: 'Berlin',
+    location: 'Berlin, Germany',
+    venue: 'City Expo Center',
+    description: 'Explore the latest in legal technology and innovation.',
+    confidence: 0.6,
+    sessions: [],
+    speakers: [],
+    sponsors: [],
+  },
+  {
+    title: 'Regulatory Compliance Forum',
+    source_url: 'https://regcompliance.eu',
+    starts_at: '2025-05-12',
+    country: 'DE',
+    city: 'Frankfurt',
+    location: 'Frankfurt, Germany',
+    venue: 'Main Finance Hall',
+    description: 'Financial services compliance best practices.',
+    confidence: 0.55,
+    sessions: [],
+    speakers: [],
+    sponsors: [],
+  },
+  {
+    title: 'Data Privacy Summit Europe',
+    source_url: 'https://dataprivacysummit.eu',
+    starts_at: '2025-04-08',
+    country: 'NL',
+    city: 'Amsterdam',
+    location: 'Amsterdam, Netherlands',
+    venue: 'Innovation Center',
+    description: 'GDPR compliance and data protection strategies.',
+    confidence: 0.5,
+    sessions: [],
+    speakers: [],
+    sponsors: [],
+  },
+];
+
+function demoFallbackEnabled() {
+  return process.env.SEARCH_ENABLE_DEMO_FALLBACK !== 'false';
+}
+
+function buildDemoFallback(country: string | null): ApiEvent[] {
+  const normalized = country?.toUpperCase() ?? null;
+  const base = DEMO_FALLBACK_EVENTS.map((event, index) => ({
+    ...event,
+    id: `${event.source_url}#demo-${index}`,
+    confidence_reason: 'demo_fallback',
+    countrySource: 'demo',
+    citySource: 'demo',
+    locationSource: 'demo',
+  }));
+
+  if (!normalized) return base;
+
+  const filtered = base.filter((event) => event.country?.toUpperCase() === normalized);
+  return filtered.length ? filtered : base;
+}
+
 type ApiSpeaker = {
   name: string | null;
   title: string | null;
@@ -405,6 +471,18 @@ export async function POST(req: NextRequest) {
       timeframe 
     });
     const result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+
+    if ((!result.events || result.events.length === 0) && demoFallbackEnabled()) {
+      const demoEvents = buildDemoFallback(country);
+      return NextResponse.json({
+        ...result,
+        provider: 'demo_fallback',
+        events: demoEvents,
+        count: demoEvents.length,
+        note: 'demo_fallback_active'
+      });
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'search_failed';

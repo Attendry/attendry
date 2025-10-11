@@ -8,6 +8,8 @@ import { buildTierQueries, assertClean, EVENT_DE, CITY_DE } from './query';
 import { firecrawlSearch } from './providers/firecrawl';
 import { cseSearch } from './providers/cse';
 import { prefilter } from './url-filters';
+import { ensureCorrelation } from '@/lib/obs/corr';
+import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
 
 const MIN_URLS = 8;
 
@@ -19,6 +21,7 @@ export async function runSearch(opts: {
 }) {
   const country = (opts.country ?? 'DE').toUpperCase();
 
+  const correlationId = ensureCorrelation();
   const tiers = buildTierQueries(opts.baseQuery, !!opts.enableAug);
   const urlsAll: string[] = [];
 
@@ -44,10 +47,27 @@ export async function runSearch(opts: {
 
   for (const t of tiers) {
     assertClean(t.q);
-    urlsAll.push(...await providerOnce(t.q));
+    const result = await providerOnce(t.q);
+    stageCounter(`tier:${t.tier}`, [], result, [{ key: 'returned', count: result.length, samples: result.slice(0,3) }]);
+    urlsAll.push(...result);
   }
 
-  let urls = prefilter([...new Set(urlsAll)]);
+  const duplicates = urlsAll.filter((url, idx, arr) => arr.indexOf(url) !== idx);
+  const dedupeReasons: Reason[] = [];
+  if (duplicates.length) {
+    dedupeReasons.push({ key: 'duplicate_url', count: duplicates.length, samples: duplicates.slice(0, 3) });
+  }
+  const unique = [...new Set(urlsAll)];
+  stageCounter('tier:dedupe', urlsAll, unique, dedupeReasons);
+  logSuppressedSamples('tier:dedupe', dedupeReasons);
+
+  let urls = prefilter(unique);
+  if (urls.length !== unique.length) {
+    const blocked = unique.filter((u) => !urls.includes(u));
+    const blockedReason: Reason = { key: 'url_blocked', count: blocked.length, samples: blocked.slice(0, 3) };
+    stageCounter('prefilter', unique, urls, [blockedReason]);
+    logSuppressedSamples('prefilter', [blockedReason]);
+  }
   let retriedWithBase = false;
 
   if (urls.length < MIN_URLS) {

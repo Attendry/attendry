@@ -7,7 +7,7 @@
 
 "use client";
 import { useState, useEffect, useCallback, memo, useMemo } from 'react';
-// import { useUser } from '@supabase/auth-helpers-react';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 import { EventData } from '@/lib/types/core';
 
 /**
@@ -179,17 +179,48 @@ const demoRecommendations: Recommendation[] = [
  * Recommendation Engine Component
  */
 const RecommendationEngine = memo(function RecommendationEngine() {
-  // const { user } = useUser();
-  const user = null; // Mock for now
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<RecommendationType | 'all'>('all');
   const [selectedSegment, setSelectedSegment] = useState<string>('all');
+  const [authReady, setAuthReady] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Load recommendations
   useEffect(() => {
+    let cancelled = false;
+    const supabase = supabaseBrowser();
+
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.warn('RecommendationEngine: failed to load session', error);
+      }
+      if (!cancelled) {
+        setIsAuthenticated(!!session);
+        setAuthReady(true);
+      }
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) {
+        setIsAuthenticated(!!session);
+        setAuthReady(true);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
+
     const loadRecommendations = async () => {
-      if (!user) {
+      setIsLoading(true);
+
+      if (!isAuthenticated) {
         setRecommendations(demoRecommendations);
         setIsLoading(false);
         return;
@@ -215,7 +246,7 @@ const RecommendationEngine = memo(function RecommendationEngine() {
     };
 
     loadRecommendations();
-  }, [user]);
+  }, [authReady, isAuthenticated]);
 
   // Filter recommendations by type
   const availableSegments = useMemo(() => {
