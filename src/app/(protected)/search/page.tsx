@@ -105,6 +105,17 @@ export default function SearchPage() {
         locale: 'de'
       });
 
+      // DEBUG: Log the search results to see what we're getting
+      console.log('Search results received:', {
+        eventsCount: data.events?.length,
+        firstEvent: data.events?.[0] ? {
+          title: data.events[0].title,
+          speakers: data.events[0].speakers,
+          speakersLength: data.events[0].speakers?.length,
+          speakersType: typeof data.events[0].speakers
+        } : 'no events'
+      });
+
       setSearchResults(data.events || []);
       success('Search completed', `Found ${(data.events || []).length} results`);
     } catch (err) {
