@@ -25,8 +25,8 @@ import React, { useState } from "react";
  */
 interface EnhancedSpeaker {
   name: string;                    // Speaker's full name
-  org: string;                     // Current organization
-  title: string;                   // Job title or role
+  org?: string;                    // Current organization
+  title?: string;                  // Job title or role
   speech_title?: string;           // Title of their presentation/speech
   session?: string;                // Session name or track
   bio?: string;                    // Professional biography
@@ -45,7 +45,7 @@ interface EnhancedSpeaker {
   achievements?: string[];         // Professional achievements and awards
   industry_connections?: string[]; // Industry associations and connections
   recent_news?: string[];          // Recent media mentions and news
-  confidence: number;              // Data quality confidence score (0-1)
+  confidence?: number;             // Data quality confidence score (0-1)
 }
 
 /**
@@ -130,9 +130,11 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
             </div>
           )}
         </div>
-        <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getConfidenceColor(speaker.confidence)}`}>
-          Confidence: {(speaker.confidence * 100).toFixed(0)}%
-        </span>
+        {speaker.confidence && (
+          <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getConfidenceColor(speaker.confidence)}`}>
+            Confidence: {(speaker.confidence * 100).toFixed(0)}%
+          </span>
+        )}
       </div>
 
       {speaker.speech_title && (

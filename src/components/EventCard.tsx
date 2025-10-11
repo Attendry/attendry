@@ -20,6 +20,7 @@
 import { useState, useMemo, useCallback, memo } from "react";
 import AttendeeCard from "./AttendeeCard";
 import EnhancedSpeakerCard from "./EnhancedSpeakerCard"; // Speaker card component
+import { SpeakerData } from "@/lib/types/core";
 
 /**
  * Event data structure interface
@@ -67,7 +68,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   const [open, setOpen] = useState(false);                     // Whether event details are expanded
   const [includePast, setIncludePast] = useState(false);       // Whether to include past speakers
   const [loadingSpeakers, setLoadingSpeakers] = useState(false); // Loading state for speaker extraction
-  const [speakers, setSpeakers] = useState<any[] | null>(null); // Extracted speaker data
+  const [speakers, setSpeakers] = useState<SpeakerData[] | null>(null); // Extracted speaker data
   const [followed, setFollowed] = useState<string[]>([]);       // List of followed speakers
 
   // ============================================================================
