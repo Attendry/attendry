@@ -345,7 +345,7 @@ async function checkFirecrawlHealth(): Promise<HealthCheck> {
   const startTime = Date.now();
   
   try {
-    const apiKey = process.env.FIRECRAWL_API_KEY;
+    const apiKey = process.env.FIRECRAWL_KEY;
 
     if (!apiKey) {
       return {

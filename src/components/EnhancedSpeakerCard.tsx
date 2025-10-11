@@ -24,12 +24,12 @@ import React, { useState } from "react";
  * Enhanced speaker data structure interface
  */
 interface EnhancedSpeaker {
-  name: string;                    // Speaker's full name
-  org?: string;                    // Current organization
-  title?: string;                  // Job title or role
+  name: string | null;             // Speaker's full name
+  org?: string | null;             // Current organization
+  title?: string | null;           // Job title or role
   speech_title?: string;           // Title of their presentation/speech
   session?: string;                // Session name or track
-  bio?: string;                    // Professional biography
+  bio?: string | null;             // Professional biography
   profile_url?: string;            // LinkedIn or personal profile URL
   location?: string;               // Current location (city, country)
   education?: string[];            // Educational background

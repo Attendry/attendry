@@ -1016,7 +1016,7 @@ Instructions:
 
 async function extractEventDetails(url: string, searchConfig: ActiveConfig): Promise<ExtractedEventDetails> {
   console.log('[extract] Starting extractEventDetails for URL:', url);
-  const apiKey = process.env.FIRECRAWL_API_KEY || null;
+  const apiKey = process.env.FIRECRAWL_KEY || null;
   if (!apiKey) {
     console.warn('[extract] No Firecrawl API key available');
   } else {
@@ -2399,6 +2399,8 @@ export async function executeEnhancedSearch(args: ExecArgs) {
           console.log('[enhanced_orchestrator] Accepting event with inferred city only', { url, eventCity });
         } else if (eventCountry?.toUpperCase() === 'EU' || europeanHint) {
           console.log('[enhanced_orchestrator] Accepting European-scoped event without explicit country', { url, eventCountry, europeanHint });
+        } else if (country?.toLowerCase() === 'de' && (eventCountry?.toUpperCase() === 'FR' || eventCountry?.toUpperCase() === 'BE' || eventCountry?.toUpperCase() === 'CH' || eventCountry?.toUpperCase() === 'AT' || eventCountry?.toUpperCase() === 'NL')) {
+          console.log('[enhanced_orchestrator] Accepting neighboring European country event for German search', { url, eventCountry, targetCountry: country });
         } else {
           console.log('[enhanced_orchestrator] Filtering out uncertain country match', {
             url,

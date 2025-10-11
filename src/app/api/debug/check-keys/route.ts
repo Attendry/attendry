@@ -11,12 +11,6 @@ export async function GET() {
     );
 
     const keys = {
-      FIRECRAWL_API_KEY: {
-        exists: !!process.env.FIRECRAWL_API_KEY,
-        length: process.env.FIRECRAWL_API_KEY?.length || 0,
-        startsWith: process.env.FIRECRAWL_API_KEY?.substring(0, 8) || 'N/A',
-        rawValue: process.env.FIRECRAWL_API_KEY || 'NOT_SET'
-      },
       FIRECRAWL_KEY: {
         exists: !!process.env.FIRECRAWL_KEY,
         length: process.env.FIRECRAWL_KEY?.length || 0,
@@ -41,14 +35,14 @@ export async function GET() {
     };
 
     const summary = {
-      firecrawlConfigured: keys.FIRECRAWL_API_KEY.exists || keys.FIRECRAWL_KEY.exists,
+      firecrawlConfigured: keys.FIRECRAWL_KEY.exists,
       googleCseConfigured: (keys.GOOGLE_CSE_KEY.exists || keys.GOOGLE_API_KEY.exists) && keys.GOOGLE_CSE_CX.exists,
       totalConfigured: Object.values(keys).filter(k => k.exists).length,
       recommendations: []
     };
 
-    if (!keys.FIRECRAWL_API_KEY.exists && !keys.FIRECRAWL_KEY.exists) {
-      summary.recommendations.push('Set FIRECRAWL_API_KEY or FIRECRAWL_KEY in Vercel environment variables');
+    if (!keys.FIRECRAWL_KEY.exists) {
+      summary.recommendations.push('Set FIRECRAWL_KEY in Vercel environment variables');
     }
     
     if (!keys.GOOGLE_CSE_KEY.exists && !keys.GOOGLE_API_KEY.exists) {
