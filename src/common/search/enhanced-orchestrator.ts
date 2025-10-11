@@ -30,6 +30,125 @@ function normalizeSpeaker(raw: unknown): ExtractedSpeaker | null {
   return { name, title, organization, bio, sessions };
 }
 
+function normalizeWhitespace(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length ? normalized : null;
+}
+
+function parseSpeakerText(raw: string | null | undefined): ExtractedSpeaker | null {
+  const cleaned = normalizeWhitespace(raw);
+  if (!cleaned) return null;
+
+  // Skip obvious section headings
+  if (/speakers?:?$/i.test(cleaned) || cleaned.length < 3) return null;
+
+  // Break text into logical lines
+  const segments = cleaned
+    .split(/[\r\n]+/)
+    .map((segment) => normalizeWhitespace(segment))
+    .filter((segment): segment is string => !!segment && /[A-Za-z]/.test(segment));
+
+  if (segments.length === 0) return null;
+
+  let name = segments[0]
+    .replace(/^[-•▪●♦\d\.\s]+/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (!name || name.length < 2) return null;
+  if (/speakers?/i.test(name) && segments.length === 1) return null;
+
+  // Basic sanity check to avoid capturing paragraphs
+  if (name.split(' ').length > 8) return null;
+
+  let remainder = segments.slice(1).join(' ').trim();
+  let title: string | null = null;
+  let organization: string | null = null;
+
+  if (remainder) {
+    const dashSplit = remainder.split(/\s*[–—\-|]\s*/);
+    if (dashSplit.length > 1) {
+      title = normalizeWhitespace(dashSplit[0]);
+      organization = normalizeWhitespace(dashSplit.slice(1).join(' - '));
+    } else {
+      const commaSplit = remainder.split(/,\s*/);
+      if (commaSplit.length > 1) {
+        title = normalizeWhitespace(commaSplit[0]);
+        organization = normalizeWhitespace(commaSplit.slice(1).join(', '));
+      } else {
+        title = normalizeWhitespace(remainder);
+      }
+    }
+  }
+
+  const speaker: ExtractedSpeaker = {
+    name,
+    title: title ?? null,
+    organization: organization ?? null,
+    bio: null,
+    sessions: []
+  };
+
+  return speaker;
+}
+
+async function fetchSpeakersFromSite(url: string): Promise<ExtractedSpeaker[]> {
+  try {
+    const html = await fetchPageContent(url);
+    if (!html) return [];
+    const $ = cheerio.load(html);
+
+    const candidates = new Set<string>();
+    const speakers: ExtractedSpeaker[] = [];
+
+    const candidateSelectors = [
+      '[class*=speaker]',
+      '[class*=Speaker]',
+      '[class*=referent]',
+      '[class*=talent]',
+      '[data-speaker]',
+      '.speaker-card',
+      '.speaker-item',
+      '.team-member',
+      '.presenter',
+      'article',
+      'li'
+    ];
+
+    const processCandidate = (node: cheerio.Element) => {
+      const text = $(node).text();
+      const parsed = parseSpeakerText(text);
+      if (!parsed) return;
+      const key = parsed.name.toLowerCase();
+      if (candidates.has(key)) return;
+      candidates.add(key);
+      speakers.push(parsed);
+    };
+
+    candidateSelectors.forEach((selector) => {
+      $(selector).each((_, element) => {
+        const heading = $(element).find('h2, h3, h4').first().text().toLowerCase();
+        if (/sponsor|partner|exhibit|agenda|schedule/.test(heading)) return;
+        processCandidate(element);
+        $(element).find('li, p, div').each((__, child) => processCandidate(child));
+      });
+    });
+
+    // Fallback: look at headings with following paragraphs
+    $('h2, h3, h4').each((_, heading) => {
+      const text = $(heading).text().toLowerCase();
+      if (!/speakers?|referenten|faculty|presenters?/.test(text)) return;
+      $(heading).nextAll('p, div, li').slice(0, 6).each((__, sibling) => processCandidate(sibling));
+    });
+
+    return speakers;
+  } catch (error) {
+    console.warn('[speaker_discovery] failed', { url, error });
+    return [];
+  }
+}
+
 function normalizeSponsor(raw: unknown): ExtractedSponsor | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
@@ -52,6 +171,7 @@ import { search as firecrawlSearch } from '../../providers/firecrawl';
 import { search as cseSearch } from '../../providers/cse';
 import { search as databaseSearch } from '../../providers/database';
 import { fetchCachedExtraction, upsertCachedExtraction } from './cache';
+import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
 
 type ExecArgs = {
   userText?: string;
@@ -853,7 +973,14 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
     });
   }
 
+  const primarySources = [basic, firecrawlResult].filter(Boolean) as ExtractedEventDetails[];
   const merged = mergeDetails(basic ?? emptyExtractedDetails(), firecrawlResult ?? emptyExtractedDetails());
+  stageCounter(
+    'extract:primary',
+    primarySources,
+    [merged],
+    [{ key: 'primary_merge', count: primarySources.length, samples: primarySources.slice(0, 2) }]
+  );
   const normalizedLocation = merged.location ?? formatLocation(merged.city, merged.country);
 
   if (merged.title || merged.description || merged.starts_at || merged.country || merged.city) {
@@ -883,6 +1010,12 @@ async function extractEventDetails(url: string, searchConfig: ActiveConfig): Pro
 
   const enrichment = await extractEnrichmentFromLinks(url, discoveredLinks, apiKey, searchConfig);
   const enrichedMerged = mergeDetails(merged, enrichment);
+  stageCounter(
+    'extract:enrichment',
+    [merged, enrichment],
+    [enrichedMerged],
+    [{ key: 'enrichment_merge', count: enrichedMerged.speakers?.length ?? 0, samples: (enrichedMerged.speakers ?? []).slice(0, 3) }]
+  );
 
   const result = {
     ...enrichedMerged,
@@ -1050,6 +1183,24 @@ async function cheapHtmlScrape(url: string, searchConfig: ActiveConfig): Promise
     const discoveredLinksResult = await discoverLinksFromHtml($, url);
     const discoveredLinks = discoveredLinksResult.links;
 
+    const speakerNames = new Set<string>();
+    const inlineSpeakers: ExtractedSpeaker[] = [];
+    $('section, div').each((_, element) => {
+      const section = $(element);
+      const headingText = section.find('h1, h2, h3, h4').first().text().toLowerCase();
+      const isSpeakerSection = /speakers?|referenten|faculty|program\s*team|presenters?/.test(headingText);
+      if (!isSpeakerSection) return;
+
+      section.find('li, p, div').each((__, itemElement) => {
+        const text = $(itemElement).text();
+        const parsedSpeaker = parseSpeakerText(text);
+        if (parsedSpeaker && !speakerNames.has(parsedSpeaker.name)) {
+          speakerNames.add(parsedSpeaker.name);
+          inlineSpeakers.push(parsedSpeaker);
+        }
+      });
+    });
+
     return {
       title: normalizeText(title),
       description: normalizeText(description),
@@ -1062,7 +1213,7 @@ async function cheapHtmlScrape(url: string, searchConfig: ActiveConfig): Promise
       locationSource,
       venue,
       sessions: [],
-      speakers: [],
+      speakers: inlineSpeakers,
       sponsors: [],
       relatedUrls: discoveredLinks,
       debugVisitedLinks: discoveredLinksResult.visited
@@ -1715,6 +1866,15 @@ async function extractEnrichmentFromLinks(
       firecrawl = await extractWithFirecrawl(link, apiKey, searchConfig).catch(() => emptyExtractedDetails());
     }
     const merged = mergeDetails(basic, firecrawl ?? emptyExtractedDetails());
+    if (!merged.speakers || merged.speakers.length === 0) {
+      const urlObj = new URL(link);
+      if (/speaker|talent|faculty|referenten/i.test(urlObj.pathname)) {
+        const siteSpeakers = await fetchSpeakersFromSite(link).catch(() => []);
+        if (siteSpeakers.length) {
+          merged.speakers = mergeArray(merged.speakers, siteSpeakers, (speaker) => speaker.name ?? JSON.stringify(speaker));
+        }
+      }
+    }
     primary.push({
       ...merged,
       relatedUrls: merged.relatedUrls.length ? merged.relatedUrls : [link]
