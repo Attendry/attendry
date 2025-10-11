@@ -234,48 +234,56 @@ async function processEnhancedResults(res: EnhancedSearchResult, country: string
 
   const sortedEvents = [...events].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
   const euCountries = ['DE', 'AT', 'CH', 'FR', 'IT', 'ES', 'NL', 'BE', 'LU', 'DK', 'SE', 'NO', 'FI', 'PL', 'CZ', 'HU', 'SK', 'SI', 'HR', 'BG', 'RO', 'EE', 'LV', 'LT', 'MT', 'CY', 'IE', 'PT', 'GR'];
+  const broadEuropeKeywords = ['europe', 'european union', 'eu-wide', 'eu'];
   const cfg = await loadActiveConfig();
 
   const filteredEvents = sortedEvents.filter((event: ApiEvent) => {
     const eventCountry = event.country ?? null;
+    const target = country ? country.toUpperCase() : null;
+    const eventUpper = eventCountry ? eventCountry.toUpperCase() : null;
+    const textSources = [
+      event.location ?? null,
+      event.city ?? null,
+      event.title ?? null,
+      event.description ?? null,
+      event.relatedUrls?.length ? event.relatedUrls.join(' ') : null
+    ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 
-    const countryMatch = (() => {
-      if (!country) return true;
-      const target = country.toUpperCase();
-      if (!eventCountry) {
-        if (target === 'EU') return true;
-        const hints = [event.location, event.city].filter(Boolean).map((value) => value?.toLowerCase() ?? '');
-        if (event.relatedUrls?.length) {
-          hints.push(event.relatedUrls.join(' ').toLowerCase());
-        }
-        return hints.some((hint) => locationMentionsCountry(hint, country, cfg));
-      }
-      const eventUpper = eventCountry.toUpperCase();
+    const mentionsCountry = target && target !== 'EU' && country
+      ? textSources.some((hint) => locationMentionsCountry(hint, country, cfg))
+      : false;
+    const mentionsEurope = textSources
+      .map((hint) => hint.toLowerCase())
+      .some((hint) => broadEuropeKeywords.some((keyword) => hint.includes(keyword)));
+
+    let countryMatch = true;
+    if (target) {
       if (target === 'EU') {
-        return euCountries.includes(eventUpper);
-      }
-      if (eventUpper === target) return true;
+        countryMatch = (eventUpper ? euCountries.includes(eventUpper) : false) || mentionsEurope || mentionsCountry;
+      } else {
+        if (eventUpper) {
+          countryMatch = eventUpper === target || mentionsCountry;
+        } else {
+          countryMatch = mentionsCountry;
+        }
 
-      const fallbackHints: string[] = [];
-      if (event.location) fallbackHints.push(event.location.toLowerCase());
-      if (event.city) fallbackHints.push(event.city.toLowerCase());
-      if (event.relatedUrls?.length) fallbackHints.push(event.relatedUrls.join(' ').toLowerCase());
-      if (event.title) fallbackHints.push(event.title.toLowerCase());
-      if (event.description) fallbackHints.push(event.description.toLowerCase());
-
-      if (fallbackHints.some((hint) => locationMentionsCountry(hint, country, cfg))) {
-        return true;
-      }
-
-      if (euCountries.includes(target)) {
-        const broadEuropeKeywords = ['europe', 'european union', 'eu-wide', 'eu'];
-        if (fallbackHints.some((hint) => broadEuropeKeywords.some((keyword) => hint.includes(keyword)))) {
-          return true;
+        if (!countryMatch && euCountries.includes(target)) {
+          countryMatch = mentionsEurope;
         }
       }
+    }
 
-      return false;
-    })();
+    if (!countryMatch) {
+      const acceptedByGuard = event.acceptedByCountryGate === true;
+      const highConfidence = (event.confidence ?? 0) >= 0.75;
+      if (acceptedByGuard) {
+        if (!eventUpper || (target && eventUpper === target) || mentionsCountry || (target === 'EU' && mentionsEurope)) {
+          countryMatch = true;
+        }
+      } else if (highConfidence && (mentionsCountry || (target === 'EU' && mentionsEurope))) {
+        countryMatch = true;
+      }
+    }
 
     if (!countryMatch) {
       return false;
