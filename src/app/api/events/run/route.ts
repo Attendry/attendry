@@ -72,8 +72,9 @@ function buildDemoFallback(country: string | null): ApiEvent[] {
 type ApiSpeaker = {
   name: string | null;
   title: string | null;
-  organization: string | null;
-  bio?: string | null;
+  org: string | null;
+  bio: string | null;
+  confidence: number;
 };
 
 type ApiSession = {
@@ -166,10 +167,18 @@ function toApiSpeakers(raw: unknown): ApiSpeaker[] {
       const speaker = entry as Record<string, unknown>;
       const name = ensureString(speaker.name);
       const title = ensureString(speaker.title) ?? ensureString(speaker.role);
-      const organization = ensureString(speaker.organization) ?? ensureString(speaker.company);
+      const org = ensureString(speaker.organization) ?? ensureString(speaker.company);
       const bio = ensureString(speaker.bio);
-      if (!name && !title && !organization && !bio) return null;
-      return { name, title, organization, bio } satisfies ApiSpeaker;
+      if (!name && !title && !org && !bio) return null;
+      
+      // Calculate confidence based on data completeness
+      let confidence = 0.5; // Base confidence
+      if (name) confidence += 0.2;
+      if (title) confidence += 0.15;
+      if (org) confidence += 0.15;
+      if (bio) confidence += 0.1;
+      
+      return { name, title, org, bio: bio || null, confidence } satisfies ApiSpeaker;
     })
     .filter((speaker): speaker is ApiSpeaker => !!speaker);
 }
@@ -221,15 +230,16 @@ function toApiEvent(raw: unknown): ApiEvent | null {
   const location = ensureString(obj.location) ?? ensureString(details?.location);
   const venue = ensureString(obj.venue) ?? ensureString(details?.venue);
   const confidence = ensureNumber(obj.confidence);
-  const confidence_reason = ensureString(obj.confidence_reason);
+  const confidence_reason = ensureString(obj.confidence_reason) || undefined;
   const countrySource = ensureString((obj as Record<string, unknown>).countrySource ?? (details?.countrySource as unknown));
   const citySource = ensureString((obj as Record<string, unknown>).citySource ?? (details?.citySource as unknown));
   const locationSource = ensureString((obj as Record<string, unknown>).locationSource ?? (details?.locationSource as unknown));
   const acceptedByCountryGate = ensureBoolean((obj as Record<string, unknown>).acceptedByCountryGate);
-  const relatedUrls = Array.isArray((obj as Record<string, unknown>).relatedUrls ?? details?.relatedUrls)
-    ? ((obj as Record<string, unknown>).relatedUrls ?? details?.relatedUrls as unknown[])
-        .map((item) => ensureString(item))
-        .filter((u): u is string => !!u)
+  const relatedUrlsRaw = (obj as Record<string, unknown>).relatedUrls ?? details?.relatedUrls;
+  const relatedUrls = Array.isArray(relatedUrlsRaw)
+    ? relatedUrlsRaw
+        .map((item: unknown) => ensureString(item))
+        .filter((u: string | null): u is string => !!u)
     : [];
 
   const sessions = toApiSessions(obj.sessions ?? details?.sessions ?? []);
