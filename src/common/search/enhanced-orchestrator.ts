@@ -113,6 +113,7 @@ async function fetchSpeakersFromSite(url: string): Promise<ExtractedSpeaker[]> {
       '.speaker-item',
       '.team-member',
       '.presenter',
+      '.teams-item', // Joomla template structure
       '.col-', // Bootstrap-style columns
       '.grid-item',
       '.person',
@@ -138,8 +139,31 @@ async function fetchSpeakersFromSite(url: string): Promise<ExtractedSpeaker[]> {
       $(selector).each((_, element) => {
         const heading = $(element).find('h2, h3, h4').first().text().toLowerCase();
         if (/sponsor|partner|exhibit|agenda|schedule/.test(heading)) return;
-        processCandidate(element);
-        $(element).find('li, p, div').each((__, child) => processCandidate(child));
+        
+        // Special handling for .teams-item structure (Joomla template)
+        if (selector === '.teams-item') {
+          const nameElement = $(element).find('h4').first();
+          const titleElement = $(element).find('p').first();
+          if (nameElement.length && titleElement.length) {
+            const name = nameElement.text().trim();
+            const title = titleElement.text().trim();
+            if (name && name.length > 2) {
+              const key = name.toLowerCase();
+              if (!candidates.has(key)) {
+                candidates.add(key);
+                speakers.push({
+                  name,
+                  title: title || null,
+                  organization: null,
+                  bio: null
+                });
+              }
+            }
+          }
+        } else {
+          processCandidate(element);
+          $(element).find('li, p, div').each((__, child) => processCandidate(child));
+        }
       });
     });
 
