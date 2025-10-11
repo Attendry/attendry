@@ -2253,14 +2253,18 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     if (cached) {
       const payload = (cached[0]?.payload ?? {}) as Record<string, unknown>;
       
-      // Check if cached result is essentially empty (all null values)
-      const hasTitle = !!payload.title;
-      const hasDescription = !!payload.description;
-      const hasSpeakers = Array.isArray(payload.speakers) && payload.speakers.length > 0;
-      const hasSessions = Array.isArray(payload.sessions) && payload.sessions.length > 0;
-      const hasLocation = !!(payload.country || payload.city || payload.location);
-      
-      const isCacheEmpty = !hasTitle && !hasDescription && !hasSpeakers && !hasSessions && !hasLocation;
+        // Check if cached result is essentially empty (all null values) or missing key event details
+        const hasTitle = !!payload.title;
+        const hasDescription = !!payload.description;
+        const hasSpeakers = Array.isArray(payload.speakers) && payload.speakers.length > 0;
+        const hasSessions = Array.isArray(payload.sessions) && payload.sessions.length > 0;
+        const hasLocation = !!(payload.country || payload.city || payload.location);
+
+        // Force fresh extraction if:
+        // 1. All fields are missing (completely empty)
+        // 2. OR if we have basic info but no speakers/sessions (incomplete extraction)
+        const isCacheEmpty = !hasTitle && !hasDescription && !hasSpeakers && !hasSessions && !hasLocation;
+        const isIncompleteExtraction = hasTitle && hasDescription && !hasSpeakers && !hasSessions;
       
       console.log('[enhanced_orchestrator] Cached result analysis for URL:', url, {
         hasTitle,
@@ -2269,11 +2273,14 @@ export async function executeEnhancedSearch(args: ExecArgs) {
         hasSessions,
         hasLocation,
         isCacheEmpty,
+        isIncompleteExtraction,
         payloadKeys: Object.keys(payload)
       });
       
-      if (isCacheEmpty) {
-        console.log('[enhanced_orchestrator] Cached result is empty, forcing fresh extraction for URL:', url);
+      if (isCacheEmpty || isIncompleteExtraction) {
+        console.log('[enhanced_orchestrator] Cached result is empty or incomplete, forcing fresh extraction for URL:', url, {
+          reason: isCacheEmpty ? 'completely_empty' : 'missing_speakers_sessions'
+        });
       } else {
         console.log('[enhanced_orchestrator] Using cached result for URL:', url, 'payload keys:', Object.keys(payload));
         const sessions = Array.isArray(payload.sessions) ? payload.sessions as ExtractedSession[] : [];
