@@ -969,6 +969,10 @@ Instructions:
 - Use country ISO-2 code when identifiable; prefer ${allowedCountries}.
 - Extract sessions with titles, timing, and speaker names when available.
 - Extract speaker details (name, role, organization, bio snippets) linked to sessions if possible.
+- Look for speaker sections, speaker lists, keynote speakers, panelists, or presenter information.
+- Check for speaker bios, profiles, or "about the speakers" sections.
+- Extract any speaker names mentioned in session descriptions or agenda items.
+- Look for speaker photos with captions or speaker cards with names and titles.
 - Extract sponsors or partners with tier/description when present.
 - Collect any in-domain links pointing to agenda, program, speakers, sponsors, or practical information pages in "relatedUrls".
 - Do not invent data; use null or empty arrays when uncertain.
