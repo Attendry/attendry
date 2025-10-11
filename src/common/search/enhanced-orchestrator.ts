@@ -1091,6 +1091,14 @@ const COUNTRY_ALIASES: Record<string, string> = {
   ITALIEN: 'IT',
   SPAIN: 'ES',
   SPANIEN: 'ES',
+  UNITED_KINGDOM: 'GB',
+  UNITEDKINGDOM: 'GB',
+  GREAT_BRITAIN: 'GB',
+  GREATBRITAIN: 'GB',
+  BRITAIN: 'GB',
+  ENGLAND: 'GB',
+  SCOTLAND: 'GB',
+  WALES: 'GB',
   NETHERLANDS: 'NL',
   NIEDERLANDE: 'NL',
   HOLLAND: 'NL',
@@ -1737,7 +1745,8 @@ export async function executeEnhancedSearch(args: ExecArgs) {
 
   // Build event-focused query
   const baseQ = buildSearchQuery({ baseQuery, userText, excludeTerms });
-  const locationContext = buildLocationContext(location, cfg);
+  const locationInput = location ?? country ?? null;
+  const locationContext = buildLocationContext(locationInput, cfg);
   const timeframeContext = timeframeDates;
   const q = buildEventFocusedQuery(baseQ, userText, locationContext, timeframeContext, cfg);
 
@@ -1903,7 +1912,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
       providersTried
     };
   }
-  const prioritizedResult = await prioritizeUrls(filteredByCountry, cfg, country, location, timeframe, guardMeta);
+  const prioritizedResult = await prioritizeUrls(filteredByCountry, cfg, country, locationInput, timeframe);
   const prioritized = prioritizedResult.items;
   const geminiSucceeded = prioritizedResult.modelPath !== null && !prioritizedResult.fallbackReason;
   const prioritizationMode = prioritizedResult.fallbackReason ? 'fallback' : 'gemini';
@@ -2167,7 +2176,6 @@ function inferCountryFromText(text: string, config: ActiveConfig): { code: strin
 
 function buildLocationContext(location: string | null, config: ActiveConfig): LocationContext {
   const normalized = location?.trim() ?? '';
-  const defaultCountries = config.defaultCountries?.length ? config.defaultCountries : ['DE'];
   let countries: string[];
   let label = '';
 
