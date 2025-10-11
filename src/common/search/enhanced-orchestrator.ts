@@ -2019,7 +2019,7 @@ async function extractEnrichmentFromLinks(
     return emptyExtractedDetails();
   }
 
-  const deduped = Array.from(new Set(links)).filter((link) => link !== parentUrl).slice(0, 8);
+  const deduped = Array.from(new Set(links)).filter((link) => link !== parentUrl).slice(0, 3); // Reduced from 8 to 3
   if (deduped.length === 0) {
     return emptyExtractedDetails();
   }
@@ -2035,12 +2035,23 @@ async function extractEnrichmentFromLinks(
 
   for (const link of deduped) {
     visited.push(link);
-    const basic = await cheapHtmlScrape(link, searchConfig).catch(() => emptyExtractedDetails());
-    let firecrawl: ExtractedEventDetails | null = null;
-    if (apiKey) {
-      firecrawl = await extractWithFirecrawl(link, apiKey, searchConfig).catch(() => emptyExtractedDetails());
-    }
-    const merged = mergeDetails(basic, firecrawl ?? emptyExtractedDetails());
+    
+    try {
+      // Add timeout to enrichment processing
+      const enrichmentPromise = (async () => {
+        const basic = await cheapHtmlScrape(link, searchConfig).catch(() => emptyExtractedDetails());
+        let firecrawl: ExtractedEventDetails | null = null;
+        if (apiKey) {
+          firecrawl = await extractWithFirecrawl(link, apiKey, searchConfig).catch(() => emptyExtractedDetails());
+        }
+        return mergeDetails(basic, firecrawl ?? emptyExtractedDetails());
+      })();
+      
+      const timeoutPromise = new Promise<ExtractedEventDetails>((_, reject) => {
+        setTimeout(() => reject(new Error(`Enrichment timeout for ${link}`)), 30000); // 30 seconds per link
+      });
+      
+      const merged = await Promise.race([enrichmentPromise, timeoutPromise]);
     
     // Enhanced speaker extraction for speaker-related pages
     if (!merged.speakers || merged.speakers.length === 0) {
@@ -2058,10 +2069,14 @@ async function extractEnrichmentFromLinks(
       }
     }
     
-    primary.push({
-      ...merged,
-      relatedUrls: merged.relatedUrls.length ? merged.relatedUrls : [link]
-    });
+      primary.push({
+        ...merged,
+        relatedUrls: merged.relatedUrls.length ? merged.relatedUrls : [link]
+      });
+    } catch (error) {
+      console.warn('[extractEnrichmentFromLinks] Failed to process link:', link, error);
+      // Continue with next link instead of failing completely
+    }
   }
 
   const result = primary.reduce((acc, curr) => mergeDetails(acc, curr), emptyExtractedDetails());
@@ -2088,6 +2103,39 @@ async function extractEnrichmentFromLinks(
 }
 
 export async function executeEnhancedSearch(args: ExecArgs) {
+  const { 
+    userText = '', 
+    country = 'DE', 
+    dateFrom = null, 
+    dateTo = null, 
+    location = null,
+    timeframe = null
+  } = args;
+
+  // Set up timeout and error handling
+  const timeoutMs = 240000; // 4 minutes (less than Vercel's 5-minute limit)
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('Search operation timed out after 4 minutes')), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([
+      performEnhancedSearch(args),
+      timeoutPromise
+    ]);
+  } catch (error) {
+    console.error('[enhanced_orchestrator] Search failed:', error);
+    return {
+      events: [],
+      logs: [{ at: 'error', error: error instanceof Error ? error.message : String(error) }],
+      effectiveQ: '',
+      searchRetriedWithBase: false,
+      providersTried: []
+    };
+  }
+}
+
+async function performEnhancedSearch(args: ExecArgs) {
   const { 
     userText = '', 
     country = 'DE', 
@@ -2380,7 +2428,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
   console.log('[enhanced_orchestrator] Step 5: Extracting event details');
   const events: ScoredEvent[] = [];
   const rejected: Array<{ url: string; reason: string; score: number }> = [];
-  const maxToExtract = Math.min(prioritized.length, 6);
+  const maxToExtract = Math.min(prioritized.length, 3); // Reduced from 6 to 3 to prevent timeouts
   
   for (let i = 0; i < maxToExtract; i++) {
     const candidate = prioritized[i];
@@ -2460,7 +2508,14 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     
     try {
       console.log('[enhanced_orchestrator] Starting extraction for URL:', url);
-      const details = await extractEventDetails(url, cfg);
+      
+      // Add timeout to individual extractions to prevent hanging
+      const extractionPromise = extractEventDetails(url, cfg);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Extraction timeout for ${url}`)), 45000); // 45 seconds per URL
+      });
+      
+      const details = await Promise.race([extractionPromise, timeoutPromise]);
       console.log('[enhanced_orchestrator] Extracted details:', {
         url,
         title: details.title,

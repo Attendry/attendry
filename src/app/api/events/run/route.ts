@@ -484,6 +484,16 @@ export async function POST(req: NextRequest) {
     const timeframe: string | null = body?.timeframe ?? null;
     const includeDebug = body?.debug === true;
 
+    console.log('[api/events/run] Starting search with params:', {
+      userText,
+      country,
+      dateFrom,
+      dateTo,
+      locale,
+      location,
+      timeframe
+    });
+
     const res = await executeEnhancedSearch({ 
       userText, 
       country,
@@ -493,9 +503,12 @@ export async function POST(req: NextRequest) {
       location, 
       timeframe 
     });
+    
+    console.log('[api/events/run] Search completed, processing results...');
     const result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
 
     if ((!result.events || result.events.length === 0) && demoFallbackEnabled()) {
+      console.log('[api/events/run] No events found, using demo fallback');
       const demoEvents = buildDemoFallback(country);
       return NextResponse.json({
         ...result,
@@ -506,9 +519,30 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    console.log('[api/events/run] Returning results:', {
+      eventCount: result.events?.length || 0,
+      provider: result.provider
+    });
+
     return NextResponse.json(result);
   } catch (error) {
+    console.error('[api/events/run] Error occurred:', error);
     const message = error instanceof Error ? error.message : 'search_failed';
-    return NextResponse.json({ error: message, debug: { crashed: true } }, { status: 500 });
+    const errorResponse = { 
+      error: message, 
+      debug: { 
+        crashed: true,
+        timestamp: new Date().toISOString(),
+        errorType: error instanceof Error ? error.constructor.name : 'Unknown'
+      } 
+    };
+    
+    // Ensure we always return valid JSON
+    return NextResponse.json(errorResponse, { 
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
   }
 }
