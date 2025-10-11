@@ -2251,40 +2251,64 @@ export async function executeEnhancedSearch(args: ExecArgs) {
     const cached = await fetchCachedExtraction(url, null);
     console.log('[enhanced_orchestrator] Cache check for URL:', url, 'cached:', !!cached);
     if (cached) {
-      console.log('[enhanced_orchestrator] Using cached result for URL:', url, 'payload keys:', Object.keys(cached[0]?.payload ?? {}));
       const payload = (cached[0]?.payload ?? {}) as Record<string, unknown>;
-      const sessions = Array.isArray(payload.sessions) ? payload.sessions as ExtractedSession[] : [];
-      const speakers = Array.isArray(payload.speakers) ? payload.speakers as ExtractedSpeaker[] : [];
-      const sponsors = Array.isArray(payload.sponsors) ? payload.sponsors as ExtractedSponsor[] : [];
-      const relatedUrls = Array.isArray(payload.relatedUrls) ? payload.relatedUrls.filter((entry: unknown): entry is string => typeof entry === 'string') : [];
-      const debugVisitedLinks = Array.isArray(payload.debugVisitedLinks) ? payload.debugVisitedLinks.filter((entry: unknown): entry is string => typeof entry === 'string') : [];
-      events.push({
-        id: `event_${i}`,
-        title: payload.title as string ?? null,
-        source_url: url,
-        starts_at: payload.starts_at as string ?? null,
-        country: payload.country as string ?? null,
-        city: payload.city as string ?? null,
-        location: payload.location as string ?? null,
-        venue: payload.venue as string ?? null,
-        description: payload.description as string ?? null,
-        sessions,
-        speakers,
-        sponsors,
-        confidence: Math.min(Math.max(candidate.score, 0), 1),
-        confidence_reason: candidate.reason,
-        countrySource: payload.countrySource as string ?? null,
-        citySource: payload.citySource as string ?? null,
-        locationSource: payload.locationSource as string ?? null,
-        acceptedByCountryGate: guardMeta[url]?.guardStatus === 'keep',
-        relatedUrls,
-        debugVisitedLinks,
-        scoringTrace: {
-          geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
-          heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
-        }
+      
+      // Check if cached result is essentially empty (all null values)
+      const hasTitle = !!payload.title;
+      const hasDescription = !!payload.description;
+      const hasSpeakers = Array.isArray(payload.speakers) && payload.speakers.length > 0;
+      const hasSessions = Array.isArray(payload.sessions) && payload.sessions.length > 0;
+      const hasLocation = !!(payload.country || payload.city || payload.location);
+      
+      const isCacheEmpty = !hasTitle && !hasDescription && !hasSpeakers && !hasSessions && !hasLocation;
+      
+      console.log('[enhanced_orchestrator] Cached result analysis for URL:', url, {
+        hasTitle,
+        hasDescription, 
+        hasSpeakers,
+        hasSessions,
+        hasLocation,
+        isCacheEmpty,
+        payloadKeys: Object.keys(payload)
       });
-      continue;
+      
+      if (isCacheEmpty) {
+        console.log('[enhanced_orchestrator] Cached result is empty, forcing fresh extraction for URL:', url);
+      } else {
+        console.log('[enhanced_orchestrator] Using cached result for URL:', url, 'payload keys:', Object.keys(payload));
+        const sessions = Array.isArray(payload.sessions) ? payload.sessions as ExtractedSession[] : [];
+        const speakers = Array.isArray(payload.speakers) ? payload.speakers as ExtractedSpeaker[] : [];
+        const sponsors = Array.isArray(payload.sponsors) ? payload.sponsors as ExtractedSponsor[] : [];
+        const relatedUrls = Array.isArray(payload.relatedUrls) ? payload.relatedUrls.filter((entry: unknown): entry is string => typeof entry === 'string') : [];
+        const debugVisitedLinks = Array.isArray(payload.debugVisitedLinks) ? payload.debugVisitedLinks.filter((entry: unknown): entry is string => typeof entry === 'string') : [];
+        events.push({
+          id: `event_${i}`,
+          title: payload.title as string ?? null,
+          source_url: url,
+          starts_at: payload.starts_at as string ?? null,
+          country: payload.country as string ?? null,
+          city: payload.city as string ?? null,
+          location: payload.location as string ?? null,
+          venue: payload.venue as string ?? null,
+          description: payload.description as string ?? null,
+          sessions,
+          speakers,
+          sponsors,
+          confidence: Math.min(Math.max(candidate.score, 0), 1),
+          confidence_reason: candidate.reason,
+          countrySource: payload.countrySource as string ?? null,
+          citySource: payload.citySource as string ?? null,
+          locationSource: payload.locationSource as string ?? null,
+          acceptedByCountryGate: guardMeta[url]?.guardStatus === 'keep',
+          relatedUrls,
+          debugVisitedLinks,
+          scoringTrace: {
+            geminiScore: candidate.reason === 'gemini' ? candidate.score : undefined,
+            heuristicScore: candidate.reason?.startsWith('fallback') ? candidate.score : undefined
+          }
+        });
+        continue;
+      }
     }
 
     console.log('[enhanced_orchestrator] No cache found, doing fresh extraction for URL:', url);
