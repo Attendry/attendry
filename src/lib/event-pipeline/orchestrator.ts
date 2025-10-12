@@ -245,8 +245,8 @@ export class EventPipeline {
   private async parseCandidates(candidates: EventCandidate[]): Promise<EventCandidate[]> {
     const parsed: EventCandidate[] = [];
     
-    // Process in parallel with concurrency limit to avoid overwhelming servers
-    const concurrency = 3;
+    // Process in parallel with increased concurrency for better performance
+    const concurrency = 5; // Increased from 3 to 5 for better performance
     const batches = [];
     
     for (let i = 0; i < candidates.length; i += concurrency) {
@@ -276,9 +276,9 @@ export class EventPipeline {
         }
       });
       
-      // Add small delay between batches to be respectful to target servers
+      // Reduced delay between batches for better performance
       if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 200)); // Reduced from 500ms to 200ms
       }
     }
     
@@ -288,8 +288,8 @@ export class EventPipeline {
   private async extractCandidates(candidates: EventCandidate[]): Promise<EventCandidate[]> {
     const extracted: EventCandidate[] = [];
     
-    // Process in parallel with concurrency limit for LLM calls
-    const concurrency = 2; // Lower concurrency for LLM calls
+    // Process in parallel with increased concurrency for LLM calls
+    const concurrency = 4; // Increased from 2 to 4 for better performance
     const batches = [];
     
     for (let i = 0; i < candidates.length; i += concurrency) {
@@ -319,9 +319,9 @@ export class EventPipeline {
         }
       });
       
-      // Add delay between batches for LLM rate limiting
+      // Reduced delay between batches for better performance
       if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 500)); // Reduced from 1000ms to 500ms
       }
     }
     
@@ -362,9 +362,9 @@ export class EventPipeline {
         }
       });
       
-      // Add small delay between batches
+      // Reduced delay between batches for better performance
       if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 100)); // Reduced from 200ms to 100ms
       }
     }
     

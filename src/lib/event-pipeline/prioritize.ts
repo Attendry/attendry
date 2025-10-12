@@ -23,16 +23,16 @@ export class EventPrioritizer {
     const prioritized: EventCandidate[] = [];
     
     try {
-      // Process in batches to avoid overwhelming the LLM
-      const batchSize = 5; // Smaller batches for better reliability
+      // Process in larger batches for better performance
+      const batchSize = 8; // Increased from 5 to 8 for better performance
       for (let i = 0; i < candidates.length; i += batchSize) {
         const batch = candidates.slice(i, i + batchSize);
         const batchResults = await this.processBatch(batch);
         prioritized.push(...batchResults);
         
-        // Add small delay between batches to avoid rate limiting
+        // Reduced delay between batches for better performance
         if (i + batchSize < candidates.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 500)); // Reduced from 1000ms to 500ms
         }
       }
       
