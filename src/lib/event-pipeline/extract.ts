@@ -150,10 +150,14 @@ export class EventExtractor {
       - If location is unclear, set to null rather than guessing
       
       IMPORTANT SPEAKER RULES:
+      - Extract ALL speakers from the page - look for speaker lists, speaker sections, and individual speaker mentions
       - Extract comprehensive speaker information: Firstname Lastname, Job Title, and Company
       - INCLUDE actual person names in "First Last" format
       - INCLUDE job titles like "CEO", "Director", "Manager", "Legal Counsel", "Partner", "General Counsel"
       - INCLUDE company/organization names
+      - Look for patterns like "Mr. John Smith, Chief Compliance Officer, ABC Corp"
+      - Look for bullet points or lists of speakers
+      - Look for speaker sections with multiple names
       - EXCLUDE generic terms like "Speaker", "Presenter", "Panelist" (unless they are actual names)
       - If no actual person names are found, return empty array []
       

@@ -466,6 +466,12 @@ export async function GET(req: NextRequest) {
       const timeframeDates = processTimeframe(timeframe);
       effectiveDateFrom = timeframeDates.dateFrom;
       effectiveDateTo = timeframeDates.dateTo;
+    } else if (!timeframe && !dateFrom && !dateTo) {
+      // Default to next 30 days if no timeframe specified
+      const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
+      const timeframeDates = processTimeframe('next_30');
+      effectiveDateFrom = timeframeDates.dateFrom;
+      effectiveDateTo = timeframeDates.dateTo;
     }
 
     // Use new pipeline if enabled, otherwise fall back to enhanced orchestrator
@@ -539,6 +545,12 @@ export async function POST(req: NextRequest) {
     if (timeframe && !dateFrom && !dateTo) {
       const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
       const timeframeDates = processTimeframe(timeframe);
+      effectiveDateFrom = timeframeDates.dateFrom;
+      effectiveDateTo = timeframeDates.dateTo;
+    } else if (!timeframe && !dateFrom && !dateTo) {
+      // Default to next 30 days if no timeframe specified
+      const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
+      const timeframeDates = processTimeframe('next_30');
       effectiveDateFrom = timeframeDates.dateFrom;
       effectiveDateTo = timeframeDates.dateTo;
     }

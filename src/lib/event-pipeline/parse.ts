@@ -232,11 +232,17 @@ export class EventParser {
   private extractSpeakers(html: string): string[] {
     const speakers: string[] = [];
     
-    // Speaker-specific patterns
+    // Enhanced speaker-specific patterns
     const patterns = [
-      // Speaker lists
+      // Bold speaker names (common format)
+      { pattern: /\*\*([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\*\*/g, source: 'markdown' as const },
+      // Speaker lists with titles
+      { pattern: /(?:Mr\.|Ms\.|Dr\.)\s+([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g, source: 'titled' as const },
+      // Speaker sections
       { pattern: /(?:speaker|presenter|keynote)[^>]*>([^<]*(?:[A-Z][a-z]+\s+[A-Z][a-z]+)[^<]*)/gi, source: 'html' as const },
-      // Name patterns
+      // Name patterns with job titles
+      { pattern: /([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s*(?:Chief|General|Senior|Head|Director|Manager|Partner|VP|SVP)/g, source: 'titled' as const },
+      // Simple name patterns
       { pattern: /([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*[,;]\s*|$)/g, source: 'regex' as const }
     ];
     
@@ -250,7 +256,7 @@ export class EventParser {
       }
     }
     
-    return speakers.slice(0, 10); // Limit to 10 speakers
+    return speakers.slice(0, 20); // Increased limit to 20 speakers
   }
 
   private extractAgenda(html: string): string[] {
@@ -358,12 +364,28 @@ export class EventParser {
   }
 
   private isValidSpeakerName(name: string): boolean {
-    // Basic speaker name validation
-    return name.length > 5 && 
-           /^[A-Z][a-z]+\s+[A-Z][a-z]+/.test(name) && 
-           !name.includes('http') &&
-           !name.includes('@') &&
-           !name.includes('www');
+    // Enhanced speaker name validation
+    if (name.length < 5 || name.length > 100) return false;
+    
+    // Must match proper name pattern (First Last or First Middle Last)
+    if (!/^[A-Z][a-z]+(\s+[A-Z][a-z]+)+$/.test(name)) return false;
+    
+    // Exclude common false positives
+    const invalidTerms = [
+      'home', 'about', 'contact', 'news', 'blog', 'events', 'conference', 'summit',
+      'speaker', 'presenter', 'keynote', 'panelist', 'moderator',
+      'chief', 'general', 'senior', 'head', 'director', 'manager', 'partner',
+      'compliance', 'legal', 'counsel', 'officer', 'executive', 'president',
+      'http', 'www', '@', 'email', 'phone', 'address', 'location', 'venue'
+    ];
+    
+    const nameLower = name.toLowerCase();
+    if (invalidTerms.some(term => nameLower.includes(term))) return false;
+    
+    // Must not be just job titles
+    if (nameLower.includes('compliance officer') || nameLower.includes('legal counsel')) return false;
+    
+    return true;
   }
 
   private isValidAgendaItem(item: string): boolean {
