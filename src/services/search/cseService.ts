@@ -33,7 +33,7 @@ export async function cseSearch(args: CSEArgs) {
   function buildCSEUrl(q: string, withLocale: boolean) {
     const u = new URL('https://www.googleapis.com/customsearch/v1');
     u.searchParams.set('q', q.slice(0, 256));         // trim long queries to reduce 400s
-    u.searchParams.set('key', process.env.GOOGLE_API_KEY!);
+    u.searchParams.set('key', process.env.GOOGLE_API_KEY || process.env.CSE_API_KEY!);
     u.searchParams.set('cx', process.env.GOOGLE_CSE_CX!);
     u.searchParams.set('num', '10');
     u.searchParams.set('safe', 'off');

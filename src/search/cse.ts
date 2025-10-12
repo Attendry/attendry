@@ -2,7 +2,7 @@ function buildCSEUrl(q: string, locale: boolean) {
   const u = new URL('https://www.googleapis.com/customsearch/v1');
   const trimmed = q.length > 256 ? q.slice(0, 256) : q;
   u.searchParams.set('q', trimmed);
-  u.searchParams.set('key', process.env.GOOGLE_API_KEY!);
+  u.searchParams.set('key', process.env.GOOGLE_API_KEY || process.env.CSE_API_KEY!);
   u.searchParams.set('cx', process.env.GOOGLE_CSE_CX!);
   u.searchParams.set('num', '10'); // 50 often trips quota/400
   u.searchParams.set('safe', 'off');

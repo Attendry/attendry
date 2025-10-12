@@ -1169,7 +1169,7 @@ export class SearchService {
     if (!firecrawlKey) {
       console.log(JSON.stringify({ at: "search_service_extract", note: "no FIRECRAWL_KEY, returning minimal events" }));
       return {
-        events: urls.slice(0, 10).map(url => ({
+        events: (urls || []).slice(0, 10).map(url => ({
           source_url: url,
           title: url,
           starts_at: null,
@@ -2248,7 +2248,7 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
     );
 
     // Step 6: Extract events from prioritized URLs only
-    const extract = await this.extractEvents(prioritization.prioritizedUrls);
+    const extract = await this.extractEvents(prioritization.prioritizedUrls || []);
 
     // Step 7: Process and deduplicate events
     let events = extract.events;
@@ -2334,9 +2334,9 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
         items: search.items
       },
       prioritization: {
-        total: prioritization.prioritizationStats.total,
-        selected: prioritization.prioritizationStats.prioritized,
-        reasons: prioritization.prioritizationStats.reasons.slice(0, 5) // Show top 5 reasons
+        total: prioritization?.prioritizationStats?.total || 0,
+        selected: prioritization?.prioritizationStats?.prioritized || 0,
+        reasons: prioritization?.prioritizationStats?.reasons?.slice(0, 5) || [] // Show top 5 reasons
       },
       extract: {
         status: 200,

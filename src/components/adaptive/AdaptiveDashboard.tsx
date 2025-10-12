@@ -9,7 +9,7 @@ import { ThemeProvider } from './ThemeProvider';
 import { AdaptiveErrorBoundary } from './ErrorBoundary';
 
 // Types for the adaptive interface
-export type ModuleType = 'search' | 'recommendations' | 'trending' | 'compare' | 'insights';
+export type ModuleType = 'search' | 'recommendations' | 'trending' | 'compare' | 'insights' | 'intelligence';
 export type ThemeMode = 'light' | 'dark' | 'high-contrast';
 
 export interface UserBehavior {

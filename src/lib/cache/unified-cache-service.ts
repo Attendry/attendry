@@ -445,4 +445,9 @@ export const CACHE_CONFIGS = {
     prefix: 'external',
     fallbackToDb: false,
   },
+  COMPANY_INTELLIGENCE: {
+    ttl: 60 * 60, // 1 hour
+    prefix: 'ci',
+    fallbackToDb: true,
+  },
 } as const;

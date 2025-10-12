@@ -10,6 +10,7 @@ const RecommendationsModule = lazy(() => import('./modules/RecommendationsModule
 const TrendingModule = lazy(() => import('./modules/TrendingModule').then(m => ({ default: m.TrendingModule })));
 const CompareModule = lazy(() => import('./modules/CompareModule').then(m => ({ default: m.CompareModule })));
 const InsightsModule = lazy(() => import('./modules/InsightsModule').then(m => ({ default: m.InsightsModule })));
+const IntelligenceModule = lazy(() => import('@/components/IntelligenceDashboard'));
 
 // Loading component
 const ModuleLoader = () => (
@@ -27,6 +28,7 @@ const MainContent = memo(() => {
     trending: TrendingModule,
     compare: CompareModule,
     insights: InsightsModule,
+    intelligence: IntelligenceModule,
   };
 
   const CurrentModule = moduleComponents[currentModule];

@@ -15,7 +15,8 @@ import {
   Moon,
   Contrast,
   Zap,
-  ZapOff
+  ZapOff,
+  Brain
 } from 'lucide-react';
 import { useAdaptive } from './AdaptiveDashboard';
 
@@ -38,6 +39,7 @@ const Sidebar = memo(() => {
     { id: 'trending' as const, label: 'Trending', icon: TrendingUp, count: 0 },
     { id: 'compare' as const, label: 'Compare', icon: GitCompare, count: userBehavior.eventClicks },
     { id: 'insights' as const, label: 'Insights', icon: Lightbulb, count: 0 },
+    { id: 'intelligence' as const, label: 'Intelligence', icon: Brain, count: 0 },
   ], [userBehavior.searchCount, userBehavior.savedEvents, userBehavior.eventClicks]);
 
   // Memoized theme options

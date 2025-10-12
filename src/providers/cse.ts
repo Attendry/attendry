@@ -1,12 +1,12 @@
 export async function search(params: { q: string; country?: string }) {
   try {
-    // Check for API key - try both possible names
-    const apiKey = process.env.GOOGLE_CSE_KEY || process.env.GOOGLE_API_KEY;
+    // Check for API key - try all possible names
+    const apiKey = process.env.GOOGLE_CSE_KEY || process.env.GOOGLE_API_KEY || process.env.CSE_API_KEY;
     const cx = process.env.GOOGLE_CSE_CX;
     
     if (!apiKey) {
-      console.error('[cse] Missing API key: GOOGLE_CSE_KEY or GOOGLE_API_KEY not set');
-      return { items: [], debug: { error: 'Missing API key: GOOGLE_CSE_KEY or GOOGLE_API_KEY not set', rawCount: 0 } };
+      console.error('[cse] Missing API key: GOOGLE_CSE_KEY, GOOGLE_API_KEY, or CSE_API_KEY not set');
+      return { items: [], debug: { error: 'Missing API key: GOOGLE_CSE_KEY, GOOGLE_API_KEY, or CSE_API_KEY not set', rawCount: 0 } };
     }
     
     if (!cx) {
