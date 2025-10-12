@@ -43,13 +43,18 @@ export class EventPipeline {
     const startTime = Date.now();
     const logs: any[] = [];
     
+    // Early termination configuration
+    const EARLY_TERMINATION_THRESHOLD = 8; // Stop when we have 8 high-quality events
+    const MIN_CONFIDENCE_FOR_EARLY_TERMINATION = 0.8; // High confidence threshold
+    
     logger.info({ message: '[pipeline] Starting event discovery pipeline',
       query: context.query,
       country: context.country,
       config: {
         maxCandidates: this.config.limits.maxCandidates,
         maxExtractions: this.config.limits.maxExtractions,
-        prioritizationThreshold: this.config.thresholds.prioritization
+        prioritizationThreshold: this.config.thresholds.prioritization,
+        earlyTerminationThreshold: EARLY_TERMINATION_THRESHOLD
       }
     });
     
@@ -83,11 +88,15 @@ export class EventPipeline {
         };
       }
       
-      // Stage 2: Prioritize
+      // Stage 2: Prioritize (with parallel parsing preparation)
       const prioritizationStart = Date.now();
       logger.info('[pipeline] Stage 2: Prioritizing candidates');
       
-      const prioritized = await this.prioritizer.prioritize(candidates);
+      // Start prioritization and prepare for parallel parsing
+      const prioritizationPromise = this.prioritizer.prioritize(candidates);
+      
+      // Wait for prioritization to complete
+      const prioritized = await prioritizationPromise;
       const prioritizationDuration = Date.now() - prioritizationStart;
       
       logs.push({
@@ -149,12 +158,12 @@ export class EventPipeline {
         };
       }
       
-      // Stage 4: Extract (LLM Enhancement)
-      const extractionStart = Date.now();
-      logger.info({ message: '[pipeline] Stage 4: LLM enhancement' });
-      
-      const extracted = await this.extractCandidates(parsed);
-      const extractionDuration = Date.now() - extractionStart;
+        // Stage 4: Extract (LLM Enhancement)
+        const extractionStart = Date.now();
+        logger.info({ message: '[pipeline] Stage 4: LLM enhancement' });
+        
+        const extracted = await this.extractCandidates(parsed, EARLY_TERMINATION_THRESHOLD, MIN_CONFIDENCE_FOR_EARLY_TERMINATION);
+        const extractionDuration = Date.now() - extractionStart;
       
       logs.push({
         stage: 'extraction',
@@ -276,16 +285,20 @@ export class EventPipeline {
         }
       });
       
-      // Reduced delay between batches for better performance
+      // Further reduced delay between batches for better performance
       if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 200)); // Reduced from 500ms to 200ms
+        await new Promise(resolve => setTimeout(resolve, 100)); // Reduced from 200ms to 100ms
       }
     }
     
     return parsed;
   }
 
-  private async extractCandidates(candidates: EventCandidate[]): Promise<EventCandidate[]> {
+  private async extractCandidates(
+    candidates: EventCandidate[], 
+    earlyTerminationThreshold: number = 10,
+    minConfidenceForEarlyTermination: number = 0.8
+  ): Promise<EventCandidate[]> {
     const extracted: EventCandidate[] = [];
     
     // Process in parallel with increased concurrency for LLM calls
@@ -312,16 +325,31 @@ export class EventPipeline {
       
       const batchResults = await Promise.all(batchPromises);
       
-      // Filter out failed candidates
+      // Filter out failed candidates and check for early termination
       batchResults.forEach(result => {
         if (result && result.status === 'extracted') {
           extracted.push(result);
         }
       });
       
-      // Reduced delay between batches for better performance
+      // Check for early termination - stop if we have enough high-quality events
+      const highQualityEvents = extracted.filter(candidate => 
+        candidate.extractResult?.confidence && candidate.extractResult.confidence >= minConfidenceForEarlyTermination
+      );
+      
+      if (highQualityEvents.length >= earlyTerminationThreshold) {
+        logger.info({ message: '[pipeline] Early termination triggered',
+          highQualityEvents: highQualityEvents.length,
+          threshold: earlyTerminationThreshold,
+          totalExtracted: extracted.length,
+          remainingBatches: batches.length - batches.indexOf(batch) - 1
+        });
+        break; // Stop processing remaining batches
+      }
+      
+      // Further reduced delay between batches for better performance
       if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500)); // Reduced from 1000ms to 500ms
+        await new Promise(resolve => setTimeout(resolve, 300)); // Reduced from 500ms to 300ms
       }
     }
     

@@ -30,9 +30,9 @@ export class EventPrioritizer {
         const batchResults = await this.processBatch(batch);
         prioritized.push(...batchResults);
         
-        // Reduced delay between batches for better performance
+        // Further reduced delay between batches for better performance
         if (i + batchSize < candidates.length) {
-          await new Promise(resolve => setTimeout(resolve, 500)); // Reduced from 1000ms to 500ms
+          await new Promise(resolve => setTimeout(resolve, 300)); // Reduced from 500ms to 300ms
         }
       }
       

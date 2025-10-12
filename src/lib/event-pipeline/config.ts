@@ -23,9 +23,9 @@ export const DEFAULT_PIPELINE_CONFIG: EventPipelineConfig = {
     maxExtractions: 10        // Max events to extract
   },
   timeouts: {
-    discovery: 20000,         // 20s - optimized discovery timeout (reduced from 30s)
-    prioritization: 15000,    // 15s - prioritization timeout per batch
-    parsing: 10000            // 10s - parsing timeout per URL
+    discovery: 15000,         // 15s - further optimized discovery timeout (reduced from 20s)
+    prioritization: 12000,    // 12s - optimized prioritization timeout per batch
+    parsing: 8000             // 8s - optimized parsing timeout per URL
   }
 };
 
