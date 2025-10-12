@@ -1,6 +1,8 @@
 // app/api/events/run/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { executeEnhancedSearch } from '@/common/search/enhanced-orchestrator';
+import { executeNewPipeline } from '@/lib/event-pipeline';
+import { isNewPipelineEnabled } from '@/lib/event-pipeline/config';
 import { loadActiveConfig, type ActiveConfig } from '@/common/search/config';
 
 const DEMO_FALLBACK_EVENTS: Array<Omit<ApiEvent, 'id'>> = [
@@ -455,16 +457,41 @@ export async function GET(req: NextRequest) {
     const timeframe: string | null = url.searchParams.get('timeframe');
     const includeDebug = url.searchParams.get('debug') === '1';
 
-    const res = await executeEnhancedSearch({ 
-      userText, 
-      country,
-      dateFrom, 
-      dateTo, 
-      locale, 
-      location, 
-      timeframe 
-    });
-    const result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+    // Use new pipeline if enabled, otherwise fall back to enhanced orchestrator
+    const useNewPipeline = isNewPipelineEnabled();
+    let res;
+    
+    if (useNewPipeline) {
+      console.log('[api/events/run] Using new event pipeline (GET)');
+      res = await executeNewPipeline({
+        userText,
+        country: country || 'DE',
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        locale: locale || 'de'
+      });
+    } else {
+      console.log('[api/events/run] Using enhanced orchestrator (GET)');
+      res = await executeEnhancedSearch({ 
+        userText, 
+        country,
+        dateFrom, 
+        dateTo, 
+        locale, 
+        location, 
+        timeframe 
+      });
+    }
+    
+    let result;
+    if (useNewPipeline) {
+      // New pipeline returns the correct format already
+      result = res;
+    } else {
+      // Enhanced orchestrator needs processing
+      result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+    }
+    
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'search_failed';
@@ -494,18 +521,42 @@ export async function POST(req: NextRequest) {
       timeframe
     });
 
-    const res = await executeEnhancedSearch({ 
-      userText, 
-      country,
-      dateFrom, 
-      dateTo, 
-      locale, 
-      location, 
-      timeframe 
-    });
+    // Use new pipeline if enabled, otherwise fall back to enhanced orchestrator
+    const useNewPipeline = isNewPipelineEnabled();
+    let res;
+    
+    if (useNewPipeline) {
+      console.log('[api/events/run] Using new event pipeline');
+      res = await executeNewPipeline({
+        userText,
+        country: country || 'DE',
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        locale: locale || 'de'
+      });
+    } else {
+      console.log('[api/events/run] Using enhanced orchestrator');
+      res = await executeEnhancedSearch({ 
+        userText, 
+        country,
+        dateFrom, 
+        dateTo, 
+        locale, 
+        location, 
+        timeframe 
+      });
+    }
     
     console.log('[api/events/run] Search completed, processing results...');
-    const result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+    
+    let result;
+    if (useNewPipeline) {
+      // New pipeline returns the correct format already
+      result = res;
+    } else {
+      // Enhanced orchestrator needs processing
+      result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+    }
 
     if ((!result.events || result.events.length === 0) && demoFallbackEnabled()) {
       console.log('[api/events/run] No events found, using demo fallback');
