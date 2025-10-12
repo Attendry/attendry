@@ -52,7 +52,7 @@ export interface EventCandidate {
   status: PipelineStatus;     // Current pipeline status
   metadata: {
     originalQuery: string;    // Original search query
-    country: string;          // Target country
+    country: string | null;   // Target country (null for pan-European searches)
     processingTime: number;   // Total processing time in ms
     stageTimings: {           // Timing for each stage
       discovery?: number;
@@ -129,7 +129,7 @@ export interface StageResult<T = any> {
 // Pipeline execution context
 export interface PipelineContext {
   query: string;
-  country: string;
+  country: string | null;
   dateFrom?: string;
   dateTo?: string;
   locale?: string;
@@ -139,7 +139,7 @@ export interface PipelineContext {
 
 // Service interfaces for dependency injection
 export interface DiscoveryService {
-  search(params: { q: string; country: string; limit?: number }): Promise<{ items: Array<{ url: string; title?: string; description?: string }> }>;
+  search(params: { q: string; country: string | null; limit?: number }): Promise<{ items: Array<{ url: string; title?: string; description?: string }> }>;
 }
 
 export interface PrioritizationService {

@@ -22,7 +22,7 @@ const toUS = (iso: string) => {
 };
 
 export async function executeSearch(args: ExecArgs) {
-  const { userText = '', country = 'DE', dateFrom = null, dateTo = null, locale = 'de' } = args;
+  const { userText = '', country = null, dateFrom = null, dateTo = null, locale = 'de' } = args;
 
   const cfg = await loadActiveConfig();
   const baseQuery = cfg.baseQuery;

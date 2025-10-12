@@ -157,11 +157,11 @@ export class PipelineFallback {
         const normalizedTargetCountry = normalizeCountryCode(context.country);
 
         const matchesTarget = normalizedEventCountry === normalizedTargetCountry;
-        const mentionsTarget = eventLocation?.toLowerCase().includes(context.country.toLowerCase()) ?? false;
-        const urlSuggestsTarget = eventUrl.toLowerCase().includes('.' + context.country.toLowerCase()) ||
+        const mentionsTarget = context.country ? eventLocation?.toLowerCase().includes(context.country.toLowerCase()) ?? false : false;
+        const urlSuggestsTarget = context.country ? (eventUrl.toLowerCase().includes('.' + context.country.toLowerCase()) ||
           eventUrl.toLowerCase().includes('germany') ||
           eventUrl.toLowerCase().includes('deutschland') ||
-          (context.country.toLowerCase() === 'gb' && (eventUrl.toLowerCase().includes('uk') || eventUrl.toLowerCase().includes('britain')));
+          (context.country.toLowerCase() === 'gb' && (eventUrl.toLowerCase().includes('uk') || eventUrl.toLowerCase().includes('britain')))) : false;
 
         const hasCity = Boolean(eventCity);
         const europeanHint = (event.description?.toLowerCase().includes('europe') || event.title?.toLowerCase().includes('europe') || eventUrl.toLowerCase().includes('european'));
@@ -184,7 +184,7 @@ export class PipelineFallback {
           eventLocation?.toLowerCase().includes('wales');
 
         // For German searches, explicitly reject US and UK events unless they explicitly mention Germany
-        if (context.country.toUpperCase() === 'DE') {
+        if (context.country && context.country.toUpperCase() === 'DE') {
           if (isUSEvent && !mentionsTarget && !urlSuggestsTarget) {
           logger.info({ message: '[fallback] Filtering out US event for German search', 
             url: eventUrl, 
@@ -296,8 +296,12 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
   
   // Create service wrappers that match the DiscoveryService interface
   const cseService = {
-    search: async (params: { q: string; country: string; limit?: number }) => {
-      const result = await cseSearch({ baseQuery: params.q, userText: params.q, crCountry: `country${params.country}` });
+    search: async (params: { q: string; country: string | null; limit?: number }) => {
+      const result = await cseSearch({ 
+        baseQuery: params.q, 
+        userText: params.q, 
+        crCountry: params.country ? `country${params.country}` : undefined 
+      });
       return {
         items: result.items.map((item: any) => ({
           url: item.url,
@@ -309,8 +313,12 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
   };
   
   const firecrawlService = {
-    search: async (params: { q: string; country: string; limit?: number }) => {
-      const result = await firecrawlSearch({ baseQuery: params.q, userText: params.q, location: params.country });
+    search: async (params: { q: string; country: string | null; limit?: number }) => {
+      const result = await firecrawlSearch({ 
+        baseQuery: params.q, 
+        userText: params.q, 
+        location: params.country || undefined 
+      });
       return {
         items: result.items.map((item: any) => ({
           url: item.url,
@@ -395,7 +403,7 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
 // Main entry point for the new pipeline
 export async function executeNewPipeline(args: {
   userText: string;
-  country: string;
+  country: string | null;
   dateFrom?: string;
   dateTo?: string;
   locale?: string;

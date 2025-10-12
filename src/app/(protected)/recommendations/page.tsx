@@ -1,14 +1,15 @@
 /**
- * Recommendations Page
+ * Market Intelligence Page
  * 
- * This page displays AI-powered event recommendations for users.
+ * This page displays the unified Market Intelligence experience with both
+ * Event Recommendations and Account Intelligence features.
  */
 
 import { getServerSession } from '@/lib/auth/server-session';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
-import RecommendationEngine from '@/components/RecommendationEngine';
+import { MarketIntelligenceStandalone } from '@/components/MarketIntelligenceStandalone';
 
-export default async function RecommendationsPage() {
+export default async function MarketIntelligencePage() {
   const { session } = await getServerSession();
 
   return (
@@ -16,12 +17,14 @@ export default async function RecommendationsPage() {
       {!session && (
         <div className="mx-auto max-w-3xl px-4 pt-10">
           <UnauthenticatedNotice
-            feature="Personalized Recommendations"
-            description="Log in to generate tailored event recommendations based on your saved lists and search history. You can continue exploring the demo results without signing in."
+            feature="Market Intelligence"
+            description="Log in to access AI-powered event recommendations and strategic account monitoring. You can continue exploring the demo results without signing in."
           />
         </div>
       )}
-      <RecommendationEngine />
+      <div className="max-w-6xl mx-auto p-6">
+        <MarketIntelligenceStandalone />
+      </div>
     </div>
   );
 }

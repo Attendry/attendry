@@ -15,11 +15,11 @@ const MIN_URLS = 8;
 
 export async function runSearch(opts: {
   baseQuery: string;
-  country?: string; // default DE
+  country?: string; // no default - respect user input
   days?: number;    // currently unused by CSE reliably
   enableAug?: boolean;
 }) {
-  const country = (opts.country ?? 'DE').toUpperCase();
+  const country = opts.country ? opts.country.toUpperCase() : null;
 
   const correlationId = ensureCorrelation();
   const tiers = buildTierQueries(opts.baseQuery, !!opts.enableAug);
@@ -36,7 +36,7 @@ export async function runSearch(opts: {
       waitFor: 800,
       blockAds: true,
       removeBase64Images: true,
-      location: { country, languages: ['de','en'] }
+      location: country ? { country, languages: ['de','en'] } : undefined
     }
   };
 
@@ -73,24 +73,39 @@ export async function runSearch(opts: {
   if (urls.length < MIN_URLS) {
     retriedWithBase = true;
 
-    // Strict German event sharding with .de constraint
-    // Use short shards to avoid CSE 400s.
-    const SHARDS = [
-      ...EVENT_DE,
-      ...CITY_DE,
-      'Deutschland','DE'
-    ];
+    // Only apply country-specific sharding if a specific country is requested
+    if (country === 'DE') {
+      // Strict German event sharding with .de constraint
+      // Use short shards to avoid CSE 400s.
+      const SHARDS = [
+        ...EVENT_DE,
+        ...CITY_DE,
+        'Deutschland','DE'
+      ];
 
-    for (const w of SHARDS) {
-      // 1) site:.de hard constraint
-      const qDe = `(${opts.baseQuery}) site:.de ${w}`;
-      assertClean(qDe);
-      urls.push(...await cseSearch(qDe));
+      for (const w of SHARDS) {
+        // 1) site:.de hard constraint
+        const qDe = `(${opts.baseQuery}) site:.de ${w}`;
+        assertClean(qDe);
+        urls.push(...await cseSearch(qDe));
 
-      // 2) allow Firecrawl a try with German token
-      const qFc = `(${opts.baseQuery}) ${w}`;
-      assertClean(qFc);
-      urls.push(...await firecrawlSearch(qFc, fcParams));
+        // 2) allow Firecrawl a try with German token
+        const qFc = `(${opts.baseQuery}) ${w}`;
+        assertClean(qFc);
+        urls.push(...await firecrawlSearch(qFc, fcParams));
+      }
+    } else {
+      // For non-German or pan-European searches, use broader search terms
+      const BROAD_SHARDS = [
+        'conference', 'summit', 'event', 'workshop', 'seminar',
+        'meeting', 'symposium', 'forum', 'exhibition'
+      ];
+
+      for (const w of BROAD_SHARDS) {
+        const q = `(${opts.baseQuery}) ${w}`;
+        assertClean(q);
+        urls.push(...await firecrawlSearch(q, fcParams));
+      }
     }
 
     urls = prefilter([...new Set(urls)]);

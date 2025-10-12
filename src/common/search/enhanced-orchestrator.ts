@@ -2143,7 +2143,7 @@ async function extractEnrichmentFromLinks(
 export async function executeEnhancedSearch(args: ExecArgs) {
   const { 
     userText = '', 
-    country = 'DE', 
+    country = null, 
     dateFrom = null, 
     dateTo = null, 
     location = null,
@@ -2176,7 +2176,7 @@ export async function executeEnhancedSearch(args: ExecArgs) {
 async function performEnhancedSearch(args: ExecArgs) {
   const { 
     userText = '', 
-    country = 'DE', 
+    country = null, 
     dateFrom = null, 
     dateTo = null, 
     location = null,

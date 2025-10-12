@@ -500,7 +500,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const userText: string = url.searchParams.get('userText') ?? 'legal conference 2025';
-    const country: string | null = url.searchParams.get('country') ?? 'DE';
+    const country: string | null = url.searchParams.get('country') ?? null;
     const dateFrom: string | null = url.searchParams.get('dateFrom');
     const dateTo: string | null = url.searchParams.get('dateTo');
     const locale: 'de' | 'en' = (url.searchParams.get('locale') === 'en' ? 'en' : 'de');
@@ -518,11 +518,19 @@ export async function GET(req: NextRequest) {
       effectiveDateFrom = timeframeDates.dateFrom;
       effectiveDateTo = timeframeDates.dateTo;
     } else if (!timeframe && !dateFrom && !dateTo) {
-      // Default to next 30 days if no timeframe specified
-      const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
-      const timeframeDates = processTimeframe('next_30');
-      effectiveDateFrom = timeframeDates.dateFrom;
-      effectiveDateTo = timeframeDates.dateTo;
+      // Only apply date restrictions for specific country searches
+      // For "All Europe" or empty country searches, don't apply date restrictions
+      if (country && country !== 'EU' && country !== '') {
+        // Default to next 30 days only for specific country searches
+        const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
+        const timeframeDates = processTimeframe('next_30');
+        effectiveDateFrom = timeframeDates.dateFrom;
+        effectiveDateTo = timeframeDates.dateTo;
+      } else {
+        // No date restrictions for pan-European searches
+        effectiveDateFrom = null;
+        effectiveDateTo = null;
+      }
     }
 
     // Use new pipeline if enabled, otherwise fall back to enhanced orchestrator
@@ -533,7 +541,7 @@ export async function GET(req: NextRequest) {
       console.log('[api/events/run] Using new event pipeline (GET)');
       res = await executeNewPipeline({
         userText,
-        country: country || 'DE',
+        country: country || null,
         dateFrom: effectiveDateFrom || undefined,
         dateTo: effectiveDateTo || undefined,
         locale: locale || 'de'
@@ -571,7 +579,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const userText: string = body?.userText ?? '';   // <- canonical
-    const country: string | null = body?.country ?? 'DE';
+    const country: string | null = body?.country ?? null;
     const dateFrom: string | null = body?.dateFrom ?? null;
     const dateTo: string | null = body?.dateTo ?? null;
     const locale: 'de' | 'en' = (body?.locale === 'en' ? 'en' : 'de');
@@ -599,11 +607,19 @@ export async function POST(req: NextRequest) {
       effectiveDateFrom = timeframeDates.dateFrom;
       effectiveDateTo = timeframeDates.dateTo;
     } else if (!timeframe && !dateFrom && !dateTo) {
-      // Default to next 30 days if no timeframe specified
-      const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
-      const timeframeDates = processTimeframe('next_30');
-      effectiveDateFrom = timeframeDates.dateFrom;
-      effectiveDateTo = timeframeDates.dateTo;
+      // Only apply date restrictions for specific country searches
+      // For "All Europe" or empty country searches, don't apply date restrictions
+      if (country && country !== 'EU' && country !== '') {
+        // Default to next 30 days only for specific country searches
+        const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
+        const timeframeDates = processTimeframe('next_30');
+        effectiveDateFrom = timeframeDates.dateFrom;
+        effectiveDateTo = timeframeDates.dateTo;
+      } else {
+        // No date restrictions for pan-European searches
+        effectiveDateFrom = null;
+        effectiveDateTo = null;
+      }
     }
 
     // Use new pipeline if enabled, otherwise fall back to enhanced orchestrator
@@ -614,7 +630,7 @@ export async function POST(req: NextRequest) {
       console.log('[api/events/run] Using new event pipeline');
       res = await executeNewPipeline({
         userText,
-        country: country || 'DE',
+        country: country || null,
         dateFrom: effectiveDateFrom || undefined,
         dateTo: effectiveDateTo || undefined,
         locale: locale || 'de'

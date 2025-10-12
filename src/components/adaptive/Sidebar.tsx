@@ -35,11 +35,10 @@ const Sidebar = memo(() => {
   // Memoized modules array to prevent unnecessary re-renders
   const modules = useMemo(() => [
     { id: 'search' as const, label: 'Search', icon: Search, count: userBehavior.searchCount },
-    { id: 'recommendations' as const, label: 'Recommendations', icon: Heart, count: userBehavior.savedEvents },
+    { id: 'recommendations' as const, label: 'Market Intelligence', icon: Brain, count: userBehavior.savedEvents },
     { id: 'trending' as const, label: 'Trending', icon: TrendingUp, count: 0 },
     { id: 'compare' as const, label: 'Compare', icon: GitCompare, count: userBehavior.eventClicks },
     { id: 'insights' as const, label: 'Insights', icon: Lightbulb, count: 0 },
-    { id: 'intelligence' as const, label: 'Intelligence', icon: Brain, count: 0 },
   ], [userBehavior.searchCount, userBehavior.savedEvents, userBehavior.eventClicks]);
 
   // Memoized theme options

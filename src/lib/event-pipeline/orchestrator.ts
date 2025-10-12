@@ -31,7 +31,7 @@ export class EventPipeline {
     this.parser = new EventParser(config);
     this.extractor = new EventExtractor(config, geminiService);
     // Publisher will be initialized with context in process method
-    this.publisher = new EventPublisher(config, { query: '', country: '', dateFrom: undefined, dateTo: undefined, locale: 'de', startTime: new Date(), config });
+    this.publisher = new EventPublisher(config, { query: '', country: null, dateFrom: undefined, dateTo: undefined, locale: 'de', startTime: new Date(), config });
   }
 
   async process(context: PipelineContext): Promise<{

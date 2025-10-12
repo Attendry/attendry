@@ -15,7 +15,7 @@ export class EventDiscoverer {
     private curatedService?: DiscoveryService
   ) {}
 
-  async discover(query: string, country: string): Promise<EventCandidate[]> {
+  async discover(query: string, country: string | null): Promise<EventCandidate[]> {
     const startTime = Date.now();
     logger.info({ message: '[discover] Starting multi-source discovery', query, country });
     
@@ -92,7 +92,7 @@ export class EventDiscoverer {
     }
   }
 
-  private async discoverFromCSE(query: string, country: string): Promise<EventCandidate[]> {
+  private async discoverFromCSE(query: string, country: string | null): Promise<EventCandidate[]> {
     const startTime = Date.now();
     logger.info({ message: '[discover:cse] Starting CSE discovery', query, country });
     
@@ -131,7 +131,7 @@ export class EventDiscoverer {
     }
   }
 
-  private async discoverFromFirecrawl(query: string, country: string): Promise<EventCandidate[]> {
+  private async discoverFromFirecrawl(query: string, country: string | null): Promise<EventCandidate[]> {
     const startTime = Date.now();
     logger.info({ message: '[discover:firecrawl] Starting Firecrawl discovery', query, country });
     
@@ -170,7 +170,7 @@ export class EventDiscoverer {
     }
   }
 
-  private async discoverFromCurated(query: string, country: string): Promise<EventCandidate[]> {
+  private async discoverFromCurated(query: string, country: string | null): Promise<EventCandidate[]> {
     if (!this.curatedService) {
       logger.warn({ message: '[discover:curated] Curated service not available' });
       return [];
