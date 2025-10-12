@@ -14,11 +14,20 @@ const DEMO_FALLBACK_EVENTS: Array<Omit<ApiEvent, 'id'>> = [
     city: 'Berlin',
     location: 'Berlin, Germany',
     venue: 'City Expo Center',
+    organizer: 'Legal Tech Association',
     description: 'Explore the latest in legal technology and innovation.',
     confidence: 0.6,
+    topics: ['Legal Technology', 'Compliance', 'Innovation', 'Digital Transformation'],
     sessions: [],
     speakers: [],
-    sponsors: [],
+    sponsors: [
+      { name: 'Microsoft', tier: 'Platinum', description: 'Leading technology partner' },
+      { name: 'Google Cloud', tier: 'Gold', description: 'Cloud solutions provider' },
+      { name: 'IBM', tier: 'Silver', description: 'AI and analytics solutions' }
+    ],
+    participating_organizations: ['Deloitte', 'PwC', 'EY', 'KPMG', 'Accenture', 'McKinsey'],
+    partners: ['Law Society', 'Tech Council', 'Innovation Hub'],
+    competitors: ['Competitor A', 'Competitor B', 'Competitor C'],
   },
   {
     title: 'Regulatory Compliance Forum',
@@ -28,11 +37,19 @@ const DEMO_FALLBACK_EVENTS: Array<Omit<ApiEvent, 'id'>> = [
     city: 'Frankfurt',
     location: 'Frankfurt, Germany',
     venue: 'Main Finance Hall',
+    organizer: 'Financial Services Association',
     description: 'Financial services compliance best practices.',
     confidence: 0.55,
+    topics: ['Regulatory Compliance', 'Risk Management', 'Financial Services'],
     sessions: [],
     speakers: [],
-    sponsors: [],
+    sponsors: [
+      { name: 'SAP', tier: 'Platinum', description: 'Enterprise software solutions' },
+      { name: 'Oracle', tier: 'Gold', description: 'Database and cloud services' }
+    ],
+    participating_organizations: ['Deutsche Bank', 'Commerzbank', 'Allianz', 'BMW'],
+    partners: ['BaFin', 'ECB', 'Financial Times'],
+    competitors: ['RegTech Solutions', 'Compliance Corp'],
   },
   {
     title: 'Data Privacy Summit Europe',
@@ -42,11 +59,20 @@ const DEMO_FALLBACK_EVENTS: Array<Omit<ApiEvent, 'id'>> = [
     city: 'Amsterdam',
     location: 'Amsterdam, Netherlands',
     venue: 'Innovation Center',
+    organizer: 'Privacy Foundation',
     description: 'GDPR compliance and data protection strategies.',
     confidence: 0.5,
+    topics: ['Data Privacy', 'GDPR', 'Cybersecurity', 'Data Protection'],
     sessions: [],
     speakers: [],
-    sponsors: [],
+    sponsors: [
+      { name: 'Salesforce', tier: 'Diamond', description: 'Customer relationship management' },
+      { name: 'Adobe', tier: 'Gold', description: 'Digital experience platform' },
+      { name: 'ServiceNow', tier: 'Silver', description: 'Digital workflow solutions' }
+    ],
+    participating_organizations: ['ING', 'Rabobank', 'Philips', 'ASML', 'Unilever'],
+    partners: ['Dutch DPA', 'Privacy International', 'EDPB'],
+    competitors: ['PrivacyTech', 'DataGuard', 'OneTrust'],
   },
 ];
 
@@ -101,12 +127,17 @@ type ApiEvent = {
   city: string | null;
   location: string | null;
   venue: string | null;
+  organizer: string | null;
   description: string | null;
   confidence: number | null;
   confidence_reason?: string;
+  topics: string[];
   sessions: ApiSession[];
   speakers: ApiSpeaker[];
   sponsors: ApiSponsor[];
+  participating_organizations: string[];
+  partners: string[];
+  competitors: string[];
   countrySource?: string | null;
   citySource?: string | null;
   locationSource?: string | null;
@@ -244,6 +275,7 @@ function toApiEvent(raw: unknown): ApiEvent | null {
   const city = ensureString(obj.city) ?? ensureString(details?.city);
   const location = ensureString(obj.location) ?? ensureString(details?.location);
   const venue = ensureString(obj.venue) ?? ensureString(details?.venue);
+  const organizer = ensureString(obj.organizer) ?? ensureString(details?.organizer);
   const confidence = ensureNumber(obj.confidence);
   const confidence_reason = ensureString(obj.confidence_reason) || undefined;
   const countrySource = ensureString((obj as Record<string, unknown>).countrySource ?? (details?.countrySource as unknown));
@@ -257,6 +289,20 @@ function toApiEvent(raw: unknown): ApiEvent | null {
         .filter((u: string | null): u is string => !!u)
     : [];
 
+  // Process array fields
+  const topics = Array.isArray(obj.topics ?? details?.topics) 
+    ? (obj.topics ?? details?.topics).map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
+    : [];
+  const participating_organizations = Array.isArray(obj.participating_organizations ?? details?.participating_organizations) 
+    ? (obj.participating_organizations ?? details?.participating_organizations).map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
+    : [];
+  const partners = Array.isArray(obj.partners ?? details?.partners) 
+    ? (obj.partners ?? details?.partners).map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
+    : [];
+  const competitors = Array.isArray(obj.competitors ?? details?.competitors) 
+    ? (obj.competitors ?? details?.competitors).map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
+    : [];
+
   const sessions = toApiSessions(obj.sessions ?? details?.sessions ?? []);
   const speakers = toApiSpeakers(obj.speakers ?? details?.speakers ?? []);
   const sponsors = toApiSponsors(obj.sponsors ?? details?.sponsors ?? []);
@@ -266,16 +312,21 @@ function toApiEvent(raw: unknown): ApiEvent | null {
     title,
     source_url: sourceUrl,
     starts_at,
-        country,
+    country,
     city,
     location,
     venue,
+    organizer,
     description,
     confidence,
     confidence_reason,
+    topics,
     sessions,
     speakers,
     sponsors,
+    participating_organizations,
+    partners,
+    competitors,
     countrySource,
     citySource,
     locationSource,
