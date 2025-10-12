@@ -8,12 +8,20 @@ import SearchHistory from "@/components/SearchHistory";
 type EventRec = {
   id?: string;
   source_url: string;
+  link?: string; // Alternative field name
   title: string;
   starts_at?: string | null;
   ends_at?: string | null;
   city?: string | null;
   country?: string | null;
   organizer?: string | null;
+  speakers?: any[] | null; // Speaker data from pipeline
+  description?: string | null; // Event description
+  venue?: string | null; // Event venue
+  location?: string | null; // Event location
+  confidence?: number | null; // Confidence score
+  confidence_reason?: string | null; // Confidence reason
+  pipeline_metadata?: any | null; // Pipeline metadata
 };
 
 const EU = [
@@ -133,6 +141,13 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         city: e.city ?? null,
         country: e.country ?? null,
         organizer: e.organizer ?? null,
+        speakers: e.speakers ?? null, // ✅ Include speakers from pipeline
+        description: e.description ?? null, // ✅ Include description
+        venue: e.venue ?? null, // ✅ Include venue
+        location: e.location ?? null, // ✅ Include location
+        confidence: e.confidence ?? null, // ✅ Include confidence
+        confidence_reason: e.confidence_reason ?? null, // ✅ Include confidence reason
+        pipeline_metadata: e.pipeline_metadata ?? null, // ✅ Include pipeline metadata
       })));
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : 'Unknown error';

@@ -28,22 +28,24 @@ import { SpeakerData } from "@/lib/types/core";
 interface Event {
   id?: string;                      // Event ID
   title?: string;                   // Event title
-  starts_at?: string;               // Start date (ISO format)
-  ends_at?: string;                 // End date (ISO format)
-  city?: string;                    // Event city
-  country?: string;                 // Event country
-  venue?: string;                   // Event venue
-  organizer?: string;               // Event organizer
+  starts_at?: string | null;        // Start date (ISO format)
+  ends_at?: string | null;          // End date (ISO format)
+  city?: string | null;             // Event city
+  country?: string | null;          // Event country
+  venue?: string | null;            // Event venue
+  location?: string | null;         // Event location (city, country)
+  organizer?: string | null;        // Event organizer
   topics?: string[];                // Event topics/themes
-  speakers?: SpeakerData[];         // Array of speaker objects
+  speakers?: SpeakerData[] | null;  // Array of speaker objects
   sponsors?: any[];                 // Array of sponsor objects
   participating_organizations?: string[]; // Participating organizations
   partners?: string[];              // Event partners
   competitors?: string[];           // Industry competitors
   source_url: string;              // Source URL of the event
-  description?: string;             // Event description
-  confidence?: number;              // Event confidence score
-  confidence_reason?: string;       // Confidence reason
+  description?: string | null;      // Event description
+  confidence?: number | null;       // Event confidence score
+  confidence_reason?: string | null; // Confidence reason
+  pipeline_metadata?: any | null;   // Pipeline metadata (LLM enhanced, quality scores, etc.)
 }
 
 /**
