@@ -33,8 +33,20 @@ export const DEFAULT_PIPELINE_CONFIG: EventPipelineConfig = {
 export const PIPELINE_FEATURE_FLAG = 'ENABLE_NEW_PIPELINE';
 export const PIPELINE_DEBUG_FLAG = 'PIPELINE_DEBUG_MODE';
 
-// Environment-based configuration
+// Configuration caching for performance optimization
+let configCache: { config: EventPipelineConfig; timestamp: number } | null = null;
+const CONFIG_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+// Environment-based configuration with caching
 export function getPipelineConfig(): EventPipelineConfig {
+  const now = Date.now();
+  
+  // Return cached config if it's still valid
+  if (configCache && (now - configCache.timestamp) < CONFIG_CACHE_DURATION) {
+    return configCache.config;
+  }
+  
+  // Load fresh config
   const config = { ...DEFAULT_PIPELINE_CONFIG };
   
   // Override with environment variables if present
@@ -67,7 +79,15 @@ export function getPipelineConfig(): EventPipelineConfig {
     config.sources.curated = process.env.PIPELINE_ENABLE_CURATED === 'true';
   }
   
+  // Cache the config
+  configCache = { config, timestamp: now };
+  
   return config;
+}
+
+// Function to clear config cache (useful for testing or config updates)
+export function clearConfigCache(): void {
+  configCache = null;
 }
 
 // Check if new pipeline is enabled

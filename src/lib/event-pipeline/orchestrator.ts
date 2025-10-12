@@ -254,8 +254,8 @@ export class EventPipeline {
   private async parseCandidates(candidates: EventCandidate[]): Promise<EventCandidate[]> {
     const parsed: EventCandidate[] = [];
     
-    // Process in parallel with increased concurrency for better performance
-    const concurrency = 5; // Increased from 3 to 5 for better performance
+    // Smart batch sizing based on candidate count for optimal performance
+    const concurrency = this.calculateOptimalConcurrency(candidates.length, 8, 3); // Max 8, min 3
     const batches = [];
     
     for (let i = 0; i < candidates.length; i += concurrency) {
@@ -287,7 +287,7 @@ export class EventPipeline {
       
       // Further reduced delay between batches for better performance
       if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100)); // Reduced from 200ms to 100ms
+        await new Promise(resolve => setTimeout(resolve, 50)); // Reduced from 100ms to 50ms
       }
     }
     
@@ -301,8 +301,8 @@ export class EventPipeline {
   ): Promise<EventCandidate[]> {
     const extracted: EventCandidate[] = [];
     
-    // Process in parallel with increased concurrency for LLM calls
-    const concurrency = 4; // Increased from 2 to 4 for better performance
+    // Smart batch sizing for LLM calls based on candidate count
+    const concurrency = this.calculateOptimalConcurrency(candidates.length, 4, 2); // Max 4, min 2 for LLM
     const batches = [];
     
     for (let i = 0; i < candidates.length; i += concurrency) {
@@ -359,8 +359,8 @@ export class EventPipeline {
   private async publishCandidates(candidates: EventCandidate[]): Promise<PublishedEvent[]> {
     const published: PublishedEvent[] = [];
     
-    // Process in parallel with concurrency limit
-    const concurrency = 3;
+    // Smart batch sizing for publishing based on candidate count
+    const concurrency = this.calculateOptimalConcurrency(candidates.length, 5, 2); // Max 5, min 2
     const batches = [];
     
     for (let i = 0; i < candidates.length; i += concurrency) {
@@ -390,13 +390,44 @@ export class EventPipeline {
         }
       });
       
-      // Reduced delay between batches for better performance
+      // Further reduced delay between batches for better performance
       if (batches.indexOf(batch) < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100)); // Reduced from 200ms to 100ms
+        await new Promise(resolve => setTimeout(resolve, 50)); // Reduced from 100ms to 50ms
       }
     }
     
     return published;
+  }
+
+  /**
+   * Calculate optimal concurrency based on candidate count
+   * Uses adaptive sizing for better performance
+   */
+  private calculateOptimalConcurrency(candidateCount: number, maxConcurrency: number, minConcurrency: number): number {
+    if (candidateCount <= 5) {
+      return Math.min(candidateCount, minConcurrency);
+    } else if (candidateCount <= 15) {
+      return Math.min(Math.ceil(candidateCount / 2), maxConcurrency);
+    } else {
+      return maxConcurrency;
+    }
+  }
+
+  /**
+   * Memory optimization: Process candidates in chunks for large datasets
+   * Prevents memory issues with very large candidate sets
+   */
+  private shouldUseStreamingProcessing(candidateCount: number): boolean {
+    return candidateCount > 50; // Use streaming for large datasets
+  }
+
+  /**
+   * Get optimal chunk size for streaming processing
+   */
+  private getOptimalChunkSize(candidateCount: number): number {
+    if (candidateCount <= 20) return candidateCount;
+    if (candidateCount <= 50) return 20;
+    return 30; // Max chunk size for memory efficiency
   }
 
   private createMetrics(
