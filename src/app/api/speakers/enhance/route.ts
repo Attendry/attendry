@@ -2,7 +2,7 @@
  * Speaker Enhancement API
  * 
  * This endpoint takes basic speaker data and enhances it with additional
- * professional information using LLM + web search.
+ * professional information using real search data and AI processing.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -10,12 +10,14 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { SpeakerData } from "@/lib/types/core";
 
 const geminiKey = process.env.GEMINI_API_KEY;
+const firecrawlKey = process.env.FIRECRAWL_KEY;
 const googleKey = process.env.GOOGLE_CSE_KEY;
 const googleCx = process.env.GOOGLE_CSE_CX;
 const LLM_MODEL = "gemini-1.5-flash";
 
 console.log('Environment check:', {
   geminiKey: !!geminiKey,
+  firecrawlKey: !!firecrawlKey,
   googleKey: !!googleKey,
   googleCx: !!googleCx,
   geminiKeyLength: geminiKey?.length || 0
@@ -49,425 +51,161 @@ interface SpeakerEnhancementResponse {
 }
 
 /**
- * Enhance speaker data with additional professional information
+ * Enhance speaker data with real search-based information
  */
-// Helper functions for intelligent inference
-function inferLocation(speaker: SpeakerData): string {
-  if (speaker.org) {
-    // Common company headquarters mapping
-    const companyLocations: { [key: string]: string } = {
-      'microsoft': 'Redmond, WA, USA',
-      'google': 'Mountain View, CA, USA',
-      'apple': 'Cupertino, CA, USA',
-      'amazon': 'Seattle, WA, USA',
-      'meta': 'Menlo Park, CA, USA',
-      'tesla': 'Austin, TX, USA',
-      'netflix': 'Los Gatos, CA, USA',
-      'uber': 'San Francisco, CA, USA',
-      'airbnb': 'San Francisco, CA, USA',
-      'spotify': 'Stockholm, Sweden',
-      'sap': 'Walldorf, Germany',
-      'siemens': 'Munich, Germany',
-      'bmw': 'Munich, Germany',
-      'volkswagen': 'Wolfsburg, Germany',
-      'bosch': 'Stuttgart, Germany',
-      'deutsche bank': 'Frankfurt, Germany',
-      'allianz': 'Munich, Germany',
-      'adidas': 'Herzogenaurach, Germany',
-      'nike': 'Beaverton, OR, USA',
-      'coca-cola': 'Atlanta, GA, USA',
-      'pepsi': 'Purchase, NY, USA',
-      'ibm': 'Armonk, NY, USA',
-      'oracle': 'Austin, TX, USA',
-      'salesforce': 'San Francisco, CA, USA',
-      'adobe': 'San Jose, CA, USA',
-      'intel': 'Santa Clara, CA, USA',
-      'nvidia': 'Santa Clara, CA, USA',
-      'amd': 'Santa Clara, CA, USA',
-      'qualcomm': 'San Diego, CA, USA',
-      'cisco': 'San Jose, CA, USA',
-      'vmware': 'Palo Alto, CA, USA',
-      'servicenow': 'Santa Clara, CA, USA',
-      'workday': 'Pleasanton, CA, USA',
-      'snowflake': 'Bozeman, MT, USA',
-      'databricks': 'San Francisco, CA, USA',
-      'palantir': 'Denver, CO, USA',
-      'stripe': 'San Francisco, CA, USA',
-      'square': 'San Francisco, CA, USA',
-      'paypal': 'San Jose, CA, USA',
-      'visa': 'Foster City, CA, USA',
-      'mastercard': 'Purchase, NY, USA',
-      'american express': 'New York, NY, USA',
-      'goldman sachs': 'New York, NY, USA',
-      'morgan stanley': 'New York, NY, USA',
-      'jpmorgan': 'New York, NY, USA',
-      'bank of america': 'Charlotte, NC, USA',
-      'wells fargo': 'San Francisco, CA, USA',
-      'citigroup': 'New York, NY, USA',
-      'berkshire hathaway': 'Omaha, NE, USA',
-      'warren buffett': 'Omaha, NE, USA',
-      'elon musk': 'Austin, TX, USA',
-      'jeff bezos': 'Seattle, WA, USA',
-      'bill gates': 'Seattle, WA, USA',
-      'steve jobs': 'Cupertino, CA, USA',
-      'mark zuckerberg': 'Menlo Park, CA, USA',
-      'larry page': 'Mountain View, CA, USA',
-      'sergey brin': 'Mountain View, CA, USA',
-      'sundar pichai': 'Mountain View, CA, USA',
-      'satya nadella': 'Redmond, WA, USA',
-      'tim cook': 'Cupertino, CA, USA',
-      'reed hastings': 'Los Gatos, CA, USA',
-      'brian chesky': 'San Francisco, CA, USA',
-      'travis kalanick': 'San Francisco, CA, USA',
-      'daniel ek': 'Stockholm, Sweden',
-      'jensen huang': 'Santa Clara, CA, USA',
-      'lisa su': 'Santa Clara, CA, USA',
-      'pat gelsinger': 'Santa Clara, CA, USA',
-      'andy jassy': 'Seattle, WA, USA',
-      'ginni rometty': 'Armonk, NY, USA',
-      'arvind krishna': 'Armonk, NY, USA',
-      'safra catz': 'Austin, TX, USA',
-      'marc benioff': 'San Francisco, CA, USA',
-      'shantanu narayen': 'San Jose, CA, USA',
-      'jensen huang': 'Santa Clara, CA, USA',
-      'lisa su': 'Santa Clara, CA, USA',
-      'pat gelsinger': 'Santa Clara, CA, USA',
-      'andy jassy': 'Seattle, WA, USA',
-      'ginni rometty': 'Armonk, NY, USA',
-      'arvind krishna': 'Armonk, NY, USA',
-      'safra catz': 'Austin, TX, USA',
-      'marc benioff': 'San Francisco, CA, USA',
-      'shantanu narayen': 'San Jose, CA, USA'
-    };
-    
-    const orgLower = speaker.org.toLowerCase();
-    for (const [company, location] of Object.entries(companyLocations)) {
-      if (orgLower.includes(company)) {
-        return location;
-      }
-    }
-    
-    // If no specific match, use generic company location
-    return `${speaker.org} Headquarters`;
-  }
-  
-  // If no organization, try to infer from title or other context
-  if (speaker.title?.toLowerCase().includes('german') || speaker.title?.toLowerCase().includes('deutschland')) {
-    return 'Germany';
-  }
-  if (speaker.title?.toLowerCase().includes('european') || speaker.title?.toLowerCase().includes('europe')) {
-    return 'Europe';
-  }
-  if (speaker.title?.toLowerCase().includes('asian') || speaker.title?.toLowerCase().includes('asia')) {
-    return 'Asia';
-  }
-  
-  return 'Location not specified';
-}
-
-function inferEducation(speaker: SpeakerData): string[] {
-  const education = [];
-  
-  // Infer based on title and organization
-  if (speaker.title?.toLowerCase().includes('engineer') || speaker.title?.toLowerCase().includes('developer')) {
-    education.push("Bachelor's Degree in Computer Science or Engineering");
-    education.push("Professional certifications in software development");
-  } else if (speaker.title?.toLowerCase().includes('manager') || speaker.title?.toLowerCase().includes('director')) {
-    education.push("Bachelor's Degree in Business Administration or related field");
-    education.push("MBA or advanced management certification");
-  } else if (speaker.title?.toLowerCase().includes('analyst') || speaker.title?.toLowerCase().includes('data')) {
-    education.push("Bachelor's Degree in Data Science, Statistics, or Computer Science");
-    education.push("Certifications in data analysis and visualization");
-  } else if (speaker.title?.toLowerCase().includes('designer') || speaker.title?.toLowerCase().includes('ux')) {
-    education.push("Bachelor's Degree in Design, Human-Computer Interaction, or related field");
-    education.push("Professional design certifications");
-  } else if (speaker.title?.toLowerCase().includes('marketing') || speaker.title?.toLowerCase().includes('sales')) {
-    education.push("Bachelor's Degree in Marketing, Business, or Communications");
-    education.push("Digital marketing certifications");
-  } else {
-    education.push("Bachelor's Degree in relevant field");
-    education.push("Professional certifications and continuous learning");
-  }
-  
-  return education;
-}
-
-function inferExpertise(speaker: SpeakerData): string[] {
-  const expertise = [];
-  
-  // Infer based on title
-  if (speaker.title?.toLowerCase().includes('ai') || speaker.title?.toLowerCase().includes('machine learning')) {
-    expertise.push("Artificial Intelligence");
-    expertise.push("Machine Learning");
-    expertise.push("Data Science");
-  } else if (speaker.title?.toLowerCase().includes('cloud') || speaker.title?.toLowerCase().includes('aws') || speaker.title?.toLowerCase().includes('azure')) {
-    expertise.push("Cloud Computing");
-    expertise.push("DevOps");
-    expertise.push("Infrastructure");
-  } else if (speaker.title?.toLowerCase().includes('security') || speaker.title?.toLowerCase().includes('cyber')) {
-    expertise.push("Cybersecurity");
-    expertise.push("Information Security");
-    expertise.push("Risk Management");
-  } else if (speaker.title?.toLowerCase().includes('mobile') || speaker.title?.toLowerCase().includes('ios') || speaker.title?.toLowerCase().includes('android')) {
-    expertise.push("Mobile Development");
-    expertise.push("iOS/Android Development");
-    expertise.push("Cross-platform Development");
-  } else if (speaker.title?.toLowerCase().includes('frontend') || speaker.title?.toLowerCase().includes('react') || speaker.title?.toLowerCase().includes('angular')) {
-    expertise.push("Frontend Development");
-    expertise.push("JavaScript/TypeScript");
-    expertise.push("Modern Web Frameworks");
-  } else if (speaker.title?.toLowerCase().includes('backend') || speaker.title?.toLowerCase().includes('api')) {
-    expertise.push("Backend Development");
-    expertise.push("API Design");
-    expertise.push("Database Management");
-  } else if (speaker.title?.toLowerCase().includes('senior') || speaker.title?.toLowerCase().includes('lead') || speaker.title?.toLowerCase().includes('principal')) {
-    expertise.push("Technical Leadership");
-    expertise.push("Architecture Design");
-    expertise.push("Team Management");
-  } else {
-    expertise.push("Software Development");
-    expertise.push("Technology Innovation");
-    expertise.push("Problem Solving");
-  }
-  
-  // Add organization-specific expertise
-  if (speaker.org) {
-    const orgLower = speaker.org.toLowerCase();
-    if (orgLower.includes('microsoft')) {
-      expertise.push("Microsoft Technologies");
-      expertise.push(".NET Development");
-    } else if (orgLower.includes('google')) {
-      expertise.push("Google Cloud Platform");
-      expertise.push("Search Technologies");
-    } else if (orgLower.includes('apple')) {
-      expertise.push("iOS Development");
-      expertise.push("Apple Ecosystem");
-    } else if (orgLower.includes('amazon') || orgLower.includes('aws')) {
-      expertise.push("Amazon Web Services");
-      expertise.push("Cloud Architecture");
-    } else if (orgLower.includes('meta') || orgLower.includes('facebook')) {
-      expertise.push("Social Media Technologies");
-      expertise.push("Virtual Reality");
-    }
-  }
-  
-  return expertise;
-}
-
-function inferAchievements(speaker: SpeakerData): string[] {
-  const achievements = [];
-  
-  // Infer based on title level
-  if (speaker.title?.toLowerCase().includes('senior') || speaker.title?.toLowerCase().includes('lead') || speaker.title?.toLowerCase().includes('principal')) {
-    achievements.push("Led successful technical projects and teams");
-    achievements.push("Mentored junior developers and contributed to technical growth");
-    achievements.push("Delivered high-impact solutions in enterprise environments");
-  } else if (speaker.title?.toLowerCase().includes('manager') || speaker.title?.toLowerCase().includes('director')) {
-    achievements.push("Successfully managed cross-functional teams");
-    achievements.push("Delivered strategic initiatives and business outcomes");
-    achievements.push("Built and scaled high-performing organizations");
-  } else {
-    achievements.push("Contributed to successful software development projects");
-    achievements.push("Demonstrated expertise in modern development practices");
-    achievements.push("Collaborated effectively in agile development environments");
-  }
-  
-  // Add organization-specific achievements
-  if (speaker.org) {
-    achievements.push(`Professional experience at ${speaker.org}`);
-    achievements.push("Active contributor to industry knowledge sharing");
-  }
-  
-  return achievements;
-}
-
-function inferConnections(speaker: SpeakerData): string[] {
-  const connections = [];
-  
-  // Generic professional connections
-  connections.push("Active member of professional software development community");
-  connections.push("Contributor to industry knowledge sharing and best practices");
-  
-  // Add organization-specific connections
-  if (speaker.org) {
-    connections.push(`Network within ${speaker.org} ecosystem`);
-    connections.push("Connections in enterprise software development");
-  }
-  
-  // Add title-specific connections
-  if (speaker.title?.toLowerCase().includes('senior') || speaker.title?.toLowerCase().includes('lead')) {
-    connections.push("Leadership network in technology industry");
-    connections.push("Connections with other senior technical professionals");
-  }
-  
-  return connections;
-}
-
 async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpeakerData> {
-  // Read environment variables directly in function
-  const geminiKeyLocal = process.env.GEMINI_API_KEY;
-  const googleKeyLocal = process.env.GOOGLE_CSE_KEY;
-  const googleCxLocal = process.env.GOOGLE_CSE_CX;
+  console.log('enhanceSpeakerProfile called for:', speaker.name);
+  console.log('Available services:', {
+    gemini: !!geminiKey,
+    firecrawl: !!firecrawlKey,
+    cse: !!(googleKey && googleCx)
+  });
   
-  console.log('enhanceSpeakerProfile called with geminiKey:', !!geminiKeyLocal, 'length:', geminiKeyLocal?.length);
+  // Build comprehensive search query for the speaker
+  const searchQuery = `"${speaker.name}" ${speaker.title || ''} ${speaker.org || ''} linkedin profile bio professional background`;
+  console.log('Search query:', searchQuery);
   
-      // Enhanced fallback with better location inference
-      const basicEnhancement = {
-        ...speaker,
-        location: inferLocation(speaker),
-        education: inferEducation(speaker),
-        expertise_areas: inferExpertise(speaker),
-        achievements: inferAchievements(speaker),
-        industry_connections: inferConnections(speaker),
-        confidence: 0.7
-      };
+  let searchContext = '';
+  let searchResults = [];
   
-  if (!geminiKeyLocal) {
-    console.log('No Gemini API key, returning basic enhancement');
-    return basicEnhancement;
+  // Use Firecrawl for comprehensive web search (up to 50 concurrent sessions)
+  if (firecrawlKey) {
+    try {
+      console.log('Using Firecrawl for speaker research...');
+      
+      const firecrawlResponse = await fetch('https://api.firecrawl.dev/v1/search', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${firecrawlKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          query: searchQuery,
+          limit: 10,
+          searchOptions: {
+            includeHtml: false,
+            onlyMainContent: true
+          }
+        })
+      });
+      
+      if (firecrawlResponse.ok) {
+        const firecrawlData = await firecrawlResponse.json();
+        searchResults = firecrawlData.data || [];
+        console.log('Firecrawl results:', searchResults.length);
+        
+        if (searchResults.length > 0) {
+          searchContext = searchResults.map((result: any, index: number) => 
+            `${index + 1}. ${result.title}\n   ${result.content || result.snippet}\n   URL: ${result.url}`
+          ).join('\n\n');
+        }
+      }
+    } catch (firecrawlError) {
+      console.warn('Firecrawl search failed:', firecrawlError);
+    }
   }
   
-  console.log('Gemini API key found, attempting AI enhancement');
-
-  try {
-    console.log('Enhancing speaker profile for:', speaker.name);
-    console.log('Gemini API key configured:', !!geminiKeyLocal);
-    console.log('Google CSE configured:', !!(googleKeyLocal && googleCxLocal));
-    
-    const genAI = new GoogleGenerativeAI(geminiKeyLocal);
-    const model = genAI.getGenerativeModel({ model: LLM_MODEL });
-
-    // Search for additional information about the speaker (if Google CSE is configured)
-    let searchResults = [];
-    if (googleKeyLocal && googleCxLocal) {
-      try {
-        const searchQuery = `"${speaker.name}" "${speaker.org || ''}" ${speaker.title || ""} linkedin profile bio professional background`;
-        const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${googleKeyLocal}&cx=${googleCxLocal}&q=${encodeURIComponent(searchQuery)}&num=5`;
-        
-        const searchResponse = await fetch(searchUrl);
+  // Fallback to Google CSE if Firecrawl fails or isn't available
+  if (!searchContext && googleKey && googleCx) {
+    try {
+      console.log('Using Google CSE for speaker research...');
+      
+      const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${googleKey}&cx=${googleCx}&q=${encodeURIComponent(searchQuery)}&num=5`;
+      const searchResponse = await fetch(searchUrl);
+      
+      if (searchResponse.ok) {
         const searchData = await searchResponse.json();
         searchResults = searchData.items || [];
-      } catch (searchError) {
-        console.warn('Google Custom Search failed, proceeding without web search:', searchError);
+        console.log('CSE results:', searchResults.length);
+        
+        if (searchResults.length > 0) {
+          searchContext = searchResults.map((item: any, index: number) => 
+            `${index + 1}. ${item.title}\n   ${item.snippet}\n   URL: ${item.link}`
+          ).join('\n\n');
+        }
       }
+    } catch (cseError) {
+      console.warn('CSE search failed:', cseError);
     }
+  }
+  
+  // If we have search results, use AI to process them
+  if (searchContext && geminiKey) {
+    try {
+      console.log('Processing search results with AI...');
+      
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: LLM_MODEL });
+      
+      const prompt = `You are a professional research assistant. Based on the following information about a speaker and real search results, generate a comprehensive professional profile.
 
-    const researchPrompt = `You are an expert professional intelligence researcher. Based on the provided information, create a comprehensive professional profile.
+Speaker Information:
+- Name: ${speaker.name}
+- Title: ${speaker.title || 'Not specified'}
+- Organization: ${speaker.org || 'Not specified'}
 
-TARGET PROFILE:
-Name: ${speaker.name}
-Current Organization: ${speaker.org || "Not specified"}
-Current Title: ${speaker.title || "Not specified"}
-Speaking Topic: ${speaker.speech_title || "Not specified"}
-Bio: ${speaker.bio || "Not provided"}
+Real Search Results:
+${searchContext}
 
-Please create a realistic professional profile based on the information provided and your knowledge of typical career paths in this field.
+Please extract and synthesize real information from the search results. Create a professional profile based on actual data found online. Be specific and accurate, avoiding generic statements.
 
-CONDUCT COMPREHENSIVE RESEARCH AND PROVIDE:
-
+Return a JSON object with these fields:
 {
-  "name": "${speaker.name}",
-  "org": "${speaker.org || ''}",
-  "title": "${speaker.title || ''}",
-  "speech_title": "${speaker.speech_title || ''}",
-  "session": "${speaker.session || ''}",
-  "bio": "Detailed professional biography (3-4 sentences covering career highlights, expertise, and achievements)",
-  "location": "Current city, Country",
-  "education": [
-    "Degree, Institution (Year)",
-    "Additional education or certifications"
-  ],
-  "publications": [
-    "Recent publications, articles, or thought leadership pieces",
-    "Books, papers, or notable content"
-  ],
-  "career_history": [
-    "Current Role, Company (Year-present)",
-    "Previous Role, Company (Year-Year)",
-    "Earlier career progression"
-  ],
-  "social_links": {
-    "linkedin": "LinkedIn profile URL if found",
-    "twitter": "Twitter handle if found",
-    "website": "Personal or company website if found"
-  },
-  "expertise_areas": [
-    "Primary area of expertise",
-    "Secondary expertise areas",
-    "Industry specializations"
-  ],
-  "speaking_history": [
-    "Recent speaking engagements",
-    "Notable presentations or keynotes",
-    "Conference appearances"
-  ],
-  "achievements": [
-    "Professional achievements and awards",
-    "Notable accomplishments",
-    "Industry recognition"
-  ],
-  "industry_connections": [
-    "Professional associations",
-    "Board memberships",
-    "Industry networks"
-  ],
-  "recent_news": [
-    "Recent media mentions",
-    "Industry news and updates",
-    "Thought leadership appearances"
-  ],
-  "confidence": 0.8
+  "location": "Specific location based on search results or organization",
+  "education": ["List of 2-3 relevant educational background items based on actual data"],
+  "expertise_areas": ["List of 3-5 specific areas of expertise based on real information"],
+  "achievements": ["List of 2-3 specific professional achievements based on search results"],
+  "industry_connections": ["List of 2-3 specific industry connections or associations found"],
+  "recent_news": ["List of 1-2 recent professional mentions or news items if found"]
 }
 
-GUIDELINES:
-- Create realistic professional information based on the provided details
-- Use typical career paths and achievements for someone in this role and organization
-- Include relevant education, skills, and experience that would be typical
-- Make the information professional and believable
-- Confidence score should be 0.8 or higher for generated content
-- If you cannot create realistic information, use null or empty arrays
+Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements.`;
 
-Return ONLY the JSON object, no additional text or explanations.`;
-
-    console.log('Calling Gemini API...');
-    const result = await model.generateContent(researchPrompt);
-    const response = await result.response;
-    const text = response.text();
-    console.log('Gemini API response received, length:', text.length);
-    
-    // Clean and parse the response
-    let cleanText = text.trim();
-    if (cleanText.startsWith('```json')) {
-      cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (cleanText.startsWith('```')) {
-      cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      console.log('AI response length:', text.length);
+      
+      // Parse the JSON response
+      let enhancedData;
+      try {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          enhancedData = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No JSON found in response');
+        }
+      } catch (parseError) {
+        console.error('Failed to parse AI response as JSON:', parseError);
+        throw parseError;
+      }
+      
+      // Combine with original speaker data
+      const enhanced = {
+        ...speaker,
+        ...enhancedData,
+        confidence: 0.9 // High confidence for search-based content
+      };
+      
+      console.log('AI enhancement completed successfully');
+      return enhanced;
+      
+    } catch (aiError) {
+      console.error('AI enhancement failed:', aiError);
     }
-    
-    const jsonStart = cleanText.indexOf('{');
-    const jsonEnd = cleanText.lastIndexOf('}') + 1;
-    if (jsonStart !== -1 && jsonEnd > jsonStart) {
-      cleanText = cleanText.substring(jsonStart, jsonEnd);
-    }
-    
-    const enrichedProfile = JSON.parse(cleanText);
-    
-    // Merge with original speaker data, preserving original values
-    return {
-      ...speaker,
-      ...enrichedProfile,
-      confidence: enrichedProfile.confidence || 0.7
-    };
-    
-  } catch (error) {
-    console.error('Error enhancing speaker profile:', error);
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
-    // Failed to research speaker, returning basic enhancement
-    return basicEnhancement;
   }
+  
+  // Fallback: return minimal enhancement
+  console.log('Using fallback enhancement');
+  return {
+    ...speaker,
+    location: speaker.org ? `${speaker.org} Headquarters` : 'Location not specified',
+    education: [`Professional background in ${speaker.title?.toLowerCase() || 'relevant field'}`],
+    expertise_areas: [speaker.title || 'Professional expertise'],
+    achievements: [`Professional experience at ${speaker.org || 'various organizations'}`],
+    industry_connections: ['Professional network'],
+    confidence: 0.3 // Low confidence for fallback
+  };
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse<SpeakerEnhancementResponse>> {
@@ -475,6 +213,9 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerEnhanc
     console.log('Speaker enhancement API called');
     console.log('Environment check in API route:', {
       GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+      FIRECRAWL_KEY: !!process.env.FIRECRAWL_KEY,
+      GOOGLE_CSE_KEY: !!process.env.GOOGLE_CSE_KEY,
+      GOOGLE_CSE_CX: !!process.env.GOOGLE_CSE_CX,
       length: process.env.GEMINI_API_KEY?.length || 0
     });
     
@@ -500,6 +241,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerEnhanc
       success: true,
       debug: {
         geminiKeyConfigured: !!process.env.GEMINI_API_KEY,
+        firecrawlKeyConfigured: !!process.env.FIRECRAWL_KEY,
         googleCseConfigured: !!(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX),
         confidence: enhanced.confidence,
         hasEnhancedFields: !!(enhanced.education || enhanced.publications || enhanced.career_history)
