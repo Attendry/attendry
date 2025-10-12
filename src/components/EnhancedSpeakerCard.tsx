@@ -120,7 +120,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           <div className="font-semibold text-lg text-slate-900">{speaker.name}</div>
           {speaker.title && <div className="text-sm text-slate-700">{speaker.title}</div>}
           {speaker.org && <div className="text-sm text-slate-600">{speaker.org}</div>}
-          {speaker.location && <div className="text-xs text-slate-500 mt-1">📍 {speaker.location}</div>}
+          {speaker.location && <div className="text-xs text-slate-500 mt-1">{speaker.location}</div>}
           
           {/* Session/Speech Title */}
           {sessionTitle && (
@@ -139,7 +139,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
 
       {speaker.speech_title && (
         <div className="mt-2 text-sm font-medium text-blue-700">
-          🎤 {speaker.speech_title}
+          {speaker.speech_title}
         </div>
       )}
       {speaker.session && (

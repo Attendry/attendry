@@ -918,7 +918,20 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerExtrac
         bio: s?.bio || null,
         expertise: s?.expertise || null,
         linkedin: s?.linkedin || null,
-        twitter: s?.twitter || null
+        twitter: s?.twitter || null,
+        // Enhanced enrichment fields
+        speech_title: s?.speech_title || null,
+        session: s?.session || null,
+        location: s?.location || null,
+        education: s?.education || null,
+        publications: s?.publications || null,
+        career_history: s?.career_history || null,
+        social_links: s?.social_links || null,
+        expertise_areas: s?.expertise_areas || null,
+        speaking_history: s?.speaking_history || null,
+        achievements: s?.achievements || null,
+        industry_connections: s?.industry_connections || null,
+        recent_news: s?.recent_news || null
       });
     }
 

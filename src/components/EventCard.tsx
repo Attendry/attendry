@@ -20,6 +20,7 @@
 import React, { useState, useMemo, useCallback, memo } from "react";
 import AttendeeCard from "./AttendeeCard";
 import EnhancedSpeakerCard from "./EnhancedSpeakerCard"; // Speaker card component
+import CompanyCard from "./CompanyCard"; // Company/sponsor card component
 import { SpeakerData } from "@/lib/types/core";
 
 /**
@@ -303,51 +304,16 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       <div className="space-y-3 mb-4">
         {ev.organizer && (
           <div className="text-sm text-slate-600">
-            <span className="font-medium text-slate-700">🏢 Organizer:</span> {ev.organizer}
+            <span className="font-medium text-slate-700">Organizer:</span> {ev.organizer}
           </div>
         )}
         
         {ev.venue && (
           <div className="text-sm text-slate-600">
-            <span className="font-medium text-slate-700">📍 Venue:</span> {ev.venue}
+            <span className="font-medium text-slate-700">Venue:</span> {ev.venue}
           </div>
         )}
 
-        {/* Sponsors */}
-        {ev.sponsors && ev.sponsors.length > 0 && (
-          <div>
-            <div className="text-sm font-medium text-slate-700 mb-1">🎯 Sponsors:</div>
-            <div className="flex flex-wrap gap-2">
-              {ev.sponsors.map((sponsor: any, idx: number) => (
-                <span key={idx} className="text-xs font-medium rounded-full bg-emerald-100 text-emerald-800 px-2 py-1">
-                  {typeof sponsor === 'string' ? sponsor : sponsor.name}
-                  {typeof sponsor === 'object' && sponsor.level && (
-                    <span className="ml-1 text-emerald-600">({sponsor.level})</span>
-                  )}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Participating Organizations */}
-        {ev.participating_organizations && ev.participating_organizations.length > 0 && (
-          <div>
-            <div className="text-sm font-medium text-slate-700 mb-1">🤝 Participating Organizations:</div>
-            <div className="flex flex-wrap gap-2">
-              {ev.participating_organizations.slice(0, 6).map((org: string, idx: number) => (
-                <span key={idx} className="text-xs font-medium rounded-full bg-blue-100 text-blue-800 px-2 py-1">
-                  {org}
-                </span>
-              ))}
-              {ev.participating_organizations.length > 6 && (
-                <span className="text-xs text-slate-500 px-2 py-1">
-                  +{ev.participating_organizations.length - 6} more
-                </span>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Partners */}
         {ev.partners && ev.partners.length > 0 && (
@@ -473,6 +439,52 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
                   sessionTitle={p.session || p.speech_title}
                 />
               ))}
+            </div>
+          )}
+
+          {/* Sponsors Section */}
+          {ev.sponsors && ev.sponsors.length > 0 && (
+            <div className="mt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                </svg>
+                <span className="font-medium text-slate-700">
+                  Sponsors ({ev.sponsors.length})
+                </span>
+              </div>
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                {ev.sponsors.map((sponsor: any, idx: number) => (
+                  <CompanyCard 
+                    key={idx} 
+                    company={sponsor} 
+                    isSponsor={true}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Participating Organizations Section */}
+          {ev.participating_organizations && ev.participating_organizations.length > 0 && (
+            <div className="mt-6">
+              <div className="flex items-center gap-2 mb-4">
+                <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                <span className="font-medium text-slate-700">
+                  Participating Organizations ({ev.participating_organizations.length})
+                </span>
+              </div>
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                {ev.participating_organizations.map((org: string, idx: number) => (
+                  <CompanyCard 
+                    key={idx} 
+                    company={org} 
+                    isSponsor={false}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
