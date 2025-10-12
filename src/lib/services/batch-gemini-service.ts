@@ -45,6 +45,9 @@ export interface SpeakerExtractionResult {
     session_title: string;
     confidence: number;
   }>;
+  sponsors: string[];
+  participating_organizations: string[];
+  partners: string[];
   success: boolean;
   error?: string;
 }
@@ -138,6 +141,9 @@ export class BatchGeminiService {
             session_title: speaker.session_title || '',
             confidence: speaker.confidence || 0
           })),
+          sponsors: [],
+          participating_organizations: [],
+          partners: [],
           success: true
         })),
         stats: {
@@ -175,6 +181,9 @@ export class BatchGeminiService {
         const failedResults = batch.map(event => ({
           eventId: event.id,
           speakers: [],
+          sponsors: [],
+          participating_organizations: [],
+          partners: [],
           success: false,
           error: error.message
         }));
@@ -192,6 +201,9 @@ export class BatchGeminiService {
       results.push({
         eventId: event.id,
         speakers: event.speakers || [],
+        sponsors: [],
+        participating_organizations: [],
+        partners: [],
         success: true
       });
     }
@@ -256,19 +268,41 @@ export class BatchGeminiService {
       location: event.location || event.city
     }));
 
-    return `Extract speakers from these event pages. Look for:
+    return `Extract comprehensive event information from these event pages. Look for:
+
+SPEAKERS:
 - Speaker names (people presenting, moderating, or speaking)
 - Their organizations/companies
 - Job titles/roles
 - Session titles or topics they're speaking about
 - Panelists, moderators, keynote speakers, workshop leaders
 
-IMPORTANT: Look for speakers in various formats:
+SPONSORS:
+- Event sponsors (companies/organizations funding or supporting the event)
+- Gold, Silver, Bronze sponsors
+- Partner organizations
+- Supporting companies
+
+PARTICIPATING ORGANIZATIONS:
+- Companies/organizations participating in the event
+- Exhibitors
+- Companies with booths or stands
+- Organizations mentioned as attendees or participants
+
+IMPORTANT: Look for information in various formats:
 - "Speaker: John Doe, Acme Inc" (explicit speaker designation)
 - "John Doe, Acme Inc" (session owner/presenter, likely a speaker)
-- "Bruce Banner, Acme Inc" (in session context, probably a speaker)
+- "Sponsored by: Microsoft, Google, Amazon" (sponsors)
+- "Exhibitors: IBM, Oracle, SAP" (participating organizations)
 - Attendee lists where people are clearly presenting or leading sessions
 - Participant directories where roles indicate speaking/presenting
+
+CRITICAL: For each speaker, you MUST extract:
+1. name: The person's full name
+2. org: The organization/company they work for (even if not explicitly stated, try to infer from context)
+3. title: Their job title/role (e.g., "CEO", "Director", "Manager", "Senior Consultant", etc.)
+4. session_title: The title of their session/presentation (if available)
+5. confidence: Your confidence in this extraction (0.0-1.0)
 
 EVENTS:
 ${JSON.stringify(eventsData, null, 2)}
@@ -280,16 +314,29 @@ Return format:
     "speakers": [
       {
         "name": "Speaker Name",
-        "org": "Organization",
+        "org": "Organization Name",
         "title": "Job Title",
         "session_title": "Session Title",
         "confidence": 0.9
       }
-    ]
+    ],
+    "sponsors": ["Sponsor Company 1", "Sponsor Company 2"],
+    "participating_organizations": ["Company A", "Company B", "Company C"],
+    "partners": ["Partner Organization 1", "Partner Organization 2"]
   }
 ]
 
-Extract speakers even if not explicitly labeled as "Speaker". Use context clues to identify presenters, session owners, and session leaders. If no speakers found, return empty array.`;
+IMPORTANT RULES:
+- ALWAYS include org and title fields for speakers, even if you have to make educated guesses
+- Extract ALL sponsors mentioned (Gold, Silver, Bronze, etc.)
+- Extract ALL participating organizations (exhibitors, attendees, etc.)
+- Extract ALL partner organizations
+- If organization is not clear for speakers, use the event organizer or a related company
+- If title is not clear for speakers, use common titles like "Speaker", "Presenter", "Expert", "Professional"
+- Extract speakers even if not explicitly labeled as "Speaker"
+- Use context clues to identify presenters, session owners, and session leaders
+- If no data found for a category, return empty array
+- Be thorough - look for information in speaker lists, agenda items, session descriptions, sponsor sections, exhibitor lists, and attendee directories`;
   }
 
   /**
@@ -338,6 +385,9 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
         return originalEvents.map(event => ({
           eventId: event.id,
           speakers: [],
+          sponsors: [],
+          participating_organizations: [],
+          partners: [],
           success: false,
           error: "No JSON found in response"
         }));
@@ -376,19 +426,37 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
       // Validate and map results
       const results: SpeakerExtractionResult[] = [];
       
+      // Debug: Log the parsed data structure
+      console.log('Parsed speaker extraction data:', JSON.stringify(parsed, null, 2));
+      
       for (const event of originalEvents) {
         const eventResult = parsed.find((r: any) => r.eventId === event.id);
         
-        if (eventResult && eventResult.speakers) {
+        if (eventResult) {
+          // Debug: Log comprehensive data for this event
+          console.log(`Event ${event.id} comprehensive data:`, JSON.stringify({
+            speakers: eventResult.speakers || [],
+            sponsors: eventResult.sponsors || [],
+            participating_organizations: eventResult.participating_organizations || [],
+            partners: eventResult.partners || []
+          }, null, 2));
+          
           results.push({
             eventId: event.id,
-            speakers: eventResult.speakers,
+            speakers: eventResult.speakers || [],
+            sponsors: eventResult.sponsors || [],
+            participating_organizations: eventResult.participating_organizations || [],
+            partners: eventResult.partners || [],
             success: true
           });
         } else {
+          console.log(`No data found for event ${event.id}`);
           results.push({
             eventId: event.id,
             speakers: [],
+            sponsors: [],
+            participating_organizations: [],
+            partners: [],
             success: true
           });
         }
@@ -403,6 +471,9 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
       return originalEvents.map(event => ({
         eventId: event.id,
         speakers: [],
+        sponsors: [],
+        participating_organizations: [],
+        partners: [],
         success: false,
         error: "Failed to parse batch response"
       }));

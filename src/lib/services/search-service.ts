@@ -54,9 +54,14 @@ export interface EventRec {
   venue?: string | null;
   organizer?: string | null;
   topics?: string[] | null;
-  speakers?: { name: string; org?: string; title?: string }[] | null;
+  speakers?: { name: string; org?: string; title?: string; session_title?: string; confidence?: number }[] | null;
   sponsors?: string[] | null;
+  participating_organizations?: string[] | null;
+  partners?: string[] | null;
+  competitors?: string[] | null;
   confidence?: number | null;
+  confidence_reason?: string | null;
+  pipeline_metadata?: any;
 }
 
 // Unified cache service
@@ -1037,10 +1042,43 @@ export class SearchService {
         const eventId = event.source_url || `event_${events.indexOf(event)}`;
         const batchResultItem = batchResult.results.find(r => r.eventId === eventId);
         
-        if (batchResultItem && batchResultItem.success && batchResultItem.speakers.length > 0) {
-          event.speakers = batchResultItem.speakers;
-          stats.speakersFound += batchResultItem.speakers.length;
-          stats.enhanced++;
+        if (batchResultItem && batchResultItem.success) {
+          let hasEnhancement = false;
+          
+          // Apply speaker data
+          if (batchResultItem.speakers.length > 0) {
+            console.log(`Enhancing event ${eventId} with ${batchResultItem.speakers.length} speakers:`, JSON.stringify(batchResultItem.speakers, null, 2));
+            event.speakers = batchResultItem.speakers;
+            stats.speakersFound += batchResultItem.speakers.length;
+            hasEnhancement = true;
+          }
+          
+          // Apply sponsor data
+          if (batchResultItem.sponsors.length > 0) {
+            console.log(`Enhancing event ${eventId} with ${batchResultItem.sponsors.length} sponsors:`, JSON.stringify(batchResultItem.sponsors, null, 2));
+            event.sponsors = batchResultItem.sponsors;
+            hasEnhancement = true;
+          }
+          
+          // Apply participating organizations data
+          if (batchResultItem.participating_organizations.length > 0) {
+            console.log(`Enhancing event ${eventId} with ${batchResultItem.participating_organizations.length} participating organizations:`, JSON.stringify(batchResultItem.participating_organizations, null, 2));
+            event.participating_organizations = batchResultItem.participating_organizations;
+            hasEnhancement = true;
+          }
+          
+          // Apply partners data
+          if (batchResultItem.partners.length > 0) {
+            console.log(`Enhancing event ${eventId} with ${batchResultItem.partners.length} partners:`, JSON.stringify(batchResultItem.partners, null, 2));
+            event.partners = batchResultItem.partners;
+            hasEnhancement = true;
+          }
+          
+          if (hasEnhancement) {
+            stats.enhanced++;
+          }
+        } else {
+          console.log(`No enhancement for event ${eventId}`);
         }
         
         enhancedEvents.push(event);
@@ -1347,14 +1385,23 @@ export class SearchService {
         events.push({
           source_url: urls[0] || "", // Use first URL as source
           title: event.title || "Event",
+          description: event.description || null,
           starts_at: event.eventDate || null,
-          ends_at: null, // Would need more sophisticated parsing for end dates
-          city: event.location || null,
-          country: null, // Would need more sophisticated parsing
-          organizer: event.organizer || null,
+          ends_at: event.endDate || null,
+          city: event.location || event.city || null,
+          country: event.country || null,
+          location: event.location || null,
           venue: event.venue || null,
+          organizer: event.organizer || null,
+          topics: event.topics || null,
           speakers: event.speakers || null,
-          confidence: 0.8
+          sponsors: event.sponsors || null,
+          participating_organizations: event.participating_organizations || event.organizations || null,
+          partners: event.partners || null,
+          competitors: event.competitors || null,
+          confidence: event.confidence || 0.8,
+          confidence_reason: event.confidence_reason || null,
+          pipeline_metadata: event.pipeline_metadata || null
         });
       }
     }

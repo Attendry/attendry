@@ -38,10 +38,10 @@ interface Event {
   organizer?: string | null;        // Event organizer
   topics?: string[];                // Event topics/themes
   speakers?: SpeakerData[] | null;  // Array of speaker objects
-  sponsors?: any[];                 // Array of sponsor objects
-  participating_organizations?: string[]; // Participating organizations
-  partners?: string[];              // Event partners
-  competitors?: string[];           // Industry competitors
+  sponsors?: string[] | null;       // Array of sponsor names
+  participating_organizations?: string[] | null; // Participating organizations
+  partners?: string[] | null;       // Event partners
+  competitors?: string[] | null;    // Industry competitors
   source_url: string;              // Source URL of the event
   description?: string | null;      // Event description
   confidence?: number | null;       // Event confidence score
@@ -314,6 +314,65 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
           </div>
         )}
 
+        {/* Enhanced Speaker Summary */}
+        {ev.speakers && ev.speakers.length > 0 && (
+          <div>
+            <div className="text-sm font-medium text-slate-700 mb-2">🎤 Speakers ({ev.speakers.length}):</div>
+            <div className="space-y-1">
+              {ev.speakers.slice(0, 3).map((speaker: any, idx: number) => (
+                <div key={idx} className="text-sm text-slate-600">
+                  <span className="font-medium">{speaker.name}</span>
+                  {speaker.title && <span className="text-slate-500"> - {speaker.title}</span>}
+                  {speaker.org && <span className="text-slate-500"> at {speaker.org}</span>}
+                </div>
+              ))}
+              {ev.speakers.length > 3 && (
+                <div className="text-xs text-slate-500">
+                  +{ev.speakers.length - 3} more speakers
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Sponsors Summary */}
+        {ev.sponsors && ev.sponsors.length > 0 && (
+          <div>
+            <div className="text-sm font-medium text-slate-700 mb-1">💰 Sponsors ({ev.sponsors.length}):</div>
+            <div className="flex flex-wrap gap-1">
+              {ev.sponsors.slice(0, 4).map((sponsor: string, idx: number) => (
+                <span key={idx} className="text-xs font-medium rounded-full bg-green-100 text-green-800 px-2 py-1">
+                  {sponsor}
+                </span>
+              ))}
+              {ev.sponsors.length > 4 && (
+                <span className="text-xs text-slate-500 px-2 py-1">
+                  +{ev.sponsors.length - 4} more
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Participating Organizations Summary */}
+        {ev.participating_organizations && ev.participating_organizations.length > 0 && (
+          <div>
+            <div className="text-sm font-medium text-slate-700 mb-1">🏢 Participating Organizations ({ev.participating_organizations.length}):</div>
+            <div className="flex flex-wrap gap-1">
+              {ev.participating_organizations.slice(0, 4).map((org: string, idx: number) => (
+                <span key={idx} className="text-xs font-medium rounded-full bg-blue-100 text-blue-800 px-2 py-1">
+                  {org}
+                </span>
+              ))}
+              {ev.participating_organizations.length > 4 && (
+                <span className="text-xs text-slate-500 px-2 py-1">
+                  +{ev.participating_organizations.length - 4} more
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
 
         {/* Partners */}
         {ev.partners && ev.partners.length > 0 && (
@@ -453,13 +512,11 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
                   Sponsors ({ev.sponsors.length})
                 </span>
               </div>
-              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                {ev.sponsors.map((sponsor: any, idx: number) => (
-                  <CompanyCard 
-                    key={idx} 
-                    company={sponsor} 
-                    isSponsor={true}
-                  />
+              <div className="flex flex-wrap gap-2">
+                {ev.sponsors.map((sponsor: string, idx: number) => (
+                  <span key={idx} className="text-sm font-medium rounded-full bg-green-100 text-green-800 px-3 py-1">
+                    {sponsor}
+                  </span>
                 ))}
               </div>
             </div>
@@ -476,13 +533,11 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
                   Participating Organizations ({ev.participating_organizations.length})
                 </span>
               </div>
-              <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="flex flex-wrap gap-2">
                 {ev.participating_organizations.map((org: string, idx: number) => (
-                  <CompanyCard 
-                    key={idx} 
-                    company={org} 
-                    isSponsor={false}
-                  />
+                  <span key={idx} className="text-sm font-medium rounded-full bg-blue-100 text-blue-800 px-3 py-1">
+                    {org}
+                  </span>
                 ))}
               </div>
             </div>

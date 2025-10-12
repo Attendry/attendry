@@ -4,6 +4,7 @@ import EventCard from "@/components/EventCard";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import AdvancedSearch from "@/components/AdvancedSearch";
 import SearchHistory from "@/components/SearchHistory";
+import IntelligenceDashboard from "@/components/IntelligenceDashboard";
 
 type EventRec = {
   id?: string;
@@ -50,6 +51,10 @@ function addDays(base: Date, n: number) {
 }
 
 const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSavedSet: Set<string> }) {
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'events' | 'intelligence'>('events');
+  
+  // Events search state
   const [country, setCountry] = useState<string>("");
   const [range, setRange] = useState<"next" | "past">("next");
   const [days, setDays] = useState<7 | 14 | 30>(7);
@@ -163,15 +168,57 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-4">
-            Discover Events
+            {activeTab === 'events' ? 'Discover Events' : 'Market Intelligence'}
           </h1>
           <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-            Find conferences, meetups, and networking opportunities tailored to your interests
+            {activeTab === 'events' 
+              ? 'Find conferences, meetups, and networking opportunities tailored to your interests'
+              : 'Monitor accounts and competitors for strategic insights'
+            }
           </p>
         </div>
 
-        {/* Search Form */}
-        <form onSubmit={run} className="max-w-4xl mx-auto">
+        {/* Tab Navigation */}
+        <div className="flex justify-center mb-8">
+          <div className="bg-white rounded-xl border border-slate-200 p-1 shadow-sm">
+            <button
+              onClick={() => setActiveTab('events')}
+              className={`px-6 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
+                activeTab === 'events'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                Events
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab('intelligence')}
+              className={`px-6 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
+                activeTab === 'intelligence'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                Intelligence
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'events' && (
+          <>
+            {/* Search Form */}
+            <form onSubmit={run} className="max-w-4xl mx-auto">
           {/* Setup Status Indicator */}
           <div className="mb-6">
             <SetupStatusIndicator />
@@ -517,6 +564,15 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
             </div>
           )}
         </div>
+          </>
+        )}
+
+        {/* Intelligence Tab Content */}
+        {activeTab === 'intelligence' && (
+          <div className="max-w-7xl mx-auto">
+            <IntelligenceDashboard />
+          </div>
+        )}
       </div>
     </div>
   );
