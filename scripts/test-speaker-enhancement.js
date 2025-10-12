@@ -20,7 +20,7 @@ const testSpeakerEnhancement = async () => {
   console.log('📝 Input speaker data:', JSON.stringify(testSpeaker, null, 2));
 
   try {
-    const response = await fetch('http://localhost:3000/api/speakers/enhance', {
+    const response = await fetch('http://127.0.0.1:4000/api/speakers/enhance', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -36,6 +36,7 @@ const testSpeakerEnhancement = async () => {
 
     console.log('✅ Enhancement successful!');
     console.log('📊 Enhanced speaker data:', JSON.stringify(result.enhanced, null, 2));
+    console.log('🔍 Debug info:', JSON.stringify(result.debug, null, 2));
 
     // Check if enhancement added new fields
     const enhancedFields = [
