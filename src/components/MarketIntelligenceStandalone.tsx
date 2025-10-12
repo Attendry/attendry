@@ -183,6 +183,15 @@ export const MarketIntelligenceStandalone = memo(() => {
               Pipeline-ready event recommendations and strategic account monitoring
             </p>
           </div>
+          {activeTab === 'accounts' && (
+            <button
+              onClick={() => setShowAddAccountModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add Account
+            </button>
+          )}
         </div>
 
         {/* Demo Notice */}
@@ -236,13 +245,13 @@ export const MarketIntelligenceStandalone = memo(() => {
 
       {/* Tab Content */}
       {activeTab === 'recommendations' && (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden" key="recommendations-tab">
           <RecommendationEngine />
         </div>
       )}
 
       {activeTab === 'accounts' && (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" key="accounts-tab">
           {loading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 className="h-8 w-8 animate-spin" />
@@ -374,6 +383,14 @@ export const MarketIntelligenceStandalone = memo(() => {
           )}
         </div>
       )}
+
+      {/* Add Account Modal */}
+      {showAddAccountModal && (
+        <AddAccountModal
+          onClose={() => setShowAddAccountModal(false)}
+          onAdd={handleAddAccount}
+        />
+      )}
     </div>
   );
 });
@@ -496,3 +513,153 @@ const AccountCard = memo(({ account, summary }: AccountCardProps) => {
 });
 
 AccountCard.displayName = 'AccountCard';
+
+// Add Account Modal Component
+interface AddAccountModalProps {
+  onClose: () => void;
+  onAdd: (accountData: { company_name: string; domain?: string; industry?: string; description?: string }) => void;
+}
+
+const AddAccountModal = memo(({ onClose, onAdd }: AddAccountModalProps) => {
+  const [formData, setFormData] = useState({
+    company_name: '',
+    domain: '',
+    industry: '',
+    description: ''
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.company_name.trim()) return;
+
+    setIsSubmitting(true);
+    try {
+      await onAdd(formData);
+      setFormData({ company_name: '', domain: '', industry: '', description: '' });
+    } catch (error) {
+      console.error('Error adding account:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      [e.target.name]: e.target.value
+    }));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Add New Account</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Company Name *
+            </label>
+            <input
+              type="text"
+              name="company_name"
+              value={formData.company_name}
+              onChange={handleChange}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="e.g. Microsoft Corporation"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Domain
+            </label>
+            <input
+              type="text"
+              name="domain"
+              value={formData.domain}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="e.g. microsoft.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Industry
+            </label>
+            <select
+              name="industry"
+              value={formData.industry}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Select Industry</option>
+              <option value="Technology">Technology</option>
+              <option value="Financial Services">Financial Services</option>
+              <option value="Healthcare">Healthcare</option>
+              <option value="Manufacturing">Manufacturing</option>
+              <option value="Legal">Legal</option>
+              <option value="Consulting">Consulting</option>
+              <option value="Government">Government</option>
+              <option value="Education">Education</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              name="description"
+              value={formData.description}
+              onChange={handleChange}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Brief description of the company..."
+            />
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !formData.company_name.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 rounded-lg transition-colors"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
+                  Adding...
+                </>
+              ) : (
+                'Add Account'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+});
+
+AddAccountModal.displayName = 'AddAccountModal';

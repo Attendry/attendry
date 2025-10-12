@@ -7,13 +7,51 @@
 import { EventCandidate, EventPipelineConfig, PrioritizationScore, PrioritizationError } from './types';
 import { logger } from '@/utils/logger';
 
+// Import country bias function from fallback
+function getCountrySpecificBias(country: string): { searchTerms: string; locationContext?: string } | null {
+  const countryUpper = country.toUpperCase();
+  
+  const biasConfig: Record<string, { searchTerms: string; locationContext?: string }> = {
+    'DE': { searchTerms: 'Germany Deutschland Berlin Munich Frankfurt Hamburg Cologne Stuttgart Düsseldorf Leipzig' },
+    'FR': { searchTerms: 'France Paris Lyon Marseille Toulouse Nice Nantes' },
+    'GB': { searchTerms: 'United Kingdom UK England Scotland Wales London Manchester Birmingham Glasgow Edinburgh' },
+    'ES': { searchTerms: 'Spain España Madrid Barcelona Valencia Seville Bilbao' },
+    'IT': { searchTerms: 'Italy Italia Rome Milan Naples Turin Florence Venice' },
+    'NL': { searchTerms: 'Netherlands Nederland Amsterdam Rotterdam The Hague Utrecht' },
+    'AT': { searchTerms: 'Austria Österreich Vienna Wien Salzburg Innsbruck Graz' },
+    'CH': { searchTerms: 'Switzerland Schweiz Zurich Geneva Basel Bern Lausanne' },
+    'BE': { searchTerms: 'Belgium Belgique Brussels Bruxelles Antwerp Ghent Bruges' },
+    'DK': { searchTerms: 'Denmark Danmark Copenhagen København Aarhus Odense' },
+    'SE': { searchTerms: 'Sweden Sverige Stockholm Gothenburg Göteborg Malmö' },
+    'NO': { searchTerms: 'Norway Norge Oslo Bergen Trondheim' },
+    'FI': { searchTerms: 'Finland Suomi Helsinki Tampere Turku' },
+    'PL': { searchTerms: 'Poland Polska Warsaw Warszawa Krakow Gdansk Wroclaw' },
+    'CZ': { searchTerms: 'Czech Republic Czechia Praha Prague Brno Ostrava' },
+    'HU': { searchTerms: 'Hungary Magyarország Budapest Debrecen Szeged' },
+    'SK': { searchTerms: 'Slovakia Slovensko Bratislava Kosice' },
+    'SI': { searchTerms: 'Slovenia Slovenija Ljubljana Maribor' },
+    'HR': { searchTerms: 'Croatia Hrvatska Zagreb Split Dubrovnik' },
+    'BG': { searchTerms: 'Bulgaria България Sofia София Plovdiv Varna' },
+    'RO': { searchTerms: 'Romania România Bucharest București Cluj Timisoara' },
+    'EE': { searchTerms: 'Estonia Eesti Tallinn Tartu' },
+    'LV': { searchTerms: 'Latvia Latvija Riga Daugavpils' },
+    'LT': { searchTerms: 'Lithuania Lietuva Vilnius Kaunas Klaipeda' },
+    'MT': { searchTerms: 'Malta Valletta Sliema' },
+    'CY': { searchTerms: 'Cyprus Κύπρος Nicosia Λευκωσία Limassol' },
+    'IE': { searchTerms: 'Ireland Éire Dublin Cork Galway' },
+    'PT': { searchTerms: 'Portugal Lisbon Lisboa Porto Coimbra' }
+  };
+  
+  return biasConfig[countryUpper] || null;
+}
+
 export class EventPrioritizer {
   constructor(
     private config: EventPipelineConfig,
     private geminiService: any
   ) {}
 
-  async prioritize(candidates: EventCandidate[]): Promise<EventCandidate[]> {
+  async prioritize(candidates: EventCandidate[], targetCountry?: string | null): Promise<EventCandidate[]> {
     const startTime = Date.now();
     logger.info({ message: '[prioritize] Starting prioritization', 
       totalCandidates: candidates.length,
@@ -27,7 +65,7 @@ export class EventPrioritizer {
       const batchSize = 8; // Increased from 5 to 8 for better performance
       for (let i = 0; i < candidates.length; i += batchSize) {
         const batch = candidates.slice(i, i + batchSize);
-        const batchResults = await this.processBatch(batch);
+        const batchResults = await this.processBatch(batch, targetCountry);
         prioritized.push(...batchResults);
         
         // Further reduced delay between batches for better performance
@@ -55,12 +93,12 @@ export class EventPrioritizer {
     }
   }
 
-  private async processBatch(candidates: EventCandidate[]): Promise<EventCandidate[]> {
+  private async processBatch(candidates: EventCandidate[], targetCountry?: string | null): Promise<EventCandidate[]> {
     const prioritized: EventCandidate[] = [];
     
     for (const candidate of candidates) {
       try {
-        const score = await this.scoreCandidate(candidate);
+        const score = await this.scoreCandidate(candidate, targetCountry);
         candidate.priorityScore = score.overall;
         candidate.metadata.stageTimings.prioritization = Date.now() - candidate.metadata.processingTime;
         
@@ -100,10 +138,19 @@ export class EventPrioritizer {
     return prioritized;
   }
 
-  private async scoreCandidate(candidate: EventCandidate): Promise<PrioritizationScore> {
+  private async scoreCandidate(candidate: EventCandidate, targetCountry?: string | null): Promise<PrioritizationScore> {
+    // Build country-specific context for prioritization
+    let countryContext = '';
+    if (targetCountry && targetCountry !== 'EU' && targetCountry !== '') {
+      const countryBias = getCountrySpecificBias(targetCountry);
+      if (countryBias) {
+        countryContext = `\n\nCOUNTRY CONTEXT: This search is specifically for events in ${targetCountry}. Prioritize events that are clearly located in ${targetCountry} or mention ${countryBias.searchTerms.split(' ').slice(0, 3).join(', ')}.`;
+      }
+    }
+    
     const prompt = `
       Analyze this URL for event relevance and score it (0-1):
-      URL: ${candidate.url}
+      URL: ${candidate.url}${countryContext}
       
       Rate on these criteria:
       - is_event: Is this an actual event page (not just a company page, blog post, or general info)? (0-1)
@@ -111,10 +158,12 @@ export class EventPrioritizer {
       - has_speakers: Does it list speakers, presenters, or keynotes? (0-1)
       - is_recent: Is this for a current/future event (not past events)? (0-1)
       - is_relevant: Does it match compliance, legal, or regulatory themes? (0-1)
+      ${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? '- is_country_relevant: Does this event appear to be in the target country or region? (0-1)' : ''}
       
       Be strict in scoring. Only give high scores (0.8+) to clearly relevant event pages.
+      ${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? 'Give higher scores to events that are clearly in the target country.' : ''}
       
-      Return JSON only: {"is_event": 0.9, "has_agenda": 0.7, "has_speakers": 0.8, "is_recent": 0.9, "is_relevant": 0.8, "overall": 0.82}
+      Return JSON only: {"is_event": 0.9, "has_agenda": 0.7, "has_speakers": 0.8, "is_recent": 0.9, "is_relevant": 0.8${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? ', "is_country_relevant": 0.9' : ''}, "overall": 0.82}
     `;
     
     try {
@@ -127,7 +176,15 @@ export class EventPrioritizer {
       }
       
       // Calculate weighted overall score
-      const overall = (
+      const hasCountryRelevance = targetCountry && targetCountry !== 'EU' && targetCountry !== '' && scores.is_country_relevant !== undefined;
+      const overall = hasCountryRelevance ? (
+        scores.is_event * 0.25 +           // Most important - must be an event
+        scores.has_agenda * 0.2 +          // Important - shows it's a real event
+        scores.has_speakers * 0.15 +       // Important - shows quality
+        scores.is_recent * 0.15 +          // Important - must be current
+        scores.is_relevant * 0.1 +         // Less important - we can filter later
+        (scores.is_country_relevant || 0) * 0.15  // Country relevance for targeted searches
+      ) : (
         scores.is_event * 0.3 +      // Most important - must be an event
         scores.has_agenda * 0.25 +   // Important - shows it's a real event
         scores.has_speakers * 0.2 +  // Important - shows quality

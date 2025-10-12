@@ -93,7 +93,7 @@ export class EventPipeline {
       logger.info('[pipeline] Stage 2: Prioritizing candidates');
       
       // Start prioritization and prepare for parallel parsing
-      const prioritizationPromise = this.prioritizer.prioritize(candidates);
+      const prioritizationPromise = this.prioritizer.prioritize(candidates, context.country);
       
       // Wait for prioritization to complete
       const prioritized = await prioritizationPromise;

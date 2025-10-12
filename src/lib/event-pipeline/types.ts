@@ -114,6 +114,7 @@ export interface PrioritizationScore {
   has_speakers: number;       // Does it have speaker information? (0-1)
   is_recent: number;          // Is this for a current/future event? (0-1)
   is_relevant: number;        // Does it match compliance/legal themes? (0-1)
+  is_country_relevant?: number; // Does this event appear to be in the target country? (0-1) - optional for country-specific searches
   overall: number;            // Weighted overall score (0-1)
 }
 

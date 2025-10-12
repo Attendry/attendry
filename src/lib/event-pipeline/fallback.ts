@@ -400,6 +400,144 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
   return new PipelineFallback(newPipeline, legacySearch);
 }
 
+// Helper function to add country-specific search bias
+function addCountrySpecificBias(query: string, country: string): string {
+  const countryBias = getCountrySpecificBias(country);
+  if (!countryBias) return query;
+  
+  // Add country-specific terms to the query
+  const enhancedQuery = `${query} ${countryBias.searchTerms}`;
+  
+  // Add location context if available
+  if (countryBias.locationContext) {
+    return `${enhancedQuery} ${countryBias.locationContext}`;
+  }
+  
+  return enhancedQuery;
+}
+
+// Country-specific bias configuration
+function getCountrySpecificBias(country: string): { searchTerms: string; locationContext?: string } | null {
+  const countryUpper = country.toUpperCase();
+  
+  const biasConfig: Record<string, { searchTerms: string; locationContext?: string }> = {
+    'DE': {
+      searchTerms: 'Germany Deutschland Berlin Munich Frankfurt Hamburg Cologne Stuttgart Düsseldorf Leipzig',
+      locationContext: 'site:.de OR "in Germany" OR "in Deutschland"'
+    },
+    'FR': {
+      searchTerms: 'France Paris Lyon Marseille Toulouse Nice Nantes',
+      locationContext: 'site:.fr OR "in France" OR "en France"'
+    },
+    'GB': {
+      searchTerms: 'United Kingdom UK England Scotland Wales London Manchester Birmingham Glasgow Edinburgh',
+      locationContext: 'site:.uk OR "in UK" OR "in United Kingdom" OR "in England"'
+    },
+    'ES': {
+      searchTerms: 'Spain España Madrid Barcelona Valencia Seville Bilbao',
+      locationContext: 'site:.es OR "in Spain" OR "en España"'
+    },
+    'IT': {
+      searchTerms: 'Italy Italia Rome Milan Naples Turin Florence Venice',
+      locationContext: 'site:.it OR "in Italy" OR "in Italia"'
+    },
+    'NL': {
+      searchTerms: 'Netherlands Nederland Amsterdam Rotterdam The Hague Utrecht',
+      locationContext: 'site:.nl OR "in Netherlands" OR "in Nederland"'
+    },
+    'AT': {
+      searchTerms: 'Austria Österreich Vienna Wien Salzburg Innsbruck Graz',
+      locationContext: 'site:.at OR "in Austria" OR "in Österreich"'
+    },
+    'CH': {
+      searchTerms: 'Switzerland Schweiz Zurich Geneva Basel Bern Lausanne',
+      locationContext: 'site:.ch OR "in Switzerland" OR "in Schweiz"'
+    },
+    'BE': {
+      searchTerms: 'Belgium Belgique Brussels Bruxelles Antwerp Ghent Bruges',
+      locationContext: 'site:.be OR "in Belgium" OR "in Belgique"'
+    },
+    'DK': {
+      searchTerms: 'Denmark Danmark Copenhagen København Aarhus Odense',
+      locationContext: 'site:.dk OR "in Denmark" OR "i Danmark"'
+    },
+    'SE': {
+      searchTerms: 'Sweden Sverige Stockholm Gothenburg Göteborg Malmö',
+      locationContext: 'site:.se OR "in Sweden" OR "i Sverige"'
+    },
+    'NO': {
+      searchTerms: 'Norway Norge Oslo Bergen Trondheim',
+      locationContext: 'site:.no OR "in Norway" OR "i Norge"'
+    },
+    'FI': {
+      searchTerms: 'Finland Suomi Helsinki Tampere Turku',
+      locationContext: 'site:.fi OR "in Finland" OR "Suomessa"'
+    },
+    'PL': {
+      searchTerms: 'Poland Polska Warsaw Warszawa Krakow Gdansk Wroclaw',
+      locationContext: 'site:.pl OR "in Poland" OR "w Polsce"'
+    },
+    'CZ': {
+      searchTerms: 'Czech Republic Czechia Praha Prague Brno Ostrava',
+      locationContext: 'site:.cz OR "in Czech Republic" OR "v České republice"'
+    },
+    'HU': {
+      searchTerms: 'Hungary Magyarország Budapest Debrecen Szeged',
+      locationContext: 'site:.hu OR "in Hungary" OR "Magyarországon"'
+    },
+    'SK': {
+      searchTerms: 'Slovakia Slovensko Bratislava Kosice',
+      locationContext: 'site:.sk OR "in Slovakia" OR "na Slovensku"'
+    },
+    'SI': {
+      searchTerms: 'Slovenia Slovenija Ljubljana Maribor',
+      locationContext: 'site:.si OR "in Slovenia" OR "v Sloveniji"'
+    },
+    'HR': {
+      searchTerms: 'Croatia Hrvatska Zagreb Split Dubrovnik',
+      locationContext: 'site:.hr OR "in Croatia" OR "u Hrvatskoj"'
+    },
+    'BG': {
+      searchTerms: 'Bulgaria България Sofia София Plovdiv Varna',
+      locationContext: 'site:.bg OR "in Bulgaria" OR "в България"'
+    },
+    'RO': {
+      searchTerms: 'Romania România Bucharest București Cluj Timisoara',
+      locationContext: 'site:.ro OR "in Romania" OR "în România"'
+    },
+    'EE': {
+      searchTerms: 'Estonia Eesti Tallinn Tartu',
+      locationContext: 'site:.ee OR "in Estonia" OR "Eestis"'
+    },
+    'LV': {
+      searchTerms: 'Latvia Latvija Riga Daugavpils',
+      locationContext: 'site:.lv OR "in Latvia" OR "Latvijā"'
+    },
+    'LT': {
+      searchTerms: 'Lithuania Lietuva Vilnius Kaunas Klaipeda',
+      locationContext: 'site:.lt OR "in Lithuania" OR "Lietuvoje"'
+    },
+    'MT': {
+      searchTerms: 'Malta Valletta Sliema',
+      locationContext: 'site:.mt OR "in Malta"'
+    },
+    'CY': {
+      searchTerms: 'Cyprus Κύπρος Nicosia Λευκωσία Limassol',
+      locationContext: 'site:.cy OR "in Cyprus" OR "στην Κύπρο"'
+    },
+    'IE': {
+      searchTerms: 'Ireland Éire Dublin Cork Galway',
+      locationContext: 'site:.ie OR "in Ireland" OR "in Éire"'
+    },
+    'PT': {
+      searchTerms: 'Portugal Lisbon Lisboa Porto Coimbra',
+      locationContext: 'site:.pt OR "in Portugal" OR "em Portugal"'
+    }
+  };
+  
+  return biasConfig[countryUpper] || null;
+}
+
 // Main entry point for the new pipeline
 export async function executeNewPipeline(args: {
   userText: string;
@@ -436,6 +574,15 @@ export async function executeNewPipeline(args: {
       // Fallback to a basic legal compliance query
       effectiveQuery = 'legal compliance conference event summit workshop';
     }
+  }
+  
+  // Add country-specific search bias when a specific country is selected
+  if (args.country && args.country !== 'EU' && args.country !== '') {
+    effectiveQuery = addCountrySpecificBias(effectiveQuery, args.country);
+    logger.info({ message: '[executeNewPipeline] Added country-specific bias', 
+      country: args.country,
+      enhancedQuery: effectiveQuery.substring(0, 150) + '...' 
+    });
   }
   
   const context: PipelineContext = {
