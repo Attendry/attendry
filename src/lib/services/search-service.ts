@@ -798,9 +798,8 @@ export class SearchService {
 
     // Get API credentials
     const key = process.env.GOOGLE_CSE_KEY;
-    const cx = process.env.GOOGLE_CSE_CX;
 
-    if (!key || !cx) {
+    if (!key) {
       // Return demo data if API keys are not configured
       const demoItems: SearchItem[] = [
         {
@@ -833,7 +832,6 @@ export class SearchService {
     const searchParams = new URLSearchParams({
       q: enhancedQuery,
       key,
-      cx,
       num: num.toString(),
       safe: "off",
       hl: "en"

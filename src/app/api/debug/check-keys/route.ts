@@ -31,12 +31,18 @@ export async function GET() {
         exists: !!process.env.GOOGLE_CSE_CX,
         length: process.env.GOOGLE_CSE_CX?.length || 0,
         startsWith: process.env.GOOGLE_CSE_CX?.substring(0, 8) || 'N/A'
+      },
+      GEMINI_API_KEY: {
+        exists: !!process.env.GEMINI_API_KEY,
+        length: process.env.GEMINI_API_KEY?.length || 0,
+        startsWith: process.env.GEMINI_API_KEY?.substring(0, 8) || 'N/A'
       }
     };
 
     const summary = {
       firecrawlConfigured: keys.FIRECRAWL_KEY.exists,
-      googleCseConfigured: (keys.GOOGLE_CSE_KEY.exists || keys.GOOGLE_API_KEY.exists) && keys.GOOGLE_CSE_CX.exists,
+      googleCseConfigured: keys.GOOGLE_CSE_KEY.exists,
+      geminiConfigured: keys.GEMINI_API_KEY?.exists || false,
       totalConfigured: Object.values(keys).filter(k => k.exists).length,
       recommendations: []
     };
@@ -45,12 +51,12 @@ export async function GET() {
       summary.recommendations.push('Set FIRECRAWL_KEY in Vercel environment variables');
     }
     
-    if (!keys.GOOGLE_CSE_KEY.exists && !keys.GOOGLE_API_KEY.exists) {
-      summary.recommendations.push('Set GOOGLE_CSE_KEY or GOOGLE_API_KEY in Vercel environment variables');
+    if (!keys.GOOGLE_CSE_KEY.exists) {
+      summary.recommendations.push('Set GOOGLE_CSE_KEY in Vercel environment variables');
     }
     
-    if (!keys.GOOGLE_CSE_CX.exists) {
-      summary.recommendations.push('Set GOOGLE_CSE_CX (Custom Search Engine ID) in Vercel environment variables');
+    if (!keys.GEMINI_API_KEY?.exists) {
+      summary.recommendations.push('Set GEMINI_API_KEY in Vercel environment variables');
     }
 
     return NextResponse.json({

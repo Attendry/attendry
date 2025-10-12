@@ -43,8 +43,7 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 Required environment variables:
 - `GOOGLE_CSE_KEY` - Google Custom Search API key
-- `GOOGLE_CSE_CX` - Google Custom Search Engine ID
-- `FIRECRAWL_API_KEY` - Firecrawl API key for content extraction
+- `FIRECRAWL_KEY` - Firecrawl API key for content extraction
 - `GEMINI_API_KEY` - Google Gemini API key for AI processing
 
 ## Search Debugging

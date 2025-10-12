@@ -52,10 +52,9 @@ jest.mock('next/navigation', () => ({
 // Mock environment variables
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
-process.env.GOOGLE_GEMINI_API_KEY = 'test-gemini-key'
-process.env.GOOGLE_CSE_API_KEY = 'test-cse-key'
-process.env.GOOGLE_CSE_ID = 'test-cse-id'
-process.env.FIRECRAWL_API_KEY = 'test-firecrawl-key'
+process.env.GEMINI_API_KEY = 'test-gemini-key'
+process.env.GOOGLE_CSE_KEY = 'test-cse-key'
+process.env.FIRECRAWL_KEY = 'test-firecrawl-key'
 
 // Mock fetch
 global.fetch = jest.fn()

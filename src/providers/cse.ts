@@ -1,23 +1,16 @@
 export async function search(params: { q: string; country?: string }) {
   try {
-    // Check for API key - try all possible names
-    const apiKey = process.env.GOOGLE_CSE_KEY || process.env.GOOGLE_API_KEY || process.env.CSE_API_KEY;
-    const cx = process.env.GOOGLE_CSE_CX;
+    // Check for API key
+    const apiKey = process.env.GOOGLE_CSE_KEY;
     
     if (!apiKey) {
-      console.error('[cse] Missing API key: GOOGLE_CSE_KEY, GOOGLE_API_KEY, or CSE_API_KEY not set');
-      return { items: [], debug: { error: 'Missing API key: GOOGLE_CSE_KEY, GOOGLE_API_KEY, or CSE_API_KEY not set', rawCount: 0 } };
-    }
-    
-    if (!cx) {
-      console.error('[cse] Missing CSE ID: GOOGLE_CSE_CX not set');
-      return { items: [], debug: { error: 'Missing CSE ID: GOOGLE_CSE_CX not set', rawCount: 0 } };
+      console.error('[cse] Missing API key: GOOGLE_CSE_KEY not set');
+      return { items: [], debug: { error: 'Missing API key: GOOGLE_CSE_KEY not set', rawCount: 0 } };
     }
 
     const url = new URL('https://www.googleapis.com/customsearch/v1');
     url.searchParams.set('q', params.q);
     url.searchParams.set('key', apiKey);
-    url.searchParams.set('cx', cx);
     url.searchParams.set('num', '10');
     url.searchParams.set('safe', 'off');
 

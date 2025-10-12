@@ -761,11 +761,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
 
     // Get Google Custom Search Engine API credentials
     const key = process.env.GOOGLE_CSE_KEY;
-    const cx  = process.env.GOOGLE_CSE_CX;
 
     // Fallback to demo data if API keys are not configured
     // This ensures the UI always renders something, even in development
-    if (!key || !cx) {
+    if (!key) {
       return NextResponse.json({
         provider: "demo",
         items: [
@@ -780,7 +779,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     // We make a small test call to check quota and API status
     try {
       const testParams = new URLSearchParams({
-        q: "test", key, cx, num: "1", safe: "off", hl: "en", filter: "1"
+        q: "test", key, num: "1", safe: "off", hl: "en", filter: "1"
       });
       const testUrl = `https://www.googleapis.com/customsearch/v1?${testParams}`;
       console.log(JSON.stringify({ at: "search", test: "calling_cse_test", url: testUrl }));
@@ -816,7 +815,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     console.log(JSON.stringify({ at: "search", query_cleanup: { original: enhancedQuery, cleaned: cleanQuery } }));
     
     const params = new URLSearchParams({
-      q: cleanQuery, key, cx, num: String(Math.max(num, rerank ? Math.min(50, topK || 50) : num)), safe: "off",
+      q: cleanQuery, key, num: String(Math.max(num, rerank ? Math.min(50, topK || 50) : num)), safe: "off",
       // explicitly set interface language to stabilize ranking
       hl: "en",
       filter: "1", // Required for this CSE configuration

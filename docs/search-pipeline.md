@@ -101,7 +101,7 @@ import { EnhancedSearchService } from '@/lib/services/enhanced-search-service';
 
 const searchService = new EnhancedSearchService(
   process.env.GEMINI_API_KEY!,
-  process.env.FIRECRAWL_API_KEY!
+  process.env.FIRECRAWL_KEY!
 );
 
 const results = await searchService.search({

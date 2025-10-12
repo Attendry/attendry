@@ -287,8 +287,7 @@ async function discoverSpeakerPages(speakerListUrl: string): Promise<string[]> {
 // Enhanced Google CSE: site:<host> queries to find off-nav speaker pages
 async function cseSiteHunt(baseUrl: string, titleHint?: string | null) {
   const key = process.env.GOOGLE_CSE_KEY;
-  const cx  = process.env.GOOGLE_CSE_CX;
-  if (!key || !cx) return [];
+  if (!key) return [];
   
   const host = hostname(baseUrl);
   const allResults: string[] = [];
@@ -314,7 +313,7 @@ async function cseSiteHunt(baseUrl: string, titleHint?: string | null) {
   // Execute all search queries
   for (const query of searchQueries) {
     try {
-      const url = `https://customsearch.googleapis.com/customsearch/v1?key=${encodeURIComponent(key)}&cx=${encodeURIComponent(cx)}&q=${encodeURIComponent(query)}&num=8`;
+      const url = `https://customsearch.googleapis.com/customsearch/v1?key=${encodeURIComponent(key)}&q=${encodeURIComponent(query)}&num=8`;
       const r = await fetch(url, { cache: "no-store" });
       if (!r.ok) continue;
       
@@ -700,7 +699,7 @@ async function researchSpeakerProfile(speaker: any): Promise<EnhancedSpeaker> {
 
     // Search for additional information about the speaker
     const searchQuery = `"${speaker.name}" "${speaker.org}" ${speaker.title || ""} linkedin profile bio`;
-    const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${googleKey}&cx=${googleCx}&q=${encodeURIComponent(searchQuery)}&num=5`;
+    const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${googleKey}&q=${encodeURIComponent(searchQuery)}&num=5`;
     
     const searchResponse = await fetch(searchUrl);
     const searchData = await searchResponse.json();

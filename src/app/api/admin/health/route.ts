@@ -225,10 +225,9 @@ async function checkGoogleCSEHealth(): Promise<HealthCheck> {
   try {
     // Simple test query
     const testQuery = 'test';
-    const apiKey = process.env.GOOGLE_CSE_API_KEY;
-    const searchEngineId = process.env.GOOGLE_CSE_SEARCH_ENGINE_ID;
+    const apiKey = process.env.GOOGLE_CSE_KEY;
 
-    if (!apiKey || !searchEngineId) {
+    if (!apiKey) {
       return {
         service: 'Google CSE',
         status: 'error',
@@ -239,7 +238,7 @@ async function checkGoogleCSEHealth(): Promise<HealthCheck> {
     }
 
     const response = await fetch(
-      `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&q=${testQuery}`,
+      `https://www.googleapis.com/customsearch/v1?key=${apiKey}&q=${testQuery}`,
       { method: 'GET' }
     );
 

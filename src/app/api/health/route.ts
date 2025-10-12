@@ -132,17 +132,16 @@ async function checkGoogleCSEHealth(): Promise<ServiceHealth> {
   
   try {
     const key = process.env.GOOGLE_CSE_KEY;
-    const cx = process.env.GOOGLE_CSE_CX;
     
-    if (!key || !cx) {
+    if (!key) {
       return {
         status: 'unhealthy',
-        last_error: 'GOOGLE_CSE_KEY or GOOGLE_CSE_CX not configured'
+        last_error: 'GOOGLE_CSE_KEY not configured'
       };
     }
 
     // Test with a simple search
-    const testUrl = `https://www.googleapis.com/customsearch/v1?q=test&key=${key}&cx=${cx}&num=1`;
+    const testUrl = `https://www.googleapis.com/customsearch/v1?q=test&key=${key}&num=1`;
     
     const response = await fetch(testUrl, { 
       method: 'GET',
