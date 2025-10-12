@@ -34,6 +34,17 @@ export async function cseSearch(args: CSEArgs) {
     const u = new URL('https://www.googleapis.com/customsearch/v1');
     u.searchParams.set('q', q.slice(0, 256));         // trim long queries to reduce 400s
     u.searchParams.set('key', process.env.GOOGLE_CSE_KEY!);
+    
+    // Add Custom Search Engine ID if available
+    const cx = process.env.GOOGLE_CSE_CX;
+    if (cx) {
+      u.searchParams.set('cx', cx);
+    } else {
+      // If no CSE ID, use a default one or disable CSE
+      console.warn('[cse] GOOGLE_CSE_CX not configured, CSE search will fail');
+      return null; // Return null to indicate CSE is not properly configured
+    }
+    
     u.searchParams.set('num', '10');
     u.searchParams.set('safe', 'off');
     if (withLocale) {
@@ -46,15 +57,25 @@ export async function cseSearch(args: CSEArgs) {
 
   async function cseSearchRobust(q: string) {
     try {
+      // Check if CSE is properly configured
+      const url = buildCSEUrl(q, true);
+      if (!url) {
+        console.warn('[cse] CSE not properly configured, returning empty results');
+        return { items: [] };
+      }
+
       const result = await RetryService.executeWithRetry(
         'google_cse',
         'search',
         () => executeWithCircuitBreaker(
           'google_cse',
           async () => {
-            let res = await fetch(buildCSEUrl(q, true));
+            let res = await fetch(url);
             if (res.status === 400) {
-              res = await fetch(buildCSEUrl(q, false));
+              const fallbackUrl = buildCSEUrl(q, false);
+              if (fallbackUrl) {
+                res = await fetch(fallbackUrl);
+              }
             }
             if (!res.ok) {
               throw new Error(`CSE API returned ${res.status}: ${res.statusText}`);
