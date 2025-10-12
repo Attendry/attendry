@@ -273,8 +273,36 @@ export async function executeNewPipeline(args: {
 }): Promise<any> {
   const pipelineWithFallback = await createPipelineWithFallback();
   
+  // Build query using the same logic as enhanced orchestrator
+  let effectiveQuery = args.userText;
+  
+  // If userText is empty, use baseQuery from config (same as enhanced orchestrator)
+  if (!effectiveQuery || effectiveQuery.trim() === '') {
+    try {
+      const { loadActiveConfig } = await import('@/common/search/config');
+      const { buildSearchQuery } = await import('@/common/search/queryBuilder');
+      
+      const cfg = await loadActiveConfig();
+      const baseQuery = cfg.baseQuery;
+      const excludeTerms = cfg.excludeTerms || '';
+      
+      // Build query using the same logic as enhanced orchestrator
+      effectiveQuery = buildSearchQuery({ baseQuery, userText: '', excludeTerms });
+      
+      logger.info({ message: '[executeNewPipeline] Using baseQuery for empty userText', 
+        baseQuery: effectiveQuery.substring(0, 100) + '...' 
+      });
+    } catch (error) {
+      logger.warn({ message: '[executeNewPipeline] Failed to load config, using fallback query', 
+        error: (error as any).message 
+      });
+      // Fallback to a basic legal compliance query
+      effectiveQuery = 'legal compliance conference event summit workshop';
+    }
+  }
+  
   const context: PipelineContext = {
-    query: args.userText,
+    query: effectiveQuery,
     country: args.country,
     dateFrom: args.dateFrom,
     dateTo: args.dateTo,
