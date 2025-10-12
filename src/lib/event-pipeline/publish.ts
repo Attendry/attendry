@@ -173,6 +173,14 @@ export class EventPublisher {
       reasons.push('Invalid location format');
     }
     
+    // Check for impossible country/location combinations
+    if (result.location && this.context.country) {
+      const extractedCountry = this.extractCountry(result.location, this.context.country);
+      if (this.isImpossibleCountryLocationCombination(extractedCountry, result.location, this.context.country)) {
+        reasons.push('Impossible country/location combination');
+      }
+    }
+    
     return {
       passed: reasons.length === 0,
       reasons
@@ -228,22 +236,50 @@ export class EventPublisher {
   private extractCountry(location?: string, defaultCountry?: string): string {
     if (!location) return defaultCountry || 'Unknown';
     
-    // Simple country extraction logic
+    // Enhanced country extraction logic with proper country codes
     const countryPatterns = {
-      'Germany': ['Germany', 'Deutschland', 'DE'],
-      'Netherlands': ['Netherlands', 'Nederland', 'NL'],
-      'France': ['France', 'FR'],
-      'United Kingdom': ['United Kingdom', 'UK', 'England', 'Scotland', 'Wales'],
-      'United States': ['United States', 'USA', 'US', 'America']
+      'de': ['germany', 'deutschland', 'de', 'berlin', 'munich', 'frankfurt', 'hamburg', 'cologne', 'stuttgart', 'düsseldorf', 'leipzig'],
+      'fr': ['france', 'fr', 'paris', 'lyon', 'marseille', 'toulouse', 'nice', 'nantes'],
+      'gb': ['united kingdom', 'uk', 'england', 'scotland', 'wales', 'london', 'manchester', 'birmingham', 'glasgow', 'edinburgh'],
+      'es': ['spain', 'es', 'madrid', 'barcelona', 'valencia', 'seville', 'bilbao'],
+      'it': ['italy', 'it', 'rome', 'milan', 'naples', 'turin', 'florence', 'venice'],
+      'nl': ['netherlands', 'nederland', 'nl', 'amsterdam', 'rotterdam', 'the hague', 'utrecht'],
+      'us': ['united states', 'usa', 'us', 'america', 'new york', 'los angeles', 'chicago', 'houston', 'phoenix', 'philadelphia'],
+      'vn': ['vietnam', 'vn', 'ho chi minh city', 'hanoi', 'da nang', 'hue'],
+      'at': ['austria', 'at', 'vienna', 'salzburg', 'innsbruck', 'graz'],
+      'ch': ['switzerland', 'ch', 'zurich', 'geneva', 'basel', 'bern', 'lausanne'],
+      'be': ['belgium', 'be', 'brussels', 'antwerp', 'ghent', 'bruges'],
+      'dk': ['denmark', 'dk', 'copenhagen', 'aarhus', 'odense'],
+      'se': ['sweden', 'se', 'stockholm', 'gothenburg', 'malmo'],
+      'no': ['norway', 'no', 'oslo', 'bergen', 'trondheim'],
+      'fi': ['finland', 'fi', 'helsinki', 'tampere', 'turku'],
+      'pl': ['poland', 'pl', 'warsaw', 'krakow', 'gdansk', 'wroclaw'],
+      'cz': ['czech republic', 'cz', 'prague', 'brno', 'ostrava'],
+      'hu': ['hungary', 'hu', 'budapest', 'debrecen', 'szeged'],
+      'sk': ['slovakia', 'sk', 'bratislava', 'kosice'],
+      'si': ['slovenia', 'si', 'ljubljana', 'maribor'],
+      'hr': ['croatia', 'hr', 'zagreb', 'split', 'dubrovnik'],
+      'bg': ['bulgaria', 'bg', 'sofia', 'plovdiv', 'varna'],
+      'ro': ['romania', 'ro', 'bucharest', 'cluj-napoca', 'timisoara'],
+      'ee': ['estonia', 'ee', 'tallinn', 'tartu'],
+      'lv': ['latvia', 'lv', 'riga', 'daugavpils'],
+      'lt': ['lithuania', 'lt', 'vilnius', 'kaunas', 'klaipeda'],
+      'mt': ['malta', 'mt', 'valletta', 'sliema'],
+      'cy': ['cyprus', 'cy', 'nicosia', 'limassol'],
+      'ie': ['ireland', 'ie', 'dublin', 'cork', 'galway'],
+      'pt': ['portugal', 'pt', 'lisbon', 'porto', 'coimbra']
     };
     
     const locationLower = location.toLowerCase();
-    for (const [country, patterns] of Object.entries(countryPatterns)) {
+    
+    // Check for exact country matches first
+    for (const [countryCode, patterns] of Object.entries(countryPatterns)) {
       if (patterns.some(pattern => locationLower.includes(pattern.toLowerCase()))) {
-        return country;
+        return countryCode;
       }
     }
     
+    // If no match found, return default country
     return defaultCountry || 'Unknown';
   }
 
@@ -261,8 +297,50 @@ export class EventPublisher {
       title: undefined,
       org: undefined,
       bio: undefined,
-      confidence: 0.5
+      confidence: this.calculateSpeakerConfidence(speaker)
     }));
+  }
+
+  private calculateSpeakerConfidence(speaker: string): number {
+    // Higher confidence for well-formatted names
+    if (/^[A-Z][a-z]+\s+[A-Z][a-z]+$/.test(speaker)) {
+      return 0.9; // High confidence for proper First Last format
+    }
+    
+    // Medium confidence for names with middle initials or multiple parts
+    if (/^[A-Z][a-z]+(\s+[A-Z]\.?\s+)?[A-Z][a-z]+$/.test(speaker)) {
+      return 0.8;
+    }
+    
+    // Lower confidence for other formats
+    return 0.6;
+  }
+
+  private isImpossibleCountryLocationCombination(extractedCountry: string, location: string, targetCountry: string): boolean {
+    // Check for obvious mismatches
+    const locationLower = location.toLowerCase();
+    
+    // Ho Chi Minh City should never be mapped to Germany
+    if (locationLower.includes('ho chi minh city') && extractedCountry === 'de') {
+      return true;
+    }
+    
+    // Barcelona should never be mapped to Germany
+    if (locationLower.includes('barcelona') && extractedCountry === 'de') {
+      return true;
+    }
+    
+    // Vietnam locations should not be mapped to European countries
+    if (locationLower.includes('vietnam') && ['de', 'fr', 'gb', 'es', 'it'].includes(extractedCountry)) {
+      return true;
+    }
+    
+    // Spanish locations should not be mapped to Germany
+    if (locationLower.includes('spain') && extractedCountry === 'de') {
+      return true;
+    }
+    
+    return false;
   }
 
   private calculateQualityScore(event: any, result: ExtractResult): number {

@@ -138,18 +138,32 @@ export class EventExtractor {
       Please enhance this data by:
       1. Correcting any obvious errors or inconsistencies
       2. Standardizing date formats (use YYYY-MM-DD)
-      3. Improving location formatting (City, Country)
+      3. Improving location formatting (City, Country) - be very specific about the actual location
       4. Extracting additional speaker information if possible - ONLY include actual person names (First Last format), NOT job titles, organizations, or generic terms
       5. Validating that this is actually an event page
+      
+      IMPORTANT LOCATION RULES:
+      - If the event is in Ho Chi Minh City, Vietnam, set location to "Ho Chi Minh City, Vietnam"
+      - If the event is in Barcelona, Spain, set location to "Barcelona, Spain"  
+      - If the event is in Frankfurt, Germany, set location to "Frankfurt, Germany"
+      - Be precise about country names - use full country names, not just city names
+      - If location is unclear, set to null rather than guessing
+      
+      IMPORTANT SPEAKER RULES:
+      - ONLY include actual person names in "First Last" format
+      - EXCLUDE job titles like "CEO", "Director", "Manager", "Legal Counsel"
+      - EXCLUDE organizations like "Company Name", "Department Name"
+      - EXCLUDE generic terms like "Speaker", "Presenter", "Panelist"
+      - If no actual person names are found, return empty array []
       
       Return JSON with enhanced fields:
       {
         "title": "Enhanced title or original if good",
         "description": "Enhanced description or original if good", 
         "date": "YYYY-MM-DD format or original if good",
-        "location": "City, Country format or original if good",
+        "location": "City, Country format or null if unclear",
         "venue": "Enhanced venue name or original if good",
-        "speakers": ["John Smith", "Jane Doe", ...], // ONLY actual person names, NOT job titles or organizations
+        "speakers": ["John Smith", "Jane Doe", ...], // ONLY actual person names, empty array if none found
         "agenda": ["Session 1", "Session 2", ...],
         "confidence": 0.0-1.0,
         "notes": "Brief description of enhancements made"
