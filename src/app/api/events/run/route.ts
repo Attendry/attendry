@@ -457,6 +457,17 @@ export async function GET(req: NextRequest) {
     const timeframe: string | null = url.searchParams.get('timeframe');
     const includeDebug = url.searchParams.get('debug') === '1';
 
+    // Process timeframe to date range (same logic as enhanced orchestrator)
+    let effectiveDateFrom = dateFrom;
+    let effectiveDateTo = dateTo;
+    
+    if (timeframe && !dateFrom && !dateTo) {
+      const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
+      const timeframeDates = processTimeframe(timeframe);
+      effectiveDateFrom = timeframeDates.dateFrom;
+      effectiveDateTo = timeframeDates.dateTo;
+    }
+
     // Use new pipeline if enabled, otherwise fall back to enhanced orchestrator
     const useNewPipeline = isNewPipelineEnabled();
     let res;
@@ -466,8 +477,8 @@ export async function GET(req: NextRequest) {
       res = await executeNewPipeline({
         userText,
         country: country || 'DE',
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
+        dateFrom: effectiveDateFrom || undefined,
+        dateTo: effectiveDateTo || undefined,
         locale: locale || 'de'
       });
     } else {
@@ -521,6 +532,17 @@ export async function POST(req: NextRequest) {
       timeframe
     });
 
+    // Process timeframe to date range (same logic as enhanced orchestrator)
+    let effectiveDateFrom = dateFrom;
+    let effectiveDateTo = dateTo;
+    
+    if (timeframe && !dateFrom && !dateTo) {
+      const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
+      const timeframeDates = processTimeframe(timeframe);
+      effectiveDateFrom = timeframeDates.dateFrom;
+      effectiveDateTo = timeframeDates.dateTo;
+    }
+
     // Use new pipeline if enabled, otherwise fall back to enhanced orchestrator
     const useNewPipeline = isNewPipelineEnabled();
     let res;
@@ -530,8 +552,8 @@ export async function POST(req: NextRequest) {
       res = await executeNewPipeline({
         userText,
         country: country || 'DE',
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
+        dateFrom: effectiveDateFrom || undefined,
+        dateTo: effectiveDateTo || undefined,
         locale: locale || 'de'
       });
     } else {

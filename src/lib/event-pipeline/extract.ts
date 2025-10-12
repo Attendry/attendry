@@ -96,7 +96,7 @@ export class EventExtractor {
         date: enhancement.date || parseResult.date,
         location: enhancement.location || parseResult.location,
         venue: enhancement.venue || parseResult.venue,
-        speakers: enhancement.speakers || parseResult.speakers,
+        speakers: this.validateAndFilterSpeakers(enhancement.speakers || parseResult.speakers),
         agenda: enhancement.agenda || parseResult.agenda,
         confidence: Math.max(parseResult.confidence, enhancement.confidence || 0),
         evidence: [
@@ -139,7 +139,7 @@ export class EventExtractor {
       1. Correcting any obvious errors or inconsistencies
       2. Standardizing date formats (use YYYY-MM-DD)
       3. Improving location formatting (City, Country)
-      4. Extracting additional speaker information if possible
+      4. Extracting additional speaker information if possible - ONLY include actual person names (First Last format), NOT job titles, organizations, or generic terms
       5. Validating that this is actually an event page
       
       Return JSON with enhanced fields:
@@ -149,7 +149,7 @@ export class EventExtractor {
         "date": "YYYY-MM-DD format or original if good",
         "location": "City, Country format or original if good",
         "venue": "Enhanced venue name or original if good",
-        "speakers": ["Speaker 1", "Speaker 2", ...],
+        "speakers": ["John Smith", "Jane Doe", ...], // ONLY actual person names, NOT job titles or organizations
         "agenda": ["Session 1", "Session 2", ...],
         "confidence": 0.0-1.0,
         "notes": "Brief description of enhancements made"
@@ -157,6 +157,49 @@ export class EventExtractor {
       
       Only enhance fields that need improvement. Keep original values if they're already good.
     `;
+  }
+
+  private validateAndFilterSpeakers(speakers: string[] | undefined): string[] {
+    if (!speakers || !Array.isArray(speakers)) return [];
+    
+    // Common job titles and generic terms to filter out
+    const invalidTerms = [
+      'compliance officer', 'regulatory affairs', 'ethics officer', 'legal counsel',
+      'general counsel', 'chief executive', 'ceo', 'cfo', 'cto', 'cmo',
+      'director', 'manager', 'senior', 'junior', 'associate', 'partner',
+      'representative', 'specialist', 'expert', 'advisor', 'consultant',
+      'speaker', 'presenter', 'moderator', 'panelist', 'keynote',
+      'legal', 'compliance', 'regulatory', 'ethics', 'governance',
+      'risk management', 'audit', 'investigation', 'whistleblowing',
+      'data protection', 'privacy', 'cybersecurity', 'regtech', 'esg',
+      'banking union', 'european commission', 'central bank', 'supervisory board',
+      'board member', 'director general', 'chief justice', 'ratings department',
+      'investment forum', 'climate rating', 'foreign trade', 'business school',
+      'menarini group', 'menarini spain', 'legal europe', 'urban mobility',
+      'banknote solutions', 'solution counselling', 'los angeles', 'latin america',
+      'development challenges', 'el salvador', 'law module', 'sierra leone',
+      'williams wall', 'chambers westgarth', 'withers bergman', 'addleshaw goddard'
+    ];
+    
+    return speakers.filter(speaker => {
+      if (!speaker || typeof speaker !== 'string') return false;
+      
+      const speakerLower = speaker.toLowerCase().trim();
+      
+      // Must be at least 5 characters
+      if (speakerLower.length < 5) return false;
+      
+      // Must match FirstName LastName pattern
+      if (!/^[A-Z][a-z]+\s+[A-Z][a-z]+/.test(speaker)) return false;
+      
+      // Must not contain invalid terms
+      if (invalidTerms.some(term => speakerLower.includes(term))) return false;
+      
+      // Must not be just job titles or organizations
+      if (speakerLower.includes('(likely') || speakerLower.includes('representing')) return false;
+      
+      return true;
+    });
   }
 
   private createLLMEvidence(enhancement: any): Evidence[] {

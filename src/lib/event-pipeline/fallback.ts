@@ -26,7 +26,7 @@ export class PipelineFallback {
         });
         
         const result = await this.newPipeline.process(context);
-        return this.convertToLegacyFormat(result);
+        return this.convertToLegacyFormat(result, context);
       } catch (error) {
         logger.error({ message: '[fallback] New pipeline failed, returning empty result',
           error: (error as any).message,
@@ -75,7 +75,7 @@ export class PipelineFallback {
     publishedEvents: any[];
     metrics: any;
     logs: any[];
-  }): any {
+  }, context?: PipelineContext): any {
     const { candidates, publishedEvents, metrics, logs } = pipelineResult;
     
     // Use published events if available (Phase 3), otherwise convert candidates
@@ -131,6 +131,135 @@ export class PipelineFallback {
           }
         };
       });
+    }
+    
+    // Apply country filtering if target country is specified
+    if (context && context.country && context.country !== 'EU') {
+      const originalCount = events.length;
+      events = events.filter((event: any) => {
+        const eventCountry = event.country;
+        const eventCity = event.city;
+        const eventLocation = event.location;
+        const eventUrl = event.source_url;
+
+        // Normalize country codes for comparison (same logic as enhanced orchestrator)
+        const normalizeCountryCode = (code: string | null | undefined): string | null => {
+          if (!code) return null;
+          const upper = code.toUpperCase();
+          // Map common country code variations
+          if (upper === 'UK') return 'GB';
+          if (upper === 'USA' || upper === 'US') return 'US';
+          if (upper === 'DEUTSCHLAND') return 'DE';
+          return upper;
+        };
+
+        const normalizedEventCountry = normalizeCountryCode(eventCountry);
+        const normalizedTargetCountry = normalizeCountryCode(context.country);
+
+        const matchesTarget = normalizedEventCountry === normalizedTargetCountry;
+        const mentionsTarget = eventLocation?.toLowerCase().includes(context.country.toLowerCase()) ?? false;
+        const urlSuggestsTarget = eventUrl.toLowerCase().includes('.' + context.country.toLowerCase()) ||
+          eventUrl.toLowerCase().includes('germany') ||
+          eventUrl.toLowerCase().includes('deutschland') ||
+          (context.country.toLowerCase() === 'gb' && (eventUrl.toLowerCase().includes('uk') || eventUrl.toLowerCase().includes('britain')));
+
+        const hasCity = Boolean(eventCity);
+        const europeanHint = (event.description?.toLowerCase().includes('europe') || event.title?.toLowerCase().includes('europe') || eventUrl.toLowerCase().includes('european'));
+
+        // Additional checks for US events that should be rejected for German searches
+        const isUSEvent = normalizedEventCountry === 'US' || 
+          eventUrl.toLowerCase().includes('.us/') ||
+          eventUrl.toLowerCase().includes('united-states') ||
+          eventUrl.toLowerCase().includes('usa') ||
+          eventLocation?.toLowerCase().includes('united states') ||
+          eventLocation?.toLowerCase().includes('usa') ||
+          eventLocation?.toLowerCase().includes('america');
+
+        const isUKEvent = normalizedEventCountry === 'GB' || 
+          eventUrl.toLowerCase().includes('.uk/') ||
+          eventUrl.toLowerCase().includes('united-kingdom') ||
+          eventLocation?.toLowerCase().includes('united kingdom') ||
+          eventLocation?.toLowerCase().includes('england') ||
+          eventLocation?.toLowerCase().includes('scotland') ||
+          eventLocation?.toLowerCase().includes('wales');
+
+        // For German searches, explicitly reject US and UK events unless they explicitly mention Germany
+        if (context.country.toUpperCase() === 'DE') {
+          if (isUSEvent && !mentionsTarget && !urlSuggestsTarget) {
+          logger.info({ message: '[fallback] Filtering out US event for German search', 
+            url: eventUrl, 
+            eventCountry, 
+            eventLocation 
+          });
+            return false;
+          }
+          if (isUKEvent && !mentionsTarget && !urlSuggestsTarget) {
+            logger.info({ message: '[fallback] Filtering out UK event for German search', 
+              url: eventUrl, 
+              eventCountry, 
+              eventLocation 
+            });
+            return false;
+          }
+        }
+
+        // For other country searches, apply general country matching
+        if (!matchesTarget && !mentionsTarget && !urlSuggestsTarget && !europeanHint) {
+          logger.info({ message: '[fallback] Filtering out event not matching target country', 
+            url: eventUrl, 
+            eventCountry, 
+            targetCountry: context.country,
+            eventLocation 
+          });
+          return false;
+        }
+
+        return true;
+      });
+      
+      if (originalCount !== events.length) {
+        logger.info({ message: '[fallback] Country filtering applied', 
+          originalCount, 
+          filteredCount: events.length,
+          targetCountry: context.country
+        });
+      }
+    }
+
+    // Apply date filtering if dateFrom/dateTo are provided
+    if (context && (context.dateFrom || context.dateTo)) {
+      const originalCount = events.length;
+      events = events.filter((event: any) => {
+        const eventDate = event.starts_at;
+        if (!eventDate) return true; // Keep events without dates
+        
+        if (context.dateFrom && eventDate < context.dateFrom) {
+          logger.info({ message: '[fallback] Filtering out event before date range', 
+            url: event.source_url, 
+            eventDate, 
+            dateFrom: context.dateFrom 
+          });
+          return false;
+        }
+        if (context.dateTo && eventDate > context.dateTo) {
+          logger.info({ message: '[fallback] Filtering out event after date range', 
+            url: event.source_url, 
+            eventDate, 
+            dateTo: context.dateTo 
+          });
+          return false;
+        }
+        return true;
+      });
+      
+      if (originalCount !== events.length) {
+        logger.info({ message: '[fallback] Date filtering applied', 
+          originalCount, 
+          filteredCount: events.length,
+          dateFrom: context.dateFrom,
+          dateTo: context.dateTo
+        });
+      }
     }
     
     return {

@@ -263,7 +263,7 @@ type LocationContext = {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-function processTimeframe(timeframe: string | null): TimeframeContext {
+export function processTimeframe(timeframe: string | null): TimeframeContext {
   if (!timeframe) {
     return { dateFrom: null, dateTo: null, tokens: [], label: null, kind: null, days: null };
   }
