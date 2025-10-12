@@ -291,14 +291,37 @@ export class EventPublisher {
     return parts[0]?.trim() || '';
   }
 
-  private formatSpeakers(speakers: string[]): Array<{ name: string; title?: string; org?: string; bio?: string; confidence: number }> {
-    return speakers.map(speaker => ({
-      name: this.cleanText(speaker),
-      title: undefined,
-      org: undefined,
-      bio: undefined,
-      confidence: this.calculateSpeakerConfidence(speaker)
-    }));
+  private formatSpeakers(speakers: any[] | string[]): Array<{ name: string; title?: string; org?: string; bio?: string; confidence: number }> {
+    return speakers.map(speaker => {
+      if (typeof speaker === 'string') {
+        // Legacy string format
+        return {
+          name: this.cleanText(speaker),
+          title: undefined,
+          org: undefined,
+          bio: undefined,
+          confidence: this.calculateSpeakerConfidence(speaker)
+        };
+      } else if (typeof speaker === 'object' && speaker.name) {
+        // New object format with comprehensive data
+        return {
+          name: this.cleanText(speaker.name),
+          title: speaker.title ? this.cleanText(speaker.title) : undefined,
+          org: speaker.company ? this.cleanText(speaker.company) : undefined,
+          bio: undefined,
+          confidence: this.calculateSpeakerConfidence(speaker.name)
+        };
+      } else {
+        // Fallback for invalid data
+        return {
+          name: 'Unknown Speaker',
+          title: undefined,
+          org: undefined,
+          bio: undefined,
+          confidence: 0.1
+        };
+      }
+    });
   }
 
   private calculateSpeakerConfidence(speaker: string): number {

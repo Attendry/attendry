@@ -96,7 +96,7 @@ export class EventExtractor {
         date: enhancement.date || parseResult.date,
         location: enhancement.location || parseResult.location,
         venue: enhancement.venue || parseResult.venue,
-        speakers: this.validateAndFilterSpeakers(enhancement.speakers || parseResult.speakers),
+        speakers: this.processSpeakerObjects(enhancement.speakers || parseResult.speakers),
         agenda: enhancement.agenda || parseResult.agenda,
         confidence: Math.max(parseResult.confidence, enhancement.confidence || 0),
         evidence: [
@@ -150,10 +150,11 @@ export class EventExtractor {
       - If location is unclear, set to null rather than guessing
       
       IMPORTANT SPEAKER RULES:
-      - ONLY include actual person names in "First Last" format
-      - EXCLUDE job titles like "CEO", "Director", "Manager", "Legal Counsel"
-      - EXCLUDE organizations like "Company Name", "Department Name"
-      - EXCLUDE generic terms like "Speaker", "Presenter", "Panelist"
+      - Extract comprehensive speaker information: Firstname Lastname, Job Title, and Company
+      - INCLUDE actual person names in "First Last" format
+      - INCLUDE job titles like "CEO", "Director", "Manager", "Legal Counsel", "Partner", "General Counsel"
+      - INCLUDE company/organization names
+      - EXCLUDE generic terms like "Speaker", "Presenter", "Panelist" (unless they are actual names)
       - If no actual person names are found, return empty array []
       
       Return JSON with enhanced fields:
@@ -163,7 +164,18 @@ export class EventExtractor {
         "date": "YYYY-MM-DD format or original if good",
         "location": "City, Country format or null if unclear",
         "venue": "Enhanced venue name or original if good",
-        "speakers": ["John Smith", "Jane Doe", ...], // ONLY actual person names, empty array if none found
+        "speakers": [
+          {
+            "name": "John Smith",
+            "title": "General Counsel", 
+            "company": "ABC Corporation"
+          },
+          {
+            "name": "Jane Doe",
+            "title": "Partner",
+            "company": "XYZ Law Firm"
+          }
+        ],
         "agenda": ["Session 1", "Session 2", ...],
         "confidence": 0.0-1.0,
         "notes": "Brief description of enhancements made"
@@ -173,47 +185,37 @@ export class EventExtractor {
     `;
   }
 
-  private validateAndFilterSpeakers(speakers: string[] | undefined): string[] {
+  private processSpeakerObjects(speakers: any[] | string[] | undefined): string[] {
     if (!speakers || !Array.isArray(speakers)) return [];
     
-    // Common job titles and generic terms to filter out
-    const invalidTerms = [
-      'compliance officer', 'regulatory affairs', 'ethics officer', 'legal counsel',
-      'general counsel', 'chief executive', 'ceo', 'cfo', 'cto', 'cmo',
-      'director', 'manager', 'senior', 'junior', 'associate', 'partner',
-      'representative', 'specialist', 'expert', 'advisor', 'consultant',
-      'speaker', 'presenter', 'moderator', 'panelist', 'keynote',
-      'legal', 'compliance', 'regulatory', 'ethics', 'governance',
-      'risk management', 'audit', 'investigation', 'whistleblowing',
-      'data protection', 'privacy', 'cybersecurity', 'regtech', 'esg',
-      'banking union', 'european commission', 'central bank', 'supervisory board',
-      'board member', 'director general', 'chief justice', 'ratings department',
-      'investment forum', 'climate rating', 'foreign trade', 'business school',
-      'menarini group', 'menarini spain', 'legal europe', 'urban mobility',
-      'banknote solutions', 'solution counselling', 'los angeles', 'latin america',
-      'development challenges', 'el salvador', 'law module', 'sierra leone',
-      'williams wall', 'chambers westgarth', 'withers bergman', 'addleshaw goddard'
-    ];
+    // Handle both object format (from LLM) and string format (from parsing)
+    return speakers.map(speaker => {
+      if (typeof speaker === 'string') {
+        // Legacy string format - validate and return if it's a proper name
+        return this.validateSpeakerName(speaker) ? speaker : null;
+      } else if (typeof speaker === 'object' && speaker.name) {
+        // New object format - extract name and validate
+        return this.validateSpeakerName(speaker.name) ? speaker.name : null;
+      }
+      return null;
+    }).filter(Boolean) as string[];
+  }
+
+  private validateSpeakerName(speaker: string): boolean {
+    if (!speaker || typeof speaker !== 'string') return false;
     
-    return speakers.filter(speaker => {
-      if (!speaker || typeof speaker !== 'string') return false;
-      
-      const speakerLower = speaker.toLowerCase().trim();
-      
-      // Must be at least 5 characters
-      if (speakerLower.length < 5) return false;
-      
-      // Must match FirstName LastName pattern
-      if (!/^[A-Z][a-z]+\s+[A-Z][a-z]+/.test(speaker)) return false;
-      
-      // Must not contain invalid terms
-      if (invalidTerms.some(term => speakerLower.includes(term))) return false;
-      
-      // Must not be just job titles or organizations
-      if (speakerLower.includes('(likely') || speakerLower.includes('representing')) return false;
-      
-      return true;
-    });
+    const speakerLower = speaker.toLowerCase().trim();
+    
+    // Must be at least 5 characters
+    if (speakerLower.length < 5) return false;
+    
+    // Must match FirstName LastName pattern
+    if (!/^[A-Z][a-z]+\s+[A-Z][a-z]+/.test(speaker)) return false;
+    
+    // Must not be just job titles or organizations
+    if (speakerLower.includes('(likely') || speakerLower.includes('representing')) return false;
+    
+    return true;
   }
 
   private createLLMEvidence(enhancement: any): Evidence[] {
@@ -278,11 +280,16 @@ export class EventExtractor {
     
     // Speaker validation
     if (result.speakers) {
-      const invalidSpeakers = result.speakers.filter(speaker => 
-        !speaker || speaker.trim().length < 2
-      );
+      const invalidSpeakers = result.speakers.filter(speaker => {
+        if (typeof speaker === 'string') {
+          return !speaker || speaker.trim().length < 2;
+        } else if (typeof speaker === 'object' && speaker.name) {
+          return !speaker.name || speaker.name.trim().length < 2;
+        }
+        return true; // Invalid format
+      });
       if (invalidSpeakers.length > 0) {
-        errors.push(`Invalid speakers found: ${invalidSpeakers.join(', ')}`);
+        errors.push(`Invalid speakers found: ${invalidSpeakers.length} invalid entries`);
       }
     }
     

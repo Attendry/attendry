@@ -63,6 +63,13 @@ export interface EventCandidate {
   };
 }
 
+// Speaker information structure
+export interface SpeakerInfo {
+  name: string;
+  title?: string;
+  company?: string;
+}
+
 // Deterministic parsing result
 export interface ParseResult {
   title?: string;
@@ -70,7 +77,7 @@ export interface ParseResult {
   date?: string;
   location?: string;
   venue?: string;
-  speakers?: string[];
+  speakers?: string[] | SpeakerInfo[];  // Support both formats
   agenda?: string[];
   confidence: number;         // Confidence in parsing result (0-1)
   evidence: Evidence[];       // Evidence for each extracted field
