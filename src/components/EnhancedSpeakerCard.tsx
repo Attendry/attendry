@@ -18,19 +18,14 @@
  */
 
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { SpeakerData } from "@/lib/types/core";
 
 /**
  * Enhanced speaker data structure interface
+ * Extends the base SpeakerData with additional professional information
  */
-interface EnhancedSpeaker {
-  name: string | null;             // Speaker's full name
-  org?: string | null;             // Current organization
-  title?: string | null;           // Job title or role
-  speech_title?: string;           // Title of their presentation/speech
-  session?: string;                // Session name or track
-  bio?: string | null;             // Professional biography
-  profile_url?: string;            // LinkedIn or personal profile URL
+interface EnhancedSpeaker extends SpeakerData {
   location?: string;               // Current location (city, country)
   education?: string[];            // Educational background
   publications?: string[];         // Published works and articles
@@ -45,14 +40,13 @@ interface EnhancedSpeaker {
   achievements?: string[];         // Professional achievements and awards
   industry_connections?: string[]; // Industry associations and connections
   recent_news?: string[];          // Recent media mentions and news
-  confidence?: number;             // Data quality confidence score (0-1)
 }
 
 /**
  * EnhancedSpeakerCard component props
  */
 interface EnhancedSpeakerCardProps {
-  speaker: EnhancedSpeaker;        // Speaker data object
+  speaker: SpeakerData;            // Speaker data object (can be basic or enhanced)
   sessionTitle?: string;           // Title of the specific session or speech
 }
 
@@ -70,11 +64,46 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   
   const [expanded, setExpanded] = useState(false);  // Whether detailed sections are expanded
   const [busy, setBusy] = useState(false);          // Loading state for save operation
+  const [enhancedSpeaker, setEnhancedSpeaker] = useState<EnhancedSpeaker | null>(null); // Enhanced speaker data
+  const [enhancing, setEnhancing] = useState(false); // Loading state for enhancement
+  const [enhancementError, setEnhancementError] = useState<string | null>(null); // Enhancement error
 
   // ============================================================================
   // EVENT HANDLERS
   // ============================================================================
   
+  /**
+   * Enhance speaker data with additional professional information
+   * 
+   * This function calls the enhancement API to get additional speaker details
+   * like education, publications, career history, etc.
+   */
+  async function enhanceSpeaker() {
+    if (enhancing || enhancedSpeaker) return; // Already enhancing or enhanced
+    
+    setEnhancing(true);
+    setEnhancementError(null);
+    
+    try {
+      const res = await fetch("/api/speakers/enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speaker }),
+      });
+      const j = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(j.error || "Enhancement failed");
+      }
+      
+      setEnhancedSpeaker(j.enhanced);
+    } catch (e: unknown) {
+      setEnhancementError((e as Error)?.message || "Enhancement failed");
+    } finally {
+      setEnhancing(false);
+    }
+  }
+
   /**
    * Save speaker to user's watchlist
    * 
@@ -106,6 +135,20 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   // COMPUTED VALUES
   // ============================================================================
   
+  // Use enhanced speaker data if available, otherwise fall back to basic speaker data
+  const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || speaker;
+  
+  // Check if speaker has enhanced data
+  const hasEnhancedData = enhancedSpeaker && (
+    enhancedSpeaker.education?.length ||
+    enhancedSpeaker.publications?.length ||
+    enhancedSpeaker.career_history?.length ||
+    enhancedSpeaker.expertise_areas?.length ||
+    enhancedSpeaker.achievements?.length ||
+    enhancedSpeaker.industry_connections?.length ||
+    enhancedSpeaker.recent_news?.length
+  );
+  
   // Determine confidence color based on data quality score
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return "bg-green-100 text-green-800";
@@ -117,10 +160,10 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
     <div className="rounded-xl border p-4 bg-white shadow-sm">
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
-          <div className="font-semibold text-lg text-slate-900">{speaker.name}</div>
-          {speaker.title && <div className="text-sm text-slate-700">{speaker.title}</div>}
-          {speaker.org && <div className="text-sm text-slate-600">{speaker.org}</div>}
-          {speaker.location && <div className="text-xs text-slate-500 mt-1">{speaker.location}</div>}
+          <div className="font-semibold text-lg text-slate-900">{displaySpeaker.name}</div>
+          {displaySpeaker.title && <div className="text-sm text-slate-700">{displaySpeaker.title}</div>}
+          {displaySpeaker.org && <div className="text-sm text-slate-600">{displaySpeaker.org}</div>}
+          {displaySpeaker.location && <div className="text-xs text-slate-500 mt-1">{displaySpeaker.location}</div>}
           
           {/* Session/Speech Title */}
           {sessionTitle && (
@@ -130,37 +173,63 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
             </div>
           )}
         </div>
-        {speaker.confidence && (
-          <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getConfidenceColor(speaker.confidence)}`}>
-            Confidence: {(speaker.confidence * 100).toFixed(0)}%
+        {displaySpeaker.confidence && (
+          <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${getConfidenceColor(displaySpeaker.confidence)}`}>
+            Confidence: {(displaySpeaker.confidence * 100).toFixed(0)}%
           </span>
         )}
       </div>
 
-      {speaker.speech_title && (
+      {displaySpeaker.speech_title && (
         <div className="mt-2 text-sm font-medium text-blue-700">
-          {speaker.speech_title}
+          {displaySpeaker.speech_title}
         </div>
       )}
-      {speaker.session && (
+      {displaySpeaker.session && (
         <div className="text-xs text-slate-500">
-          Session: {speaker.session}
+          Session: {displaySpeaker.session}
         </div>
       )}
 
-      {speaker.bio && !expanded && (
+      {displaySpeaker.bio && !expanded && (
         <p className="mt-3 text-sm text-slate-800 line-clamp-2">
-          {speaker.bio}
+          {displaySpeaker.bio}
         </p>
       )}
 
-      <div className="mt-4 flex items-center gap-2">
+      <div className="mt-4 flex items-center gap-2 flex-wrap">
         <button
           onClick={() => setExpanded(!expanded)}
           className="text-xs font-medium rounded-full px-3 py-1 border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-200"
         >
           {expanded ? "Show Less" : "More Details"}
         </button>
+        
+        {/* Enhancement button - only show if not already enhanced and not currently enhancing */}
+        {!hasEnhancedData && !enhancing && (
+          <button
+            onClick={enhanceSpeaker}
+            disabled={enhancing}
+            className="text-xs font-medium rounded-full px-3 py-1 border border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 transition-colors duration-200 disabled:opacity-50"
+          >
+            {enhancing ? "Enhancing..." : "Enhance Profile"}
+          </button>
+        )}
+        
+        {/* Show enhancement status */}
+        {enhancing && (
+          <span className="text-xs text-blue-600 flex items-center gap-1">
+            <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            Enhancing with AI...
+          </span>
+        )}
+        
+        {enhancementError && (
+          <span className="text-xs text-red-600">
+            Enhancement failed: {enhancementError}
+          </span>
+        )}
+        
         <button
           onClick={save}
           disabled={busy}
@@ -172,51 +241,58 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
 
       {expanded && (
         <div className="mt-4 pt-4 border-t border-slate-200 space-y-4">
-          {speaker.bio && (
+          {/* Show message if no enhanced data is available */}
+          {!hasEnhancedData && !enhancing && (
+            <div className="text-center py-4 text-slate-500">
+              <p className="text-sm">Click "Enhance Profile" to get detailed professional information</p>
+            </div>
+          )}
+          
+          {displaySpeaker.bio && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Professional Summary</h4>
-              <p className="text-sm text-slate-800">{speaker.bio}</p>
+              <p className="text-sm text-slate-800">{displaySpeaker.bio}</p>
             </div>
           )}
 
-          {speaker.education && speaker.education.length > 0 && (
+          {displaySpeaker.education && displaySpeaker.education.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Education</h4>
               <ul className="space-y-1">
-                {speaker.education.map((edu, idx) => (
+                {displaySpeaker.education.map((edu: string, idx: number) => (
                   <li key={idx} className="text-sm text-slate-700">• {edu}</li>
                 ))}
               </ul>
             </div>
           )}
 
-          {speaker.career_history && speaker.career_history.length > 0 && (
+          {displaySpeaker.career_history && displaySpeaker.career_history.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Career History</h4>
               <ul className="space-y-1">
-                {speaker.career_history.map((career, idx) => (
+                {displaySpeaker.career_history.map((career: string, idx: number) => (
                   <li key={idx} className="text-sm text-slate-700">• {career}</li>
                 ))}
               </ul>
             </div>
           )}
 
-          {speaker.publications && speaker.publications.length > 0 && (
+          {displaySpeaker.publications && displaySpeaker.publications.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Publications</h4>
               <ul className="space-y-1">
-                {speaker.publications.map((pub, idx) => (
+                {displaySpeaker.publications.map((pub: string, idx: number) => (
                   <li key={idx} className="text-sm text-slate-700">• {pub}</li>
                 ))}
               </ul>
             </div>
           )}
 
-          {speaker.expertise_areas && speaker.expertise_areas.length > 0 && (
+          {displaySpeaker.expertise_areas && displaySpeaker.expertise_areas.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Expertise Areas</h4>
               <div className="flex flex-wrap gap-2">
-                {speaker.expertise_areas.map((area, idx) => (
+                {displaySpeaker.expertise_areas.map((area: string, idx: number) => (
                   <span key={idx} className="text-xs font-medium rounded-full bg-indigo-100 text-indigo-800 px-2 py-1">
                     {area}
                   </span>
@@ -226,11 +302,11 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           )}
 
           {/* Speaking History */}
-          {speaker.speaking_history && speaker.speaking_history.length > 0 && (
+          {displaySpeaker.speaking_history && displaySpeaker.speaking_history.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Speaking History</h4>
               <ul className="space-y-1">
-                {speaker.speaking_history.map((event, idx) => (
+                {displaySpeaker.speaking_history.map((event: string, idx: number) => (
                   <li key={idx} className="text-sm text-slate-700">• {event}</li>
                 ))}
               </ul>
@@ -238,11 +314,11 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           )}
 
           {/* Achievements */}
-          {speaker.achievements && speaker.achievements.length > 0 && (
+          {displaySpeaker.achievements && displaySpeaker.achievements.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Key Achievements</h4>
               <ul className="space-y-1">
-                {speaker.achievements.map((achievement, idx) => (
+                {displaySpeaker.achievements.map((achievement: string, idx: number) => (
                   <li key={idx} className="text-sm text-slate-700">• {achievement}</li>
                 ))}
               </ul>
@@ -250,11 +326,11 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           )}
 
           {/* Industry Connections */}
-          {speaker.industry_connections && speaker.industry_connections.length > 0 && (
+          {displaySpeaker.industry_connections && displaySpeaker.industry_connections.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Industry Connections</h4>
               <ul className="space-y-1">
-                {speaker.industry_connections.map((connection, idx) => (
+                {displaySpeaker.industry_connections.map((connection: string, idx: number) => (
                   <li key={idx} className="text-sm text-slate-700">• {connection}</li>
                 ))}
               </ul>
@@ -262,11 +338,11 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           )}
 
           {/* Recent News */}
-          {speaker.recent_news && speaker.recent_news.length > 0 && (
+          {displaySpeaker.recent_news && displaySpeaker.recent_news.length > 0 && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Recent News & Media</h4>
               <ul className="space-y-1">
-                {speaker.recent_news.map((news, idx) => (
+                {displaySpeaker.recent_news.map((news: string, idx: number) => (
                   <li key={idx} className="text-sm text-slate-700">• {news}</li>
                 ))}
               </ul>
@@ -274,18 +350,18 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           )}
 
           {/* Social Links */}
-          {speaker.social_links && (
+          {displaySpeaker.social_links && (
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Connect</h4>
               <div className="flex gap-3">
-                {speaker.social_links.linkedin && (
-                  <a href={speaker.social_links.linkedin} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">LinkedIn</a>
+                {displaySpeaker.social_links.linkedin && (
+                  <a href={displaySpeaker.social_links.linkedin} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-sm">LinkedIn</a>
                 )}
-                {speaker.social_links.twitter && (
-                  <a href={`https://twitter.com/${speaker.social_links.twitter}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline text-sm">Twitter</a>
+                {displaySpeaker.social_links.twitter && (
+                  <a href={`https://twitter.com/${displaySpeaker.social_links.twitter}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline text-sm">Twitter</a>
                 )}
-                {speaker.social_links.website && (
-                  <a href={speaker.social_links.website} target="_blank" rel="noreferrer" className="text-purple-600 hover:underline text-sm">Website</a>
+                {displaySpeaker.social_links.website && (
+                  <a href={displaySpeaker.social_links.website} target="_blank" rel="noreferrer" className="text-purple-600 hover:underline text-sm">Website</a>
                 )}
               </div>
             </div>
