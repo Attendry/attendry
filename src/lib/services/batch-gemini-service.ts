@@ -364,7 +364,14 @@ Extract speakers even if not explicitly labeled as "Speaker". Use context clues 
         .replace(/\s+/g, ' ') // Normalize multiple spaces
         .trim();
       
-      const parsed = JSON.parse(jsonString);
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error('Error parsing speaker extraction batch response:', parseError);
+        console.error('JSON string that failed to parse:', jsonString);
+        throw new Error(`Failed to parse JSON: ${parseError}`);
+      }
       
       // Validate and map results
       const results: SpeakerExtractionResult[] = [];

@@ -819,6 +819,10 @@ Include at most 10 items. Only include URLs you see in the list.`;
 
     const modelPath = process.env.GEMINI_MODEL_PATH
       || 'v1beta/models/gemini-2.5-flash:generateContent';
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
     const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`, {
       method: 'POST',
       headers: { 
@@ -829,8 +833,11 @@ Include at most 10 items. Only include URLs you see in the list.`;
         generationConfig: {
           temperature: 0.1
         }
-      })
+      }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
 
     let content: string | null = null;
 
@@ -977,6 +984,13 @@ function generateExtractionPrompt(searchConfig: ActiveConfig): string {
   const eventTerms = searchConfig.eventTerms?.join(', ') ?? 'events, conferences, summits';
 
   return `You are an expert event data extractor. Extract ALL available information from this webpage about ${searchConfig.industry ?? 'general'} events.
+
+CRITICAL: You MUST extract information even if it seems incomplete. Do not return empty results. Look for:
+- Event titles, descriptions, dates, locations
+- Speaker names, organizations, titles
+- Session information, agendas
+- Venue details, sponsors
+
 Be thorough and extract every piece of information you can find. Look carefully through the entire page content.
 Return strict JSON with the following shape:
 {
@@ -2595,7 +2609,30 @@ async function performEnhancedSearch(args: ExecArgs) {
       const hasCity = Boolean(eventCity);
       const europeanHint = (details.description?.toLowerCase().includes('europe') || details.title?.toLowerCase().includes('europe') || url.toLowerCase().includes('european'));
 
+      // Additional checks for US events that should be rejected for German searches
+      const isUSEvent = normalizedEventCountry === 'US' || 
+                       url.toLowerCase().includes('.us') ||
+                       url.toLowerCase().includes('usa') ||
+                       eventLocation?.toLowerCase().includes('united states') ||
+                       eventLocation?.toLowerCase().includes('usa') ||
+                       eventCity?.toLowerCase().includes('nashville') ||
+                       eventCity?.toLowerCase().includes('kansas') ||
+                       eventCity?.toLowerCase().includes('overland park');
+
       if (!matchesTarget && !mentionsTarget && !urlSuggestsTarget) {
+        // Reject US events when searching for German events
+        if (isUSEvent && normalizedTargetCountry === 'DE') {
+          console.log('[enhanced_orchestrator] Rejecting US event for German search', {
+            url,
+            eventCountry,
+            eventCity,
+            eventLocation,
+            targetCountry: country
+          });
+          rejected.push({ url, reason: 'us_event_for_german_search', score: candidate.score });
+          continue;
+        }
+        
         if (hasCity && !eventCountry) {
           console.log('[enhanced_orchestrator] Accepting event with inferred city only', { url, eventCity });
         } else if (eventCountry?.toUpperCase() === 'EU' || europeanHint) {
