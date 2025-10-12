@@ -10,7 +10,7 @@ import { EventPipelineConfig } from './types';
 export const DEFAULT_PIPELINE_CONFIG: EventPipelineConfig = {
   thresholds: {
     prioritization: 0.5,      // Minimum score to proceed from prioritization
-    confidence: 0.6,          // Minimum confidence to publish
+    confidence: 0.5,          // Minimum confidence to publish
     parseQuality: 0.4         // Minimum parse quality
   },
   sources: {

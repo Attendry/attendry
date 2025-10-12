@@ -227,7 +227,15 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
         throw new Error("No content in Gemini response");
       }
       
-      return content;
+      // Extract JSON from markdown if present
+      let jsonContent = content.trim();
+      if (jsonContent.startsWith('```json')) {
+        jsonContent = jsonContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (jsonContent.startsWith('```')) {
+        jsonContent = jsonContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      return jsonContent;
     }
   };
   

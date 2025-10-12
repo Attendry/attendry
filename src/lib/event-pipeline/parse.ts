@@ -185,8 +185,10 @@ export class EventParser {
       // Microdata
       { pattern: /itemprop="location"[^>]*content="([^"]+)"/i, source: 'microdata' as const },
       { pattern: /itemprop="address"[^>]*content="([^"]+)"/i, source: 'microdata' as const },
-      // Location-specific patterns
-      { pattern: /(?:location|venue|where)[^>]*>([^<]*(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,?\s*[A-Z]{2,3}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*))/i, source: 'html' as const },
+      // Structured data patterns
+      { pattern: /"location"[^>]*>([^<]*(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,?\s*[A-Z]{2,3}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*))</i, source: 'structured' as const },
+      // Event-specific location patterns (avoid CSS)
+      { pattern: /(?:location|venue|where)[^>]*>([^<]*(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*,?\s*[A-Z]{2,3}|[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*))</i, source: 'html' as const },
       // Address patterns
       { pattern: /(\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Place|Pl)[^<]*)/i, source: 'html' as const }
     ];
@@ -333,8 +335,21 @@ export class EventParser {
   }
 
   private isValidLocation(location: string): boolean {
-    // Basic location validation
-    return location.length > 3 && /[A-Za-z]/.test(location) && !location.includes('http');
+    // Enhanced location validation to filter out CSS and invalid content
+    if (location.length < 3 || location.length > 200) return false;
+    if (!/[A-Za-z]/.test(location)) return false;
+    if (location.includes('http') || location.includes('www.')) return false;
+    
+    // Filter out CSS-related content
+    if (location.includes('{') || location.includes('}') || location.includes(';')) return false;
+    if (location.includes('var(') || location.includes('--wp-') || location.includes('color:')) return false;
+    if (location.includes('margin:') || location.includes('padding:') || location.includes('font-')) return false;
+    
+    // Filter out HTML tags and attributes
+    if (location.includes('<') || location.includes('>') || location.includes('class=')) return false;
+    
+    // Must contain at least one letter and be reasonable length
+    return /^[A-Za-z\s,.-]+$/.test(location) && location.trim().length > 3;
   }
 
   private isValidVenue(venue: string): boolean {
