@@ -362,7 +362,7 @@ export const CIRCUIT_BREAKER_CONFIGS = {
   FIRECRAWL: {
     failureThreshold: 2,
     successThreshold: 2,
-    timeout: 15000,
+    timeout: 30000,
     resetTimeout: 60000,
     monitoringPeriod: 60000,
     maxRequests: 1,
