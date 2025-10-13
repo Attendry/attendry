@@ -148,27 +148,41 @@ export class EventPrioritizer {
       }
     }
     
-    const prompt = `
-      Analyze this URL for event relevance and score it (0-1):
-      URL: ${candidate.url}${countryContext}
-      
-      Rate on these criteria:
-      - is_event: Is this an actual event page (not just a company page, blog post, or general info)? (0-1)
-      - has_agenda: Does it contain agenda/program information, schedule, or session details? (0-1)
-      - has_speakers: Does it list speakers, presenters, or keynotes? (0-1)
-      - is_recent: Is this for a current/future event (not past events)? (0-1)
-      - is_relevant: Does it match compliance, legal, or regulatory themes? (0-1)
-      ${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? '- is_country_relevant: Does this event appear to be in the target country or region? (0-1)' : ''}
-      
-      Be strict in scoring. Only give high scores (0.8+) to clearly relevant event pages.
-      ${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? 'Give higher scores to events that are clearly in the target country.' : ''}
-      
-      Return JSON only: {"is_event": 0.9, "has_agenda": 0.7, "has_speakers": 0.8, "is_recent": 0.9, "is_relevant": 0.8${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? ', "is_country_relevant": 0.9' : ''}, "overall": 0.82}
-    `;
+    const prompt = `You are a JSON-only response system. You must respond with valid JSON only, no other text.
+
+Analyze this URL for event relevance and score it (0-1):
+URL: ${candidate.url}${countryContext}
+
+Rate on these criteria:
+- is_event: Is this an actual event page (not just a company page, blog post, or general info)? (0-1)
+- has_agenda: Does it contain agenda/program information, schedule, or session details? (0-1)
+- has_speakers: Does it list speakers, presenters, or keynotes? (0-1)
+- is_recent: Is this for a current/future event (not past events)? (0-1)
+- is_relevant: Does it match compliance, legal, or regulatory themes? (0-1)
+${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? '- is_country_relevant: Does this event appear to be in the target country or region? (0-1)' : ''}
+
+Be strict in scoring. Only give high scores (0.8+) to clearly relevant event pages.
+${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? 'Give higher scores to events that are clearly in the target country.' : ''}
+
+RESPOND WITH JSON ONLY - NO OTHER TEXT:
+{"is_event": 0.9, "has_agenda": 0.7, "has_speakers": 0.8, "is_recent": 0.9, "is_relevant": 0.8${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? ', "is_country_relevant": 0.9' : ''}, "overall": 0.82}`;
     
     try {
       const response = await this.geminiService.generateContent(prompt);
-      const scores = JSON.parse(response);
+      
+      // Enhanced JSON parsing with fallback
+      let scores;
+      try {
+        scores = JSON.parse(response);
+      } catch (parseError) {
+        // Try to extract JSON from response if it's wrapped in text
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          scores = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error(`Invalid JSON response: ${response.substring(0, 100)}...`);
+        }
+      }
       
       // Validate response structure
       if (!this.isValidScoreResponse(scores)) {

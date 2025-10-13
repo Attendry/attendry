@@ -249,9 +249,11 @@ export class FirecrawlSearchService {
           .replace(/\([^)]*\)/g, '') // Remove parentheses
           .replace(/\b(OR|AND)\b/gi, ' ') // Replace OR/AND with spaces
           .replace(/["']/g, '') // Remove quotes
+          .replace(/-reddit\s*-[a-zA-Z]*/gi, '') // Remove exclusion terms
+          .replace(/\b(site:\.\w+|"in\s+\w+")\b/gi, '') // Remove site restrictions
           .split(/\s+/)
-          .filter(term => term.length > 2)
-          .slice(0, 5); // Take only first 5 terms
+          .filter(term => term.length > 2 && !term.match(/^[-\s]+$/))
+          .slice(0, 4); // Take only first 4 terms to keep query simple
         
         if (keyTerms.length > 0) {
           searchQuery = keyTerms.join(' ');

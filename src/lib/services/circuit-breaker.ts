@@ -360,12 +360,12 @@ export const CIRCUIT_BREAKER_CONFIGS = {
     maxRequests: 2,
   },
   FIRECRAWL: {
-    failureThreshold: 2,
+    failureThreshold: 3,
     successThreshold: 2,
-    timeout: 30000,
-    resetTimeout: 60000,
+    timeout: 20000,
+    resetTimeout: 30000,
     monitoringPeriod: 60000,
-    maxRequests: 1,
+    maxRequests: 2,
   },
   GEMINI: {
     failureThreshold: 5,
