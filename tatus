@@ -1,73 +1,26 @@
-[33mcommit 93bdc0e46118f34bac4f8b6ef66b7d4bf32fe015[m
-Author: Attendry <attendry@example.com>
-Date:   Mon Sep 22 18:58:49 2025 +0100
-
-    Restructure: Move Next.js project to root level for Vercel deployment
-
-.gitignore
-.vscode/launch.json
-CRON_SETUP.md
-README.md
-VERCEL_CRON_SETUP.md
-eslint.config.mjs
-next.config.ts
-package-lock.json
-package.json
-postcss.config.mjs
-public/file.svg
-public/globe.svg
-public/next.svg
-public/vercel.svg
-public/window.svg
-setup-search-configurations.sql
-setup-search-persistence.sql
-src/app/admin/page.tsx
-src/app/api/auth/whoami/route.ts
-src/app/api/chat/route.ts
-src/app/api/config/search/route.ts
-src/app/api/configs/upsert/route.ts
-src/app/api/cron/collect-events/route.ts
-src/app/api/debug/auth/route.ts
-src/app/api/debug/env/route.ts
-src/app/api/debug/search-config/route.ts
-src/app/api/events/collect/route.ts
-src/app/api/events/extract/route.ts
-src/app/api/events/run/route.ts
-src/app/api/events/search-enhanced/route.ts
-src/app/api/events/search/route.ts
-src/app/api/events/speakers/route.ts
-src/app/api/health/route.ts
-src/app/api/profile/generate/route.ts
-src/app/api/profile/get/route.ts
-src/app/api/profile/save/route.ts
-src/app/api/watchlist/add/route.ts
-src/app/api/watchlist/list/route.ts
-src/app/api/watchlist/remove/route.ts
-src/app/auth/callback/route.ts
-src/app/events/EventsClient.tsx
-src/app/events/page.tsx
-src/app/favicon.ico
-src/app/globals.css
-src/app/layout.tsx
-src/app/login/page.tsx
-src/app/page.tsx
-src/app/test/page.tsx
-src/app/watchlist/page.tsx
-src/components/AttendeeCard.tsx
-src/components/AuthBadge.tsx
-src/components/EnhancedSpeakerCard.tsx
-src/components/EventCard.tsx
-src/components/Header.tsx
-src/components/Layout.tsx
-src/components/SetupStatusIndicator.tsx
-src/components/Sidebar.tsx
-src/components/TopBar.tsx
-src/lib/supabase-browser.ts
-src/lib/supabase-server.ts
-src/middleware.ts
-supabase/migrations/20241201000000_create_search_configurations.sql
-supabase/migrations/20241201000001_create_collected_events.sql
-supabase/migrations/20241201000002_fix_auth_policies.sql
-test-cron-setup.js
-tsconfig.json
-vercel.json
+[1mdiff --git a/src/lib/event-pipeline/discover.ts b/src/lib/event-pipeline/discover.ts[m
+[1mindex 8563b75..5952709 100644[m
+[1m--- a/src/lib/event-pipeline/discover.ts[m
+[1m+++ b/src/lib/event-pipeline/discover.ts[m
+[36m@@ -53,14 +53,15 @@[m [mexport class EventDiscoverer {[m
+       }[m
+       [m
+       // Wait for all discovery sources with timeout[m
+[31m-      const results = await Promise.allSettled(discoveryPromises.map((promise) =>[m
+[31m-        promise.then((value) => ({ status: 'fulfilled', value, timeout: false })).catch((error) => ({ status: 'rejected', reason: error }))[m
+[31m-      ));[m
+[31m-      [m
+[32m+[m[32m      const results = await Promise.all(discoveryPromises);[m
+[32m+[m
+       // Flatten results from all sources[m
+       results.forEach((result, index) => {[m
+[31m-        if (result.status === 'fulfilled' && Array.isArray(result.value)) {[m
+[31m-          candidates.push(...result.value);[m
+[32m+[m[32m        if (Array.isArray(result)) {[m
+[32m+[m[32m          logger.info({ message: '[discover] Source result', sourceIndex: index, candidateCount: result.length });[m
+[32m+[m[32m          candidates.push(...result);[m
+[32m+[m[32m        } else {[m
+[32m+[m[32m          logger.warn({ message: '[discover] Unexpected result shape from source', sourceIndex: index, resultType: typeof result });[m
+         }[m
+       });[m
+       [m

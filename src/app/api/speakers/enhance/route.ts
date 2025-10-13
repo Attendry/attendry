@@ -55,6 +55,93 @@ interface SpeakerEnhancementResponse {
   error?: string;
 }
 
+async function findCachedSpeakerProfile(
+  supabase: Awaited<ReturnType<typeof supabaseServer>>,
+  userId: string,
+  speaker: SpeakerData
+): Promise<EnhancedSpeakerData | null> {
+  try {
+    const speakerKey = (speaker.profile_url || speaker.name || 'unknown')
+      .toLowerCase()
+      .trim();
+
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({ speaker, speakerKey }))
+      .digest('hex');
+
+    const { data, error } = await supabase
+      .from('enhanced_speaker_profiles')
+      .select('enhanced_data')
+      .eq('user_id', userId)
+      .eq('speaker_key', speakerKey)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Failed to load cached speaker profile:', error.message);
+      return null;
+    }
+
+    if (!data?.enhanced_data) {
+      return null;
+    }
+
+    const cached = data.enhanced_data as EnhancedSpeakerData & { fingerprint?: string };
+    if (cached.fingerprint && cached.fingerprint === fingerprint) {
+      return cached;
+    }
+
+    return null;
+  } catch (error) {
+    console.warn('Error retrieving cached speaker profile:', error);
+    return null;
+  }
+}
+
+async function persistEnhancedSpeaker(
+  enhanced: EnhancedSpeakerData,
+  original: SpeakerData,
+  supabase: Awaited<ReturnType<typeof supabaseServer>>,
+  userId: string
+): Promise<boolean> {
+  try {
+    const speakerKey = (enhanced.profile_url || original.profile_url || enhanced.name || original.name || 'unknown')
+      .toLowerCase()
+      .trim();
+
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({ speaker: original, speakerKey }))
+      .digest('hex');
+
+    const payload = {
+      user_id: userId,
+      speaker_key: speakerKey,
+      speaker_name: enhanced.name || original.name,
+      speaker_org: enhanced.org || original.org || null,
+      speaker_title: enhanced.title || original.title || null,
+      session_title: original.session || enhanced.session || null,
+      profile_url: enhanced.profile_url || original.profile_url || null,
+      raw_input: original,
+      enhanced_data: { ...enhanced, fingerprint },
+      confidence: enhanced.confidence ?? null,
+      last_enhanced_at: new Date().toISOString(),
+    };
+
+    const { error: upsertError } = await supabase
+      .from('enhanced_speaker_profiles')
+      .upsert(payload, { onConflict: 'user_id,speaker_key' });
+
+    if (upsertError) {
+      console.warn('Failed to upsert enhanced speaker profile', upsertError.message);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.warn('Error persisting enhanced speaker profile:', error);
+    return false;
+  }
+}
+
 /**
  * Enhance speaker data with real search-based information
  */
@@ -185,93 +272,6 @@ Return ONLY a valid JSON object with these fields and nothing else. Do not inclu
   "recent_news": [
     { "title": "Headline", "url": "https://...", "date": "YYYY-MM-DD" }
   ]
-}
-
-async function findCachedSpeakerProfile(
-  supabase: Awaited<ReturnType<typeof supabaseServer>>,
-  userId: string,
-  speaker: SpeakerData
-): Promise<EnhancedSpeakerData | null> {
-  try {
-    const speakerKey = (speaker.profile_url || speaker.name || 'unknown')
-      .toLowerCase()
-      .trim();
-
-    const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ speaker, speakerKey }))
-      .digest('hex');
-
-    const { data, error } = await supabase
-      .from('enhanced_speaker_profiles')
-      .select('enhanced_data')
-      .eq('user_id', userId)
-      .eq('speaker_key', speakerKey)
-      .maybeSingle();
-
-    if (error) {
-      console.warn('Failed to load cached speaker profile:', error.message);
-      return null;
-    }
-
-    if (!data?.enhanced_data) {
-      return null;
-    }
-
-    const cached = data.enhanced_data as EnhancedSpeakerData & { fingerprint?: string };
-    if (cached.fingerprint && cached.fingerprint === fingerprint) {
-      return cached;
-    }
-
-    return null;
-  } catch (error) {
-    console.warn('Error retrieving cached speaker profile:', error);
-    return null;
-  }
-}
-
-async function persistEnhancedSpeaker(
-  enhanced: EnhancedSpeakerData,
-  original: SpeakerData,
-  supabase: Awaited<ReturnType<typeof supabaseServer>>,
-  userId: string
-): Promise<boolean> {
-  try {
-    const speakerKey = (enhanced.profile_url || original.profile_url || enhanced.name || original.name || 'unknown')
-      .toLowerCase()
-      .trim();
-
-    const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ speaker: original, speakerKey }))
-      .digest('hex');
-
-    const payload = {
-      user_id: userId,
-      speaker_key: speakerKey,
-      speaker_name: enhanced.name || original.name,
-      speaker_org: enhanced.org || original.org || null,
-      speaker_title: enhanced.title || original.title || null,
-      session_title: original.session || enhanced.session || null,
-      profile_url: enhanced.profile_url || original.profile_url || null,
-      raw_input: original,
-      enhanced_data: { ...enhanced, fingerprint },
-      confidence: enhanced.confidence ?? null,
-      last_enhanced_at: new Date().toISOString(),
-    };
-
-    const { error: upsertError } = await supabase
-      .from('enhanced_speaker_profiles')
-      .upsert(payload, { onConflict: 'user_id,speaker_key' });
-
-    if (upsertError) {
-      console.warn('Failed to upsert enhanced speaker profile', upsertError.message);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.warn('Error persisting enhanced speaker profile:', error);
-    return false;
-  }
 }
 
 Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements.`;

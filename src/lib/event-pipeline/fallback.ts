@@ -328,9 +328,56 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
   const config = getPipelineConfig();
   
   // Import services dynamically to avoid circular dependencies
-  const { GeminiService } = await import('@/lib/services/gemini-service');
   const { cseSearch } = await import('@/services/search/cseService');
   const { firecrawlSearch } = await import('@/services/search/firecrawlService');
+
+  // Create Gemini service wrapper that provides generateContent method
+  const geminiServiceWrapper = {
+    generateContent: async (prompt: string): Promise<string> => {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("GEMINI_API_KEY not configured");
+      }
+
+      const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.0-flash:generateContent';
+      const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.1
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API failed: ${response.status} ${response.statusText}`);
+      }
+
+      const rawText = await response.text();
+      const data = JSON.parse(rawText) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+      
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!content) {
+        throw new Error("No content in Gemini response");
+      }
+      
+      // Extract JSON from markdown if present
+      let jsonContent = content.trim();
+      if (jsonContent.startsWith('```json')) {
+        jsonContent = jsonContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (jsonContent.startsWith('```')) {
+        jsonContent = jsonContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      return jsonContent;
+    }
+  };
 
   // Create new pipeline
   const newPipeline = new EventPipeline(
@@ -368,7 +415,7 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
           })),
         }))
     },
-    new GeminiService()
+    geminiServiceWrapper
   );
   
   // Create legacy search wrapper
