@@ -13,7 +13,8 @@ const geminiKey = process.env.GEMINI_API_KEY;
 const firecrawlKey = process.env.FIRECRAWL_KEY;
 const googleKey = process.env.GOOGLE_CSE_KEY;
 const googleCx = process.env.GOOGLE_CSE_CX;
-const LLM_MODEL = "gemini-1.5-flash";
+// Use Gemini 2.5 Flash via REST (same pattern as elsewhere in app)
+const GEMINI_MODEL_PATH = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
 
 console.log('Environment check:', {
   geminiKey: !!geminiKey,
@@ -133,10 +134,7 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
   if (searchContext && geminiKey) {
     try {
       console.log('Processing search results with AI...');
-      
-      const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: LLM_MODEL });
-      
+
       const prompt = `You are a professional research assistant. Based on the following information about a speaker and real search results, generate a comprehensive professional profile.
 
 Speaker Information:
@@ -149,7 +147,7 @@ ${searchContext}
 
 Please extract and synthesize real information from the search results. Create a professional profile based on actual data found online. Be specific and accurate, avoiding generic statements.
 
-Return a JSON object with these fields:
+Return ONLY a valid JSON object with these fields and nothing else. Wrap it in a fenced triple backtick json block:
 {
   "location": "Specific location based on search results or organization",
   "education": ["List of 2-3 relevant educational background items based on actual data"],
@@ -159,17 +157,43 @@ Return a JSON object with these fields:
   "recent_news": ["List of 1-2 recent professional mentions or news items if found"]
 }
 
+```json
+{ ... }
+```
+
 Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements.`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      console.log('AI response length:', text.length);
+      const url = `https://generativelanguage.googleapis.com/${GEMINI_MODEL_PATH}?key=${geminiKey}`;
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2 }
+        })
+      });
+      const raw = await resp.text();
+      if (!resp.ok) {
+        console.warn('[ai] Gemini call failed', { status: resp.status, statusText: resp.statusText, body: raw.slice(0, 500), modelPath: GEMINI_MODEL_PATH });
+        throw new Error(`Gemini call failed: ${resp.status} ${resp.statusText}`);
+      }
+      let text = '';
+      try {
+        const data = JSON.parse(raw);
+        const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+        const parts = candidates?.[0]?.content?.parts || [];
+        text = parts.map((p: any) => p.text).filter(Boolean).join('\n');
+      } catch (_) {
+        text = raw;
+      }
+      console.log('[ai] Response text length:', text?.length || 0, 'modelPath:', GEMINI_MODEL_PATH);
       
       // Parse the JSON response
       let enhancedData;
       try {
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        const fence = text && (text.match(/```json[\s\S]*?```/i) || text.match(/```[\s\S]*?```/));
+        const jsonSource = fence ? fence[0].replace(/```json|```/gi, '').trim() : text;
+        const jsonMatch = jsonSource.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           enhancedData = JSON.parse(jsonMatch[0]);
         } else {
