@@ -147,7 +147,7 @@ ${searchContext}
 
 Please extract and synthesize real information from the search results. Create a professional profile based on actual data found online. Be specific and accurate, avoiding generic statements.
 
-Return ONLY a valid JSON object with these fields and nothing else. Wrap it in a fenced triple backtick json block:
+Return ONLY a valid JSON object with these fields and nothing else. Do not include any markdown fences or extra text:
 {
   "location": "Specific location based on search results or organization",
   "education": ["List of 2-3 relevant educational background items based on actual data"],
@@ -156,10 +156,6 @@ Return ONLY a valid JSON object with these fields and nothing else. Wrap it in a
   "industry_connections": ["List of 2-3 specific industry connections or associations found"],
   "recent_news": ["List of 1-2 recent professional mentions or news items if found"]
 }
-
-```json
-{ ... }
-```
 
 Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements.`;
 
