@@ -38,8 +38,8 @@ interface EnhancedSpeaker extends SpeakerData {
   expertise_areas?: string[];      // Areas of expertise
   speaking_history?: string[];     // Previous speaking engagements
   achievements?: string[];         // Professional achievements and awards
-  industry_connections?: string[]; // Industry associations and connections
-  recent_news?: string[];          // Recent media mentions and news
+  industry_connections?: Array<{name: string, org?: string, url?: string}> | string[]; // Industry associations and connections
+  recent_news?: Array<{title: string, url: string, date?: string}> | string[];          // Recent media mentions and news
 }
 
 /**
@@ -392,9 +392,24 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Industry Connections</h4>
               <ul className="space-y-1">
-                {displaySpeaker.industry_connections.map((connection: string, idx: number) => (
-                  <li key={idx} className="text-sm text-slate-700">• {connection}</li>
-                ))}
+                {displaySpeaker.industry_connections.map((connection: any, idx: number) => {
+                  const isStructured = typeof connection === 'object' && connection.name;
+                  const name = isStructured ? connection.name : connection;
+                  const org = isStructured ? connection.org : null;
+                  const url = isStructured ? connection.url : null;
+                  
+                  return (
+                    <li key={idx} className="text-sm text-slate-700">
+                      • {name}
+                      {org && <span className="text-slate-500"> ({org})</span>}
+                      {url && (
+                        <a href={url} target="_blank" rel="noreferrer" className="ml-2 text-blue-600 hover:underline text-xs">
+                          [source]
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -404,9 +419,23 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
             <div>
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Recent News & Media</h4>
               <ul className="space-y-1">
-                {displaySpeaker.recent_news.map((news: string, idx: number) => (
-                  <li key={idx} className="text-sm text-slate-700">• {news}</li>
-                ))}
+                {displaySpeaker.recent_news.map((news: any, idx: number) => {
+                  const isStructured = typeof news === 'object' && news.title;
+                  const title = isStructured ? news.title : news;
+                  const url = isStructured ? news.url : null;
+                  const date = isStructured ? news.date : null;
+                  
+                  return (
+                    <li key={idx} className="text-sm text-slate-700">
+                      • {url ? (
+                        <a href={url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                          {title}
+                        </a>
+                      ) : title}
+                      {date && <span className="text-slate-500 text-xs ml-2">({new Date(date).toLocaleDateString()})</span>}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
