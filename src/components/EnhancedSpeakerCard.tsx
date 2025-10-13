@@ -18,7 +18,7 @@
  */
 
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { SpeakerData } from "@/lib/types/core";
 
 /**
@@ -107,6 +107,17 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
     }
   }
 
+  const handleToggleDetails = () => {
+    const nextExpanded = !expanded;
+    setExpanded(nextExpanded);
+
+    if (nextExpanded && !enhancedSpeaker && !enhancing) {
+      void enhanceSpeaker();
+    } else if (!nextExpanded) {
+      setEnhancementError(null);
+    }
+  };
+
   /**
    * Save speaker to user's watchlist
    * 
@@ -140,16 +151,21 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   
   // Use enhanced speaker data if available, otherwise fall back to basic speaker data
   const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || speaker;
-  
+
+  const baseHasCoreDetails = !!(speaker?.title || speaker?.org);
+  const showPlaceholders = !baseHasCoreDetails && !enhancedSpeaker;
+
   // Check if speaker has enhanced data
-  const hasEnhancedData = enhancedSpeaker && (
-    enhancedSpeaker.education?.length ||
-    enhancedSpeaker.publications?.length ||
-    enhancedSpeaker.career_history?.length ||
-    enhancedSpeaker.expertise_areas?.length ||
-    enhancedSpeaker.achievements?.length ||
-    enhancedSpeaker.industry_connections?.length ||
-    enhancedSpeaker.recent_news?.length
+  const hasEnhancedData = Boolean(
+    enhancedSpeaker && (
+      enhancedSpeaker.education?.length ||
+      enhancedSpeaker.publications?.length ||
+      enhancedSpeaker.career_history?.length ||
+      enhancedSpeaker.expertise_areas?.length ||
+      enhancedSpeaker.achievements?.length ||
+      enhancedSpeaker.industry_connections?.length ||
+      enhancedSpeaker.recent_news?.length
+    )
   );
   
   // Determine confidence color based on data quality score
@@ -167,12 +183,19 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           
           {/* Prominent Job Title and Organization */}
           <div className="mb-3">
-            {displaySpeaker.title && (
-              <div className="text-lg font-medium text-slate-800 mb-1">{displaySpeaker.title}</div>
-            )}
-            {displaySpeaker.org && (
-              <div className="text-base font-medium text-slate-700 mb-1">{displaySpeaker.org}</div>
-            )}
+            <div className="text-lg font-medium text-slate-800 mb-1 flex flex-wrap items-baseline gap-2">
+              {displaySpeaker.title ? (
+                <span>{displaySpeaker.title}</span>
+              ) : showPlaceholders ? (
+                <span className="italic text-opacity-40">Title not provided yet</span>
+              ) : null}
+              {(displaySpeaker.title && displaySpeaker.org) && <span className="text-slate-400">·</span>}
+              {displaySpeaker.org ? (
+                <span className="text-base font-medium text-slate-700">{displaySpeaker.org}</span>
+              ) : showPlaceholders ? (
+                <span className="text-base font-medium text-slate-700 italic text-opacity-40">Organization not provided yet</span>
+              ) : null}
+            </div>
             {displaySpeaker.location && (
               <div className="text-sm text-slate-600 flex items-center gap-1">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -218,31 +241,24 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
 
       <div className="mt-4 flex items-center gap-2 flex-wrap">
         <button
-          onClick={() => setExpanded(!expanded)}
-          className="text-xs font-medium rounded-full px-3 py-1 border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-200"
+          onClick={handleToggleDetails}
+          disabled={enhancing && !expanded}
+          className="text-xs font-medium rounded-full px-3 py-1 border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-200 disabled:opacity-60 flex items-center gap-2"
         >
-          {expanded ? "Show Less" : "More Details"}
+          {enhancing && !expanded ? (
+            <>
+              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              Enhancing…
+            </>
+          ) : enhancing && expanded ? (
+            <>
+              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              Hide Details
+            </>
+          ) : expanded ? "Hide Details" : hasEnhancedData || baseHasCoreDetails ? "Show Details" : "Enhance & Show"
+          }
         </button>
-        
-        {/* Enhancement button - only show if not already enhanced and not currently enhancing */}
-        {!hasEnhancedData && !enhancing && (
-          <button
-            onClick={enhanceSpeaker}
-            disabled={enhancing}
-            className="text-xs font-medium rounded-full px-3 py-1 border border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 transition-colors duration-200 disabled:opacity-50"
-          >
-            {enhancing ? "Enhancing..." : "Enhance Profile"}
-          </button>
-        )}
-        
-        {/* Show enhancement status */}
-        {enhancing && (
-          <span className="text-xs text-blue-600 flex items-center gap-1">
-            <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            Enhancing with AI...
-          </span>
-        )}
-        
+
         {enhancementError && (
           <span className="text-xs text-red-600">
             Enhancement failed: {enhancementError}
@@ -261,9 +277,9 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
       {expanded && (
         <div className="mt-4 pt-4 border-t border-slate-200 space-y-4">
           {/* Show message if no enhanced data is available */}
-          {!hasEnhancedData && !enhancing && (
+          {!hasEnhancedData && !enhancing && !baseHasCoreDetails && (
             <div className="text-center py-4 text-slate-500">
-              <p className="text-sm">Click "Enhance Profile" to get detailed professional information</p>
+              <p className="text-sm">Click "Enhance & Show" to load detailed professional information</p>
             </div>
           )}
           

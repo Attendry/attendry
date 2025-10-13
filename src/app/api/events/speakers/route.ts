@@ -342,6 +342,21 @@ async function firecrawlExtract(urls: string[]) {
   
   // console.log(`[FIRECRAWL] Starting extraction for ${urls.length} URLs:`, urls.slice(0, 3));
 
+  const extractionPrompt = `Extract all speakers, presenters, moderators, or panelists listed on these pages.
+
+For every person, return:
+- name: Full name of the person (required)
+- organization: Current company/employer/firm/affiliation (required when mentioned anywhere nearby)
+- title: Current job title or role (required when mentioned anywhere nearby)
+- role: Role text if it differs from title (optional)
+- company: Company text if it differs from organization (optional)
+- affiliation: Department/practice group/association reference (optional)
+- context: Quote the sentence/bullet that mentions them (optional)
+
+Use surrounding headings, bios, captions, footers, or speaker lists to capture organization and title strings exactly as written. If multiple variations exist, choose the most complete form. Do not leave organization/title empty when the page implies or states them ("Partner, DLA Piper" → organization "DLA Piper", title "Partner").
+
+Return an array of speaker objects.`;
+
   const requestBody = {
     urls,
     schema: {
@@ -353,21 +368,29 @@ async function firecrawlExtract(urls: string[]) {
             type: "object",
             properties: {
               name: { type: "string" },
+              organization: { type: "string" },
+              title: { type: "string" },
+              role: { type: "string" },
+              company: { type: "string" },
+              affiliation: { type: "string" },
               org: { type: "string" },
-              title: { type: "string" }
+              job_title: { type: "string" },
+              position: { type: "string" },
+              context: { type: "string" }
             },
-            required: ["name"]
+            required: ["name"],
+            additionalProperties: true
           }
         }
       },
       required: ["speakers"]
     },
-    prompt: "Extract any speakers or people mentioned on this page. Return their name, organization, and title if available.",
+    prompt: extractionPrompt,
     showSources: true,
     scrapeOptions: {
       formats: ["html", "markdown"],
       onlyMainContent: false,
-      waitFor: 2000,
+      waitFor: 2500,
       blockAds: true,
       removeBase64Images: true
     },
@@ -409,13 +432,33 @@ async function firecrawlExtract(urls: string[]) {
           for (const s of arr) {
             const name = clamp(s?.name);
             if (!name) continue;
-            allSpeakers.push({
-              name,
-              org: clamp(s?.org || s?.organization),
-              title: clamp(s?.title || s?.role),
-              profile_url: s?.profile_url || s?.url || null,
-              source_url: r?.url || null,
-            });
+          const orgCandidates = [
+            s?.org,
+            s?.organization,
+            s?.company,
+            s?.employer,
+            s?.affiliation,
+            s?.firm,
+            s?.institution,
+            s?.organization_name
+          ];
+          const titleCandidates = [
+            s?.title,
+            s?.job_title,
+            s?.position,
+            s?.role,
+            s?.job,
+            s?.profession,
+            s?.designation
+          ];
+          allSpeakers.push({
+            name,
+            org: clamp(orgCandidates.find((x: any) => clamp(x))) || null,
+            title: clamp(titleCandidates.find((x: any) => clamp(x))) || null,
+            profile_url: s?.profile_url || s?.url || null,
+            source_url: r?.url || null,
+            extraction_context: clamp(s?.context || s?.snippet || s?.summary) || null
+          });
           }
           if (r?.url) allSources.push(r.url);
         }
@@ -425,12 +468,32 @@ async function firecrawlExtract(urls: string[]) {
         for (const s of j.data.speakers) {
           const name = clamp(s?.name);
           if (!name) continue;
+          const orgCandidates = [
+            s?.org,
+            s?.organization,
+            s?.company,
+            s?.employer,
+            s?.affiliation,
+            s?.firm,
+            s?.institution,
+            s?.organization_name
+          ];
+          const titleCandidates = [
+            s?.title,
+            s?.job_title,
+            s?.position,
+            s?.role,
+            s?.job,
+            s?.profession,
+            s?.designation
+          ];
           allSpeakers.push({
             name,
-            org: clamp(s?.org || s?.organization),
-            title: clamp(s?.title || s?.role),
+            org: clamp(orgCandidates.find((x: any) => clamp(x))) || null,
+            title: clamp(titleCandidates.find((x: any) => clamp(x))) || null,
             profile_url: s?.profile_url || s?.url || null,
             source_url: urls[0] || null, // Use first URL as source
+            extraction_context: clamp(s?.context || s?.snippet || s?.summary) || null
           });
         }
         
