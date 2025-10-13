@@ -153,7 +153,6 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || speaker;
 
   const baseHasCoreDetails = !!(speaker?.title || speaker?.org);
-  const showPlaceholders = !baseHasCoreDetails && !enhancedSpeaker;
 
   // Check if speaker has enhanced data
   const hasEnhancedData = Boolean(
@@ -186,15 +185,21 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
             <div className="text-lg font-medium text-slate-800 mb-1 flex flex-wrap items-baseline gap-2">
               {displaySpeaker.title ? (
                 <span>{displaySpeaker.title}</span>
-              ) : showPlaceholders ? (
+              ) : speaker.title ? (
+                <span>{speaker.title}</span>
+              ) : (
                 <span className="italic text-opacity-40">Title not provided yet</span>
-              ) : null}
-              {(displaySpeaker.title && displaySpeaker.org) && <span className="text-slate-400">·</span>}
+              )}
+              {(displaySpeaker.title || speaker.title) && (displaySpeaker.org || speaker.org) && (
+                <span className="text-slate-400">·</span>
+              )}
               {displaySpeaker.org ? (
                 <span className="text-base font-medium text-slate-700">{displaySpeaker.org}</span>
-              ) : showPlaceholders ? (
+              ) : speaker.org ? (
+                <span className="text-base font-medium text-slate-700">{speaker.org}</span>
+              ) : (
                 <span className="text-base font-medium text-slate-700 italic text-opacity-40">Organization not provided yet</span>
-              ) : null}
+              )}
             </div>
             {displaySpeaker.location && (
               <div className="text-sm text-slate-600 flex items-center gap-1">

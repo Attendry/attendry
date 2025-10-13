@@ -169,6 +169,8 @@ Please extract and synthesize real information from the search results. Create a
 
 Return ONLY a valid JSON object with these fields and nothing else. Do not include any markdown fences or extra text:
 {
+  "title": "Current job title based on search results or existing data",
+  "organization": "Current organization/company/affiliation based on search results or existing data",
   "location": "Specific location based on search results or organization",
   "education": ["List of 2-3 relevant educational background items based on actual data"],
   "expertise_areas": ["List of 3-5 specific areas of expertise based on real information"],
@@ -237,6 +239,8 @@ Base the information on the actual search results. If specific information isn't
       const enhanced = {
         ...speaker,
         ...enhancedData,
+        title: enhancedData?.title || speaker.title || enhancedData?.role || null,
+        org: enhancedData?.organization || speaker.org || enhancedData?.company || null,
         confidence: 0.9 // High confidence for search-based content
       };
       
