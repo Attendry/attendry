@@ -4,6 +4,7 @@
  * This file contains integration tests for the search flow.
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { NextRequest } from 'next/server';
 import { POST as searchPOST } from '@/app/api/events/search/route';
 import { POST as runPOST } from '@/app/api/events/run/route';

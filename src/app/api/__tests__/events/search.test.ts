@@ -4,6 +4,7 @@
  * This file contains tests for the events search API endpoint.
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { NextRequest } from 'next/server';
 import { POST } from '../events/search/route';
 import { mockRequest, mockResponse, mockFetch, mockSearchResults } from '../../../../__tests__/utils/test-utils';

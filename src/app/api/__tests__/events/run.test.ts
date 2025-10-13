@@ -4,6 +4,7 @@
  * This file contains tests for the events run API endpoint.
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { NextRequest } from 'next/server';
 import { POST } from '../events/run/route';
 import { mockRequest, mockResponse, mockEventData } from '../../../../__tests__/utils/test-utils';

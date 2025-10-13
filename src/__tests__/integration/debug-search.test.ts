@@ -5,6 +5,7 @@
  * zero-result prevention works correctly.
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { runSearchOrchestrator } from '@/lib/search/search-orchestrator';
 import { FLAGS } from '@/config/flags';
 

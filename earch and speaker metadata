@@ -1,0 +1,282 @@
+warning: in the working copy of 'src/components/EventCard.tsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/app/api/events/search/route.ts b/src/app/api/events/search/route.ts[m
+[1mindex ac31a2f..950446f 100644[m
+[1m--- a/src/app/api/events/search/route.ts[m
+[1m+++ b/src/app/api/events/search/route.ts[m
+[36m@@ -68,14 +68,10 @@[m [mfunction buildEnhancedQuery(userText: string, searchConfig: any, country: string[m
+     }[m
+   }[m
+   [m
+[31m-  // Add country-specific event terms[m
+[31m-  if (country === 'de') {[m
+[31m-    const germanEventTerms = ['veranstaltung', 'konferenz', 'kongress', 'workshop'];[m
+[31m-    const hasGermanEventTerm = germanEventTerms.some(term => query.toLowerCase().includes(term));[m
+[31m-    [m
+[31m-    if (!hasGermanEventTerm) {[m
+[31m-      queryParts.push('(veranstaltung OR konferenz OR kongress)');[m
+[31m-    }[m
+[32m+[m[32m  // Add country-specific event terms using localized phrases[m
+[32m+[m[32m  const localizedTerms = buildLocalizedEventLexicon(country);[m
+[32m+[m[32m  if (localizedTerms) {[m
+[32m+[m[32m    queryParts.push(localizedTerms);[m
+   }[m
+   [m
+   // Add year[m
+[36m@@ -124,21 +120,39 @@[m [mfunction buildGeographicContext(country: string): string {[m
+   if (!country) return '';[m
+   [m
+   const countryContexts: Record<string, string> = {[m
+[31m-    'de': '(Germany OR Deutschland OR Berlin OR Munich OR Hamburg OR Frankfurt)',[m
+[31m-    'fr': '(France OR Paris OR Lyon OR Marseille OR "en français")',[m
+[31m-    'nl': '(Netherlands OR Nederland OR Amsterdam OR Rotterdam OR "in Dutch")',[m
+[31m-    'gb': '(UK OR "United Kingdom" OR London OR Manchester OR Birmingham)',[m
+[31m-    'es': '(Spain OR España OR Madrid OR Barcelona OR "en español")',[m
+[31m-    'it': '(Italy OR Italia OR Rome OR Milan OR "in italiano")',[m
+[31m-    'se': '(Sweden OR Sverige OR Stockholm OR Gothenburg OR "på svenska")',[m
+[31m-    'pl': '(Poland OR Polska OR Warsaw OR Krakow OR "po polsku")',[m
+[31m-    'be': '(Belgium OR Belgique OR Brussels OR "en français" OR "in Dutch")',[m
+[31m-    'ch': '(Switzerland OR Schweiz OR Zurich OR Geneva OR "en français" OR "auf Deutsch")'[m
+[32m+[m[32m    'de': '(Germany OR Deutschland OR Berlin OR München OR Hamburg OR Frankfurt OR Köln OR Düsseldorf)',[m
+[32m+[m[32m    'fr': '(France OR Français OR Paris OR Lyon OR Marseille OR Toulouse OR Bordeaux OR Lille)',[m
+[32m+[m[32m    'nl': '(Netherlands OR Nederland OR Amsterdam OR Rotterdam OR Utrecht OR Eindhoven OR Den Haag)',[m
+[32m+[m[32m    'gb': '(UK OR "United Kingdom" OR Britain OR London OR Manchester OR Birmingham OR Edinburgh)',[m
+[32m+[m[32m    'es': '(Spain OR España OR Madrid OR Barcelona OR Valencia OR Sevilla OR Bilbao)',[m
+[32m+[m[32m    'it': '(Italy OR Italia OR Rome OR Roma OR Milan OR Milano OR Turin OR Napoli)',[m
+[32m+[m[32m    'se': '(Sweden OR Sverige OR Stockholm OR Göteborg OR Malmø OR Uppsala)',[m
+[32m+[m[32m    'pl': '(Poland OR Polska OR Warszawa OR Warsaw OR Kraków OR Wrocław)',[m
+[32m+[m[32m    'be': '(Belgium OR Belgique OR België OR Brussels OR Bruxelles OR Antwerpen)',[m
+[32m+[m[32m    'ch': '(Switzerland OR Schweiz OR Suisse OR Zurich OR Genève OR Basel OR Bern)'[m
+   };[m
+   [m
+   return countryContexts[country] || '';[m
+ }[m
+ [m
+[32m+[m[32mfunction buildLocalizedEventLexicon(country: string): string {[m
+[32m+[m[32m  const lexicon: Record<string, string> = {[m
+[32m+[m[32m    'de': '(veranstaltung OR konferenz OR kongress OR fachkongress OR workshop OR symposium)',[m
+[32m+[m[32m    'fr': '(événement OR "événement professionnel" OR conférence OR congrès OR salon OR colloque OR atelier OR séminaire OR sommet OR rencontre OR forum)',[m
+[32m+[m[32m    'es': '(evento OR conferencia OR congreso OR "feria" OR seminario OR taller OR encuentro OR foro)',[m
+[32m+[m[32m    'it': '(evento OR conferenza OR congresso OR fiera OR seminario OR workshop OR incontro OR forum)',[m
+[32m+[m[32m    'nl': '(evenement OR conferentie OR congres OR beurs OR seminar OR workshop OR bijeenkomst OR forum)',[m
+[32m+[m[32m    'se': '(evenemang OR konferens OR kongress OR seminarium OR mässa OR workshop OR möte)',[m
+[32m+[m[32m    'pl': '(wydarzenie OR konferencja OR kongres OR targi OR seminarium OR warsztaty OR spotkanie OR forum)',[m
+[32m+[m[32m    'pt': '(evento OR conferência OR congresso OR feira OR seminário OR workshop OR encontro OR fórum)',[m
+[32m+[m[32m    'da': '(begivenhed OR konference OR kongres OR messe OR seminar OR workshop OR møde)',[m
+[32m+[m[32m    'fi': '(tapahtuma OR konferenssi OR kongressi OR messut OR seminaari OR työpaja OR tapaaminen OR foorumi)',[m
+[32m+[m[32m    'no': '(arrangement OR konferanse OR kongress OR messe OR seminar OR workshop OR møte OR forum)'[m
+[32m+[m[32m  };[m
+[32m+[m
+[32m+[m[32m  return lexicon[country] || '';[m
+[32m+[m[32m}[m
+[32m+[m
+ // ============================================================================[m
+ // CACHING SYSTEM[m
+ // ============================================================================[m
+[36m@@ -821,9 +835,14 @@[m [mexport async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe[m
+       filter: "1", // Required for this CSE configuration[m
+     });[m
+ [m
+[31m-    // GEOGRAPHIC FILTERING: TEMPORARILY DISABLED ALL GEO FILTERS[m
+[31m-    // All geographic filters are causing 400 errors[m
+[31m-    console.log(JSON.stringify({ at: "search", geo_filter: "all_disabled", country, reason: "causing_400_errors" }));[m
+[32m+[m[32m    const geoContext = buildGeographicContext(country);[m
+[32m+[m[32m    if (geoContext && !cleanQuery.includes(geoContext)) {[m
+[32m+[m[32m      params.append("hq", geoContext);[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (country) {[m
+[32m+[m[32m      params.append("gl", country.toUpperCase());[m
+[32m+[m[32m      params.append("cr", `country${country.toUpperCase()}`);[m
+[32m+[m[32m    }[m
+ [m
+     // DATE FILTERING: Only restrict for PAST windows[m
+     // Note: Google CSE cannot filter future events by page publish time[m
+[1mdiff --git a/src/app/api/events/speakers/route.ts b/src/app/api/events/speakers/route.ts[m
+[1mindex 48b002a..5d0b6bb 100644[m
+[1m--- a/src/app/api/events/speakers/route.ts[m
+[1m+++ b/src/app/api/events/speakers/route.ts[m
+[36m@@ -173,6 +173,69 @@[m [mfunction hostname(u: string) { try { return new URL(u).hostname; } catch { retur[m
+ function clamp(s?: string | null) { return (s ?? "").replace(/\s+/g," ").trim() || null; }[m
+ function normKey(name: string, org?: string | null) { return (name.toLowerCase()+"|"+(org?.toLowerCase()||"")).normalize("NFKD"); }[m
+ [m
+[32m+[m[32mfunction asCleanString(value: unknown): string | null {[m
+[32m+[m[32m  if (typeof value === "string") return value;[m
+[32m+[m[32m  if (typeof value === "number") return value.toString();[m
+[32m+[m[32m  return null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction normalizeOrg(candidate: any): string | null {[m
+[32m+[m[32m  if (!candidate) return null;[m
+[32m+[m[32m  const fields = [[m
+[32m+[m[32m    candidate.org,[m
+[32m+[m[32m    candidate.organization,[m
+[32m+[m[32m    candidate.company,[m
+[32m+[m[32m    candidate.employer,[m
+[32m+[m[32m    candidate.affiliation,[m
+[32m+[m[32m    candidate.firm,[m
+[32m+[m[32m    candidate.institution,[m
+[32m+[m[32m    candidate.organization_name,[m
+[32m+[m[32m    candidate.org_name[m
+[32m+[m[32m  ];[m
+[32m+[m[32m  for (const value of fields) {[m
+[32m+[m[32m    const str = asCleanString(value);[m
+[32m+[m[32m    if (!str) continue;[m
+[32m+[m[32m    const cleaned = clamp(str);[m
+[32m+[m[32m    if (cleaned) return cleaned;[m
+[32m+[m[32m  }[m
+[32m+[m[32m  return null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction normalizeTitle(candidate: any): string | null {[m
+[32m+[m[32m  if (!candidate) return null;[m
+[32m+[m[32m  const fields = [[m
+[32m+[m[32m    candidate.title,[m
+[32m+[m[32m    candidate.job_title,[m
+[32m+[m[32m    candidate.position,[m
+[32m+[m[32m    candidate.role,[m
+[32m+[m[32m    candidate.job,[m
+[32m+[m[32m    candidate.profession,[m
+[32m+[m[32m    candidate.designation,[m
+[32m+[m[32m    candidate.heading[m
+[32m+[m[32m  ];[m
+[32m+[m[32m  for (const value of fields) {[m
+[32m+[m[32m    const str = asCleanString(value);[m
+[32m+[m[32m    if (!str) continue;[m
+[32m+[m[32m    const cleaned = clamp(str);[m
+[32m+[m[32m    if (cleaned) return cleaned;[m
+[32m+[m[32m  }[m
+[32m+[m[32m  return null;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction buildRawFallbackMap(raw: any[]) {[m
+[32m+[m[32m  const map = new Map<string, any[]>();[m
+[32m+[m[32m  for (const candidate of raw) {[m
+[32m+[m[32m    const name = clamp(candidate?.name);[m
+[32m+[m[32m    if (!name) continue;[m
+[32m+[m[32m    const key = normKey(name, normalizeOrg(candidate));[m
+[32m+[m[32m    if (!map.has(key)) {[m
+[32m+[m[32m      map.set(key, []);[m
+[32m+[m[32m    }[m
+[32m+[m[32m    map.get(key)!.push(candidate);[m
+[32m+[m[32m  }[m
+[32m+[m[32m  return map;[m
+[32m+[m[32m}[m
+[32m+[m
+ // Keywords (EN/DE/FR/IT basic coverage)[m
+ const K_SPEAKER = /(speaker|speakers|referent(?:in|en|innen|:innen)?|sprecher(?:in|innen)?|vortragend|vortragende|mitwirkend|panelist|orateur|intervenant|relatori|relatore)/i;[m
+ const K_AGENDA  = /(agenda|program|programme|programm|fachprogramm|ablauf|zeitplan|schedule|programme)/i;[m
+[36m@@ -693,6 +756,8 @@[m [masync function normalizeWithLLM(raw: any[]) {[m
+     const arr = JSON.parse(text);[m
+     if (!Array.isArray(arr)) return raw;[m
+     [m
+[32m+[m[32m    const rawFallbacks = buildRawFallbackMap(raw);[m
+[32m+[m
+     // Enhanced processing with confidence scoring and fuzzy deduplication[m
+     const seen = new Set<string>();[m
+     const out: any[] = [];[m
+[36m@@ -701,11 +766,42 @@[m [masync function normalizeWithLLM(raw: any[]) {[m
+       const name = clamp(s?.name); [m
+       if (!name) continue;[m
+       [m
+[31m-      const org = clamp(s?.org);[m
+[31m-      const title = clamp(s?.title);[m
+[32m+[m[32m      const normalizedOrg = normalizeOrg(s);[m
+[32m+[m[32m      const normalizedTitle = normalizeTitle(s);[m
+[32m+[m
+[32m+[m[32m      const fallbackKey = normKey(name, normalizedOrg);[m
+[32m+[m[32m      const rawCandidates = [[m
+[32m+[m[32m        ...(rawFallbacks.get(fallbackKey) || []),[m
+[32m+[m[32m        ...(rawFallbacks.get(normKey(name, null)) || [])[m
+[32m+[m[32m      ];[m
+[32m+[m
+[32m+[m[32m      const fallback = rawCandidates.find(candidate => {[m
+[32m+[m[32m        const candidateName = clamp(candidate?.name);[m
+[32m+[m[32m        if (!candidateName) return false;[m
+[32m+[m[32m        if (!fuzzyMatchNames(name, candidateName)) return false;[m
+[32m+[m[32m        const candidateOrg = normalizeOrg(candidate);[m
+[32m+[m[32m        if (normalizedOrg && candidateOrg) {[m
+[32m+[m[32m          return normalizedOrg.toLowerCase() === candidateOrg.toLowerCase();[m
+[32m+[m[32m        }[m
+[32m+[m[32m        return true;[m
+[32m+[m[32m      }) || rawCandidates.find(candidate => {[m
+[32m+[m[32m        const candidateName = clamp(candidate?.name);[m
+[32m+[m[32m        if (!candidateName) return false;[m
+[32m+[m[32m        return fuzzyMatchNames(name, candidateName);[m
+[32m+[m[32m      });[m
+[32m+[m
+[32m+[m[32m      const org = normalizedOrg || (fallback ? normalizeOrg(fallback) : null);[m
+[32m+[m[32m      const title = normalizedTitle || (fallback ? normalizeTitle(fallback) : null);[m
+[32m+[m[32m      const profileUrl =[m
+[32m+[m[32m        (typeof s?.profile_url === "string" ? s.profile_url.trim() : null) ||[m
+[32m+[m[32m        (fallback?.profile_url ? String(fallback.profile_url).trim() : null) ||[m
+[32m+[m[32m        (fallback?.url ? String(fallback.url).trim() : null);[m
+[32m+[m[32m      const sourceUrl =[m
+[32m+[m[32m        (typeof s?.source_url === "string" ? s.source_url.trim() : null) ||[m
+[32m+[m[32m        (fallback?.source_url ? String(fallback.source_url).trim() : null);[m
+       [m
+       // Calculate confidence score[m
+[31m-      const confidence = calculateSpeakerConfidence({ name, org, title, profile_url: s?.profile_url });[m
+[32m+[m[32m      const confidence = calculateSpeakerConfidence({ name, org, title, profile_url: profileUrl });[m
+       [m
+       // Skip low-confidence speakers[m
+       if (confidence < 0.3) continue;[m
+[36m@@ -725,8 +821,8 @@[m [masync function normalizeWithLLM(raw: any[]) {[m
+         name,[m
+         org,[m
+         title,[m
+[31m-        profile_url: s?.profile_url || null,[m
+[31m-        source_url: s?.source_url || null,[m
+[32m+[m[32m        profile_url: profileUrl,[m
+[32m+[m[32m        source_url: sourceUrl,[m
+         confidence: Math.max(confidence, typeof s?.confidence === "number" ? s.confidence : 0.5)[m
+       });[m
+     }[m
+[1mdiff --git a/src/components/EnhancedSpeakerCard.tsx b/src/components/EnhancedSpeakerCard.tsx[m
+[1mindex 687a103..7c0496f 100644[m
+[1m--- a/src/components/EnhancedSpeakerCard.tsx[m
+[1m+++ b/src/components/EnhancedSpeakerCard.tsx[m
+[36m@@ -152,6 +152,18 @@[m [mexport default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS[m
+   // Use enhanced speaker data if available, otherwise fall back to basic speaker data[m
+   const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || speaker;[m
+ [m
+[32m+[m[32m  const initialTitle = speaker?.title || (speaker as any)?.metadata?.title || (speaker as any)?.metadata?.job_title || null;[m
+[32m+[m[32m  const initialOrg =[m
+[32m+[m[32m    speaker?.org ||[m
+[32m+[m[32m    (speaker as any)?.metadata?.org ||[m
+[32m+[m[32m    (speaker as any)?.metadata?.organization ||[m
+[32m+[m[32m    (speaker as any)?.metadata?.company ||[m
+[32m+[m[32m    (speaker as any)?.metadata?.employer ||[m
+[32m+[m[32m    (speaker as any)?.metadata?.employer_name ||[m
+[32m+[m[32m    (speaker as any)?.metadata?.firm ||[m
+[32m+[m[32m    (speaker as any)?.metadata?.law_firm ||[m
+[32m+[m[32m    (speaker as any)?.metadata?.practice || null;[m
+[32m+[m
+   const baseHasCoreDetails = !!(speaker?.title || speaker?.org);[m
+ [m
+   // Check if speaker has enhanced data[m
+[36m@@ -183,20 +195,16 @@[m [mexport default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS[m
+           {/* Prominent Job Title and Organization */}[m
+           <div className="mb-3">[m
+             <div className="text-lg font-medium text-slate-800 mb-1 flex flex-wrap items-baseline gap-2">[m
+[31m-              {displaySpeaker.title ? ([m
+[31m-                <span>{displaySpeaker.title}</span>[m
+[31m-              ) : speaker.title ? ([m
+[31m-                <span>{speaker.title}</span>[m
+[32m+[m[32m              {(displaySpeaker.title || initialTitle) ? ([m
+[32m+[m[32m                <span>{displaySpeaker.title || initialTitle}</span>[m
+               ) : ([m
+                 <span className="italic text-opacity-40">Title not provided yet</span>[m
+               )}[m
+[31m-              {(displaySpeaker.title || speaker.title) && (displaySpeaker.org || speaker.org) && ([m
+[32m+[m[32m              {(displaySpeaker.title || initialTitle) && (displaySpeaker.org || initialOrg) && ([m
+                 <span className="text-slate-400">·</span>[m
+               )}[m
+[31m-              {displaySpeaker.org ? ([m
+[31m-                <span className="text-base font-medium text-slate-700">{displaySpeaker.org}</span>[m
+[31m-              ) : speaker.org ? ([m
+[31m-                <span className="text-base font-medium text-slate-700">{speaker.org}</span>[m
+[32m+[m[32m              {(displaySpeaker.org || initialOrg) ? ([m
+[32m+[m[32m                <span className="text-base font-medium text-slate-700">{displaySpeaker.org || initialOrg}</span>[m
+               ) : ([m
+                 <span className="text-base font-medium text-slate-700 italic text-opacity-40">Organization not provided yet</span>[m
+               )}[m
+[1mdiff --git a/src/components/EventCard.tsx b/src/components/E

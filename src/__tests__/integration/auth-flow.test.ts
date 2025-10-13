@@ -4,6 +4,7 @@
  * This file contains integration tests for the authentication flow.
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { NextRequest } from 'next/server';
 import { GET as profileGET } from '@/app/api/profile/get/route';
 import { POST as profilePOST } from '@/app/api/profile/save/route';

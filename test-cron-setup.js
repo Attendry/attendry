@@ -5,6 +5,7 @@
  * Run this after deploying to Vercel to test your cron configuration
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 const https = require('https');
 
 // Configuration - Update these values
