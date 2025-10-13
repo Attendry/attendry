@@ -67,7 +67,7 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
   console.log('Search query:', searchQuery);
   
   let searchContext = '';
-  let searchResults = [];
+  let searchResults = [] as any[];
   
   // Use Firecrawl for comprehensive web search (up to 50 concurrent sessions)
   if (firecrawlKey) {
@@ -94,7 +94,17 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
         const firecrawlData = await firecrawlResponse.json();
         searchResults = firecrawlData.data || [];
         console.log('Firecrawl results:', searchResults.length);
-        
+        // Light prioritization: prefer URLs that look like org-owned pages
+        if (speaker.org) {
+          const orgKey = speaker.org.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+          searchResults.sort((a: any, b: any) => {
+            const as = String(a.url || a.link || '').toLowerCase();
+            const bs = String(b.url || b.link || '').toLowerCase();
+            const amatch = orgKey.some(k => as.includes(k));
+            const bmatch = orgKey.some(k => bs.includes(k));
+            return (bmatch ? 1 : 0) - (amatch ? 1 : 0);
+          });
+        }
         if (searchResults.length > 0) {
           searchContext = searchResults.map((result: any, index: number) => 
             `${index + 1}. ${result.title}\n   ${result.content || result.snippet}\n   URL: ${result.url}`
@@ -118,6 +128,16 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
         const searchData = await searchResponse.json();
         searchResults = searchData.items || [];
         console.log('CSE results:', searchResults.length);
+        if (speaker.org) {
+          const orgKey = speaker.org.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+          searchResults.sort((a: any, b: any) => {
+            const as = String(a.link || a.url || '').toLowerCase();
+            const bs = String(b.link || b.url || '').toLowerCase();
+            const amatch = orgKey.some(k => as.includes(k));
+            const bmatch = orgKey.some(k => bs.includes(k));
+            return (bmatch ? 1 : 0) - (amatch ? 1 : 0);
+          });
+        }
         
         if (searchResults.length > 0) {
           searchContext = searchResults.map((item: any, index: number) => 
@@ -135,7 +155,7 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
     try {
       console.log('Processing search results with AI...');
 
-      const prompt = `You are a professional research assistant. Based on the following information about a speaker and real search results, generate a comprehensive professional profile.
+      const prompt = `You are a professional research assistant. Based on the following information about a speaker and real search results, generate a comprehensive professional profile. Always include provenance (source URLs) for media and, when available, for connections.
 
 Speaker Information:
 - Name: ${speaker.name}
@@ -153,8 +173,12 @@ Return ONLY a valid JSON object with these fields and nothing else. Do not inclu
   "education": ["List of 2-3 relevant educational background items based on actual data"],
   "expertise_areas": ["List of 3-5 specific areas of expertise based on real information"],
   "achievements": ["List of 2-3 specific professional achievements based on search results"],
-  "industry_connections": ["List of 2-3 specific industry connections or associations found"],
-  "recent_news": ["List of 1-2 recent professional mentions or news items if found"]
+  "industry_connections": [
+    { "name": "Full name or entity", "org": "Organization if relevant", "url": "https://... (if available)" }
+  ],
+  "recent_news": [
+    { "title": "Headline", "url": "https://...", "date": "YYYY-MM-DD" }
+  ]
 }
 
 Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements.`;
@@ -185,11 +209,9 @@ Base the information on the actual search results. If specific information isn't
       console.log('[ai] Response text length:', text?.length || 0, 'modelPath:', GEMINI_MODEL_PATH);
       
       // Parse the JSON response
-      let enhancedData;
+      let enhancedData: any;
       try {
-        const fence = text && (text.match(/```json[\s\S]*?```/i) || text.match(/```[\s\S]*?```/));
-        const jsonSource = fence ? fence[0].replace(/```json|```/gi, '').trim() : text;
-        const jsonMatch = jsonSource.match(/\{[\s\S]*\}/);
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           enhancedData = JSON.parse(jsonMatch[0]);
         } else {
@@ -199,7 +221,18 @@ Base the information on the actual search results. If specific information isn't
         console.error('Failed to parse AI response as JSON:', parseError);
         throw parseError;
       }
-      
+      // Filter recent_news to last 2 years and ensure provenance
+      if (Array.isArray(enhancedData?.recent_news)) {
+        const twoYearsAgo = new Date();
+        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+        enhancedData.recent_news = enhancedData.recent_news
+          .filter((it: any) => it && typeof it === 'object' && it.url)
+          .filter((it: any) => {
+            const d = it.date ? new Date(it.date) : null;
+            return d instanceof Date && !isNaN(d.getTime()) ? d >= twoYearsAgo : true;
+          });
+      }
+
       // Combine with original speaker data
       const enhanced = {
         ...speaker,
