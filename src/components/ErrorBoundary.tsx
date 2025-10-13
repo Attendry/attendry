@@ -7,6 +7,7 @@
 
 "use client";
 import { Component, ErrorInfo, ReactNode } from 'react';
+import Link from 'next/link';
 
 /**
  * Error boundary props
@@ -143,12 +144,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
             </div>
 
             <div className="mt-4 text-center">
-              <a
+              <Link
                 href="/"
                 className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
               >
                 Go to Homepage
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -210,12 +211,12 @@ export const ErrorFallback = ({ error, resetError }: { error: Error; resetError:
         </div>
 
         <div className="mt-4 text-center">
-          <a
+          <Link
             href="/"
             className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
           >
             Go to Homepage
-          </a>
+          </Link>
         </div>
       </div>
     </div>

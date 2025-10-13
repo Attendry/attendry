@@ -289,9 +289,7 @@ export interface AuthTestResponse {
 /**
  * Session fix request
  */
-export interface SessionFixRequest {
-  // No specific parameters needed
-}
+export type SessionFixRequest = Record<string, never>;
 
 /**
  * Session fix response

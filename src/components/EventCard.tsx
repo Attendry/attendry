@@ -315,20 +315,20 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         )}
 
         {/* Enhanced Speaker Summary */}
-        {ev.speakers && ev.speakers.length > 0 && (
+        {(speakers && speakers.length > 0 ? speakers : ev.speakers) && (speakers && speakers.length > 0 ? speakers : ev.speakers)!.length > 0 && (
           <div>
-            <div className="text-sm font-medium text-slate-700 mb-2">🎤 Speakers ({ev.speakers.length}):</div>
+            <div className="text-sm font-medium text-slate-700 mb-2">🎤 Speakers ({speakers && speakers.length > 0 ? speakers.length : ev.speakers!.length}):</div>
             <div className="space-y-1">
-              {ev.speakers.slice(0, 3).map((speaker: any, idx: number) => (
+              {(speakers && speakers.length > 0 ? speakers : ev.speakers)!.slice(0, 3).map((speaker: any, idx: number) => (
                 <div key={idx} className="text-sm text-slate-600">
                   <span className="font-medium">{speaker.name}</span>
                   {speaker.title && <span className="text-slate-500"> - {speaker.title}</span>}
                   {speaker.org && <span className="text-slate-500"> at {speaker.org}</span>}
                 </div>
               ))}
-              {ev.speakers.length > 3 && (
+              {(speakers && speakers.length > 3 ? speakers.length : (ev.speakers?.length || 0)) > 3 && (
                 <div className="text-xs text-slate-500">
-                  +{ev.speakers.length - 3} more speakers
+                  +{(speakers && speakers.length > 0 ? speakers.length : (ev.speakers?.length || 0)) - 3} more speakers
                 </div>
               )}
             </div>

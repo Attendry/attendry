@@ -68,14 +68,10 @@ function buildEnhancedQuery(userText: string, searchConfig: any, country: string
     }
   }
   
-  // Add country-specific event terms
-  if (country === 'de') {
-    const germanEventTerms = ['veranstaltung', 'konferenz', 'kongress', 'workshop'];
-    const hasGermanEventTerm = germanEventTerms.some(term => query.toLowerCase().includes(term));
-    
-    if (!hasGermanEventTerm) {
-      queryParts.push('(veranstaltung OR konferenz OR kongress)');
-    }
+  // Add country-specific event terms using localized phrases
+  const localizedTerms = buildLocalizedEventLexicon(country);
+  if (localizedTerms) {
+    queryParts.push(localizedTerms);
   }
   
   // Add year
@@ -124,19 +120,37 @@ function buildGeographicContext(country: string): string {
   if (!country) return '';
   
   const countryContexts: Record<string, string> = {
-    'de': '(Germany OR Deutschland OR Berlin OR Munich OR Hamburg OR Frankfurt)',
-    'fr': '(France OR Paris OR Lyon OR Marseille OR "en français")',
-    'nl': '(Netherlands OR Nederland OR Amsterdam OR Rotterdam OR "in Dutch")',
-    'gb': '(UK OR "United Kingdom" OR London OR Manchester OR Birmingham)',
-    'es': '(Spain OR España OR Madrid OR Barcelona OR "en español")',
-    'it': '(Italy OR Italia OR Rome OR Milan OR "in italiano")',
-    'se': '(Sweden OR Sverige OR Stockholm OR Gothenburg OR "på svenska")',
-    'pl': '(Poland OR Polska OR Warsaw OR Krakow OR "po polsku")',
-    'be': '(Belgium OR Belgique OR Brussels OR "en français" OR "in Dutch")',
-    'ch': '(Switzerland OR Schweiz OR Zurich OR Geneva OR "en français" OR "auf Deutsch")'
+    'de': '(Germany OR Deutschland OR Berlin OR München OR Hamburg OR Frankfurt OR Köln OR Düsseldorf)',
+    'fr': '(France OR Français OR Paris OR Lyon OR Marseille OR Toulouse OR Bordeaux OR Lille)',
+    'nl': '(Netherlands OR Nederland OR Amsterdam OR Rotterdam OR Utrecht OR Eindhoven OR Den Haag)',
+    'gb': '(UK OR "United Kingdom" OR Britain OR London OR Manchester OR Birmingham OR Edinburgh)',
+    'es': '(Spain OR España OR Madrid OR Barcelona OR Valencia OR Sevilla OR Bilbao)',
+    'it': '(Italy OR Italia OR Rome OR Roma OR Milan OR Milano OR Turin OR Napoli)',
+    'se': '(Sweden OR Sverige OR Stockholm OR Göteborg OR Malmø OR Uppsala)',
+    'pl': '(Poland OR Polska OR Warszawa OR Warsaw OR Kraków OR Wrocław)',
+    'be': '(Belgium OR Belgique OR België OR Brussels OR Bruxelles OR Antwerpen)',
+    'ch': '(Switzerland OR Schweiz OR Suisse OR Zurich OR Genève OR Basel OR Bern)'
   };
   
   return countryContexts[country] || '';
+}
+
+function buildLocalizedEventLexicon(country: string): string {
+  const lexicon: Record<string, string> = {
+    'de': '(veranstaltung OR konferenz OR kongress OR fachkongress OR workshop OR symposium)',
+    'fr': '(événement OR "événement professionnel" OR conférence OR congrès OR salon OR colloque OR atelier OR séminaire OR sommet OR rencontre OR forum)',
+    'es': '(evento OR conferencia OR congreso OR "feria" OR seminario OR taller OR encuentro OR foro)',
+    'it': '(evento OR conferenza OR congresso OR fiera OR seminario OR workshop OR incontro OR forum)',
+    'nl': '(evenement OR conferentie OR congres OR beurs OR seminar OR workshop OR bijeenkomst OR forum)',
+    'se': '(evenemang OR konferens OR kongress OR seminarium OR mässa OR workshop OR möte)',
+    'pl': '(wydarzenie OR konferencja OR kongres OR targi OR seminarium OR warsztaty OR spotkanie OR forum)',
+    'pt': '(evento OR conferência OR congresso OR feira OR seminário OR workshop OR encontro OR fórum)',
+    'da': '(begivenhed OR konference OR kongres OR messe OR seminar OR workshop OR møde)',
+    'fi': '(tapahtuma OR konferenssi OR kongressi OR messut OR seminaari OR työpaja OR tapaaminen OR foorumi)',
+    'no': '(arrangement OR konferanse OR kongress OR messe OR seminar OR workshop OR møte OR forum)'
+  };
+
+  return lexicon[country] || '';
 }
 
 // ============================================================================
@@ -821,9 +835,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
       filter: "1", // Required for this CSE configuration
     });
 
-    // GEOGRAPHIC FILTERING: TEMPORARILY DISABLED ALL GEO FILTERS
-    // All geographic filters are causing 400 errors
-    console.log(JSON.stringify({ at: "search", geo_filter: "all_disabled", country, reason: "causing_400_errors" }));
+    const geoContext = buildGeographicContext(country);
+    if (geoContext && !cleanQuery.includes(geoContext)) {
+      params.append("hq", geoContext);
+    }
+    if (country) {
+      params.append("gl", country.toUpperCase());
+      params.append("cr", `country${country.toUpperCase()}`);
+    }
 
     // DATE FILTERING: Only restrict for PAST windows
     // Note: Google CSE cannot filter future events by page publish time

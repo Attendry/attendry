@@ -152,6 +152,18 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   // Use enhanced speaker data if available, otherwise fall back to basic speaker data
   const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || speaker;
 
+  const initialTitle = speaker?.title || (speaker as any)?.metadata?.title || (speaker as any)?.metadata?.job_title || null;
+  const initialOrg =
+    speaker?.org ||
+    (speaker as any)?.metadata?.org ||
+    (speaker as any)?.metadata?.organization ||
+    (speaker as any)?.metadata?.company ||
+    (speaker as any)?.metadata?.employer ||
+    (speaker as any)?.metadata?.employer_name ||
+    (speaker as any)?.metadata?.firm ||
+    (speaker as any)?.metadata?.law_firm ||
+    (speaker as any)?.metadata?.practice || null;
+
   const baseHasCoreDetails = !!(speaker?.title || speaker?.org);
 
   // Check if speaker has enhanced data
@@ -183,20 +195,16 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           {/* Prominent Job Title and Organization */}
           <div className="mb-3">
             <div className="text-lg font-medium text-slate-800 mb-1 flex flex-wrap items-baseline gap-2">
-              {displaySpeaker.title ? (
-                <span>{displaySpeaker.title}</span>
-              ) : speaker.title ? (
-                <span>{speaker.title}</span>
+              {(displaySpeaker.title || initialTitle) ? (
+                <span>{displaySpeaker.title || initialTitle}</span>
               ) : (
                 <span className="italic text-opacity-40">Title not provided yet</span>
               )}
-              {(displaySpeaker.title || speaker.title) && (displaySpeaker.org || speaker.org) && (
+              {(displaySpeaker.title || initialTitle) && (displaySpeaker.org || initialOrg) && (
                 <span className="text-slate-400">·</span>
               )}
-              {displaySpeaker.org ? (
-                <span className="text-base font-medium text-slate-700">{displaySpeaker.org}</span>
-              ) : speaker.org ? (
-                <span className="text-base font-medium text-slate-700">{speaker.org}</span>
+              {(displaySpeaker.org || initialOrg) ? (
+                <span className="text-base font-medium text-slate-700">{displaySpeaker.org || initialOrg}</span>
               ) : (
                 <span className="text-base font-medium text-slate-700 italic text-opacity-40">Organization not provided yet</span>
               )}

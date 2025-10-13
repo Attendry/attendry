@@ -5,6 +5,7 @@
  * 
  * Tests the debug endpoint to verify acceptance criteria.
  */
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 const https = require('https');
 const http = require('http');

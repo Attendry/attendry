@@ -20,7 +20,7 @@ describe('buildSearchQuery', () => {
 
   it('throws without baseQuery', () => {
     expect(() => buildSearchQuery({ baseQuery: '   ' })).toThrow();
-    // @ts-expect-error
+    // @ts-expect-error Missing baseQuery should throw
     expect(() => buildSearchQuery({})).toThrow();
   });
 

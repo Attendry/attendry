@@ -4,7 +4,7 @@
  * LLM enhancement of deterministic parsing results with schema validation
  */
 
-import { EventCandidate, ParseResult, ExtractResult, Evidence } from './types';
+import { EventCandidate, ParseResult, ExtractResult, Evidence, SpeakerInfo } from './types';
 import { logger } from '@/utils/logger';
 
 export class EventExtractor {
@@ -189,20 +189,50 @@ export class EventExtractor {
     `;
   }
 
-  private processSpeakerObjects(speakers: any[] | string[] | undefined): string[] {
-    if (!speakers || !Array.isArray(speakers)) return [];
-    
-    // Handle both object format (from LLM) and string format (from parsing)
-    return speakers.map(speaker => {
-      if (typeof speaker === 'string') {
-        // Legacy string format - validate and return if it's a proper name
-        return this.validateSpeakerName(speaker) ? speaker : null;
-      } else if (typeof speaker === 'object' && speaker.name) {
-        // New object format - extract name and validate
-        return this.validateSpeakerName(speaker.name) ? speaker.name : null;
+  private processSpeakerObjects(speakers: any[] | string[] | undefined): SpeakerInfo[] {
+    if (!Array.isArray(speakers)) return [];
+
+    const normalized: SpeakerInfo[] = [];
+    const seen = new Set<string>();
+
+    for (const rawSpeaker of speakers) {
+      if (!rawSpeaker) continue;
+
+      if (typeof rawSpeaker === 'string') {
+        const name = rawSpeaker.trim();
+        if (!this.validateSpeakerName(name)) continue;
+
+        const key = name.toLowerCase();
+        if (seen.has(key)) continue;
+
+        normalized.push({ name });
+        seen.add(key);
+        continue;
       }
-      return null;
-    }).filter(Boolean) as string[];
+
+      if (typeof rawSpeaker === 'object') {
+        const name = typeof rawSpeaker.name === 'string' ? rawSpeaker.name.trim() : '';
+        if (!this.validateSpeakerName(name)) continue;
+
+        const title = typeof rawSpeaker.title === 'string' ? rawSpeaker.title.trim() :
+          (typeof rawSpeaker.role === 'string' ? rawSpeaker.role.trim() : undefined);
+        const company = typeof rawSpeaker.company === 'string' ? rawSpeaker.company.trim() :
+          (typeof rawSpeaker.org === 'string' ? rawSpeaker.org.trim() :
+            (typeof rawSpeaker.organization === 'string' ? rawSpeaker.organization.trim() : undefined));
+
+        const key = [name.toLowerCase(), title?.toLowerCase() || '', company?.toLowerCase() || ''].join('|');
+        if (seen.has(key)) continue;
+
+        normalized.push({
+          name,
+          title: title || undefined,
+          company: company || undefined
+        });
+        seen.add(key);
+      }
+    }
+
+    return normalized;
   }
 
   private validateSpeakerName(speaker: string): boolean {

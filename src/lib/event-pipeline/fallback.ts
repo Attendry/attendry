@@ -4,7 +4,7 @@
  * Integration with existing search system and graceful fallback handling
  */
 
-import { EventCandidate, EventPipelineConfig, PipelineContext } from './types';
+import { EventCandidate, EventPipelineConfig, PipelineContext, SpeakerInfo } from './types';
 import { EventPipeline } from './orchestrator';
 import { isNewPipelineEnabled, getPipelineConfig } from './config';
 import { logger } from '@/utils/logger';
@@ -99,7 +99,49 @@ export class PipelineFallback {
       events = qualityCandidates.map(candidate => {
         // Use extractResult if available (Phase 2), otherwise fall back to parseResult
         const result = candidate.extractResult || candidate.parseResult;
-        
+
+        const mapSpeakerToLegacy = (speaker: SpeakerInfo | string): {
+          name: string;
+          title: string | null;
+          org: string | null;
+          bio: string | null;
+          confidence: number;
+        } => {
+          if (typeof speaker === 'string') {
+            return {
+              name: speaker,
+              title: null,
+              org: null,
+              bio: null,
+              confidence: 0.5
+            };
+          }
+
+          const normalizedName = speaker.name?.trim();
+          if (!normalizedName) {
+            return {
+              name: 'Unknown Speaker',
+              title: null,
+              org: null,
+              bio: null,
+              confidence: 0.1
+            };
+          }
+
+          const derivedOrg = speaker.company || (speaker as { org?: string }).org || (speaker as { organization?: string }).organization || null;
+
+          return {
+            name: normalizedName,
+            title: speaker.title?.trim() || null,
+            org: derivedOrg ? derivedOrg.trim() : null,
+            bio: null,
+            confidence: 0.6
+          };
+        };
+
+        const rawSpeakers = Array.isArray(result?.speakers) ? (result?.speakers as Array<SpeakerInfo | string>) : [];
+        const speakers = rawSpeakers.map(mapSpeakerToLegacy);
+
         return {
           id: candidate.id,
           title: result?.title || 'Event',
@@ -108,13 +150,7 @@ export class PipelineFallback {
           starts_at: result?.date,
           location: result?.location,
           venue: result?.venue,
-          speakers: result?.speakers?.map(name => ({
-            name,
-            title: null,
-            org: null,
-            bio: null,
-            confidence: 0.5
-          })) || [],
+          speakers,
           confidence: result?.confidence || 0.5,
           confidence_reason: 'new_pipeline',
           // Additional pipeline metadata

@@ -173,6 +173,69 @@ function hostname(u: string) { try { return new URL(u).hostname; } catch { retur
 function clamp(s?: string | null) { return (s ?? "").replace(/\s+/g," ").trim() || null; }
 function normKey(name: string, org?: string | null) { return (name.toLowerCase()+"|"+(org?.toLowerCase()||"")).normalize("NFKD"); }
 
+function asCleanString(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return value.toString();
+  return null;
+}
+
+function normalizeOrg(candidate: any): string | null {
+  if (!candidate) return null;
+  const fields = [
+    candidate.org,
+    candidate.organization,
+    candidate.company,
+    candidate.employer,
+    candidate.affiliation,
+    candidate.firm,
+    candidate.institution,
+    candidate.organization_name,
+    candidate.org_name
+  ];
+  for (const value of fields) {
+    const str = asCleanString(value);
+    if (!str) continue;
+    const cleaned = clamp(str);
+    if (cleaned) return cleaned;
+  }
+  return null;
+}
+
+function normalizeTitle(candidate: any): string | null {
+  if (!candidate) return null;
+  const fields = [
+    candidate.title,
+    candidate.job_title,
+    candidate.position,
+    candidate.role,
+    candidate.job,
+    candidate.profession,
+    candidate.designation,
+    candidate.heading
+  ];
+  for (const value of fields) {
+    const str = asCleanString(value);
+    if (!str) continue;
+    const cleaned = clamp(str);
+    if (cleaned) return cleaned;
+  }
+  return null;
+}
+
+function buildRawFallbackMap(raw: any[]) {
+  const map = new Map<string, any[]>();
+  for (const candidate of raw) {
+    const name = clamp(candidate?.name);
+    if (!name) continue;
+    const key = normKey(name, normalizeOrg(candidate));
+    if (!map.has(key)) {
+      map.set(key, []);
+    }
+    map.get(key)!.push(candidate);
+  }
+  return map;
+}
+
 // Keywords (EN/DE/FR/IT basic coverage)
 const K_SPEAKER = /(speaker|speakers|referent(?:in|en|innen|:innen)?|sprecher(?:in|innen)?|vortragend|vortragende|mitwirkend|panelist|orateur|intervenant|relatori|relatore)/i;
 const K_AGENDA  = /(agenda|program|programme|programm|fachprogramm|ablauf|zeitplan|schedule|programme)/i;
@@ -693,6 +756,8 @@ async function normalizeWithLLM(raw: any[]) {
     const arr = JSON.parse(text);
     if (!Array.isArray(arr)) return raw;
     
+    const rawFallbacks = buildRawFallbackMap(raw);
+
     // Enhanced processing with confidence scoring and fuzzy deduplication
     const seen = new Set<string>();
     const out: any[] = [];
@@ -701,11 +766,42 @@ async function normalizeWithLLM(raw: any[]) {
       const name = clamp(s?.name); 
       if (!name) continue;
       
-      const org = clamp(s?.org);
-      const title = clamp(s?.title);
+      const normalizedOrg = normalizeOrg(s);
+      const normalizedTitle = normalizeTitle(s);
+
+      const fallbackKey = normKey(name, normalizedOrg);
+      const rawCandidates = [
+        ...(rawFallbacks.get(fallbackKey) || []),
+        ...(rawFallbacks.get(normKey(name, null)) || [])
+      ];
+
+      const fallback = rawCandidates.find(candidate => {
+        const candidateName = clamp(candidate?.name);
+        if (!candidateName) return false;
+        if (!fuzzyMatchNames(name, candidateName)) return false;
+        const candidateOrg = normalizeOrg(candidate);
+        if (normalizedOrg && candidateOrg) {
+          return normalizedOrg.toLowerCase() === candidateOrg.toLowerCase();
+        }
+        return true;
+      }) || rawCandidates.find(candidate => {
+        const candidateName = clamp(candidate?.name);
+        if (!candidateName) return false;
+        return fuzzyMatchNames(name, candidateName);
+      });
+
+      const org = normalizedOrg || (fallback ? normalizeOrg(fallback) : null);
+      const title = normalizedTitle || (fallback ? normalizeTitle(fallback) : null);
+      const profileUrl =
+        (typeof s?.profile_url === "string" ? s.profile_url.trim() : null) ||
+        (fallback?.profile_url ? String(fallback.profile_url).trim() : null) ||
+        (fallback?.url ? String(fallback.url).trim() : null);
+      const sourceUrl =
+        (typeof s?.source_url === "string" ? s.source_url.trim() : null) ||
+        (fallback?.source_url ? String(fallback.source_url).trim() : null);
       
       // Calculate confidence score
-      const confidence = calculateSpeakerConfidence({ name, org, title, profile_url: s?.profile_url });
+      const confidence = calculateSpeakerConfidence({ name, org, title, profile_url: profileUrl });
       
       // Skip low-confidence speakers
       if (confidence < 0.3) continue;
@@ -725,8 +821,8 @@ async function normalizeWithLLM(raw: any[]) {
         name,
         org,
         title,
-        profile_url: s?.profile_url || null,
-        source_url: s?.source_url || null,
+        profile_url: profileUrl,
+        source_url: sourceUrl,
         confidence: Math.max(confidence, typeof s?.confidence === "number" ? s.confidence : 0.5)
       });
     }

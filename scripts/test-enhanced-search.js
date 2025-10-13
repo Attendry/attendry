@@ -5,6 +5,7 @@
  * to verify the implementation works correctly.
  */
 
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { buildEnhancedQuery } = require('../src/lib/services/enhanced-query-builder');
 const { inferCountryAndDate } = require('../src/lib/utils/country-date-inference');
 const { safeParseJson } = require('../src/lib/utils/json-parser');

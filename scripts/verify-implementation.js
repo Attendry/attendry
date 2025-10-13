@@ -5,6 +5,7 @@
  * 
  * Verifies that all the debug search components are properly implemented.
  */
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 const fs = require('fs');
 const path = require('path');

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import webpack from "webpack";
 
 const nextConfig: NextConfig = {
   eslint: {
@@ -19,15 +20,7 @@ const nextConfig: NextConfig = {
   
   // Webpack optimization
   webpack: (config, options) => {
-    // Defensive: options.webpack may be undefined under Turbopack or certain build modes
-    let Webpack = options?.webpack;
-    if (!Webpack) {
-      try {
-        Webpack = require('webpack');
-      } catch {
-        Webpack = null;
-      }
-    }
+    const Webpack = options?.webpack ?? webpack;
 
     // Production optimizations
     if (!options.dev) {
