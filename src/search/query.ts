@@ -1,4 +1,11 @@
-export type BuildQueryOpts = { baseQuery: string; userText?: string; maxLen?: number };
+import type { CountryContext } from '@/lib/utils/country';
+
+export type BuildQueryOpts = {
+  baseQuery: string;
+  userText?: string;
+  maxLen?: number;
+  countryContext?: CountryContext;
+};
 
 export function buildSearchQuery(opts: BuildQueryOpts): string {
   if (!opts || !opts.baseQuery || !opts.baseQuery.trim()) {
@@ -7,12 +14,29 @@ export function buildSearchQuery(opts: BuildQueryOpts): string {
   const bq = opts.baseQuery.trim();
   const ut = (opts.userText ?? '').trim();
   const maxLen = opts.maxLen;
+  const ctx = opts.countryContext;
   
   let result: string;
   if (ut) {
     result = ut.startsWith('(') && ut.endsWith(')') ? ut : `(${ut})`;
   } else {
     result = bq.startsWith('(') && bq.endsWith(')') ? bq : `(${bq})`;
+  }
+
+  if (ctx) {
+    const countries = ctx.countryNames.map((name) => name.trim()).filter(Boolean);
+    const cities = ctx.cities.map((city) => city.trim()).filter(Boolean);
+    const negatives = ctx.negativeSites.join(' ');
+    const countryTokens = countries.length ? `(${countries.join(' OR ')})` : '';
+    const cityTokens = cities.length ? `(${cities.join(' OR ')})` : '';
+    const locationBias = [countryTokens, cityTokens].filter(Boolean).join(' ');
+    const biasParts = [
+      `(${result})`,
+      negatives,
+      locationBias ? `(${locationBias})` : '',
+      `(site:${ctx.tld} OR ${ctx.inPhrase})`,
+    ].filter((part) => Boolean(part && part.trim()));
+    result = biasParts.join(' ').trim();
   }
   
   if (maxLen && result.length > maxLen) {

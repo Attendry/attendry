@@ -4,6 +4,7 @@ import EventCard from "@/components/EventCard";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import AdvancedSearch from "@/components/AdvancedSearch";
 import SearchHistory from "@/components/SearchHistory";
+import { deriveLocale, toISO2Country } from "@/lib/utils/country";
 
 type EventRec = {
   id?: string;
@@ -25,17 +26,17 @@ type EventRec = {
 };
 
 const EU = [
-  { code: "", name: "All Europe" },
-  { code: "de", name: "Germany" },
-  { code: "fr", name: "France" },
-  { code: "nl", name: "Netherlands" },
-  { code: "gb", name: "United Kingdom" },
-  { code: "es", name: "Spain" },
-  { code: "it", name: "Italy" },
-  { code: "se", name: "Sweden" },
-  { code: "pl", name: "Poland" },
-  { code: "be", name: "Belgium" },
-  { code: "ch", name: "Switzerland" },
+  { code: "EU", name: "All Europe" },
+  { code: "DE", name: "Germany" },
+  { code: "FR", name: "France" },
+  { code: "NL", name: "Netherlands" },
+  { code: "GB", name: "United Kingdom" },
+  { code: "ES", name: "Spain" },
+  { code: "IT", name: "Italy" },
+  { code: "SE", name: "Sweden" },
+  { code: "PL", name: "Poland" },
+  { code: "BE", name: "Belgium" },
+  { code: "CH", name: "Switzerland" },
 ];
 
 function todayISO(d = new Date()) {
@@ -52,7 +53,7 @@ function addDays(base: Date, n: number) {
 const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSavedSet: Set<string> }) {
   
   // Events search state
-  const [country, setCountry] = useState<string>("");
+  const [country, setCountry] = useState<string>("EU");
   const [range, setRange] = useState<"next" | "past">("next");
   const [days, setDays] = useState<7 | 14 | 30>(7);
   const [advanced, setAdvanced] = useState(false);
@@ -127,10 +128,19 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
     setLoading(true);
     setEvents([]);
     try {
+      const normalizedCountry = toISO2Country(country) ?? 'EU';
+      const locale = deriveLocale(normalizedCountry);
+
       const res = await fetch(`/api/events/run${showDebug ? '?debug=1' : ''}` , {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ q, country, from, to, provider: "cse" }),
+        body: JSON.stringify({
+          userText: q,
+          country: normalizedCountry,
+          dateFrom: from,
+          dateTo: to,
+          locale,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);

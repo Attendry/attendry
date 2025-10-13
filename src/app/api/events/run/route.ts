@@ -4,6 +4,7 @@ import { executeEnhancedSearch } from '@/common/search/enhanced-orchestrator';
 import { executeNewPipeline } from '@/lib/event-pipeline';
 import { isNewPipelineEnabled } from '@/lib/event-pipeline/config';
 import { loadActiveConfig, type ActiveConfig } from '@/common/search/config';
+import { deriveLocale, getCountryContext, isValidISO2Country, toISO2Country } from '@/lib/utils/country';
 
 const DEMO_FALLBACK_EVENTS: Array<Omit<ApiEvent, 'id'>> = [
   {
@@ -80,21 +81,36 @@ function demoFallbackEnabled() {
   return process.env.SEARCH_ENABLE_DEMO_FALLBACK !== 'false';
 }
 
-function buildDemoFallback(country: string | null): ApiEvent[] {
-  const normalized = country?.toUpperCase() ?? null;
+function buildDemoFallback(ctx: ReturnType<typeof getCountryContext>): ApiEvent[] {
   const base = DEMO_FALLBACK_EVENTS.map((event, index) => ({
     ...event,
     id: `${event.source_url}#demo-${index}`,
     confidence_reason: 'demo_fallback',
-    countrySource: 'demo',
-    citySource: 'demo',
-    locationSource: 'demo',
+    countrySource: 'fallback',
+    citySource: 'fallback',
+    locationSource: 'fallback',
   }));
 
-  if (!normalized) return base;
-
-  const filtered = base.filter((event) => event.country?.toUpperCase() === normalized);
-  return filtered.length ? filtered : base;
+  const filtered = base.filter((event) => event.country?.toUpperCase() === ctx.iso2);
+  
+  // If no specific events for the country, return a generic one with the correct country
+  if (!filtered.length) {
+    return [{
+      ...base[0], // Use a generic event structure
+      id: `${base[0].source_url}#demo-0-fallback`,
+      country: ctx.iso2,
+      city: ctx.cities[0] || 'Unknown',
+      location: `${ctx.cities[0] || 'Unknown'}, ${ctx.countryNames[0]}`,
+      title: `Demo Event in ${ctx.countryNames[0]}`,
+      description: `This is a demo event for ${ctx.countryNames[0]} as no real events were found.`,
+      confidence_reason: 'demo_fallback_country_specific',
+      countrySource: 'fallback',
+      citySource: 'fallback',
+      locationSource: 'fallback',
+    }];
+  }
+  
+  return filtered;
 }
 
 type ApiSpeaker = {
@@ -290,17 +306,21 @@ function toApiEvent(raw: unknown): ApiEvent | null {
     : [];
 
   // Process array fields
-  const topics = Array.isArray(obj.topics ?? details?.topics) 
-    ? (obj.topics ?? details?.topics).map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
+  const topicsRaw = obj.topics ?? details?.topics;
+  const topics = Array.isArray(topicsRaw) 
+    ? topicsRaw.map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
     : [];
-  const participating_organizations = Array.isArray(obj.participating_organizations ?? details?.participating_organizations) 
-    ? (obj.participating_organizations ?? details?.participating_organizations).map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
+  const participating_organizationsRaw = obj.participating_organizations ?? details?.participating_organizations;
+  const participating_organizations = Array.isArray(participating_organizationsRaw) 
+    ? participating_organizationsRaw.map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
     : [];
-  const partners = Array.isArray(obj.partners ?? details?.partners) 
-    ? (obj.partners ?? details?.partners).map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
+  const partnersRaw = obj.partners ?? details?.partners;
+  const partners = Array.isArray(partnersRaw) 
+    ? partnersRaw.map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
     : [];
-  const competitors = Array.isArray(obj.competitors ?? details?.competitors) 
-    ? (obj.competitors ?? details?.competitors).map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
+  const competitorsRaw = obj.competitors ?? details?.competitors;
+  const competitors = Array.isArray(competitorsRaw) 
+    ? competitorsRaw.map((item: unknown) => ensureString(item)).filter((item): item is string => !!item)
     : [];
 
   const sessions = toApiSessions(obj.sessions ?? details?.sessions ?? []);
@@ -500,10 +520,15 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const userText: string = url.searchParams.get('userText') ?? 'legal conference 2025';
-    const country: string | null = url.searchParams.get('country') ?? null;
+    const rawCountry = url.searchParams.get('country');
+    const normalizedCountry = rawCountry ? toISO2Country(rawCountry) : null;
+    if (rawCountry && !normalizedCountry) {
+      return NextResponse.json({ error: 'Invalid country parameter. Expect ISO-3166-1 alpha-2 code.' }, { status: 400 });
+    }
     const dateFrom: string | null = url.searchParams.get('dateFrom');
     const dateTo: string | null = url.searchParams.get('dateTo');
-    const locale: 'de' | 'en' = (url.searchParams.get('locale') === 'en' ? 'en' : 'de');
+    const requestedLocale = url.searchParams.get('locale');
+    const locale = deriveLocale(normalizedCountry ?? undefined, requestedLocale ?? undefined);
     const location: string | null = url.searchParams.get('location');
     const timeframe: string | null = url.searchParams.get('timeframe');
     const includeDebug = url.searchParams.get('debug') === '1';
@@ -520,7 +545,7 @@ export async function GET(req: NextRequest) {
     } else if (!timeframe && !dateFrom && !dateTo) {
       // Only apply date restrictions for specific country searches
       // For "All Europe" or empty country searches, don't apply date restrictions
-      if (country && country !== 'EU' && country !== '') {
+      if (normalizedCountry && normalizedCountry !== 'EU') {
         // Default to next 30 days only for specific country searches
         const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
         const timeframeDates = processTimeframe('next_30');
@@ -541,16 +566,16 @@ export async function GET(req: NextRequest) {
       console.log('[api/events/run] Using new event pipeline (GET)');
       res = await executeNewPipeline({
         userText,
-        country: country || null,
+        country: normalizedCountry,
         dateFrom: effectiveDateFrom || undefined,
         dateTo: effectiveDateTo || undefined,
-        locale: locale || 'de'
+        locale
       });
     } else {
       console.log('[api/events/run] Using enhanced orchestrator (GET)');
       res = await executeEnhancedSearch({ 
         userText, 
-        country,
+        country: normalizedCountry,
         dateFrom, 
         dateTo, 
         locale, 
@@ -565,7 +590,7 @@ export async function GET(req: NextRequest) {
       result = res;
     } else {
       // Enhanced orchestrator needs processing
-      result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+      result = await processEnhancedResults(res, normalizedCountry, dateFrom, dateTo, includeDebug);
     }
     
     return NextResponse.json(result);
@@ -576,20 +601,51 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
+  let telemetry: any = {
+    ctx: {},
+    query: {},
+    adapters: {},
+    results: {},
+    timeouts: {},
+    fallbackUsed: false
+  };
+
   try {
     const body = await req.json();
     const userText: string = body?.userText ?? '';   // <- canonical
-    const country: string | null = body?.country ?? null;
+    const rawCountry = body?.country ?? '';
+    const normalizedCountry = rawCountry ? toISO2Country(rawCountry) : null;
+    
+    // API Guard: Reject invalid country codes
+    if (!isValidISO2Country(normalizedCountry)) {
+      return NextResponse.json({ error: 'country (ISO2) required' }, { status: 400 });
+    }
+    
+    const ctx = getCountryContext(normalizedCountry);
+    const requestedLocale = body?.locale ?? '';
+    const locale = deriveLocale(normalizedCountry ?? undefined, requestedLocale ?? undefined);
+    
     const dateFrom: string | null = body?.dateFrom ?? null;
     const dateTo: string | null = body?.dateTo ?? null;
-    const locale: 'de' | 'en' = (body?.locale === 'en' ? 'en' : 'de');
     const location: string | null = body?.location ?? null;
     const timeframe: string | null = body?.timeframe ?? null;
     const includeDebug = body?.debug === true;
 
+    // Initialize telemetry context
+    telemetry.ctx = {
+      country: ctx.iso2,
+      locale: ctx.locale,
+      tld: ctx.tld
+    };
+    telemetry.query = {
+      base: userText,
+      final: userText // Will be updated after query building
+    };
+
     console.log('[api/events/run] Starting search with params:', {
       userText,
-      country,
+      country: normalizedCountry,
       dateFrom,
       dateTo,
       locale,
@@ -609,7 +665,7 @@ export async function POST(req: NextRequest) {
     } else if (!timeframe && !dateFrom && !dateTo) {
       // Only apply date restrictions for specific country searches
       // For "All Europe" or empty country searches, don't apply date restrictions
-      if (country && country !== 'EU' && country !== '') {
+      if (normalizedCountry && normalizedCountry !== 'EU') {
         // Default to next 30 days only for specific country searches
         const { processTimeframe } = await import('@/common/search/enhanced-orchestrator');
         const timeframeDates = processTimeframe('next_30');
@@ -630,16 +686,16 @@ export async function POST(req: NextRequest) {
       console.log('[api/events/run] Using new event pipeline');
       res = await executeNewPipeline({
         userText,
-        country: country || null,
+        country: normalizedCountry,
         dateFrom: effectiveDateFrom || undefined,
         dateTo: effectiveDateTo || undefined,
-        locale: locale || 'de'
+        locale
       });
     } else {
       console.log('[api/events/run] Using enhanced orchestrator');
       res = await executeEnhancedSearch({ 
         userText, 
-        country,
+        country: normalizedCountry,
         dateFrom, 
         dateTo, 
         locale, 
@@ -656,27 +712,41 @@ export async function POST(req: NextRequest) {
       result = res;
     } else {
       // Enhanced orchestrator needs processing
-      result = await processEnhancedResults(res, country, dateFrom, dateTo, includeDebug);
+      result = await processEnhancedResults(res, normalizedCountry, dateFrom, dateTo, includeDebug);
     }
 
     if ((!result.events || result.events.length === 0) && demoFallbackEnabled()) {
       console.log('[api/events/run] No events found, using demo fallback');
-      const demoEvents = buildDemoFallback(country);
+      telemetry.fallbackUsed = true;
+      const demoEvents = buildDemoFallback(ctx);
       return NextResponse.json({
         ...result,
         provider: 'demo_fallback',
         events: demoEvents,
         count: demoEvents.length,
-        note: 'demo_fallback_active'
+        note: 'demo_fallback_active',
+        telemetry
       });
     }
 
+    // Finalize telemetry
+    telemetry.results = {
+      candidates: result.events?.length || 0,
+      published: result.events?.length || 0
+    };
+    
     console.log('[api/events/run] Returning results:', {
       eventCount: result.events?.length || 0,
       provider: result.provider
     });
 
-    return NextResponse.json(result);
+    // Log structured telemetry
+    console.log('[api/events/run] TELEMETRY:', JSON.stringify(telemetry));
+
+    return NextResponse.json({
+      ...result,
+      telemetry
+    });
   } catch (error) {
     console.error('[api/events/run] Error occurred:', error);
     const message = error instanceof Error ? error.message : 'search_failed';

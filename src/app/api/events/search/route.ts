@@ -920,7 +920,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     if (rerank && filteredItems.length > 0 && process.env.GEMINI_API_KEY) {
       try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
         const rankedPrompt = `Rerank these URLs by likelihood of being high-quality industry event pages (conferences/summits/trade shows) for ${searchConfig.industry || 'legal-compliance'}. Return a JSON array of indices in best-to-worst order.\n\nItems:\n${filteredItems.map((it, i) => `${i}: ${it.title} | ${it.link} | ${it.snippet}`).join('\n')}\n\nReturn ONLY a JSON array of indices.`;
         const result = await model.generateContent(rankedPrompt);
         let text = (await result.response).text().trim();

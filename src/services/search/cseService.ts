@@ -9,25 +9,25 @@ import { withTimeoutAndRetry } from '@/utils/net/withTimeoutAndRetry';
 import { logger } from '@/utils/logger';
 import { RetryService } from '@/lib/services/retry-service';
 import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from '@/lib/services/circuit-breaker';
+import type { CountryContext } from '@/lib/utils/country';
 
 type CSEArgs = {
   baseQuery: string;
   userText?: string;
-  crCountry?: string;  // e.g., 'countryDE'
-  gl?: string;         // 'de'
-  lr?: string;         // 'lang_de|lang_en'
-  num?: number;        // 10..50
+  countryContext?: CountryContext;
+  locale?: string;
+  num?: number;
   dateRestrict?: string; // e.g., 'd7','w1','m1' (CSE supports dateRestrict; not tbs)
 };
 
 export async function cseSearch(args: CSEArgs) {
   const {
-    baseQuery, userText, crCountry = 'countryDE', gl = 'de', lr = 'lang_de|lang_en',
+    baseQuery, userText, countryContext, locale,
     num = 50, dateRestrict
   } = args;
 
   if (!baseQuery?.trim()) throw new Error('cseSearch: baseQuery required');
-  const q = buildEffectiveQuery({ baseQuery, userText });
+  const q = buildEffectiveQuery({ baseQuery, userText, countryContext });
 
   // CSE: avoid 400s (trim query) and retry without locale clamps
   function buildCSEUrl(q: string, withLocale: boolean) {
@@ -45,11 +45,18 @@ export async function cseSearch(args: CSEArgs) {
       return null; // Return null to indicate CSE is not properly configured
     }
     
-    u.searchParams.set('num', '10');
+    u.searchParams.set('num', String(Math.min(num, 10)));
     u.searchParams.set('safe', 'off');
     if (withLocale) {
-      u.searchParams.set('hl', 'de');
-      u.searchParams.set('gl', 'de');
+      if (countryContext?.locale || locale) {
+        u.searchParams.set('hl', (countryContext?.locale || locale || 'en').toLowerCase());
+      }
+      if (countryContext?.iso2) {
+        u.searchParams.set('gl', countryContext.iso2);
+      }
+      if (dateRestrict) {
+        u.searchParams.set('dateRestrict', dateRestrict);
+      }
       // Avoid lr/cr which often trigger 400 when combined with other params
     }
     return u.toString();

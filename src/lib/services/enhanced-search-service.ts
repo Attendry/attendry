@@ -91,7 +91,7 @@ export class EnhancedSearchService {
       tiers: {},
       filters: { reasons: [] },
       prioritization: {
-        model: 'gemini-1.5-flash',
+        model: 'gemini-2.5-flash',
         repairUsed: false,
         stats: {}
       },

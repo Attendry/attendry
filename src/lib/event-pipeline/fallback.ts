@@ -8,6 +8,8 @@ import { EventCandidate, EventPipelineConfig, PipelineContext, SpeakerInfo } fro
 import { EventPipeline } from './orchestrator';
 import { isNewPipelineEnabled, getPipelineConfig } from './config';
 import { logger } from '@/utils/logger';
+import { getCountryContext, toISO2Country, deriveLocale, isValidISO2Country } from '@/lib/utils/country';
+import { buildSearchQuery as buildBaseQuery } from '@/common/search/queryBuilder';
 
 export class PipelineFallback {
   constructor(
@@ -332,11 +334,15 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
   
   // Create service wrappers that match the DiscoveryService interface
   const cseService = {
-    search: async (params: { q: string; country: string | null; limit?: number }) => {
+    search: async (params: { q: string; country: string | null; limit?: number; countryContext?: ReturnType<typeof getCountryContext> | null }) => {
+      const ctx = params.countryContext ?? (params.country ? getCountryContext(params.country) : null);
+      const iso2 = ctx?.iso2 ?? (params.country ? toISO2Country(params.country) : null);
+      const locale = ctx?.locale ?? deriveLocale(iso2 ?? undefined);
       const result = await cseSearch({ 
         baseQuery: params.q, 
         userText: params.q, 
-        crCountry: params.country ? `country${params.country}` : undefined 
+        countryContext: ctx ?? undefined,
+        locale,
       });
       return {
         items: result.items.map((item: any) => ({
@@ -349,11 +355,15 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
   };
   
   const firecrawlService = {
-    search: async (params: { q: string; country: string | null; limit?: number }) => {
+    search: async (params: { q: string; country: string | null; limit?: number; countryContext?: ReturnType<typeof getCountryContext> | null }) => {
+      const ctx = params.countryContext ?? (params.country ? getCountryContext(params.country) : null);
+      const location = ctx?.countryNames?.[0] ?? (params.country ? getCountryContext(params.country).countryNames[0] : undefined);
       const result = await firecrawlSearch({ 
         baseQuery: params.q, 
-        userText: params.q, 
-        location: params.country || undefined 
+        userText: params.q,
+        location,
+        locale: ctx?.locale,
+        countryContext: ctx ?? undefined,
       });
       return {
         items: result.items.map((item: any) => ({

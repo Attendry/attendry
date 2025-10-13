@@ -63,7 +63,7 @@ export class EventPipeline {
       const discoveryStart = Date.now();
       logger.info('[pipeline] Stage 1: Discovering URLs');
       
-      const candidates = await this.discoverer.discover(context.query, context.country);
+      const candidates = await this.discoverer.discover(context.query, context.country, context);
       const discoveryDuration = Date.now() - discoveryStart;
       
       logs.push({

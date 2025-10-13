@@ -6,6 +6,7 @@
 
 import { EventCandidate, ExtractResult, PipelineContext } from './types';
 import { logger } from '@/utils/logger';
+import { getCountryContext, toISO2Country } from '@/lib/utils/country';
 
 export interface PublishedEvent {
   id: string;

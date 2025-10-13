@@ -5,6 +5,8 @@
  * that replaces the complex multi-tier enrichment process.
  */
 
+import type { CountryContext } from '@/lib/utils/country';
+
 // Core pipeline configuration
 export interface EventPipelineConfig {
   thresholds: {
@@ -131,16 +133,37 @@ export interface StageResult<T = any> {
 export interface PipelineContext {
   query: string;
   country: string | null;
+  countryContext: CountryContext | null;
   dateFrom?: string;
   dateTo?: string;
   locale?: string;
   startTime: Date;
   config: EventPipelineConfig;
+  telemetry?: PipelineTelemetry;
 }
+
+export type DiscoveryTelemetry = {
+  count: number;
+  durationMs: number;
+  timeout: boolean;
+};
+
+export type PipelineTelemetry = {
+  adapters: {
+    cse?: DiscoveryTelemetry;
+    firecrawl?: DiscoveryTelemetry;
+    curated?: DiscoveryTelemetry;
+  };
+};
 
 // Service interfaces for dependency injection
 export interface DiscoveryService {
-  search(params: { q: string; country: string | null; limit?: number }): Promise<{ items: Array<{ url: string; title?: string; description?: string }> }>;
+  search(params: {
+    q: string;
+    country: string | null;
+    limit?: number;
+    countryContext?: CountryContext | null;
+  }): Promise<{ items: Array<{ url: string; title?: string; description?: string }> }>;
 }
 
 export interface PrioritizationService {

@@ -7,14 +7,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { createHash } from "crypto";
 import { SpeakerData } from "@/lib/types/core";
+import { supabaseServer } from "@/lib/supabase-server";
 
 const geminiKey = process.env.GEMINI_API_KEY;
 const firecrawlKey = process.env.FIRECRAWL_KEY;
 const googleKey = process.env.GOOGLE_CSE_KEY;
 const googleCx = process.env.GOOGLE_CSE_CX;
-// Use Gemini 2.5 Flash via REST (same pattern as elsewhere in app)
-const GEMINI_MODEL_PATH = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
+// Use Gemini 2.5 Pro via REST (same pattern as elsewhere in app)
+const GEMINI_MODEL_PATH = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-pro:generateContent';
 
 console.log('Environment check:', {
   geminiKey: !!geminiKey,
@@ -48,6 +50,8 @@ interface SpeakerEnhancementRequest {
 interface SpeakerEnhancementResponse {
   enhanced: EnhancedSpeakerData;
   success: boolean;
+  stored?: boolean;
+  cached?: boolean;
   error?: string;
 }
 
@@ -183,6 +187,93 @@ Return ONLY a valid JSON object with these fields and nothing else. Do not inclu
   ]
 }
 
+async function findCachedSpeakerProfile(
+  supabase: Awaited<ReturnType<typeof supabaseServer>>,
+  userId: string,
+  speaker: SpeakerData
+): Promise<EnhancedSpeakerData | null> {
+  try {
+    const speakerKey = (speaker.profile_url || speaker.name || 'unknown')
+      .toLowerCase()
+      .trim();
+
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({ speaker, speakerKey }))
+      .digest('hex');
+
+    const { data, error } = await supabase
+      .from('enhanced_speaker_profiles')
+      .select('enhanced_data')
+      .eq('user_id', userId)
+      .eq('speaker_key', speakerKey)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Failed to load cached speaker profile:', error.message);
+      return null;
+    }
+
+    if (!data?.enhanced_data) {
+      return null;
+    }
+
+    const cached = data.enhanced_data as EnhancedSpeakerData & { fingerprint?: string };
+    if (cached.fingerprint && cached.fingerprint === fingerprint) {
+      return cached;
+    }
+
+    return null;
+  } catch (error) {
+    console.warn('Error retrieving cached speaker profile:', error);
+    return null;
+  }
+}
+
+async function persistEnhancedSpeaker(
+  enhanced: EnhancedSpeakerData,
+  original: SpeakerData,
+  supabase: Awaited<ReturnType<typeof supabaseServer>>,
+  userId: string
+): Promise<boolean> {
+  try {
+    const speakerKey = (enhanced.profile_url || original.profile_url || enhanced.name || original.name || 'unknown')
+      .toLowerCase()
+      .trim();
+
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({ speaker: original, speakerKey }))
+      .digest('hex');
+
+    const payload = {
+      user_id: userId,
+      speaker_key: speakerKey,
+      speaker_name: enhanced.name || original.name,
+      speaker_org: enhanced.org || original.org || null,
+      speaker_title: enhanced.title || original.title || null,
+      session_title: original.session || enhanced.session || null,
+      profile_url: enhanced.profile_url || original.profile_url || null,
+      raw_input: original,
+      enhanced_data: { ...enhanced, fingerprint },
+      confidence: enhanced.confidence ?? null,
+      last_enhanced_at: new Date().toISOString(),
+    };
+
+    const { error: upsertError } = await supabase
+      .from('enhanced_speaker_profiles')
+      .upsert(payload, { onConflict: 'user_id,speaker_key' });
+
+    if (upsertError) {
+      console.warn('Failed to upsert enhanced speaker profile', upsertError.message);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.warn('Error persisting enhanced speaker profile:', error);
+    return false;
+  }
+}
+
 Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements.`;
 
       const url = `https://generativelanguage.googleapis.com/${GEMINI_MODEL_PATH}?key=${geminiKey}`;
@@ -288,14 +379,43 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerEnhanc
       }, { status: 400 });
     }
 
-    // Enhance the speaker profile
-    console.log('Calling enhanceSpeakerProfile...');
-    const enhanced = await enhanceSpeakerProfile(speaker);
-    console.log('Enhancement completed, confidence:', enhanced.confidence);
+    const supabase = await supabaseServer();
+    const { data: userRes, error: userErr } = await supabase.auth.getUser();
+    if (userErr) {
+      console.warn('Failed to retrieve authenticated user:', userErr.message);
+    }
+    const userId = userRes?.user?.id || null;
+
+    let cachedProfile: EnhancedSpeakerData | null = null;
+    let cached = false;
+    if (userId) {
+      cachedProfile = await findCachedSpeakerProfile(supabase, userId, speaker);
+      if (cachedProfile) {
+        cached = true;
+      }
+    }
+
+    const enhanced = cachedProfile || await enhanceSpeakerProfile(speaker);
+    if (!cached) {
+      console.log('Enhancement completed, confidence:', enhanced.confidence);
+    } else {
+      console.log('Returning cached enhanced speaker profile');
+    }
+
+    let stored = false;
+    if (userId) {
+      try {
+        stored = await persistEnhancedSpeaker(enhanced, speaker, supabase, userId);
+      } catch (persistError) {
+        console.warn('Failed to persist enhanced speaker profile:', persistError);
+      }
+    }
 
     return NextResponse.json({
       enhanced,
       success: true,
+      stored,
+      cached,
       debug: {
         geminiKeyConfigured: !!process.env.GEMINI_API_KEY,
         firecrawlKeyConfigured: !!process.env.FIRECRAWL_KEY,

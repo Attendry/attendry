@@ -67,6 +67,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   const [enhancedSpeaker, setEnhancedSpeaker] = useState<EnhancedSpeaker | null>(null); // Enhanced speaker data
   const [enhancing, setEnhancing] = useState(false); // Loading state for enhancement
   const [enhancementError, setEnhancementError] = useState<string | null>(null); // Enhancement error
+  const [cached, setCached] = useState(false);        // Whether data came from Supabase cache
 
   // ============================================================================
   // EVENT HANDLERS
@@ -100,6 +101,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
       console.log('Industry connections:', j.enhanced?.industry_connections);
       console.log('Recent news:', j.enhanced?.recent_news);
       setEnhancedSpeaker(j.enhanced);
+      setCached(Boolean(j.cached));
     } catch (e: unknown) {
       setEnhancementError((e as Error)?.message || "Enhancement failed");
     } finally {
@@ -258,7 +260,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           disabled={enhancing && !expanded}
           className="text-xs font-medium rounded-full px-3 py-1 border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-200 disabled:opacity-60 flex items-center gap-2"
         >
-          {enhancing && !expanded ? (
+      {enhancing && !expanded ? (
             <>
               <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
               Enhancing…
@@ -268,9 +270,13 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
               <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
               Hide Details
             </>
-          ) : expanded ? "Hide Details" : hasEnhancedData || baseHasCoreDetails ? "Show Details" : "Enhance & Show"
+      ) : expanded ? "Hide Details" : hasEnhancedData || baseHasCoreDetails ? (cached ? "Show Saved Details" : "Show Details") : "Enhance & Show"
           }
         </button>
+
+        {cached && !enhancing && (
+          <span className="text-xs text-slate-500">Loaded from saved profile</span>
+        )}
 
         {enhancementError && (
           <span className="text-xs text-red-600">

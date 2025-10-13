@@ -4,7 +4,7 @@
  * Multi-source URL discovery using CSE, Firecrawl, and curated sources
  */
 
-import { EventCandidate, EventPipelineConfig, DiscoveryService, DiscoveryError } from './types';
+import { EventCandidate, EventPipelineConfig, DiscoveryService, DiscoveryError, PipelineContext } from './types';
 import { logger } from '@/utils/logger';
 
 export class EventDiscoverer {
@@ -15,9 +15,9 @@ export class EventDiscoverer {
     private curatedService?: DiscoveryService
   ) {}
 
-  async discover(query: string, country: string | null): Promise<EventCandidate[]> {
+  async discover(query: string, country: string | null, context?: PipelineContext): Promise<EventCandidate[]> {
     const startTime = Date.now();
-    logger.info({ message: '[discover] Starting multi-source discovery', query, country });
+    logger.info({ message: '[discover] Starting multi-source discovery', query, country, locale: context?.locale });
     
     const candidates: EventCandidate[] = [];
     
@@ -27,7 +27,7 @@ export class EventDiscoverer {
       
       if (this.config.sources.cse) {
         discoveryPromises.push(
-          this.discoverFromCSE(query, country).catch((error: any) => {
+          this.discoverFromCSE(query, country, context).catch((error: any) => {
             logger.error({ message: '[discover] CSE discovery failed', error: error.message });
             return [];
           })
@@ -36,7 +36,7 @@ export class EventDiscoverer {
       
       if (this.config.sources.firecrawl) {
         discoveryPromises.push(
-          this.discoverFromFirecrawl(query, country).catch((error: any) => {
+          this.discoverFromFirecrawl(query, country, context).catch((error: any) => {
             logger.error({ message: '[discover] Firecrawl discovery failed', error: error.message });
             return [];
           })
@@ -45,7 +45,7 @@ export class EventDiscoverer {
       
       if (this.config.sources.curated && this.curatedService) {
         discoveryPromises.push(
-          this.discoverFromCurated(query, country).catch((error: any) => {
+          this.discoverFromCurated(query, country, context).catch((error: any) => {
             logger.error({ message: '[discover] Curated discovery failed', error: error.message });
             return [];
           })
@@ -53,19 +53,14 @@ export class EventDiscoverer {
       }
       
       // Wait for all discovery sources with timeout
-      const discoveryTimeout = new Promise<EventCandidate[]>((_, reject) => {
-        setTimeout(() => reject(new Error('Discovery timeout')), this.config.timeouts.discovery);
-      });
-      
-      const results = await Promise.race([
-        Promise.all(discoveryPromises),
-        discoveryTimeout
-      ]) as EventCandidate[][];
+      const results = await Promise.allSettled(discoveryPromises.map((promise) =>
+        promise.then((value) => ({ status: 'fulfilled', value, timeout: false })).catch((error) => ({ status: 'rejected', reason: error }))
+      ));
       
       // Flatten results from all sources
-      results.forEach(sourceResults => {
-        if (Array.isArray(sourceResults)) {
-          candidates.push(...sourceResults);
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+          candidates.push(...result.value);
         }
       });
       
@@ -92,15 +87,16 @@ export class EventDiscoverer {
     }
   }
 
-  private async discoverFromCSE(query: string, country: string | null): Promise<EventCandidate[]> {
+  private async discoverFromCSE(query: string, country: string | null, context?: PipelineContext): Promise<EventCandidate[]> {
     const startTime = Date.now();
-    logger.info({ message: '[discover:cse] Starting CSE discovery', query, country });
+    logger.info({ message: '[discover:cse] Starting CSE discovery', query, country, locale: context?.locale });
     
     try {
       const results = await this.cseService.search({ 
         q: query, 
         country,
-        limit: Math.min(20, this.config.limits.maxCandidates)
+        limit: Math.min(20, this.config.limits.maxCandidates),
+        countryContext: context?.countryContext ?? null,
       });
       
       const candidates = results.items.map((item: any, index: number) => ({
@@ -131,15 +127,16 @@ export class EventDiscoverer {
     }
   }
 
-  private async discoverFromFirecrawl(query: string, country: string | null): Promise<EventCandidate[]> {
+  private async discoverFromFirecrawl(query: string, country: string | null, context?: PipelineContext): Promise<EventCandidate[]> {
     const startTime = Date.now();
-    logger.info({ message: '[discover:firecrawl] Starting Firecrawl discovery', query, country });
+    logger.info({ message: '[discover:firecrawl] Starting Firecrawl discovery', query, country, locale: context?.locale });
     
     try {
       const results = await this.firecrawlService.search({ 
         q: query, 
         country,
-        limit: Math.min(20, this.config.limits.maxCandidates)
+        limit: Math.min(20, this.config.limits.maxCandidates),
+        countryContext: context?.countryContext ?? null,
       });
       
       const candidates = results.items.map((item: any, index: number) => ({
@@ -170,20 +167,21 @@ export class EventDiscoverer {
     }
   }
 
-  private async discoverFromCurated(query: string, country: string | null): Promise<EventCandidate[]> {
+  private async discoverFromCurated(query: string, country: string | null, context?: PipelineContext): Promise<EventCandidate[]> {
     if (!this.curatedService) {
       logger.warn({ message: '[discover:curated] Curated service not available' });
       return [];
     }
     
     const startTime = Date.now();
-    logger.info({ message: '[discover:curated] Starting curated discovery', query, country });
+    logger.info({ message: '[discover:curated] Starting curated discovery', query, country, locale: context?.locale });
     
     try {
       const results = await this.curatedService.search({ 
         q: query, 
         country,
-        limit: Math.min(10, this.config.limits.maxCandidates)
+        limit: Math.min(10, this.config.limits.maxCandidates),
+        countryContext: context?.countryContext ?? null,
       });
       
       const candidates = results.items.map((item: any, index: number) => ({

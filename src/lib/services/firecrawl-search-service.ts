@@ -1,5 +1,6 @@
 import { RetryService } from "./retry-service";
 import { buildSearchQuery } from '@/search/query';
+import type { CountryContext } from '@/lib/utils/country';
 
 /**
  * Firecrawl Search Service
@@ -16,6 +17,9 @@ export interface FirecrawlSearchParams {
   industry?: string;
   maxResults?: number;
   tbs?: string;
+  countryContext?: CountryContext;
+  locale?: string;
+  location?: string;
 }
 
 export interface FirecrawlSearchResult {
@@ -81,7 +85,7 @@ export class FirecrawlSearchService {
    * Execute a web search using Firecrawl Search API v2
    */
   static async searchEvents(params: FirecrawlSearchParams): Promise<FirecrawlSearchResult> {
-    const { query, country = "", from, to, industry = "legal-compliance", maxResults = this.MAX_RESULTS } = params;
+    const { query, country = "", from, to, industry = "legal-compliance", maxResults = this.MAX_RESULTS, countryContext, locale, location } = params;
     
     const firecrawlKey = process.env.FIRECRAWL_KEY;
     if (!firecrawlKey) {
@@ -97,7 +101,7 @@ export class FirecrawlSearchService {
         query: searchQuery,
         limit: Math.min(maxResults, 20), // Reduce limit further to avoid timeouts
         sources: ["web"], // Focus on web results for events
-        location: this.mapCountryToLocation(country),
+        location: location || countryContext?.countryNames?.[0] || this.mapCountryToLocation(country),
         tbs: this.buildTimeBasedSearch(from, to),
         ignoreInvalidURLs: true,
         scrapeOptions: {
@@ -107,8 +111,8 @@ export class FirecrawlSearchService {
           blockAds: false, // Disable to reduce processing time
           removeBase64Images: false, // Disable to reduce processing time
           location: {
-            country: this.mapCountryCode(country),
-            languages: [this.getLanguageForCountry(country)]
+            country: countryContext?.iso2 || this.mapCountryCode(country),
+            languages: [countryContext?.locale || locale || this.getLanguageForCountry(country)]
           }
         }
       };

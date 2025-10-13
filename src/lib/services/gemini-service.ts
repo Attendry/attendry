@@ -48,7 +48,7 @@ export interface GeminiExtractionResponse {
  * Gemini Service Class
  */
 export class GeminiService {
-  private static readonly GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+  private static readonly GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
   private static readonly MAX_TOKENS = 8192;
   private static readonly TEMPERATURE = 0.1;
 

@@ -153,6 +153,26 @@ export interface AiDecision {
 }
 
 /**
+ * Enhanced speaker profiles table structure
+ */
+export interface EnhancedSpeakerProfile {
+  id: string;
+  user_id: string;
+  speaker_key: string;
+  speaker_name: string;
+  speaker_org?: string | null;
+  speaker_title?: string | null;
+  session_title?: string | null;
+  profile_url?: string | null;
+  raw_input: any;
+  enhanced_data: any;
+  confidence?: number | null;
+  last_enhanced_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
  * Database operation result types
  */
 export interface DatabaseResult<T = any> {
