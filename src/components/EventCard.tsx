@@ -19,7 +19,7 @@
 "use client";
 import React, { useState, useMemo, useCallback, memo } from "react";
 import AttendeeCard from "./AttendeeCard";
-import EnhancedSpeakerCard from "./EnhancedSpeakerCard"; // Speaker card component
+import DynamicSpeakerLayout from "./DynamicSpeakerLayout"; // Dynamic speaker layout component
 import CompanyCard from "./CompanyCard"; // Company/sponsor card component
 import { SpeakerData } from "@/lib/types/core";
 
@@ -473,31 +473,14 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
             </div>
           )}
 
-          {/* DEBUG: Always show speakers if they exist */}
+          {/* Dynamic Speaker Layout */}
           {speakers && speakers.length > 0 && (
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {(() => { console.log('Rendering speakers:', speakers); return null; })()}
-              {speakers.map((p, idx) => (
-                <EnhancedSpeakerCard 
-                  key={(p.name || "unknown") + (p.org || "") + idx} 
-                  speaker={p} 
-                  sessionTitle={p.session || p.speech_title}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Original conditional rendering */}
-          {!loadingSpeakers && speakers && speakers.length > 0 && (
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {(() => { console.log('Rendering speakers (original):', speakers); return null; })()}
-              {speakers.map((p, idx) => (
-                <EnhancedSpeakerCard 
-                  key={(p.name || "unknown") + (p.org || "") + idx} 
-                  speaker={p} 
-                  sessionTitle={p.session || p.speech_title}
-                />
-              ))}
+            <div>
+              {(() => { console.log('Rendering speakers with DynamicSpeakerLayout:', speakers); return null; })()}
+              <DynamicSpeakerLayout
+                speakers={speakers}
+                sessionTitle={ev.title || "Event Speakers"}
+              />
             </div>
           )}
 

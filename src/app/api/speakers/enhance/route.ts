@@ -185,6 +185,9 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
         const firecrawlData = await firecrawlResponse.json();
         searchResults = firecrawlData.data || [];
         console.log('Firecrawl results:', searchResults.length);
+        if (searchResults.length > 0) {
+          console.log('First Firecrawl result:', { title: searchResults[0]?.title, url: searchResults[0]?.url });
+        }
         // Light prioritization: prefer URLs that look like org-owned pages
         if (speaker.org) {
           const orgKey = speaker.org.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
@@ -200,6 +203,9 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
           searchContext = searchResults.map((result: any, index: number) => 
             `${index + 1}. ${result.title}\n   ${result.content || result.snippet}\n   URL: ${result.url}`
           ).join('\n\n');
+          console.log('Built search context from Firecrawl, length:', searchContext.length);
+        } else {
+          console.log('No Firecrawl results to build context from');
         }
       }
     } catch (firecrawlError) {
@@ -219,6 +225,9 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
         const searchData = await searchResponse.json();
         searchResults = searchData.items || [];
         console.log('CSE results:', searchResults.length);
+        if (searchResults.length > 0) {
+          console.log('First CSE result:', { title: searchResults[0]?.title, url: searchResults[0]?.link });
+        }
         if (speaker.org) {
           const orgKey = speaker.org.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
           searchResults.sort((a: any, b: any) => {
@@ -234,6 +243,9 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
           searchContext = searchResults.map((item: any, index: number) => 
             `${index + 1}. ${item.title}\n   ${item.snippet}\n   URL: ${item.link}`
           ).join('\n\n');
+          console.log('Built search context from CSE, length:', searchContext.length);
+        } else {
+          console.log('No CSE results to build context from');
         }
       }
     } catch (cseError) {
@@ -245,6 +257,7 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
   if (searchContext && geminiKey) {
     try {
       console.log('Processing search results with AI...');
+      console.log('Search context length:', searchContext.length);
 
       const prompt = `You are a professional research assistant. Based on the following information about a speaker and real search results, generate a comprehensive professional profile. Always include provenance (source URLs) for media and, when available, for connections.
 
@@ -345,13 +358,33 @@ Base the information on the actual search results. If specific information isn't
   
   // Fallback: return minimal enhancement
   console.log('Using fallback enhancement');
+  console.log('Search context was empty or AI processing failed');
+  console.log('Available services:', { gemini: !!geminiKey, firecrawl: !!firecrawlKey, cse: !!(googleKey && googleCx) });
+  
+  // Create more specific fallback content based on available speaker data
+  const fallbackEducation = speaker.title ? 
+    [`Professional background in ${speaker.title.toLowerCase()}`] : 
+    ['Professional background in relevant field'];
+    
+  const fallbackExpertise = speaker.title ? 
+    [speaker.title, 'Professional expertise'] : 
+    ['Professional expertise'];
+    
+  const fallbackAchievements = speaker.org ? 
+    [`Professional experience at ${speaker.org}`] : 
+    ['Professional experience at various organizations'];
+    
+  const fallbackConnections = speaker.org ? 
+    [`Professional network at ${speaker.org}`] : 
+    ['Professional network'];
+  
   return {
     ...speaker,
     location: speaker.org ? `${speaker.org} Headquarters` : 'Location not specified',
-    education: [`Professional background in ${speaker.title?.toLowerCase() || 'relevant field'}`],
-    expertise_areas: [speaker.title || 'Professional expertise'],
-    achievements: [`Professional experience at ${speaker.org || 'various organizations'}`],
-    industry_connections: ['Professional network'],
+    education: fallbackEducation,
+    expertise_areas: fallbackExpertise,
+    achievements: fallbackAchievements,
+    industry_connections: fallbackConnections,
     confidence: 0.3 // Low confidence for fallback
   };
 }

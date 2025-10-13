@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabase-server";
-import EventsClient from "@/app/(protected)/events/EventsClient";
+import EventsPageNew from "@/app/(protected)/events/EventsPageNew";
 
 // Force dynamic rendering since we use cookies for authentication
 export const dynamic = 'force-dynamic';
@@ -34,5 +34,5 @@ export default async function EventsPage() {
     console.warn('Supabase not configured, using empty saved set:', error);
   }
 
-  return <EventsClient initialSavedSet={savedSet} />;
+  return <EventsPageNew initialSavedSet={savedSet} />;
 }

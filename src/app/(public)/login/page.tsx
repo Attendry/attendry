@@ -263,6 +263,16 @@ export default function LoginPage() {
             placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (usePassword) {
+                  signInWithPassword();
+                } else {
+                  sendMagicLink();
+                }
+              }
+            }}
             style={{
               width: "100%",
               padding: "0.75rem 1rem",
@@ -292,6 +302,12 @@ export default function LoginPage() {
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  signInWithPassword();
+                }
+              }}
               style={{
                 width: "100%",
                 padding: "0.75rem 1rem",
@@ -319,14 +335,15 @@ export default function LoginPage() {
                 style={{
                   width: "100%",
                   padding: "0.75rem 1rem",
-                  backgroundColor: isLoading ? "var(--muted)" : "var(--primary)",
+                  backgroundColor: isLoading ? "#9ca3af" : "#3b82f6",
                   color: "white",
                   border: "none",
-                  borderRadius: "var(--radius)",
+                  borderRadius: "6px",
                   fontSize: "0.875rem",
                   fontWeight: "500",
                   cursor: isLoading ? "not-allowed" : "pointer",
-                  transition: "background-color 0.2s ease"
+                  transition: "background-color 0.2s ease",
+                  opacity: isLoading ? 0.7 : 1
                 }}
               >
                 {isLoading ? "Signing in..." : "Sign in with Password"}
@@ -337,14 +354,15 @@ export default function LoginPage() {
                 style={{
                   width: "100%",
                   padding: "0.75rem 1rem",
-                  backgroundColor: isLoading ? "var(--muted)" : "#10b981",
+                  backgroundColor: isLoading ? "#9ca3af" : "#10b981",
                   color: "white",
                   border: "none",
-                  borderRadius: "var(--radius)",
+                  borderRadius: "6px",
                   fontSize: "0.875rem",
                   fontWeight: "500",
                   cursor: isLoading ? "not-allowed" : "pointer",
-                  transition: "background-color 0.2s ease"
+                  transition: "background-color 0.2s ease",
+                  opacity: isLoading ? 0.7 : 1
                 }}
               >
                 {isLoading ? "Creating..." : "Create Test User"}
@@ -357,14 +375,15 @@ export default function LoginPage() {
               style={{
                 width: "100%",
                 padding: "0.75rem 1rem",
-                backgroundColor: isLoading ? "var(--muted)" : "var(--primary)",
+                backgroundColor: isLoading ? "#9ca3af" : "#3b82f6",
                 color: "white",
                 border: "none",
-                borderRadius: "var(--radius)",
+                borderRadius: "6px",
                 fontSize: "0.875rem",
                 fontWeight: "500",
                 cursor: isLoading ? "not-allowed" : "pointer",
-                transition: "background-color 0.2s ease"
+                transition: "background-color 0.2s ease",
+                opacity: isLoading ? 0.7 : 1
               }}
             >
               {isLoading ? "Sending..." : "Send Magic Link"}
