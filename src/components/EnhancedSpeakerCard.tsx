@@ -96,6 +96,9 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
         throw new Error(j.error || "Enhancement failed");
       }
       
+      console.log('Enhanced speaker data received:', j.enhanced);
+      console.log('Industry connections:', j.enhanced?.industry_connections);
+      console.log('Recent news:', j.enhanced?.recent_news);
       setEnhancedSpeaker(j.enhanced);
     } catch (e: unknown) {
       setEnhancementError((e as Error)?.message || "Enhancement failed");
@@ -393,16 +396,24 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Industry Connections</h4>
               <ul className="space-y-1">
                 {displaySpeaker.industry_connections.map((connection: any, idx: number) => {
-                  const isStructured = typeof connection === 'object' && connection.name;
-                  const name = isStructured ? connection.name : connection;
-                  const org = isStructured ? connection.org : null;
-                  const url = isStructured ? connection.url : null;
+                  // Defensive programming: handle various data structures
+                  if (!connection) return null;
+                  
+                  const isStructured = typeof connection === 'object' && connection !== null && connection.name;
+                  const name = isStructured ? String(connection.name || '') : String(connection || '');
+                  const org = isStructured ? String(connection.org || '') : null;
+                  const url = isStructured ? String(connection.url || '') : null;
+                  
+                  // Ensure we have a valid name to display
+                  if (!name || name === 'undefined' || name === 'null') return null;
                   
                   return (
                     <li key={idx} className="text-sm text-slate-700">
                       • {name}
-                      {org && <span className="text-slate-500"> ({org})</span>}
-                      {url && (
+                      {org && org !== 'undefined' && org !== 'null' && (
+                        <span className="text-slate-500"> ({org})</span>
+                      )}
+                      {url && url !== 'undefined' && url !== 'null' && url.startsWith('http') && (
                         <a href={url} target="_blank" rel="noreferrer" className="ml-2 text-blue-600 hover:underline text-xs">
                           [source]
                         </a>
@@ -420,19 +431,29 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
               <h4 className="text-sm font-semibold text-slate-900 mb-2">Recent News & Media</h4>
               <ul className="space-y-1">
                 {displaySpeaker.recent_news.map((news: any, idx: number) => {
-                  const isStructured = typeof news === 'object' && news.title;
-                  const title = isStructured ? news.title : news;
-                  const url = isStructured ? news.url : null;
-                  const date = isStructured ? news.date : null;
+                  // Defensive programming: handle various data structures
+                  if (!news) return null;
+                  
+                  const isStructured = typeof news === 'object' && news !== null && news.title;
+                  const title = isStructured ? String(news.title || '') : String(news || '');
+                  const url = isStructured ? String(news.url || '') : null;
+                  const date = isStructured ? String(news.date || '') : null;
+                  
+                  // Ensure we have a valid title to display
+                  if (!title || title === 'undefined' || title === 'null') return null;
                   
                   return (
                     <li key={idx} className="text-sm text-slate-700">
-                      • {url ? (
+                      • {url && url !== 'undefined' && url !== 'null' && url.startsWith('http') ? (
                         <a href={url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
                           {title}
                         </a>
                       ) : title}
-                      {date && <span className="text-slate-500 text-xs ml-2">({new Date(date).toLocaleDateString()})</span>}
+                      {date && date !== 'undefined' && date !== 'null' && (
+                        <span className="text-slate-500 text-xs ml-2">
+                          ({new Date(date).toLocaleDateString()})
+                        </span>
+                      )}
                     </li>
                   );
                 })}
