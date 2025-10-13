@@ -53,14 +53,15 @@ export class EventDiscoverer {
       }
       
       // Wait for all discovery sources with timeout
-      const results = await Promise.allSettled(discoveryPromises.map((promise) =>
-        promise.then((value) => ({ status: 'fulfilled', value, timeout: false })).catch((error) => ({ status: 'rejected', reason: error }))
-      ));
-      
+      const results = await Promise.all(discoveryPromises);
+
       // Flatten results from all sources
       results.forEach((result, index) => {
-        if (result.status === 'fulfilled' && Array.isArray(result.value)) {
-          candidates.push(...result.value);
+        if (Array.isArray(result)) {
+          logger.info({ message: '[discover] Source result', sourceIndex: index, candidateCount: result.length });
+          candidates.push(...result);
+        } else {
+          logger.warn({ message: '[discover] Unexpected result shape from source', sourceIndex: index, resultType: typeof result });
         }
       });
       

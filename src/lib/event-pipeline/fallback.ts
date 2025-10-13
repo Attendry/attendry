@@ -4,12 +4,12 @@
  * Integration with existing search system and graceful fallback handling
  */
 
-import { EventCandidate, EventPipelineConfig, PipelineContext, SpeakerInfo } from './types';
+import type { EventCandidate, EventPipelineConfig, PipelineContext, SpeakerInfo } from './types';
 import { EventPipeline } from './orchestrator';
 import { isNewPipelineEnabled, getPipelineConfig } from './config';
 import { logger } from '@/utils/logger';
-import { getCountryContext, toISO2Country, deriveLocale, isValidISO2Country } from '@/lib/utils/country';
-import { buildSearchQuery as buildBaseQuery } from '@/common/search/queryBuilder';
+import { getCountryContext, deriveLocale } from '@/lib/utils/country';
+import { buildEffectiveQuery } from '@/search/query';
 
 export class PipelineFallback {
   constructor(
@@ -93,8 +93,8 @@ export class PipelineFallback {
         // Use extractResult if available (Phase 2), otherwise fall back to parseResult
         const result = candidate.extractResult || candidate.parseResult;
         return result && 
-               result.confidence >= config.thresholds.confidence &&
-               (candidate.status === 'extracted' || candidate.status === 'parsed');
+               (result.confidence ?? 0.5) >= config.thresholds.confidence &&
+               (candidate.status === 'extracted' || candidate.status === 'parsed' || candidate.status === 'discovered');
       });
       
       // Convert to legacy format
@@ -328,106 +328,47 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
   const config = getPipelineConfig();
   
   // Import services dynamically to avoid circular dependencies
+  const { GeminiService } = await import('@/lib/services/gemini-service');
   const { cseSearch } = await import('@/services/search/cseService');
   const { firecrawlSearch } = await import('@/services/search/firecrawlService');
-  const { GeminiService } = await import('@/lib/services/gemini-service');
-  
-  // Create service wrappers that match the DiscoveryService interface
-  const cseService = {
-    search: async (params: { q: string; country: string | null; limit?: number; countryContext?: ReturnType<typeof getCountryContext> | null }) => {
-      const ctx = params.countryContext ?? (params.country ? getCountryContext(params.country) : null);
-      const iso2 = ctx?.iso2 ?? (params.country ? toISO2Country(params.country) : null);
-      const locale = ctx?.locale ?? deriveLocale(iso2 ?? undefined);
-      const result = await cseSearch({ 
-        baseQuery: params.q, 
-        userText: params.q, 
-        countryContext: ctx ?? undefined,
-        locale,
-      });
-      return {
-        items: result.items.map((item: any) => ({
-          url: item.url,
-          title: item.title,
-          description: item.snippet
-        }))
-      };
-    }
-  };
-  
-  const firecrawlService = {
-    search: async (params: { q: string; country: string | null; limit?: number; countryContext?: ReturnType<typeof getCountryContext> | null }) => {
-      const ctx = params.countryContext ?? (params.country ? getCountryContext(params.country) : null);
-      const location = ctx?.countryNames?.[0] ?? (params.country ? getCountryContext(params.country).countryNames[0] : undefined);
-      const result = await firecrawlSearch({ 
-        baseQuery: params.q, 
-        userText: params.q,
-        location,
-        locale: ctx?.locale,
-        countryContext: ctx ?? undefined,
-      });
-      return {
-        items: result.items.map((item: any) => ({
-          url: item.url,
-          title: item.title,
-          description: item.snippet
-        }))
-      };
-    }
-  };
-  
-  const geminiService = {
-    generateContent: async (prompt: string) => {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("GEMINI_API_KEY not configured");
-      }
 
-      const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.0-flash:generateContent';
-      const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.1
-          }
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Gemini API failed: ${response.status} ${response.statusText}`);
-      }
-
-      const rawText = await response.text();
-      const data = JSON.parse(rawText) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      };
-      
-      const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!content) {
-        throw new Error("No content in Gemini response");
-      }
-      
-      // Extract JSON from markdown if present
-      let jsonContent = content.trim();
-      if (jsonContent.startsWith('```json')) {
-        jsonContent = jsonContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (jsonContent.startsWith('```')) {
-        jsonContent = jsonContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
-      return jsonContent;
-    }
-  };
-  
   // Create new pipeline
   const newPipeline = new EventPipeline(
     config,
-    cseService,
-    firecrawlService,
-    geminiService
+    {
+      search: async ({ q, country, limit, countryContext }: { q: string; country: string | null; limit?: number; countryContext?: ReturnType<typeof getCountryContext> | null }) =>
+        cseSearch({
+          baseQuery: q,
+          userText: q,
+          countryContext: countryContext ?? (country ? getCountryContext(country) : undefined),
+          locale: countryContext?.locale,
+          num: limit,
+        }).then((res) => ({
+          items: res.items.map((item: any) => ({
+            url: item.url,
+            title: item.title,
+            description: item.snippet,
+          })),
+        }))
+    },
+    {
+      search: async ({ q, country, limit, countryContext }: { q: string; country: string | null; limit?: number; countryContext?: ReturnType<typeof getCountryContext> | null }) =>
+        firecrawlSearch({
+          baseQuery: q,
+          userText: q,
+          countryContext: countryContext ?? (country ? getCountryContext(country) : undefined),
+          locale: countryContext?.locale,
+          location: countryContext?.countryNames?.[0],
+          limit,
+        }).then((res) => ({
+          items: res.items.map((item: any) => ({
+            url: item.url,
+            title: item.title,
+            description: item.snippet,
+          })),
+        }))
+    },
+    new GeminiService()
   );
   
   // Create legacy search wrapper
@@ -461,38 +402,24 @@ export async function executeNewPipeline(args: {
   const pipelineWithFallback = await createPipelineWithFallback();
   
   // Build query using the same logic as enhanced orchestrator
-  let effectiveQuery = args.userText;
-  
-  // If userText is empty, use baseQuery from config (same as enhanced orchestrator)
-  if (!effectiveQuery || effectiveQuery.trim() === '') {
+  const ctx = getCountryContext(args.country);
+  let baseQuery = args.userText && args.userText.trim() ? args.userText.trim() : '';
+
+  if (!baseQuery) {
     try {
       const { loadActiveConfig } = await import('@/common/search/config');
-      const { buildSearchQuery } = await import('@/common/search/queryBuilder');
-      
       const cfg = await loadActiveConfig();
-      const baseQuery = cfg.baseQuery;
-      const excludeTerms = cfg.excludeTerms || '';
-      
-      // Build query using the same logic as enhanced orchestrator
-      effectiveQuery = buildSearchQuery({ baseQuery, userText: '', excludeTerms });
-      
-      logger.info({ message: '[executeNewPipeline] Using baseQuery for empty userText', 
-        baseQuery: effectiveQuery.substring(0, 100) + '...' 
-      });
+      baseQuery = cfg.baseQuery;
+      logger.info({ message: '[executeNewPipeline] Using baseQuery for empty userText', baseQuery: baseQuery.substring(0, 100) + '...' });
     } catch (error) {
-      logger.warn({ message: '[executeNewPipeline] Failed to load config, using fallback query', 
-        error: (error as any).message 
-      });
-      // Fallback to a basic legal compliance query
-      effectiveQuery = 'legal compliance conference event summit workshop';
+      logger.warn({ message: '[executeNewPipeline] Failed to load config, using fallback query', error: (error as any).message });
+      baseQuery = 'legal compliance conference event summit workshop';
     }
   }
-  
-  // Country-specific bias is now handled by the query builder with CountryContext
-  
-  const ctx = getCountryContext(args.country);
+
+  const finalQuery = buildEffectiveQuery({ baseQuery, userText: args.userText, countryContext: ctx });
   const context: PipelineContext = {
-    query: effectiveQuery,
+    query: finalQuery,
     country: args.country,
     dateFrom: args.dateFrom,
     dateTo: args.dateTo,

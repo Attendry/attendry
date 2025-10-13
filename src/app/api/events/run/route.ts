@@ -640,7 +640,7 @@ export async function POST(req: NextRequest) {
     };
     telemetry.query = {
       base: userText,
-      final: userText // Will be updated after query building
+      final: ''
     };
 
     console.log('[api/events/run] Starting search with params:', {
@@ -691,6 +691,7 @@ export async function POST(req: NextRequest) {
         dateTo: effectiveDateTo || undefined,
         locale
       });
+      telemetry.query.final = res?.query ?? telemetry.query.final;
     } else {
       console.log('[api/events/run] Using enhanced orchestrator');
       res = await executeEnhancedSearch({ 
