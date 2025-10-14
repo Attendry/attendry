@@ -11,6 +11,7 @@ import { EventParser } from './parse';
 import { EventExtractor } from './extract';
 import { EventPublisher, PublishedEvent } from './publish';
 import { logger } from '@/utils/logger';
+import { evaluateLocation } from './location';
 
 export class EventPipeline {
   private discoverer: EventDiscoverer;

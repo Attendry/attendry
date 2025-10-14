@@ -1,5 +1,5 @@
-import { getCountryContext } from '@/lib/utils/country';
-import { toISO2Country } from '@/lib/utils/country';
+import { getCountryContext, toISO2Country } from '@/lib/utils/country';
+import { getLLMGeoResolution } from './llmGeo';
 
 export type VenueResolution = {
   city?: string;
@@ -8,28 +8,48 @@ export type VenueResolution = {
 };
 
 const EU_PATTERN = /\b(europe|eu(?:ropean)?(?:\s+union)?)\b/i;
-const CITY_COUNTRY_PATTERN = /([A-Z][A-Za-z\s]+?),?\s+(Germany|France|Netherlands|Belgium|Switzerland|United Kingdom|Spain|Italy|Luxembourg|Portugal|Austria|Poland|Czech Republic|Hungary|Sweden|Norway|Finland|Denmark)/i;
-const JSON_CITY_PATTERN = /("addressLocality"\s*:\s*"([^"]+)")/i;
-const JSON_COUNTRY_PATTERN = /("addressCountry"\s*:\s*"([^"]+)")/i;
+const JSON_CITY_PATTERN = /"addressLocality"\s*:\s*"([^"]+)"/i;
+const JSON_COUNTRY_PATTERN = /"addressCountry"\s*:\s*"([^"]+)"/i;
 
-export function resolveVenueCountry(text: string | null | undefined, tld?: string, rawCountry?: string | null): VenueResolution {
+const geoCache = new Map<string, VenueResolution>();
+
+export async function resolveVenueCountry(
+  text: string | null | undefined,
+  tld?: string,
+  requestedCountry?: string | null,
+  url?: string
+): Promise<VenueResolution> {
   if (!text) return { confidence: 'low' };
+  const cacheKey = `${text}|${tld}|${requestedCountry}`;
+  const cached = geoCache.get(cacheKey);
+  if (cached) return cached;
 
-  const jsonCountry = extractJsonCountry(text);
-  if (jsonCountry) {
-    return { country: jsonCountry.country, city: jsonCountry.city, confidence: 'high' };
+  const structured = parseStructured(text);
+  if (structured) {
+    geoCache.set(cacheKey, structured);
+    return structured;
   }
 
-  const contextualCountry = inferFromContext(rawCountry);
-  if (contextualCountry) {
-    return { country: contextualCountry, confidence: 'high' };
+  const llm = await getLLMGeoResolution(text, { tld, requestedCountry, url });
+  if (llm) {
+    geoCache.set(cacheKey, llm);
+    return llm;
   }
 
-  const cityCountry = extractCityCountry(text);
-  if (cityCountry) {
-    return cityCountry;
-  }
+  const fallback = inferFromHeuristics(text, tld, requestedCountry);
+  geoCache.set(cacheKey, fallback);
+  return fallback;
+}
 
+function parseStructured(text: string): VenueResolution | null {
+  const countryMatch = text.match(JSON_COUNTRY_PATTERN)?.[1];
+  if (!countryMatch) return null;
+  const cityMatch = text.match(JSON_CITY_PATTERN)?.[1];
+  const country = toISO2Country(countryMatch) ?? countryMatch;
+  return { country, city: cityMatch, confidence: 'high' };
+}
+
+function inferFromHeuristics(text: string, tld?: string, requestedCountry?: string | null): VenueResolution {
   if (EU_PATTERN.test(text)) {
     return { country: 'EU', confidence: 'low' };
   }
@@ -39,31 +59,12 @@ export function resolveVenueCountry(text: string | null | undefined, tld?: strin
     return { country: tldCountry, confidence: 'low' };
   }
 
-  return { confidence: 'low' };
-}
-
-function extractJsonCountry(text: string): { city?: string; country: string } | null {
-  const countryMatch = text.match(JSON_COUNTRY_PATTERN);
-  if (countryMatch && countryMatch[2]) {
-    const iso = toISO2Country(countryMatch[2]);
-    const cityMatch = text.match(JSON_CITY_PATTERN);
-    return { country: iso ?? countryMatch[2], city: cityMatch?.[2] };
+  if (requestedCountry) {
+    const context = getCountryContext(requestedCountry);
+    return { country: context.iso2, confidence: 'low' };
   }
-  return null;
-}
 
-function extractCityCountry(text: string): VenueResolution | null {
-  const match = text.match(CITY_COUNTRY_PATTERN);
-  if (!match) return null;
-  const city = match[1]?.trim();
-  const countryIso = toISO2Country(match[2]) ?? match[2];
-  return { city, country: countryIso, confidence: 'high' };
-}
-
-function inferFromContext(rawCountry?: string | null): string | null {
-  if (!rawCountry) return null;
-  const context = getCountryContext(rawCountry);
-  return context.iso2;
+  return { confidence: 'low' };
 }
 
 function inferFromTld(tld?: string): string | undefined {
@@ -74,4 +75,8 @@ function inferFromTld(tld?: string): string | undefined {
   if (tld.endsWith('.be')) return 'BE';
   if (tld.endsWith('.eu')) return 'EU';
   return undefined;
+}
+
+export function clearGeoCache(): void {
+  geoCache.clear();
 }

@@ -5,10 +5,10 @@ import type { QcContext, QcResult } from './types';
 import { logSynthetic } from './log';
 import { metrics } from './metrics';
 
-export function evaluateLocation(doc: ParsedDoc, ctx: QcContext): QcResult {
+export async function evaluateLocation(doc: ParsedDoc, ctx: QcContext): Promise<QcResult> {
   const requested = normaliseCountry(ctx.requestedCountry);
   const eventCountry = normaliseCountry(doc.country);
-  const venue = resolveVenueCountry(doc.venueText, doc.tld, doc.country);
+  const venue = await resolveVenueCountry(doc.venueText, doc.tld, doc.country, doc.url);
 
   if (eventCountry && requested && eventCountry !== requested) {
     metrics.qcDropsGeo.inc();
