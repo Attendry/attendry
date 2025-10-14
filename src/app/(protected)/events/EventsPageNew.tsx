@@ -221,8 +221,8 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         onClick: handleExport
       }}
       tertiary={{
-        label: "Advanced",
-        onClick: () => setAdvanced(!advanced)
+        label: 'Clear Filters',
+        onClick: handleResetFilters
       }}
     />
   );
@@ -375,19 +375,15 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           </div>
 
           {/* Advanced Search */}
-          {advanced && (
-            <div className="mb-6">
-              <AdvancedSearch 
-                onSearch={handleAdvancedSearch}
-                onSuggestionSelect={handleSuggestionSelect}
-                initialQuery={keywords}
-                initialFilters={{
-                  dateRange: { from, to },
-                  location: country !== "EU" ? [EU.find(c => c.code === country)?.name || ""] : []
-                }}
-              />
-            </div>
-          )}
+          <AdvancedSearch
+            onSearch={handleAdvancedSearch}
+            loading={loading}
+            error={error}
+            initialFilters={{
+              dateRange: { from, to },
+              location: country !== "EU" ? [EU.find(c => c.code === country)?.name || ""] : []
+            }}
+          />
 
           {/* Search History */}
           <div className="mb-6">

@@ -5,7 +5,7 @@
  */
 
 import { buildTierQueries, assertClean, EVENT_DE, CITY_DE } from './query';
-import { firecrawlSearch } from './providers/firecrawl';
+import { runFirecrawlSearch } from './firecrawlClient';
 import { cseSearch } from './providers/cse';
 import { prefilter } from './url-filters';
 import { ensureCorrelation } from '@/lib/obs/corr';
@@ -41,7 +41,7 @@ export async function runSearch(opts: {
   };
 
   async function providerOnce(q: string) {
-    try { return await firecrawlSearch(q, fcParams); }
+    try { return await runFirecrawlSearch(q, fcParams); }
     catch { return await cseSearch(q); }
   }
 
@@ -92,7 +92,7 @@ export async function runSearch(opts: {
         // 2) allow Firecrawl a try with German token
         const qFc = `(${opts.baseQuery}) ${w}`;
         assertClean(qFc);
-        urls.push(...await firecrawlSearch(qFc, fcParams));
+        urls.push(...await runFirecrawlSearch(qFc, fcParams));
       }
     } else {
       // For non-German or pan-European searches, use broader search terms
@@ -104,7 +104,7 @@ export async function runSearch(opts: {
       for (const w of BROAD_SHARDS) {
         const q = `(${opts.baseQuery}) ${w}`;
         assertClean(q);
-        urls.push(...await firecrawlSearch(q, fcParams));
+        urls.push(...await runFirecrawlSearch(q, fcParams));
       }
     }
 
