@@ -5,7 +5,7 @@ export type ParsedEventDate = {
 };
 
 const ORDINAL_SUFFIX = /(st|nd|rd|th)/gi;
-const RANGE_SEPARATOR = /[–—-~]/;
+const RANGE_SEPARATOR = /[–—\-~]/;
 const MONTHS = [
   'january','february','march','april','may','june',
   'july','august','september','october','november','december',
