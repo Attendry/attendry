@@ -1,0 +1,22 @@
+# Evaluation Gold Queries
+# ------------------------------------------------
+# Each entry includes: query, country, expected_ids, must_domains, must_not_domains, k
+
+- query: "renewable energy conference"
+  country: "de"
+  expected_ids: ["doc-001", "doc-003", "doc-007"]
+  must_domains: ["energieverband.de", "greentecheurope.eu"]
+  must_not_domains: ["example.com"]
+  k: 5
+
+- query: "ai ethics panel"
+  country: "gb"
+  expected_ids: ["doc-101", "doc-102"]
+  must_domains: ["ethicsboard.uk"]
+  k: 5
+
+- query: "supply chain summit"
+  country: "us"
+  expected_ids: ["doc-201", "doc-205", "doc-210"]
+  must_not_domains: ["adsponsor.com"]
+  k: 10
