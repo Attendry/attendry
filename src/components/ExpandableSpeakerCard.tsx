@@ -19,6 +19,9 @@
 import React, { useState } from "react";
 import { SpeakerData } from "@/lib/types/core";
 import { ChevronRight, ChevronDown, Maximize2, Minimize2, Linkedin, ExternalLink } from "lucide-react";
+import { useSpeakerEnhancement } from "@/lib/hooks/useSpeakerEnhancement";
+import SpeakerDataDebugger from "./SpeakerDataDebugger";
+import { normalizeSpeakerData, getDisplayTitle, getDisplayOrganization } from "@/lib/utils/speaker-data-normalizer";
 
 /**
  * Enhanced speaker data structure interface
@@ -66,10 +69,16 @@ export default function ExpandableSpeakerCard({
   
   const [expanded, setExpanded] = useState(isExpanded);
   const [busy, setBusy] = useState(false);
-  const [enhancedSpeaker, setEnhancedSpeaker] = useState<EnhancedSpeaker | null>(null);
-  const [enhancing, setEnhancing] = useState(false);
-  const [enhancementError, setEnhancementError] = useState<string | null>(null);
-  const [cached, setCached] = useState(false);
+  
+  // Use the custom hook for speaker enhancement
+  const {
+    enhancedSpeaker,
+    enhancing,
+    enhancementError,
+    cached,
+    enhanceSpeaker,
+    hasEnhancedData
+  } = useSpeakerEnhancement(speaker);
 
   // ============================================================================
   // EVENT HANDLERS
@@ -86,32 +95,6 @@ export default function ExpandableSpeakerCard({
     }
   };
 
-  async function enhanceSpeaker() {
-    if (enhancing || enhancedSpeaker) return;
-    
-    setEnhancing(true);
-    setEnhancementError(null);
-    
-    try {
-      const res = await fetch("/api/speakers/enhance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ speaker }),
-      });
-      const j = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(j.error || "Enhancement failed");
-      }
-      
-      setEnhancedSpeaker(j.enhanced);
-      setCached(Boolean(j.cached));
-    } catch (e: unknown) {
-      setEnhancementError((e as Error)?.message || "Enhancement failed");
-    } finally {
-      setEnhancing(false);
-    }
-  }
 
   async function save() {
     setBusy(true);
@@ -138,21 +121,18 @@ export default function ExpandableSpeakerCard({
   // COMPUTED VALUES
   // ============================================================================
   
-  const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || speaker;
-  const initialTitle = speaker?.title || (speaker as any)?.metadata?.title || (speaker as any)?.metadata?.job_title || null;
-  const initialOrg = speaker?.org || (speaker as any)?.metadata?.org || (speaker as any)?.metadata?.organization || (speaker as any)?.metadata?.company || (speaker as any)?.metadata?.employer || (speaker as any)?.metadata?.employer_name || (speaker as any)?.metadata?.firm || (speaker as any)?.metadata?.law_firm || (speaker as any)?.metadata?.practice || null;
-
-  const hasEnhancedData = Boolean(
-    enhancedSpeaker && (
-      enhancedSpeaker.education?.length ||
-      enhancedSpeaker.publications?.length ||
-      enhancedSpeaker.career_history?.length ||
-      enhancedSpeaker.expertise_areas?.length ||
-      enhancedSpeaker.achievements?.length ||
-      enhancedSpeaker.industry_connections?.length ||
-      enhancedSpeaker.recent_news?.length
-    )
-  );
+  // Normalize the speaker data to ensure consistent field access
+  const normalizedSpeaker = normalizeSpeakerData(speaker);
+  
+  // Always use enhanced data if available, but fall back to basic speaker data
+  const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || normalizedSpeaker;
+  
+  // Use the utility functions to get display values
+  const displayTitle = getDisplayTitle(normalizedSpeaker, enhancedSpeaker);
+  const displayOrg = getDisplayOrganization(normalizedSpeaker, enhancedSpeaker);
+  
+  // Check if we have any basic information available
+  const hasBasicInfo = !!(displayTitle || displayOrg);
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
@@ -168,6 +148,7 @@ export default function ExpandableSpeakerCard({
         : 'hover:shadow-md hover:border-gray-300 dark:hover:border-gray-600'
       }
     `}>
+      <SpeakerDataDebugger speaker={speaker} label="ExpandableSpeakerCard Data" />
       {/* Right Earmark - Clickable Expansion Trigger */}
       <button
         onClick={handleToggleExpansion}
@@ -203,19 +184,19 @@ export default function ExpandableSpeakerCard({
               <div className={`font-medium text-slate-800 dark:text-slate-200 mb-1 flex flex-wrap items-baseline gap-2 ${
                 expanded ? 'text-lg' : 'text-base'
               }`}>
-                {(displaySpeaker.title || initialTitle) ? (
-                  <span>{displaySpeaker.title || initialTitle}</span>
+                {displayTitle ? (
+                  <span>{displayTitle}</span>
                 ) : (
                   <span className="italic text-slate-400 dark:text-slate-500">Title not provided yet</span>
                 )}
-                {(displaySpeaker.title || initialTitle) && (displaySpeaker.org || initialOrg) && (
+                {displayTitle && displayOrg && (
                   <span className="text-slate-400 dark:text-slate-500">·</span>
                 )}
-                {(displaySpeaker.org || initialOrg) ? (
+                {displayOrg ? (
                   <span className={`font-medium text-slate-700 dark:text-slate-300 ${
                     expanded ? 'text-base' : 'text-sm'
                   }`}>
-                    {displaySpeaker.org || initialOrg}
+                    {displayOrg}
                   </span>
                 ) : (
                   <span className={`font-medium text-slate-700 dark:text-slate-300 italic ${

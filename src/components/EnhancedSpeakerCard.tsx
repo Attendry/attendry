@@ -20,6 +20,9 @@
 "use client";
 import React, { useState } from "react";
 import { SpeakerData } from "@/lib/types/core";
+import { useSpeakerEnhancement } from "@/lib/hooks/useSpeakerEnhancement";
+import SpeakerDataDebugger from "./SpeakerDataDebugger";
+import { normalizeSpeakerData, getDisplayTitle, getDisplayOrganization } from "@/lib/utils/speaker-data-normalizer";
 
 /**
  * Enhanced speaker data structure interface
@@ -64,50 +67,21 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   
   const [expanded, setExpanded] = useState(false);  // Whether detailed sections are expanded
   const [busy, setBusy] = useState(false);          // Loading state for save operation
-  const [enhancedSpeaker, setEnhancedSpeaker] = useState<EnhancedSpeaker | null>(null); // Enhanced speaker data
-  const [enhancing, setEnhancing] = useState(false); // Loading state for enhancement
-  const [enhancementError, setEnhancementError] = useState<string | null>(null); // Enhancement error
-  const [cached, setCached] = useState(false);        // Whether data came from Supabase cache
+  
+  // Use the custom hook for speaker enhancement
+  const {
+    enhancedSpeaker,
+    enhancing,
+    enhancementError,
+    cached,
+    enhanceSpeaker,
+    hasEnhancedData
+  } = useSpeakerEnhancement(speaker);
 
   // ============================================================================
   // EVENT HANDLERS
   // ============================================================================
   
-  /**
-   * Enhance speaker data with additional professional information
-   * 
-   * This function calls the enhancement API to get additional speaker details
-   * like education, publications, career history, etc.
-   */
-  async function enhanceSpeaker() {
-    if (enhancing || enhancedSpeaker) return; // Already enhancing or enhanced
-    
-    setEnhancing(true);
-    setEnhancementError(null);
-    
-    try {
-      const res = await fetch("/api/speakers/enhance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ speaker }),
-      });
-      const j = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(j.error || "Enhancement failed");
-      }
-      
-      console.log('Enhanced speaker data received:', j.enhanced);
-      console.log('Industry connections:', j.enhanced?.industry_connections);
-      console.log('Recent news:', j.enhanced?.recent_news);
-      setEnhancedSpeaker(j.enhanced);
-      setCached(Boolean(j.cached));
-    } catch (e: unknown) {
-      setEnhancementError((e as Error)?.message || "Enhancement failed");
-    } finally {
-      setEnhancing(false);
-    }
-  }
 
   const handleToggleDetails = () => {
     const nextExpanded = !expanded;
@@ -116,7 +90,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
     if (nextExpanded && !enhancedSpeaker && !enhancing) {
       void enhanceSpeaker();
     } else if (!nextExpanded) {
-      setEnhancementError(null);
+      // Enhancement error is now managed by the hook
     }
   };
 
@@ -151,35 +125,18 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   // COMPUTED VALUES
   // ============================================================================
   
-  // Use enhanced speaker data if available, otherwise fall back to basic speaker data
-  const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || speaker;
-
-  const initialTitle = speaker?.title || (speaker as any)?.metadata?.title || (speaker as any)?.metadata?.job_title || null;
-  const initialOrg =
-    speaker?.org ||
-    (speaker as any)?.metadata?.org ||
-    (speaker as any)?.metadata?.organization ||
-    (speaker as any)?.metadata?.company ||
-    (speaker as any)?.metadata?.employer ||
-    (speaker as any)?.metadata?.employer_name ||
-    (speaker as any)?.metadata?.firm ||
-    (speaker as any)?.metadata?.law_firm ||
-    (speaker as any)?.metadata?.practice || null;
-
-  const baseHasCoreDetails = !!(speaker?.title || speaker?.org);
-
-  // Check if speaker has enhanced data
-  const hasEnhancedData = Boolean(
-    enhancedSpeaker && (
-      enhancedSpeaker.education?.length ||
-      enhancedSpeaker.publications?.length ||
-      enhancedSpeaker.career_history?.length ||
-      enhancedSpeaker.expertise_areas?.length ||
-      enhancedSpeaker.achievements?.length ||
-      enhancedSpeaker.industry_connections?.length ||
-      enhancedSpeaker.recent_news?.length
-    )
-  );
+  // Normalize the speaker data to ensure consistent field access
+  const normalizedSpeaker = normalizeSpeakerData(speaker);
+  
+  // Always use enhanced data if available, but fall back to basic speaker data
+  const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || normalizedSpeaker;
+  
+  // Use the utility functions to get display values
+  const displayTitle = getDisplayTitle(normalizedSpeaker, enhancedSpeaker);
+  const displayOrg = getDisplayOrganization(normalizedSpeaker, enhancedSpeaker);
+  
+  // Check if we have any basic information available
+  const hasBasicInfo = !!(displayTitle || displayOrg);
   
   // Determine confidence color based on data quality score
   const getConfidenceColor = (confidence: number) => {
@@ -190,6 +147,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
 
   return (
     <div className="rounded-xl border p-4 bg-white shadow-sm">
+      <SpeakerDataDebugger speaker={speaker} label="EnhancedSpeakerCard Data" />
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
           <div className="font-semibold text-xl text-slate-900 mb-2">{displaySpeaker.name}</div>
@@ -197,16 +155,16 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           {/* Prominent Job Title and Organization */}
           <div className="mb-3">
             <div className="text-lg font-medium text-slate-800 mb-1 flex flex-wrap items-baseline gap-2">
-              {(displaySpeaker.title || initialTitle) ? (
-                <span>{displaySpeaker.title || initialTitle}</span>
+              {displayTitle ? (
+                <span>{displayTitle}</span>
               ) : (
                 <span className="italic text-opacity-40">Title not provided yet</span>
               )}
-              {(displaySpeaker.title || initialTitle) && (displaySpeaker.org || initialOrg) && (
+              {displayTitle && displayOrg && (
                 <span className="text-slate-400">·</span>
               )}
-              {(displaySpeaker.org || initialOrg) ? (
-                <span className="text-base font-medium text-slate-700">{displaySpeaker.org || initialOrg}</span>
+              {displayOrg ? (
+                <span className="text-base font-medium text-slate-700">{displayOrg}</span>
               ) : (
                 <span className="text-base font-medium text-slate-700 italic text-opacity-40">Organization not provided yet</span>
               )}
@@ -270,7 +228,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
               <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
               Hide Details
             </>
-      ) : expanded ? "Hide Details" : hasEnhancedData || baseHasCoreDetails ? (cached ? "Show Saved Details" : "Show Details") : "Enhance & Show"
+      ) : expanded ? "Hide Details" : hasEnhancedData || hasBasicInfo ? (cached ? "Show Saved Details" : "Show Details") : "Enhance & Show"
           }
         </button>
 
@@ -296,7 +254,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
       {expanded && (
         <div className="mt-4 pt-4 border-t border-slate-200 space-y-4">
           {/* Show message if no enhanced data is available */}
-          {!hasEnhancedData && !enhancing && !baseHasCoreDetails && (
+          {!hasEnhancedData && !enhancing && !hasBasicInfo && (
             <div className="text-center py-4 text-slate-500">
               <p className="text-sm">Click "Enhance & Show" to load detailed professional information</p>
             </div>
