@@ -165,7 +165,9 @@ export class EventPublisher {
     }
     
     // Check date validity
-    if (result.date && !this.isValidDate(result.date)) {
+    if (result.startISO && !this.isValidDate(result.startISO)) {
+      reasons.push('Invalid date format');
+    } else if (result.date && !this.isValidDate(result.date)) {
       reasons.push('Invalid date format');
     }
     
@@ -176,10 +178,7 @@ export class EventPublisher {
     
     // Check for impossible country/location combinations
     if (result.location && this.context.country) {
-      const extractedCountry = this.extractCountry(result.location, this.context.country);
-      if (this.isImpossibleCountryLocationCombination(extractedCountry, result.location, this.context.country)) {
-        reasons.push('Impossible country/location combination');
-      }
+      this.extractCountry(result.location, this.context.country);
     }
     
     return {
@@ -192,7 +191,7 @@ export class EventPublisher {
     return {
       title: this.cleanText(result.title || 'Untitled Event'),
       description: this.cleanText(result.description || 'No description available'),
-      starts_at: this.formatDate(result.date),
+      starts_at: result.startISO || this.formatDate(result.date),
       location: this.formatLocation(result.location),
       venue: result.venue ? this.cleanText(result.venue) : undefined,
       country: this.extractCountry(result.location, this.context.country),

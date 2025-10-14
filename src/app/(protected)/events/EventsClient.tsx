@@ -57,10 +57,10 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
   const [range, setRange] = useState<"next" | "past">("next");
   const [days, setDays] = useState<7 | 14 | 30>(7);
   const [advanced, setAdvanced] = useState(false);
+
   const [from, setFrom] = useState<string>(todayISO());
   const [to, setTo] = useState<string>(todayISO(addDays(new Date(), 7)));
   const [keywords, setKeywords] = useState<string>("");
-  const [useAdvancedSearch, setUseAdvancedSearch] = useState(false);
 
   const [events, setEvents] = useState<EventRec[]>([]);
   const [loading, setLoading] = useState(false);
@@ -284,28 +284,6 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
               </div>
             </div>
 
-            {/* Advanced Search Toggle */}
-            <div className="flex items-center justify-between mb-4">
-              <button
-                type="button"
-                onClick={() => setAdvanced(!advanced)}
-                className="flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200"
-              >
-                <svg 
-                  className={`w-4 h-4 transition-transform duration-200 ${advanced ? 'rotate-180' : ''}`} 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-                {advanced ? 'Hide Advanced Options' : 'Advanced Search Options'}
-              </button>
-              {advanced && (
-                <span className="text-sm text-slate-500">Customize your search</span>
-              )}
-            </div>
-
             {/* Advanced Search Section - Collapsible */}
             <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
               advanced ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
@@ -332,38 +310,15 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
                   </div>
                 </div>
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-slate-700">Search</label>
-                    <button
-                      type="button"
-                      onClick={() => setUseAdvancedSearch(!useAdvancedSearch)}
-                      className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
-                    >
-                      {useAdvancedSearch ? 'Use Simple Search' : 'Use Advanced Search'}
-                    </button>
-                  </div>
-                  
-                  {useAdvancedSearch ? (
-                    <AdvancedSearch
-                      onSearch={handleAdvancedSearch}
-                      onSuggestionSelect={handleSuggestionSelect}
-                      initialQuery={keywords}
-                      placeholder="Search for events with advanced filters..."
-                      className="mb-4"
-                    />
-                  ) : (
-                    <input 
-                      type="text" 
-                      value={keywords} 
-                      onChange={(e) => setKeywords(e.target.value)} 
-                      placeholder="e.g. compliance, ediscovery, forensics, legal tech"
-                      className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  )}
-                  
-                  {!useAdvancedSearch && (
-                    <p className="text-sm text-slate-500 mt-2">Separate multiple keywords with commas for more targeted results</p>
-                  )}
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Search</label>
+                  <input 
+                    type="text" 
+                    value={keywords} 
+                    onChange={(e) => setKeywords(e.target.value)} 
+                    placeholder="e.g. compliance, ediscovery, forensics, legal tech"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="text-sm text-slate-500 mt-2">Separate multiple keywords with commas for more targeted results</p>
                 </div>
               </div>
             </div>

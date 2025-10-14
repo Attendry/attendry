@@ -12,9 +12,16 @@ const LOCATION_ALIASES: Record<string, { city: string; country: string }> = {
   stuttgart: { city: 'Stuttgart', country: 'DE' },
   brussels: { city: 'Brussels', country: 'BE' },
   luxembourg: { city: 'Luxembourg', country: 'LU' },
+  "luxembourg city": { city: 'Luxembourg', country: 'LU' },
+  interlaken: { city: 'Interlaken', country: 'CH' },
+  "brussels marriott hotel grand place": { city: 'Brussels', country: 'BE' },
   paris: { city: 'Paris', country: 'FR' },
   amsterdam: { city: 'Amsterdam', country: 'NL' },
   vienna: { city: 'Vienna', country: 'AT' },
+  lisbon: { city: 'Lisbon', country: 'PT' },
+  porto: { city: 'Porto', country: 'PT' },
+  brusselsairport: { city: 'Brussels', country: 'BE' },
+  zurich: { city: 'Zurich', country: 'CH' },
 };
 
 const CITY_PATTERN = new RegExp(`\\b(${Object.keys(LOCATION_ALIASES).join('|')})\\b`, 'i');

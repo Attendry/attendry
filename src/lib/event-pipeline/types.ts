@@ -77,6 +77,9 @@ export interface ParseResult {
   title?: string;
   description?: string;
   date?: string;
+  startISO?: string | null;
+  endISO?: string | null;
+  dateConfidence?: 'high' | 'low';
   location?: string;
   venue?: string;
   speakers?: string[] | SpeakerInfo[];  // Support both formats

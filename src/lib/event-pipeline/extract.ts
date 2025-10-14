@@ -5,6 +5,7 @@
  */
 
 import { EventCandidate, ParseResult, ExtractResult, Evidence, SpeakerInfo } from './types';
+import { parseEventDate } from '@/search/date';
 import { logger } from '@/utils/logger';
 
 export class EventExtractor {
@@ -26,6 +27,11 @@ export class EventExtractor {
       
       // Enhance with LLM
       const enhancedResult = await this.enhanceWithLLM(parseResult, candidate.url);
+
+      const parsedDates = parseEventDate(enhancedResult.date || candidate.parseResult?.date);
+      enhancedResult.startISO = parsedDates.startISO;
+      enhancedResult.endISO = parsedDates.endISO;
+      enhancedResult.dateConfidence = parsedDates.confidence;
       
       // Validate schema
       const validationResult = this.validateSchema(enhancedResult);
@@ -295,12 +301,13 @@ export class EventExtractor {
     }
     
     // Date validation
-    if (result.date) {
+    const dateValue = result.startISO || result.date;
+    if (dateValue) {
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(result.date)) {
+      if (!dateRegex.test(dateValue)) {
         errors.push('Date must be in YYYY-MM-DD format');
       } else {
-        const date = new Date(result.date);
+        const date = new Date(dateValue);
         if (isNaN(date.getTime())) {
           errors.push('Date is not a valid date');
         }
