@@ -146,10 +146,19 @@ export function getDisplayOrganization(speaker: SpeakerData, enhancedSpeaker?: a
 
 /**
  * Create a unique key for speaker caching
+ * Includes multiple identifying fields to ensure uniqueness
  */
 export function createSpeakerKey(speaker: SpeakerData): string {
   const name = speaker.name?.toLowerCase().trim() || '';
   const org = speaker.org?.toLowerCase().trim() || '';
   const title = speaker.title?.toLowerCase().trim() || '';
-  return `${name}|${org}|${title}`;
+  const profileUrl = speaker.profile_url?.toLowerCase().trim() || '';
+  const sourceUrl = speaker.source_url?.toLowerCase().trim() || '';
+  const session = speaker.session?.toLowerCase().trim() || '';
+  const speechTitle = speaker.speech_title?.toLowerCase().trim() || '';
+  
+  // Create a more unique key by including multiple identifying fields
+  // This prevents different speakers from sharing the same cache entry
+  const keyParts = [name, org, title, profileUrl, sourceUrl, session, speechTitle].filter(Boolean);
+  return keyParts.join('|');
 }

@@ -23,6 +23,7 @@ import { SpeakerData } from "@/lib/types/core";
 import { useSpeakerEnhancement } from "@/lib/hooks/useSpeakerEnhancement";
 import SpeakerDataDebugger from "./SpeakerDataDebugger";
 import { normalizeSpeakerData, getDisplayTitle, getDisplayOrganization } from "@/lib/utils/speaker-data-normalizer";
+import "@/lib/utils/speaker-cache-debug"; // Import debug utilities
 
 /**
  * Enhanced speaker data structure interface

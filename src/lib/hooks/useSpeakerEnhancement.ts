@@ -50,6 +50,15 @@ function generateSpeakerKey(speaker: SpeakerData): string {
 export function useSpeakerEnhancement(speaker: SpeakerData): UseSpeakerEnhancementResult {
   const speakerKey = generateSpeakerKey(speaker);
   
+  // Debug logging to help identify cache key issues
+  if (process.env.NODE_ENV === 'development') {
+    console.log('useSpeakerEnhancement:', {
+      speakerName: speaker.name,
+      speakerKey,
+      cachedData: globalSpeakerCache.get(speakerKey)?.name
+    });
+  }
+  
   // Initialize state from global cache if available
   const [enhancedSpeaker, setEnhancedSpeaker] = useState<EnhancedSpeaker | null>(
     globalSpeakerCache.get(speakerKey) || null
@@ -106,6 +115,15 @@ export function useSpeakerEnhancement(speaker: SpeakerData): UseSpeakerEnhanceme
         cached: Boolean(j.cached)
       };
       
+      // Safety check: ensure the enhanced data is for the correct speaker
+      if (enhanced.name && enhanced.name !== speaker.name) {
+        console.warn('Enhanced data name mismatch:', {
+          expected: speaker.name,
+          received: enhanced.name,
+          speakerKey
+        });
+      }
+      
       setEnhancedSpeaker(enhanced);
       setCached(Boolean(j.cached));
       
@@ -153,6 +171,25 @@ export function getCachedEnhancedSpeaker(speaker: SpeakerData): EnhancedSpeaker 
  */
 export function clearAllEnhancedSpeakers(): void {
   globalSpeakerCache.clear();
+}
+
+/**
+ * Clear cached data for a specific speaker
+ */
+export function clearCachedSpeaker(speaker: SpeakerData): void {
+  const speakerKey = generateSpeakerKey(speaker);
+  globalSpeakerCache.delete(speakerKey);
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Cleared cache for speaker:', speaker.name, 'key:', speakerKey);
+  }
+}
+
+/**
+ * Check if a speaker has cached data
+ */
+export function hasCachedSpeaker(speaker: SpeakerData): boolean {
+  const speakerKey = generateSpeakerKey(speaker);
+  return globalSpeakerCache.has(speakerKey);
 }
 
 /**
