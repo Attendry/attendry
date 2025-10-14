@@ -50,6 +50,7 @@ export interface EventCandidate {
   priorityScore?: number;     // LLM prioritization score (0-1)
   parseResult?: ParseResult;  // Deterministic parsing result
   extractResult?: ExtractResult; // LLM-enhanced extraction result
+  relatedUrls?: string[];     // Related pages discovered for enrichment
   confidence?: number;        // Final confidence score
   status: PipelineStatus;     // Current pipeline status
   metadata: {

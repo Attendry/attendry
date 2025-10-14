@@ -7,6 +7,32 @@
 import { EventCandidate, ParseResult, ExtractResult, Evidence, SpeakerInfo } from './types';
 import { parseEventDate } from '@/search/date';
 import { logger } from '@/utils/logger';
+import * as cheerio from 'cheerio';
+
+const ENRICHMENT_LINK_KEYWORDS = [
+  'speaker',
+  'speakers',
+  'agenda',
+  'program',
+  'programme',
+  'schedule',
+  'sponsor',
+  'sponsors',
+  'partner',
+  'partners',
+  'exhibitor',
+  'exhibitors',
+  'practical-information',
+  'venue'
+];
+
+const RELATED_LINK_TIMEOUT_MS = 18_000;
+const RELATED_LINK_MAX = 3;
+const RELATED_LINK_HEADERS: Record<string, string> = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 AttendryBot/1.0',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.8'
+};
 
 export class EventExtractor {
   constructor(
@@ -24,9 +50,10 @@ export class EventExtractor {
       }
 
       const parseResult = candidate.parseResult;
+      const relatedLinks = await this.resolveRelatedLinks(candidate);
       
       // Enhance with LLM
-      const enhancedResult = await this.enhanceWithLLM(parseResult, candidate.url);
+      const enhancedResult = await this.enhanceWithLLM(parseResult, candidate.url, relatedLinks);
 
       const parsedDates = parseEventDate(enhancedResult.date || candidate.parseResult?.date);
       enhancedResult.startISO = parsedDates.startISO;
@@ -87,8 +114,8 @@ export class EventExtractor {
     }
   }
 
-  private async enhanceWithLLM(parseResult: ParseResult, url: string): Promise<ParseResult> {
-    const prompt = this.buildEnhancementPrompt(parseResult, url);
+  private async enhanceWithLLM(parseResult: ParseResult, url: string, relatedLinks: string[]): Promise<ParseResult> {
+    const prompt = this.buildEnhancementPrompt(parseResult, url, relatedLinks);
     
     try {
       const response = await this.geminiService.generateContent(prompt);
@@ -128,7 +155,7 @@ export class EventExtractor {
     }
   }
 
-  private buildEnhancementPrompt(parseResult: ParseResult, url: string): string {
+  private buildEnhancementPrompt(parseResult: ParseResult, url: string, relatedLinks: string[]): string {
     return `
       Enhance and validate this event data extracted from: ${url}
       
@@ -140,6 +167,9 @@ export class EventExtractor {
       - Venue: ${parseResult.venue || 'Not found'}
       - Speakers: ${parseResult.speakers?.join(', ') || 'Not found'}
       - Agenda: ${parseResult.agenda?.join(', ') || 'Not found'}
+      
+      Related pages to consult for additional context (speakers, agenda, sponsors):
+      ${relatedLinks.length ? relatedLinks.join('\\n') : 'None'}
       
       Please enhance this data by:
       1. Correcting any obvious errors or inconsistencies
@@ -193,6 +223,51 @@ export class EventExtractor {
       
       Only enhance fields that need improvement. Keep original values if they're already good.
     `;
+  }
+
+  private async resolveRelatedLinks(candidate: EventCandidate): Promise<string[]> {
+    const existing = Array.isArray(candidate.relatedUrls) ? candidate.relatedUrls : [];
+    if (existing.length >= RELATED_LINK_MAX) {
+      return existing.slice(0, RELATED_LINK_MAX);
+    }
+
+    const discovered = new Set<string>(existing.filter((value) => typeof value === 'string' && value.trim()));
+    const config = await loadActiveConfig().catch(() => null);
+
+    try {
+      const response = await fetch(candidate.url, { headers: RELATED_LINK_HEADERS });
+      if (!response.ok) {
+        return Array.from(discovered);
+      }
+      const html = await response.text();
+      const $ = cheerio.load(html);
+
+      $('a[href]').each((_, anchor) => {
+        if (discovered.size >= RELATED_LINK_MAX) {
+          return false;
+        }
+        const href = $(anchor).attr('href');
+        if (!href) return;
+
+        try {
+          const absolute = new URL(href, candidate.url);
+          if (!absolute.hostname || absolute.hostname !== new URL(candidate.url).hostname) {
+            return;
+          }
+
+          const path = absolute.pathname.toLowerCase();
+          if (ENRICHMENT_LINK_KEYWORDS.some((keyword) => path.includes(keyword))) {
+            discovered.add(absolute.toString());
+          }
+        } catch {
+          // ignore invalid URLs
+        }
+      });
+    } catch (error) {
+      logger.warn({ message: '[extract] Failed to resolve related links', url: candidate.url, error: error instanceof Error ? error.message : String(error) });
+    }
+
+    return Array.from(discovered).slice(0, RELATED_LINK_MAX);
   }
 
   private processSpeakerObjects(speakers: any[] | string[] | undefined): SpeakerInfo[] {

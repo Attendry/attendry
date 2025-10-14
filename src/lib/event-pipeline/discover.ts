@@ -105,6 +105,7 @@ export class EventDiscoverer {
         url: item.url,
         source: 'cse' as const,
         discoveredAt: new Date(),
+        relatedUrls: (Array.isArray(item.relatedUrls) ? item.relatedUrls : (item.metadata?.relatedUrls ?? [])).filter((value: unknown): value is string => typeof value === 'string'),
         status: 'discovered' as const,
         metadata: {
           originalQuery: query,
@@ -145,6 +146,7 @@ export class EventDiscoverer {
         url: item.url,
         source: 'firecrawl' as const,
         discoveredAt: new Date(),
+        relatedUrls: item.relatedUrls ?? [],
         status: 'discovered' as const,
         metadata: {
           originalQuery: query,
