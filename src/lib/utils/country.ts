@@ -6,6 +6,7 @@ export type CountryContext = {
   countryNames: string[];
   cities: string[];
   negativeSites: string[];
+  locationTokens: string[];
 };
 
 const COUNTRY_ALIAS_MAP: Record<string, string> = {
@@ -42,6 +43,7 @@ export const COUNTRY_CONFIG: Record<string, CountryContext> = {
     countryNames: ['France', 'FR', 'Republique francaise', 'Frankreich'],
     cities: ['Paris', 'Lyon', 'Marseille', 'Lille', 'Toulouse', 'Bordeaux', 'Nantes', 'Strasbourg', 'Nice', 'Rennes'],
     negativeSites: ['-reddit', '-jeuxvideo', '-forum', '-mumsnet'],
+    locationTokens: ['France', 'Français', 'French', 'Paris', 'Lyon', 'Marseille', 'Hexagone'],
   },
   DE: {
     iso2: 'DE',
@@ -51,6 +53,7 @@ export const COUNTRY_CONFIG: Record<string, CountryContext> = {
     countryNames: ['Germany', 'Deutschland', 'DE', 'Bundesrepublik'],
     cities: ['Berlin', 'München', 'Frankfurt', 'Hamburg', 'Köln', 'Stuttgart', 'Düsseldorf', 'Leipzig', 'Hannover', 'Nürnberg'],
     negativeSites: ['-reddit', '-Mumsnet', '-forum'],
+    locationTokens: ['Germany', 'Deutschland', 'German', 'Deutsch', 'Berlin', 'Frankfurt', 'Hamburg', 'München', 'Munich'],
   },
   NL: {
     iso2: 'NL',
@@ -60,6 +63,7 @@ export const COUNTRY_CONFIG: Record<string, CountryContext> = {
     countryNames: ['Netherlands', 'Nederland', 'NL', 'Holland'],
     cities: ['Amsterdam', 'Rotterdam', 'Utrecht', 'Eindhoven', 'Groningen', 'The Hague', 'Tilburg', 'Almere', 'Breda', 'Nijmegen'],
     negativeSites: ['-reddit', '-forum'],
+    locationTokens: ['Netherlands', 'Nederland', 'Dutch', 'Holland', 'Amsterdam', 'Rotterdam'],
   },
   GB: {
     iso2: 'GB',
@@ -69,6 +73,7 @@ export const COUNTRY_CONFIG: Record<string, CountryContext> = {
     countryNames: ['United Kingdom', 'UK', 'Great Britain', 'GB'],
     cities: ['London', 'Manchester', 'Birmingham', 'Glasgow', 'Edinburgh', 'Liverpool', 'Leeds', 'Bristol', 'Cardiff', 'Belfast'],
     negativeSites: ['-reddit', '-Mumsnet', '-forum'],
+    locationTokens: ['United Kingdom', 'Britain', 'British', 'England', 'London', 'Manchester', 'Scotland'],
   },
   ES: {
     iso2: 'ES',
@@ -78,6 +83,7 @@ export const COUNTRY_CONFIG: Record<string, CountryContext> = {
     countryNames: ['Spain', 'Espana', 'ES', 'Reino de Espana'],
     cities: ['Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Bilbao', 'Zaragoza', 'Malaga', 'Murcia', 'Granada', 'Valladolid'],
     negativeSites: ['-reddit', '-foros', '-foro', '-burbuja'],
+    locationTokens: ['Spain', 'España', 'Spanish', 'Madrid', 'Barcelona', 'Castilla'],
   },
   IT: {
     iso2: 'IT',
@@ -87,6 +93,7 @@ export const COUNTRY_CONFIG: Record<string, CountryContext> = {
     countryNames: ['Italy', 'Italia', 'IT', 'Repubblica Italiana'],
     cities: ['Roma', 'Milano', 'Torino', 'Napoli', 'Bologna', 'Firenze', 'Genova', 'Venezia', 'Verona', 'Palermo'],
     negativeSites: ['-reddit', '-forum'],
+    locationTokens: ['Italy', 'Italia', 'Italian', 'Rome', 'Milan', 'Milano', 'Turin'],
   },
 };
 

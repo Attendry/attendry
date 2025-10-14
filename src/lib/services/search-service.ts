@@ -67,16 +67,17 @@ export interface EventRec {
 // Unified cache service
 const cacheService = getCacheService();
 
-function getCacheKey(provider: string, q: string, country: string, from?: string, to?: string): string {
-  const cleanedQuery = q.trim().replace(/\s+/g, ' ');
-  return searchCacheKey({
-    provider: provider as 'firecrawl'|'cse',
-    query: cleanedQuery,
-    country,
-    from,
-    to
-  });
-}
+  function getCacheKey(provider: string, q: string, country: string, from?: string, to?: string, timeframe?: string | null): string {
+    const cleanedQuery = q.trim().replace(/\s+/g, ' ');
+    return searchCacheKey({
+      provider: provider as 'firecrawl'|'cse',
+      query: cleanedQuery,
+      country,
+      from,
+      to,
+      timeframe: timeframe ?? undefined
+    });
+  }
 
 async function getCachedResult<T>(key: string): Promise<T | null> {
   return await cacheService.get<T>(key, CACHE_CONFIGS.SEARCH_RESULTS);

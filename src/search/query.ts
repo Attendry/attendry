@@ -5,6 +5,11 @@ export type BuildQueryOpts = {
   userText?: string;
   maxLen?: number;
   countryContext?: CountryContext;
+  timeframeContext?: {
+    dateFrom: string | null;
+    dateTo: string | null;
+    tokens: string[];
+  } | null;
 };
 
 export function buildSearchQuery(opts: BuildQueryOpts): string {
@@ -15,6 +20,7 @@ export function buildSearchQuery(opts: BuildQueryOpts): string {
   const ut = (opts.userText ?? '').trim();
   const maxLen = opts.maxLen;
   const ctx = opts.countryContext;
+  const timeframe = opts.timeframeContext;
   
   let result: string;
   if (ut) {
@@ -26,10 +32,12 @@ export function buildSearchQuery(opts: BuildQueryOpts): string {
   if (ctx) {
     const countries = ctx.countryNames.map((name) => name.trim()).filter(Boolean);
     const cities = ctx.cities.map((city) => city.trim()).filter(Boolean);
+    const locationHints = ctx.locationTokens.map((token) => token.trim()).filter(Boolean);
     const negatives = ctx.negativeSites.join(' ');
     const countryTokens = countries.length ? `(${countries.join(' OR ')})` : '';
     const cityTokens = cities.length ? `(${cities.join(' OR ')})` : '';
-    const locationBias = [countryTokens, cityTokens].filter(Boolean).join(' ');
+    const locationHintTokens = locationHints.length ? `(${locationHints.join(' OR ')})` : '';
+    const locationBias = [countryTokens, cityTokens, locationHintTokens].filter(Boolean).join(' ');
     const biasParts = [
       `(${result})`,
       negatives,
@@ -37,6 +45,14 @@ export function buildSearchQuery(opts: BuildQueryOpts): string {
       `(site:${ctx.tld} OR ${ctx.inPhrase})`,
     ].filter((part) => Boolean(part && part.trim()));
     result = biasParts.join(' ').trim();
+  }
+
+  if (timeframe?.tokens?.length) {
+    const tokens = timeframe.tokens.map((token) => token.trim()).filter(Boolean);
+    if (tokens.length) {
+      const timeframeSegment = `(${tokens.join(' OR ')})`;
+      result = [`(${result})`, timeframeSegment].join(' ').trim();
+    }
   }
   
   if (maxLen && result.length > maxLen) {
