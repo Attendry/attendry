@@ -153,6 +153,15 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     // History is cleared in the SearchHistory component
   }, []);
 
+  const handleResetFilters = useCallback(() => {
+    setKeywords('');
+    setRange('next');
+    setDays(7);
+    setFrom(todayISO());
+    setTo(todayISO(addDays(new Date(), 7)));
+    setCountry('EU');
+  }, []);
+
   async function run(e?: React.FormEvent) {
     e?.preventDefault();
     if (from > to) {
