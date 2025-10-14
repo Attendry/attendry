@@ -11,6 +11,7 @@ import { EventParser } from './parse';
 import { EventExtractor } from './extract';
 import { EventPublisher, PublishedEvent } from './publish';
 import { logger } from '@/utils/logger';
+import { metrics } from '@/search/metrics';
 import { evaluateLocation } from './location';
 
 export class EventPipeline {
@@ -40,6 +41,7 @@ export class EventPipeline {
     publishedEvents: PublishedEvent[];
     metrics: PipelineMetrics;
     logs: any[];
+    providersTried: string[];
   }> {
     const startTime = Date.now();
     const logs: any[] = [];
@@ -48,6 +50,7 @@ export class EventPipeline {
     const EARLY_TERMINATION_THRESHOLD = 8; // Stop when we have 8 high-quality events
     const MIN_CONFIDENCE_FOR_EARLY_TERMINATION = 0.8; // High confidence threshold
     
+    metrics.pipelineStageLatency.observe({ stage: 'pipeline_start' }, 0);
     logger.info({ message: '[pipeline] Starting event discovery pipeline',
       query: context.query,
       country: context.country,
@@ -60,13 +63,15 @@ export class EventPipeline {
     });
     
     try {
+      const providersTried: string[] = [];
       // Stage 1: Discover
       const discoveryStart = Date.now();
       logger.info('[pipeline] Stage 1: Discovering URLs');
-      
-      const candidates = await this.discoverer.discover(context.query, context.country, context);
+      const discoveryResult = await this.discoverer.discover(context.query, context.country, context);
+      const { candidates, providers } = discoveryResult;
+      providersTried.push(...providers);
       const discoveryDuration = Date.now() - discoveryStart;
-      
+      metrics.discoveryLatency.observe(discoveryDuration);
       logs.push({
         stage: 'discovery',
         duration: discoveryDuration,
@@ -85,7 +90,8 @@ export class EventPipeline {
           candidates: [],
           publishedEvents: [],
           metrics: this.createEmptyMetrics(),
-          logs
+          logs,
+          providersTried
         };
       }
       
@@ -99,6 +105,8 @@ export class EventPipeline {
       // Wait for prioritization to complete
       const prioritized = await prioritizationPromise;
       const prioritizationDuration = Date.now() - prioritizationStart;
+      metrics.pipelineStageLatency.observe({ stage: 'prioritization' }, prioritizationDuration);
+      metrics.pipelineStageOutputs.inc({ stage: 'prioritization' }, prioritized.length);
       
       logs.push({
         stage: 'prioritization',
@@ -122,7 +130,8 @@ export class EventPipeline {
           candidates: [],
           publishedEvents: [],
           metrics: this.createMetrics(candidates, [], [], [], []),
-          logs
+          logs,
+          providersTried
         };
       }
       
@@ -132,6 +141,8 @@ export class EventPipeline {
       
       const parsed = await this.parseCandidates(prioritized);
       const parsingDuration = Date.now() - parsingStart;
+      metrics.pipelineStageLatency.observe({ stage: 'parsing' }, parsingDuration);
+      metrics.pipelineStageOutputs.inc({ stage: 'parsing' }, parsed.length);
       
       logs.push({
         stage: 'parsing',
@@ -155,7 +166,8 @@ export class EventPipeline {
           candidates: [],
           publishedEvents: [],
           metrics: this.createMetrics(candidates, prioritized, parsed, [], []),
-          logs
+          logs,
+          providersTried
         };
       }
       
@@ -165,6 +177,8 @@ export class EventPipeline {
         
         const extracted = await this.extractCandidates(parsed, EARLY_TERMINATION_THRESHOLD, MIN_CONFIDENCE_FOR_EARLY_TERMINATION);
         const extractionDuration = Date.now() - extractionStart;
+        metrics.pipelineStageLatency.observe({ stage: 'extraction' }, extractionDuration);
+        metrics.pipelineStageOutputs.inc({ stage: 'extraction' }, extracted.length);
       
       logs.push({
         stage: 'extraction',
@@ -188,7 +202,8 @@ export class EventPipeline {
           candidates: extracted,
           publishedEvents: [],
           metrics: this.createMetrics(candidates, prioritized, parsed, extracted, []),
-          logs
+          logs,
+          providersTried
         };
       }
       
@@ -201,6 +216,8 @@ export class EventPipeline {
       
       const published = await this.publishCandidates(extracted);
       const publishingDuration = Date.now() - publishingStart;
+      metrics.pipelineStageLatency.observe({ stage: 'publishing' }, publishingDuration);
+      metrics.pipelineStageOutputs.inc({ stage: 'publishing' }, published.length);
       
       logs.push({
         stage: 'publishing',
@@ -219,20 +236,22 @@ export class EventPipeline {
       });
       
       const totalDuration = Date.now() - startTime;
-      const metrics = this.createMetrics(candidates, prioritized, parsed, extracted, published);
+      const pipelineMetrics = this.createMetrics(candidates, prioritized, parsed, extracted, published);
+      metrics.pipelineStageLatency.observe({ stage: 'pipeline_total' }, totalDuration);
       
       logger.info({ message: '[pipeline] Pipeline completed successfully',
         totalDuration,
         finalCandidates: published.length,
-        averageConfidence: metrics.averageConfidence,
-        sourceBreakdown: metrics.sourceBreakdown
+        averageConfidence: pipelineMetrics.averageConfidence,
+        sourceBreakdown: pipelineMetrics.sourceBreakdown
       });
       
       return {
         candidates: extracted,
         publishedEvents: published,
-        metrics,
-        logs
+        metrics: pipelineMetrics,
+        logs,
+        providersTried
       };
     } catch (error) {
       const totalDuration = Date.now() - startTime;

@@ -192,6 +192,14 @@ export interface PipelineMetrics {
   sourceBreakdown: Record<string, number>;
 }
 
+export interface PipelineResult {
+  candidates: EventCandidate[];
+  publishedEvents: PublishedEvent[];
+  metrics: PipelineMetrics;
+  logs: any[];
+  providersTried: string[];
+}
+
 // Error types for better error handling
 export class PipelineError extends Error {
   constructor(

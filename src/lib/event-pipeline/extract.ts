@@ -8,6 +8,7 @@ import { EventCandidate, ParseResult, ExtractResult, Evidence, SpeakerInfo } fro
 import { parseEventDate } from '@/search/date';
 import { logger } from '@/utils/logger';
 import * as cheerio from 'cheerio';
+import { metrics } from '@/search/metrics';
 
 const ENRICHMENT_LINK_KEYWORDS = [
   'speaker',
@@ -43,6 +44,7 @@ export class EventExtractor {
   async extract(candidate: EventCandidate): Promise<ExtractResult> {
     const startTime = Date.now();
     logger.info({ message: '[extract] Starting LLM enhancement', url: candidate.url });
+    metrics.pipelineStageLatency.observe({ stage: 'extraction_attempt' }, 0);
     
     try {
       if (!candidate.parseResult) {
@@ -75,6 +77,7 @@ export class EventExtractor {
         enhancementNotes: enhancedResult.enhancementNotes,
         confidence: finalConfidence
       };
+      metrics.pipelineStageLatency.observe({ stage: 'extraction_candidate' }, Date.now() - startTime);
       
       candidate.extractResult = extractResult;
       candidate.status = 'extracted';
@@ -96,6 +99,7 @@ export class EventExtractor {
         error: (error as any).message,
         duration
       });
+      metrics.pipelineStageFailures.inc({ stage: 'extraction' });
       
       // Return fallback result with original parse data
       const fallbackResult: ExtractResult = {
@@ -232,7 +236,6 @@ export class EventExtractor {
     }
 
     const discovered = new Set<string>(existing.filter((value) => typeof value === 'string' && value.trim()));
-    const config = await loadActiveConfig().catch(() => null);
 
     try {
       const response = await fetch(candidate.url, { headers: RELATED_LINK_HEADERS });
@@ -267,7 +270,9 @@ export class EventExtractor {
       logger.warn({ message: '[extract] Failed to resolve related links', url: candidate.url, error: error instanceof Error ? error.message : String(error) });
     }
 
-    return Array.from(discovered).slice(0, RELATED_LINK_MAX);
+    const links = Array.from(discovered).slice(0, RELATED_LINK_MAX);
+    metrics.pipelineStageOutputs.inc({ stage: 'related_links' }, links.length);
+    return links;
   }
 
   private processSpeakerObjects(speakers: any[] | string[] | undefined): SpeakerInfo[] {

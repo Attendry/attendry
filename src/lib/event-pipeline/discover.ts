@@ -6,6 +6,7 @@
 
 import { EventCandidate, EventPipelineConfig, DiscoveryService, DiscoveryError, PipelineContext } from './types';
 import { logger } from '@/utils/logger';
+import { metrics } from '@/search/metrics';
 
 export class EventDiscoverer {
   constructor(
@@ -15,40 +16,65 @@ export class EventDiscoverer {
     private curatedService?: DiscoveryService
   ) {}
 
-  async discover(query: string, country: string | null, context?: PipelineContext): Promise<EventCandidate[]> {
+  async discover(query: string, country: string | null, context?: PipelineContext): Promise<{ candidates: EventCandidate[]; providers: string[] }> {
     const startTime = Date.now();
     logger.info({ message: '[discover] Starting multi-source discovery', query, country, locale: context?.locale });
+    const providersUsed: string[] = [];
     
     const candidates: EventCandidate[] = [];
     
     try {
       // Parallel discovery from all enabled sources
-      const discoveryPromises: Promise<EventCandidate[]>[] = [];
+      const discoveryPromises: Promise<{ candidates: EventCandidate[]; provider: string }>[] = [];
       
       if (this.config.sources.cse) {
+        metrics.discoveryProvidersAttempt.inc({ provider: 'cse' });
         discoveryPromises.push(
-          this.discoverFromCSE(query, country, context).catch((error: any) => {
-            logger.error({ message: '[discover] CSE discovery failed', error: error.message });
-            return [];
-          })
+          this.discoverFromCSE(query, country, context)
+            .then((result) => {
+              metrics.discoveryProvidersSuccess.inc({ provider: 'cse' });
+              metrics.discoveryProvidersLatency.observe({ provider: 'cse' }, Date.now() - startTime);
+              return result;
+            })
+            .catch((error: any) => {
+              metrics.discoveryProvidersFailure.inc({ provider: 'cse' });
+              logger.error({ message: '[discover] CSE discovery failed', error: error.message });
+              return { candidates: [], provider: 'cse' };
+            })
         );
       }
       
       if (this.config.sources.firecrawl) {
+        metrics.discoveryProvidersAttempt.inc({ provider: 'firecrawl' });
         discoveryPromises.push(
-          this.discoverFromFirecrawl(query, country, context).catch((error: any) => {
-            logger.error({ message: '[discover] Firecrawl discovery failed', error: error.message });
-            return [];
-          })
+          this.discoverFromFirecrawl(query, country, context)
+            .then((result) => {
+              metrics.discoveryProvidersSuccess.inc({ provider: 'firecrawl' });
+              metrics.discoveryProvidersLatency.observe({ provider: 'firecrawl' }, Date.now() - startTime);
+              return result;
+            })
+            .catch((error: any) => {
+              metrics.discoveryProvidersFailure.inc({ provider: 'firecrawl' });
+              logger.error({ message: '[discover] Firecrawl discovery failed', error: error.message });
+              return { candidates: [], provider: 'firecrawl' };
+            })
         );
       }
       
       if (this.config.sources.curated && this.curatedService) {
+        metrics.discoveryProvidersAttempt.inc({ provider: 'curated' });
         discoveryPromises.push(
-          this.discoverFromCurated(query, country, context).catch((error: any) => {
-            logger.error({ message: '[discover] Curated discovery failed', error: error.message });
-            return [];
-          })
+          this.discoverFromCurated(query, country, context)
+            .then((result) => {
+              metrics.discoveryProvidersSuccess.inc({ provider: 'curated' });
+              metrics.discoveryProvidersLatency.observe({ provider: 'curated' }, Date.now() - startTime);
+              return result;
+            })
+            .catch((error: any) => {
+              metrics.discoveryProvidersFailure.inc({ provider: 'curated' });
+              logger.error({ message: '[discover] Curated discovery failed', error: error.message });
+              return { candidates: [], provider: 'curated' };
+            })
         );
       }
       
@@ -57,7 +83,13 @@ export class EventDiscoverer {
 
       // Flatten results from all sources
       results.forEach((result, index) => {
-        if (Array.isArray(result)) {
+        if (result && Array.isArray(result.candidates)) {
+          logger.info({ message: '[discover] Source result', sourceIndex: index, candidateCount: result.candidates.length });
+          candidates.push(...result.candidates);
+          if (result.provider) {
+            providersUsed.push(result.provider);
+          }
+        } else if (Array.isArray(result)) {
           logger.info({ message: '[discover] Source result', sourceIndex: index, candidateCount: result.length });
           candidates.push(...result);
         } else {
@@ -69,6 +101,7 @@ export class EventDiscoverer {
       const finalCandidates = this.deduplicateAndLimit(candidates);
       
       const duration = Date.now() - startTime;
+      metrics.discoveryLatency.observe(duration);
       logger.info({ message: '[discover] Discovery completed',
         totalCandidates: candidates.length,
         finalCandidates: finalCandidates.length,
@@ -80,7 +113,7 @@ export class EventDiscoverer {
         }
       });
       
-      return finalCandidates;
+      return { candidates: finalCandidates, providers: providersUsed };
     } catch (error) {
       const duration = Date.now() - startTime;
       logger.error({ message: '[discover] Discovery failed', error: (error as any).message, duration });
@@ -88,7 +121,7 @@ export class EventDiscoverer {
     }
   }
 
-  private async discoverFromCSE(query: string, country: string | null, context?: PipelineContext): Promise<EventCandidate[]> {
+  private async discoverFromCSE(query: string, country: string | null, context?: PipelineContext): Promise<{ candidates: EventCandidate[]; provider: string }> {
     const startTime = Date.now();
     logger.info({ message: '[discover:cse] Starting CSE discovery', query, country, locale: context?.locale });
     
@@ -122,14 +155,14 @@ export class EventDiscoverer {
         duration: Date.now() - startTime
       });
       
-      return candidates;
+      return { candidates, provider: 'cse' };
     } catch (error) {
       logger.error({ message: '[discover:cse] CSE discovery failed', error: (error as any).message });
       throw new DiscoveryError(`CSE discovery failed: ${(error as any).message}`, undefined, error as Error);
     }
   }
 
-  private async discoverFromFirecrawl(query: string, country: string | null, context?: PipelineContext): Promise<EventCandidate[]> {
+  private async discoverFromFirecrawl(query: string, country: string | null, context?: PipelineContext): Promise<{ candidates: EventCandidate[]; provider: string }> {
     const startTime = Date.now();
     logger.info({ message: '[discover:firecrawl] Starting Firecrawl discovery', query, country, locale: context?.locale });
     
@@ -163,17 +196,17 @@ export class EventDiscoverer {
         duration: Date.now() - startTime
       });
       
-      return candidates;
+      return { candidates, provider: 'firecrawl' };
     } catch (error) {
       logger.error({ message: '[discover:firecrawl] Firecrawl discovery failed', error: (error as any).message });
       throw new DiscoveryError(`Firecrawl discovery failed: ${(error as any).message}`, undefined, error as Error);
     }
   }
 
-  private async discoverFromCurated(query: string, country: string | null, context?: PipelineContext): Promise<EventCandidate[]> {
+  private async discoverFromCurated(query: string, country: string | null, context?: PipelineContext): Promise<{ candidates: EventCandidate[]; provider: string }> {
     if (!this.curatedService) {
       logger.warn({ message: '[discover:curated] Curated service not available' });
-      return [];
+      return { candidates: [], provider: 'curated' };
     }
     
     const startTime = Date.now();
@@ -208,7 +241,7 @@ export class EventDiscoverer {
         duration: Date.now() - startTime
       });
       
-      return candidates;
+      return { candidates, provider: 'curated' };
     } catch (error) {
       logger.error({ message: '[discover:curated] Curated discovery failed', error: (error as any).message });
       throw new DiscoveryError(`Curated discovery failed: ${(error as any).message}`, undefined, error as Error);

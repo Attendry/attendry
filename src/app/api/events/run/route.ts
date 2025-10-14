@@ -692,6 +692,9 @@ export async function POST(req: NextRequest) {
         locale
       });
       telemetry.query.final = res?.query ?? telemetry.query.final;
+      telemetry.adapters.firecrawl = res?.metrics?.firecrawl;
+      telemetry.adapters.cse = res?.metrics?.cse;
+      telemetry.adapters.curated = res?.metrics?.curated;
     } else {
       console.log('[api/events/run] Using enhanced orchestrator');
       res = await executeEnhancedSearch({ 
@@ -733,7 +736,8 @@ export async function POST(req: NextRequest) {
     // Finalize telemetry
     telemetry.results = {
       candidates: result.events?.length || 0,
-      published: result.events?.length || 0
+      published: result.events?.length || 0,
+      providersTried: result.providersTried ?? []
     };
     
     console.log('[api/events/run] Returning results:', {
