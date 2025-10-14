@@ -10,8 +10,12 @@ import { cseSearch } from './providers/cse';
 import { prefilter } from './url-filters';
 import { ensureCorrelation } from '@/lib/obs/corr';
 import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
+import { chunk } from '@/lib/utils/array';
 
 const MIN_URLS = 8;
+const MAX_CONCURRENT_FC = Number(process.env.FIRECRAWL_MAX_CONCURRENCY ?? 10);
+const FC_PAGE_SIZE = Number(process.env.FIRECRAWL_PAGE_SIZE ?? 15);
+const FC_MAX_PAGES = Number(process.env.FIRECRAWL_MAX_PAGES ?? 2);
 
 export async function runSearch(opts: {
   baseQuery: string;
@@ -41,15 +45,29 @@ export async function runSearch(opts: {
   };
 
   async function providerOnce(q: string) {
-    try { return await runFirecrawlSearch(q, fcParams); }
-    catch { return await cseSearch(q); }
+    try {
+      const results: string[] = [];
+      for (let page = 0; page < FC_MAX_PAGES; page += 1) {
+        const pageQuery = page === 0 ? q : `${q} page:${page + 1}`;
+        const batch = await runFirecrawlSearch(pageQuery, { ...fcParams, limit: FC_PAGE_SIZE });
+        results.push(...batch);
+        if (batch.length < FC_PAGE_SIZE) break;
+      }
+      return results;
+    } catch {
+      return await cseSearch(q);
+    }
   }
 
-  for (const [index, query] of tiers.entries()) {
-    assertClean(query);
-    const result = await providerOnce(query);
-    stageCounter(`tier:${index}`, [], result, [{ key: 'returned', count: result.length, samples: result.slice(0,3) }]);
-    urlsAll.push(...result);
+  const tierBatches = chunk(tiers.entries(), MAX_CONCURRENT_FC);
+  for (const batch of tierBatches) {
+    const promises = batch.map(async ([index, query]) => {
+      assertClean(query);
+      const result = await providerOnce(query);
+      stageCounter(`tier:${index}`, [], result, [{ key: 'returned', count: result.length, samples: result.slice(0, 3) }]);
+      urlsAll.push(...result);
+    });
+    await Promise.all(promises);
   }
 
   const duplicates = urlsAll.filter((url, idx, arr) => arr.indexOf(url) !== idx);
