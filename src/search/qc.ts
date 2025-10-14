@@ -8,7 +8,7 @@ import { metrics } from './metrics';
 export function evaluateLocation(doc: ParsedDoc, ctx: QcContext): QcResult {
   const requested = normaliseCountry(ctx.requestedCountry);
   const eventCountry = normaliseCountry(doc.country);
-  const venue = resolveVenueCountry(doc.venueText, doc.tld);
+  const venue = resolveVenueCountry(doc.venueText, doc.tld, doc.country);
 
   if (eventCountry && requested && eventCountry !== requested) {
     metrics.qcDropsGeo.inc();

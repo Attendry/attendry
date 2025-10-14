@@ -1,53 +1,77 @@
+import { getCountryContext } from '@/lib/utils/country';
+import { toISO2Country } from '@/lib/utils/country';
+
 export type VenueResolution = {
   city?: string;
   country?: string;
   confidence: 'high' | 'low';
 };
 
-const LOCATION_ALIASES: Record<string, { city: string; country: string }> = {
-  berlin: { city: 'Berlin', country: 'DE' },
-  munich: { city: 'Munich', country: 'DE' },
-  frankfurt: { city: 'Frankfurt', country: 'DE' },
-  hamburg: { city: 'Hamburg', country: 'DE' },
-  stuttgart: { city: 'Stuttgart', country: 'DE' },
-  brussels: { city: 'Brussels', country: 'BE' },
-  luxembourg: { city: 'Luxembourg', country: 'LU' },
-  "luxembourg city": { city: 'Luxembourg', country: 'LU' },
-  interlaken: { city: 'Interlaken', country: 'CH' },
-  "brussels marriott hotel grand place": { city: 'Brussels', country: 'BE' },
-  paris: { city: 'Paris', country: 'FR' },
-  amsterdam: { city: 'Amsterdam', country: 'NL' },
-  vienna: { city: 'Vienna', country: 'AT' },
-  lisbon: { city: 'Lisbon', country: 'PT' },
-  porto: { city: 'Porto', country: 'PT' },
-  brusselsairport: { city: 'Brussels', country: 'BE' },
-  zurich: { city: 'Zurich', country: 'CH' },
-};
-
-const CITY_PATTERN = new RegExp(`\\b(${Object.keys(LOCATION_ALIASES).join('|')})\\b`, 'i');
 const EU_PATTERN = /\b(europe|eu(?:ropean)?(?:\s+union)?)\b/i;
+const CITY_COUNTRY_PATTERN = /([A-Z][A-Za-z\s]+?),?\s+(Germany|France|Netherlands|Belgium|Switzerland|United Kingdom|Spain|Italy|Luxembourg|Portugal|Austria|Poland|Czech Republic|Hungary|Sweden|Norway|Finland|Denmark)/i;
+const JSON_CITY_PATTERN = /("addressLocality"\s*:\s*"([^"]+)")/i;
+const JSON_COUNTRY_PATTERN = /("addressCountry"\s*:\s*"([^"]+)")/i;
 
-export function resolveVenueCountry(text: string | null | undefined, tld?: string): VenueResolution {
+export function resolveVenueCountry(text: string | null | undefined, tld?: string, rawCountry?: string | null): VenueResolution {
   if (!text) return { confidence: 'low' };
-  const lower = text.toLowerCase();
 
-  const cityMatch = lower.match(CITY_PATTERN)?.[1];
-  if (cityMatch) {
-    const normalized = LOCATION_ALIASES[cityMatch.toLowerCase()];
-    return { ...normalized, confidence: 'high' };
+  const jsonCountry = extractJsonCountry(text);
+  if (jsonCountry) {
+    return { country: jsonCountry.country, city: jsonCountry.city, confidence: 'high' };
   }
 
-  if (EU_PATTERN.test(lower)) {
+  const contextualCountry = inferFromContext(rawCountry);
+  if (contextualCountry) {
+    return { country: contextualCountry, confidence: 'high' };
+  }
+
+  const cityCountry = extractCityCountry(text);
+  if (cityCountry) {
+    return cityCountry;
+  }
+
+  if (EU_PATTERN.test(text)) {
     return { country: 'EU', confidence: 'low' };
   }
 
-  if (tld) {
-    if (tld.endsWith('.de')) return { country: 'DE', confidence: 'low' };
-    if (tld.endsWith('.fr')) return { country: 'FR', confidence: 'low' };
-    if (tld.endsWith('.nl')) return { country: 'NL', confidence: 'low' };
-    if (tld.endsWith('.be')) return { country: 'BE', confidence: 'low' };
-    if (tld.endsWith('.eu')) return { country: 'EU', confidence: 'low' };
+  const tldCountry = inferFromTld(tld);
+  if (tldCountry) {
+    return { country: tldCountry, confidence: 'low' };
   }
 
   return { confidence: 'low' };
+}
+
+function extractJsonCountry(text: string): { city?: string; country: string } | null {
+  const countryMatch = text.match(JSON_COUNTRY_PATTERN);
+  if (countryMatch && countryMatch[2]) {
+    const iso = toISO2Country(countryMatch[2]);
+    const cityMatch = text.match(JSON_CITY_PATTERN);
+    return { country: iso ?? countryMatch[2], city: cityMatch?.[2] };
+  }
+  return null;
+}
+
+function extractCityCountry(text: string): VenueResolution | null {
+  const match = text.match(CITY_COUNTRY_PATTERN);
+  if (!match) return null;
+  const city = match[1]?.trim();
+  const countryIso = toISO2Country(match[2]) ?? match[2];
+  return { city, country: countryIso, confidence: 'high' };
+}
+
+function inferFromContext(rawCountry?: string | null): string | null {
+  if (!rawCountry) return null;
+  const context = getCountryContext(rawCountry);
+  return context.iso2;
+}
+
+function inferFromTld(tld?: string): string | undefined {
+  if (!tld) return undefined;
+  if (tld.endsWith('.de')) return 'DE';
+  if (tld.endsWith('.fr')) return 'FR';
+  if (tld.endsWith('.nl')) return 'NL';
+  if (tld.endsWith('.be')) return 'BE';
+  if (tld.endsWith('.eu')) return 'EU';
+  return undefined;
 }
