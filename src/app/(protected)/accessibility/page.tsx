@@ -10,7 +10,13 @@ import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import AccessibilityEnhancements from '@/components/AccessibilityEnhancements';
 
 export default async function AccessibilityPage() {
-  const { session } = await getServerSession();
+  let session: Awaited<ReturnType<typeof getServerSession>>['session'] = null;
+  try {
+    const result = await getServerSession();
+    session = result.session;
+  } catch (error) {
+    console.warn('AccessibilityPage: session lookup skipped', error instanceof Error ? error.message : error);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

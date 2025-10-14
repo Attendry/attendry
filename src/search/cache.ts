@@ -136,3 +136,22 @@ export class SearchCache {
     result: makeResultCacheKey,
   };
 }
+
+export type LegacySearchCacheKeyInput = {
+  provider: string;
+  query: string;
+  country?: string;
+  from?: string;
+  to?: string;
+};
+
+export function searchCacheKey(input: LegacySearchCacheKeyInput): string {
+  return makeCacheKey([
+    'legacy',
+    input.provider,
+    input.country ?? 'any',
+    input.query,
+    input.from ?? 'none',
+    input.to ?? 'none',
+  ]);
+}
