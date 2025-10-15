@@ -341,7 +341,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         </form>
         <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
           <span>Need to adjust your search profile?</span>
-          <Link href="/admin?tab=search" className="text-blue-600 hover:text-blue-500 font-medium">
+          <Link href="/admin" className="text-blue-600 hover:text-blue-500 font-medium">
             Go to settings →
           </Link>
         </div>
