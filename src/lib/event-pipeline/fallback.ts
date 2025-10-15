@@ -149,7 +149,7 @@ export class PipelineFallback {
           title: result?.title || 'Event',
           source_url: candidate.url,
           description: result?.description,
-          starts_at: result?.date,
+          starts_at: result?.startISO || result?.date || candidate.dateISO || null,
           location: result?.location,
           venue: result?.venue,
           speakers,
@@ -271,37 +271,19 @@ export class PipelineFallback {
       const dateFrom = context.dateFrom ? new Date(context.dateFrom) : new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
       const dateTo = context.dateTo ? new Date(context.dateTo) : new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
       
-      events = events.filter((event: any) => {
-        const eventDate = event.starts_at;
-        if (!eventDate) return true; // Keep events without dates
-        
-        const eventDateObj = new Date(eventDate);
-        if (isNaN(eventDateObj.getTime())) return true; // Keep events with invalid dates
-        
-        // More lenient date filtering - allow events within a reasonable range
+      events = events.filter((candidate: EventCandidate) => {
+        const sourceDate = candidate.extractResult?.startISO ?? candidate.parseResult?.startISO ?? candidate.dateISO ?? candidate.parseResult?.date;
+        if (!sourceDate) return true;
+        const eventDateObj = new Date(sourceDate);
+        if (Number.isNaN(eventDateObj.getTime())) return true;
+
         if (eventDateObj < dateFrom) {
-          // Only filter out events that are more than 6 months old
-          const sixMonthsAgo = new Date(today.getTime() - 6 * 30 * 24 * 60 * 60 * 1000);
-          if (eventDateObj < sixMonthsAgo) {
-            logger.info({ message: '[fallback] Filtering out event before date range', 
-              url: event.source_url, 
-              eventDate, 
-              dateFrom: context.dateFrom 
-            });
-            return false;
-          }
+          logger.info({ message: '[fallback] Filtering out event before date range', url: candidate.url, eventDate: sourceDate, dateFrom: context.dateFrom });
+          return false;
         }
         if (eventDateObj > dateTo) {
-          // Only filter out events that are more than 2 years in the future
-          const twoYearsFromNow = new Date(today.getTime() + 2 * 365 * 24 * 60 * 60 * 1000);
-          if (eventDateObj > twoYearsFromNow) {
-            logger.info({ message: '[fallback] Filtering out event after date range', 
-              url: event.source_url, 
-              eventDate, 
-              dateTo: context.dateTo 
-            });
-            return false;
-          }
+          logger.info({ message: '[fallback] Filtering out event after date range', url: candidate.url, eventDate: sourceDate, dateTo: context.dateTo });
+          return false;
         }
         return true;
       });

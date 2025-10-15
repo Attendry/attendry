@@ -6,6 +6,7 @@
  */
 
 import type { CountryContext } from '@/lib/utils/country';
+import type { ConfidenceLevel } from '@/search/types';
 
 // Core pipeline configuration
 export interface EventPipelineConfig {
@@ -53,6 +54,9 @@ export interface EventCandidate {
   relatedUrls?: string[];     // Related pages discovered for enrichment
   confidence?: number;        // Final confidence score
   status: PipelineStatus;     // Current pipeline status
+  dateISO?: string | null;
+  dateConfidence?: ConfidenceLevel;
+  candidateScore?: number;
   metadata: {
     originalQuery: string;    // Original search query
     country: string | null;   // Target country (null for pan-European searches)
@@ -63,6 +67,8 @@ export interface EventCandidate {
       parsing?: number;
       extraction?: number;
     };
+    geoReason?: string;
+    dateReason?: string;
   };
 }
 
@@ -167,7 +173,9 @@ export interface DiscoveryService {
     country: string | null;
     limit?: number;
     countryContext?: CountryContext | null;
-  }): Promise<{ items: Array<{ url: string; title?: string; description?: string }> }>;
+    from?: string;
+    to?: string;
+  }): Promise<{ items: Array<{ url: string; title?: string; description?: string; relatedUrls?: string[]; extractedData?: { eventDate?: string; confidence?: number } }> }>;
 }
 
 export interface PrioritizationService {

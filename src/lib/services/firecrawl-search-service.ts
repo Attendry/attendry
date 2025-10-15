@@ -1,6 +1,7 @@
 import { RetryService } from "./retry-service";
 import { buildSearchQuery } from '@/search/query';
 import type { CountryContext } from '@/lib/utils/country';
+import { parseEventDate } from '@/search/date';
 
 /**
  * Firecrawl Search Service
@@ -92,134 +93,141 @@ export class FirecrawlSearchService {
       throw new Error("FIRECRAWL_KEY not configured");
     }
 
-    try {
-      // Build the search query with event-specific terms
-      const searchQuery = this.buildSearchQueryInternal(query, industry, country, from, to);
-      
-      // Build search parameters according to Firecrawl v2 API docs
-      const searchParams = {
-        query: searchQuery,
-        limit: Math.min(maxResults, 20), // Reduce limit further to avoid timeouts
-        sources: ["web"], // Focus on web results for events
-        location: location || (countryContext?.countryNames?.[0]) || this.mapCountryToLocation(country),
-        country: countryContext?.iso2 || country?.toUpperCase() || undefined,
-        tbs: this.buildTimeBasedSearch(from, to),
-        ignoreInvalidURLs: true,
-        scrapeOptions: {
-          formats: ["markdown"],
-          onlyMainContent: false, // Disable to reduce processing time
-          waitFor: 500, // Reduce wait time
-          blockAds: false, // Disable to reduce processing time
-          removeBase64Images: false, // Disable to reduce processing time
-          location: {
-            country: countryContext?.iso2 || this.mapCountryCode(country),
-            languages: [countryContext?.locale || locale || this.getLanguageForCountry(country)]
-          }
+    const ships: Array<{ query: string; params: Record<string, unknown>; label: string }> = [];
+
+    const primaryQuery = this.buildShardQuery(query, industry, country, from, to);
+    const fallbackQuery = this.buildSearchQueryInternal(query, industry, country, from, to);
+
+    const baseParams = {
+      limit: Math.min(maxResults, 20),
+      sources: ["web"],
+      location: location || countryContext?.countryNames?.[0] || this.mapCountryToLocation(country),
+      country: countryContext?.iso2 || country?.toUpperCase() || undefined,
+      tbs: this.buildTimeBasedSearch(from, to),
+      ignoreInvalidURLs: true,
+      scrapeOptions: {
+        formats: ["markdown"],
+        onlyMainContent: false,
+        waitFor: 500,
+        blockAds: false,
+        removeBase64Images: false,
+        location: {
+          country: countryContext?.iso2 || this.mapCountryCode(country),
+          languages: [countryContext?.locale || locale || this.getLanguageForCountry(country)]
         }
-      };
-
-      console.log(JSON.stringify({ 
-        at: "firecrawl_call", 
-        query: searchQuery, 
-        params: searchParams 
-      }));
-
-      // Make the search request with retry logic
-      const response = await RetryService.fetchWithRetry(
-        "firecrawl",
-        "search",
-        this.FIRECRAWL_SEARCH_URL,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${firecrawlKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(searchParams),
-          signal: AbortSignal.timeout(this.SEARCH_TIMEOUT)
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Firecrawl Search API error: ${response.status} - ${errorText}`);
       }
+    };
 
-      const data = await response.json();
-      console.log(JSON.stringify({ 
-        at: "firecrawl_call_result", 
-        status: response.status, 
-        success: data.success,
-        webResults: data.data?.web?.length || 0 
-      }));
+    ships.push({ query: primaryQuery, params: baseParams, label: 'shard' });
+    if (fallbackQuery !== primaryQuery) {
+      ships.push({ query: fallbackQuery, params: baseParams, label: 'full' });
+    }
 
-      // Transform Firecrawl results to our standard format with relevance filtering
-      const items: SearchItem[] = [];
-      
-      if (data.success && data.data?.web) {
-        for (const result of data.data.web) {
-          // Filter out social media and other non-event domains
-          const url = result.url || "";
-          const hostname = new URL(url).hostname.toLowerCase();
-          const socialMediaDomains = [
-            "instagram.com", "www.instagram.com",
-            "facebook.com", "www.facebook.com", 
-            "twitter.com", "www.twitter.com", "x.com", "www.x.com",
-            "linkedin.com", "www.linkedin.com",
-            "youtube.com", "www.youtube.com",
-            "tiktok.com", "www.tiktok.com",
-            "reddit.com", "www.reddit.com"
-          ];
-          
-          if (socialMediaDomains.includes(hostname)) {
-            continue; // Skip social media results
+    let lastError: unknown;
+    for (const ship of ships) {
+      try {
+        const payload = { ...ship.params, query: ship.query };
+        console.log(JSON.stringify({ at: 'firecrawl_call', label: ship.label, query: ship.query, params: payload }));
+
+        const response = await RetryService.fetchWithRetry(
+          "firecrawl",
+          "search",
+          this.FIRECRAWL_SEARCH_URL,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${firecrawlKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(this.SEARCH_TIMEOUT)
           }
-          
-          // Filter for event-related content
-          const content = (result.title + " " + result.description + " " + (result.markdown || "")).toLowerCase();
-          const isEventRelated = this.isEventRelated(content);
-          
-          if (isEventRelated) {
-            const extractedDate = this.extractDateFromContent(result.markdown);
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Firecrawl Search API error: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log(JSON.stringify({ at: 'firecrawl_call_result', label: ship.label, status: response.status, success: data.success, webResults: data.data?.web?.length || 0 }));
+
+        const items: SearchItem[] = [];
+        if (data.success && data.data?.web) {
+          for (const result of data.data.web) {
+            const url = result.url || "";
+            const hostname = new URL(url).hostname.toLowerCase();
+            const socialMediaDomains = [
+              "instagram.com", "www.instagram.com",
+              "facebook.com", "www.facebook.com",
+              "twitter.com", "www.twitter.com", "x.com", "www.x.com",
+              "linkedin.com", "www.linkedin.com",
+              "youtube.com", "www.youtube.com",
+              "tiktok.com", "www.tiktok.com",
+              "reddit.com", "www.reddit.com"
+            ];
+
+            if (socialMediaDomains.includes(hostname)) {
+              continue;
+            }
+
+            const content = (result.title + " " + result.description + " " + (result.markdown || "")).toLowerCase();
+            const isEventRelated = this.isEventRelated(content);
+            if (!isEventRelated) continue;
+
+            const extractedDateRaw = this.extractDateFromContent(result.markdown);
+            const parsedDate = extractedDateRaw ? parseEventDate(extractedDateRaw) : { startISO: null, endISO: null, confidence: 'low' };
+            if (from || to) {
+              if (!this.isWithinRange(parsedDate.startISO, from, to)) {
+                continue;
+              }
+            }
+
             const extractedLocation = this.extractLocationFromContent(result.markdown);
             const extractedOrganizer = this.extractOrganizerFromContent(result.markdown);
-            
+
             items.push({
               title: result.title || "Event",
               link: result.url || "",
               snippet: result.description || result.markdown?.substring(0, 200) || "",
               extractedData: {
                 eventTitle: result.title,
-                eventDate: extractedDate || undefined,
+                eventDate: parsedDate.startISO ?? extractedDateRaw ?? undefined,
                 location: extractedLocation || undefined,
                 organizer: extractedOrganizer || undefined,
-                confidence: this.calculateRelevanceScore(content, extractedDate, extractedLocation)
+                confidence: this.calculateRelevanceScore(content, parsedDate.startISO, extractedLocation)
               }
             });
           }
         }
-      }
 
-      return {
-        provider: "firecrawl",
-        items: items.slice(0, maxResults),
-        cached: false,
-        searchMetadata: {
-          totalResults: items.length,
-          query: searchQuery
+        if (items.length) {
+          return {
+            provider: "firecrawl",
+            items: items.slice(0, maxResults),
+            cached: false,
+            searchMetadata: {
+              totalResults: items.length,
+              query: ship.query
+            }
+          };
         }
-      };
 
-    } catch (error) {
-      console.error('Firecrawl Search failed:', error);
-      
-      // If it's a timeout error, provide more specific information
-      if (error instanceof Error && (error.name === 'TimeoutError' || error.message.includes('timeout'))) {
-        console.warn('Firecrawl search timed out after 15 seconds - this is expected for complex queries');
+        lastError = new Error('firecrawl_empty_results');
+      } catch (error) {
+        lastError = error;
+        console.warn(JSON.stringify({ at: 'firecrawl_call_failure', label: ship.label, error: error instanceof Error ? error.message : String(error) }));
+        if (ship !== ships[ships.length - 1]) {
+          console.info(JSON.stringify({ at: 'firecrawl_call_retry', next: ships[ships.indexOf(ship) + 1]?.label }));
+        }
       }
-      
-      throw error;
     }
+
+    console.error('Firecrawl Search failed:', lastError);
+    if (lastError instanceof Error && (lastError.name === 'TimeoutError' || lastError.message.includes('timeout'))) {
+      console.warn('Firecrawl search timed out after 15 seconds - this is expected for complex queries');
+    }
+    throw lastError instanceof Error ? lastError : new Error('firecrawl_failed');
   }
 
   /**
@@ -234,133 +242,47 @@ export class FirecrawlSearchService {
   ): string {
     let searchQuery = query.trim();
     
-    // Simplify: Use basic terms instead of complex boolean logic
     if (!searchQuery || searchQuery.length < 5) {
       const industryTerms = this.getIndustryTerms(industry);
       searchQuery = `${industryTerms} conference`;
-    } else {
-      // For legal/compliance, use specific event terms instead of complex boolean logic
-      if (industry === 'legal-compliance') {
-        // Use specific legal/compliance event terms that work well with Firecrawl
-        searchQuery = 'legal compliance';
-      } else {
-        // Simplify complex queries to avoid Firecrawl timeouts
-        // Extract key terms from complex boolean queries
-        const keyTerms = searchQuery
-          .replace(/\([^)]*\)/g, '') // Remove parentheses
-          .replace(/\b(OR|AND)\b/gi, ' ') // Replace OR/AND with spaces
-          .replace(/["']/g, '') // Remove quotes
-          .replace(/-reddit\s*-[a-zA-Z]*/gi, '') // Remove exclusion terms
-          .replace(/\b(site:\.\w+|"in\s+\w+")\b/gi, '') // Remove site restrictions
-          .split(/\s+/)
-          .filter(term => term.length > 2 && !term.match(/^[-\s]+$/))
-          .slice(0, 4); // Take only first 4 terms to keep query simple
-        
-        if (keyTerms.length > 0) {
-          searchQuery = keyTerms.join(' ');
-        } else {
-          searchQuery = 'business conference event';
-        }
-      }
-      
-      searchQuery = searchQuery
-        .replace(/\s+/g, ' ') // Clean up multiple spaces
-        .trim();
-      
-      // For Germany, make the query more specific to avoid international results
-      if (country === 'de') {
-        // Use German-specific compliance and legal terms
-        const germanTerms = ['datenschutz', 'dsgvo', 'compliance', 'recht', 'legal', 'veranstaltung', 'kongress'];
-        const hasGermanTerms = germanTerms.some(term => searchQuery.toLowerCase().includes(term));
-        
-        if (!hasGermanTerms) {
-          // Replace generic terms with German equivalents
-          searchQuery = searchQuery
-            .replace(/\b(legal|compliance|investigation)\b/gi, 'compliance')
-            .replace(/\b(conference|event|summit)\b/gi, 'veranstaltung');
-          
-          // Add German context
-          searchQuery = `deutsche ${searchQuery} deutschland`;
-        }
-      }
-      
-      // Add event keywords if not present (English and German)
-      const hasEventKeywords = ['conference', 'event', 'summit', 'veranstaltung', 'kongress', 'konferenz'].some(keyword => 
-        searchQuery.toLowerCase().includes(keyword)
-      );
-      
-      if (!hasEventKeywords) {
-        // Add appropriate event keyword based on country
-        if (country === 'de') {
-          searchQuery += ' veranstaltung';
-        } else {
-          searchQuery += ' conference';
-        }
-      }
-      
-      // Add location specificity to reduce international results for all countries
-      const countryNames: Record<string, string[]> = {
-        de: ['germany', 'deutschland'],
-        fr: ['france', 'french'],
-        nl: ['netherlands', 'dutch', 'holland'],
-        gb: ['uk', 'united kingdom', 'britain', 'british'],
-        es: ['spain', 'spanish', 'españa'],
-        it: ['italy', 'italian', 'italia'],
-        se: ['sweden', 'swedish', 'sverige'],
-        pl: ['poland', 'polish', 'polska'],
-        be: ['belgium', 'belgian', 'belgique'],
-        ch: ['switzerland', 'swiss', 'schweiz']
-      };
-      
-      const names = countryNames[country] || [];
-      const hasCountryName = names.some(name => searchQuery.toLowerCase().includes(name));
-      
-      if (!hasCountryName && country !== '') {
-        // Add the primary country name to the search
-        const primaryName = names[0] || country;
-        searchQuery += ` ${primaryName}`;
-      }
-      
-      // For Germany, add more specific location terms to reduce global results
-      if (country === 'de') {
-        // Add German city names to make search more specific
-        const germanCities = ['berlin', 'munich', 'hamburg', 'cologne', 'frankfurt', 'stuttgart'];
-        const hasGermanCity = germanCities.some(city => searchQuery.toLowerCase().includes(city));
-        
-        if (!hasGermanCity) {
-          // Add a major German city to focus the search
-          searchQuery += ' berlin';
-        }
-        
-        // Add German-specific event terms to find local events
-        const germanEventTerms = ['deutschland', 'deutsche', 'german', 'veranstaltung', 'kongress', 'konferenz', 'workshop', 'panel', 'summit'];
-        const hasGermanEventTerm = germanEventTerms.some(term => searchQuery.toLowerCase().includes(term));
-        
-        if (!hasGermanEventTerm) {
-          // Add multiple German event types
-          searchQuery += ' (veranstaltung OR konferenz OR kongress OR workshop)';
-        }
-      }
     }
 
-    // Add current year instead of 2025
-    const currentYear = new Date().getFullYear();
-    searchQuery += ` ${currentYear}`;
-
-    // Add country-specific terms (simplified)
-    if (country) {
-      const countryTerms = this.getCountryTerms(country);
-      if (countryTerms) {
-        searchQuery += ` ${countryTerms.split(' ')[0]}`; // Just use first country term
-      }
-    }
-
-    // Use the centralized query builder instead
     const baseQuery = searchQuery || this.getIndustryTerms(industry);
-    return buildSearchQuery({ 
-      baseQuery,
-      userText: undefined
-    });
+    return buildSearchQuery({ baseQuery, userText: undefined });
+  }
+
+  private static buildShardQuery(
+    query: string,
+    industry: string,
+    country: string,
+    from?: string,
+    to?: string
+  ): string {
+    const normalized = query.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      return `${this.getIndustryTerms(industry)} conference ${country}`.trim();
+    }
+
+    const tokens = normalized
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/"/g, ' ')
+      .replace(/\b(?:OR|AND|NOT)\b/gi, ' ')
+      .replace(/site:[^\s]+/gi, ' ')
+      .split(/\s+/)
+      .filter((term) => term.length > 2)
+      .slice(0, 6);
+
+    if (!tokens.length) {
+      return `${this.getIndustryTerms(industry)} conference ${country}`.trim();
+    }
+
+    if (country) {
+      tokens.push(country);
+    }
+
+    const currentYear = new Date().getFullYear();
+    tokens.push(String(currentYear));
+    return tokens.join(' ');
   }
 
   /**
@@ -404,34 +326,40 @@ export class FirecrawlSearchService {
    */
   private static extractDateFromContent(markdown?: string): string | null {
     if (!markdown) return null;
-    
-    // Look for common date patterns (more comprehensive)
     const datePatterns = [
-      // MM/DD/YYYY or DD/MM/YYYY
-      /(\d{1,2}\/\d{1,2}\/\d{4})/g,
-      // YYYY-MM-DD
-      /(\d{4}-\d{2}-\d{2})/g,
-      // Full month names
-      /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/gi,
-      // Abbreviated month names
-      /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/gi,
-      // German month names
-      /(Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s+\d{1,2},?\s+\d{4}/gi,
-      // Event-specific date patterns
       /(?:Date|Datum|When|Wann):\s*([^\n]+)/i,
       /(?:Event Date|Veranstaltungsdatum):\s*([^\n]+)/i,
-      // Look for dates near event keywords
-      /(?:conference|event|summit|workshop).*?(\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})/gi
+      /(\d{4}-\d{2}-\d{2})/g,
+      /(\d{1,2}\/\d{1,2}\/\d{4})/g,
+      /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/gi,
+      /(Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s+\d{1,2},?\s+\d{4}/gi
     ];
-    
     for (const pattern of datePatterns) {
       const match = markdown.match(pattern);
       if (match) {
-        return match[0].trim();
+        return Array.isArray(match) ? match[0].trim() : null;
       }
     }
-    
     return null;
+  }
+
+  private static isWithinRange(startISO: string | null, from?: string, to?: string): boolean {
+    if (!startISO) return false;
+    const eventDate = new Date(startISO);
+    if (Number.isNaN(eventDate.getTime())) return false;
+    if (from) {
+      const fromDate = new Date(from);
+      if (!Number.isNaN(fromDate.getTime()) && eventDate < fromDate) {
+        return false;
+      }
+    }
+    if (to) {
+      const toDate = new Date(to);
+      if (!Number.isNaN(toDate.getTime()) && eventDate > toDate) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**

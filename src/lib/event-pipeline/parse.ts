@@ -6,6 +6,7 @@
 
 import { EventCandidate, ParseResult, Evidence, ParsingError } from './types';
 import { logger } from '@/utils/logger';
+import { parseEventDate } from '@/search/date';
 
 export class EventParser {
   constructor(private config: any) {}
@@ -26,7 +27,16 @@ export class EventParser {
       // Extract using deterministic rules
       result.title = this.extractTitle(html);
       result.description = this.extractDescription(html);
-      result.date = this.extractDate(html);
+      const rawDate = this.extractDate(html);
+      if (rawDate) {
+        const parsed = parseEventDate(rawDate);
+        result.date = rawDate;
+        result.startISO = parsed.startISO;
+        result.endISO = parsed.endISO;
+        result.dateConfidence = parsed.confidence;
+        candidate.dateISO = parsed.startISO ?? null;
+        candidate.dateConfidence = parsed.confidence;
+      }
       result.location = this.extractLocation(html);
       result.venue = this.extractVenue(html);
       result.speakers = this.extractSpeakers(html);

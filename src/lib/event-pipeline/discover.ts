@@ -7,6 +7,7 @@
 import { EventCandidate, EventPipelineConfig, DiscoveryService, DiscoveryError, PipelineContext } from './types';
 import { logger } from '@/utils/logger';
 import { metrics } from '@/search/metrics';
+import { getCountryContext, type CountryContext } from '@/lib/utils/country';
 
 export class EventDiscoverer {
   constructor(
@@ -167,29 +168,58 @@ export class EventDiscoverer {
     logger.info({ message: '[discover:firecrawl] Starting Firecrawl discovery', query, country, locale: context?.locale });
     
     try {
+      const countryContext = context?.countryContext ?? (country ? getCountryContext(country) : undefined);
+      const countryCode = (countryContext?.iso2 || country || '').toUpperCase();
       const results = await this.firecrawlService.search({ 
-        q: query, 
+        q: query,
         country,
         limit: Math.min(20, this.config.limits.maxCandidates),
-        countryContext: context?.countryContext ?? null,
+        countryContext,
+        geoBias: countryCode,
+        from: context?.dateFrom,
+        to: context?.dateTo,
       });
       
-      const candidates = results.items.map((item: any, index: number) => ({
-        id: `firecrawl_${Date.now()}_${index}`,
-        url: item.url,
-        source: 'firecrawl' as const,
-        discoveredAt: new Date(),
-        relatedUrls: item.relatedUrls ?? [],
-        status: 'discovered' as const,
-        metadata: {
-          originalQuery: query,
-          country,
-          processingTime: Date.now() - startTime,
-          stageTimings: {
-            discovery: Date.now() - startTime
+      const candidates = results.items
+        .map((item: any, index: number) => ({
+          id: `firecrawl_${Date.now()}_${index}`,
+          url: item.url,
+          source: 'firecrawl' as const,
+          discoveredAt: new Date(),
+          relatedUrls: item.relatedUrls ?? [],
+          status: 'discovered' as const,
+          dateISO: item.extractedData?.eventDate ?? null,
+          dateConfidence: item.extractedData?.confidence ?? undefined,
+          metadata: {
+            originalQuery: query,
+            country,
+            processingTime: Date.now() - startTime,
+            stageTimings: {
+              discovery: Date.now() - startTime
+            }
           }
-        }
-      }));
+        }))
+        .filter((candidate) => {
+          const hostname = candidate.url ? new URL(candidate.url).hostname : '';
+          if (countryCode && !hostname.toLowerCase().endsWith(`.${countryCode.toLowerCase()}`) && (candidate.metadata.country ?? '').toUpperCase() !== countryCode) {
+            candidate.metadata.geoReason = 'tld_mismatch';
+            return false;
+          }
+
+          if ((context?.dateFrom || context?.dateTo) && candidate.dateISO) {
+            const from = context.dateFrom ? new Date(context.dateFrom) : null;
+            const to = context.dateTo ? new Date(context.dateTo) : null;
+            const parsed = new Date(candidate.dateISO);
+            if (!Number.isNaN(parsed.getTime())) {
+              if ((from && parsed < from) || (to && parsed > to)) {
+                candidate.metadata.dateReason = 'out_of_window';
+                return false;
+              }
+            }
+          }
+
+          return true;
+        });
       
       logger.info({ message: '[discover:firecrawl] Firecrawl discovery completed',
         candidatesFound: candidates.length,

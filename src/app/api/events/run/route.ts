@@ -739,10 +739,10 @@ export async function POST(req: NextRequest) {
       published: result.events?.length || 0,
       providersTried: result.providersTried ?? []
     };
-    
     console.log('[api/events/run] Returning results:', {
       eventCount: result.events?.length || 0,
-      provider: result.provider
+      provider: result.provider,
+      providersTried: result.providersTried ?? []
     });
 
     // Log structured telemetry
