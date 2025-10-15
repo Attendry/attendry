@@ -10,6 +10,8 @@ import EventCard from "@/components/EventCard";
 import { deriveLocale, toISO2Country } from "@/lib/utils/country";
 import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
+import Link from "next/link";
+import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 
 type EventRec = {
   id?: string;
@@ -206,6 +208,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           />
         }
       >
+        <div className="mb-6">
+          <SetupStatusIndicator />
+        </div>
         <form onSubmit={run} className="space-y-4">
           {/* Search Input */}
           <div className="flex flex-col sm:flex-row gap-4">
@@ -334,6 +339,12 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             </div>
           </div>
         </form>
+        <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+          <span>Need to adjust your search profile?</span>
+          <Link href="/admin" className="text-blue-600 hover:text-blue-500 font-medium">
+            Go to settings →
+          </Link>
+        </div>
       </PageHeader>
 
       <ContentContainer>
