@@ -127,17 +127,6 @@ function buildShardQuery(original: string): string {
   const trimmed = original.trim();
   if (!trimmed) return SHARD_KEYWORDS[0];
 
-  // Remove complex boolean operators and site filters
-  const simplified = trimmed
-    .replace(/\([^)]*\)/g, ' ')
-    .replace(/site:[^\s]+/gi, ' ')
-    .replace(/"/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const countryMatch = simplified.match(/\b([A-Z]{2})\b/);
-  const countryCode = countryMatch ? countryMatch[1] : '';
-
   const keyword = SHARD_KEYWORDS[Math.floor(Math.random() * SHARD_KEYWORDS.length)];
-  return `${keyword} ${countryCode}`.trim();
+  return `${keyword}`;
 }

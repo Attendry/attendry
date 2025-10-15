@@ -101,7 +101,8 @@ export class FirecrawlSearchService {
         query: searchQuery,
         limit: Math.min(maxResults, 20), // Reduce limit further to avoid timeouts
         sources: ["web"], // Focus on web results for events
-        location: location || countryContext?.countryNames?.[0] || this.mapCountryToLocation(country),
+        location: location || (countryContext?.countryNames?.[0]) || this.mapCountryToLocation(country),
+        country: countryContext?.iso2 || country?.toUpperCase() || undefined,
         tbs: this.buildTimeBasedSearch(from, to),
         ignoreInvalidURLs: true,
         scrapeOptions: {
