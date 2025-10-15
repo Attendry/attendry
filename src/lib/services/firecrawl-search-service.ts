@@ -96,7 +96,8 @@ export class FirecrawlSearchService {
     const resolvedCountryContext = countryContext ?? (country ? getCountryContext(country) : undefined);
     const locationTokenSet = this.buildLocationTokenSet(resolvedCountryContext || null, country);
     const { tokens: positiveTokens, topicalTokens } = this.extractPositiveTokens(query, industry, locationTokenSet);
-    const matchTokens = (topicalTokens.length ? topicalTokens : positiveTokens).map((token) => token.toLowerCase());
+    const baseTokens = topicalTokens.length ? topicalTokens : positiveTokens;
+    const matchTokens = baseTokens.length ? baseTokens.map((token) => token.toLowerCase()) : [];
 
     const ships: Array<{ query: string; params: Record<string, unknown>; label: string }> = [];
 
@@ -180,7 +181,7 @@ export class FirecrawlSearchService {
             const isEventRelated = this.isEventRelated(content);
             if (!isEventRelated) continue;
 
-            const hasPositiveMatch = matchTokens.length === 0 ? true : matchTokens.some((token) => token.length > 2 && content.includes(token));
+            const hasPositiveMatch = !matchTokens.length || matchTokens.some((token) => token.length > 2 && content.includes(token));
             if (!hasPositiveMatch) {
               continue;
             }
@@ -320,9 +321,9 @@ export class FirecrawlSearchService {
     }
 
     const positiveSegments = normalized
-      .split(/-\s*/)
+      .split(/\s+-/)
       .map((segment) => segment.trim())
-      .filter((segment) => segment.length > 0);
+      .filter((segment) => segment.length > 0 && !segment.startsWith('-'));
 
     const tokens = new Set<string>();
     const topical = new Set<string>();
@@ -444,9 +445,9 @@ export class FirecrawlSearchService {
   }
 
   private static isWithinRange(startISO: string | null, from?: string, to?: string): boolean {
-    if (!startISO) return false;
+    if (!startISO) return true;
     const eventDate = new Date(startISO);
-    if (Number.isNaN(eventDate.getTime())) return false;
+    if (Number.isNaN(eventDate.getTime())) return true;
     if (from) {
       const fromDate = new Date(from);
       if (!Number.isNaN(fromDate.getTime()) && eventDate < fromDate) {
