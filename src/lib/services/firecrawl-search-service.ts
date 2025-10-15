@@ -187,7 +187,9 @@ export class FirecrawlSearchService {
               continue;
             }
 
-            const extractedDateRaw = this.extractDateFromContent(result.markdown);
+            const extractedDateRaw = this.extractDateFromContent(result.markdown)
+              ?? this.extractDateFromContent(result.title)
+              ?? this.extractDateFromContent(result.description);
             const parsedDate = extractedDateRaw ? parseEventDate(extractedDateRaw) : { startISO: null, endISO: null, confidence: 'low' };
             if (from || to) {
               if (!this.isWithinRange(parsedDate.startISO, from, to)) {
@@ -430,7 +432,7 @@ export class FirecrawlSearchService {
   /**
    * Extract date from markdown content
    */
-  private static extractDateFromContent(markdown?: string): string | null {
+  private static extractDateFromContent(markdown?: string | null): string | null {
     if (!markdown) return null;
     const datePatterns = [
       /(?:Date|Datum|When|Wann):\s*([^\n]+)/i,
