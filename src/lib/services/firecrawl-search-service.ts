@@ -1,6 +1,6 @@
 import { RetryService } from "./retry-service";
 import { buildSearchQuery } from '@/search/query';
-import type { CountryContext } from '@/lib/utils/country';
+import { getCountryContext, type CountryContext } from '@/lib/utils/country';
 import { parseEventDate } from '@/search/date';
 
 /**
@@ -93,16 +93,21 @@ export class FirecrawlSearchService {
       throw new Error("FIRECRAWL_KEY not configured");
     }
 
+    const resolvedCountryContext = countryContext ?? (country ? getCountryContext(country) : undefined);
+    const locationTokenSet = this.buildLocationTokenSet(resolvedCountryContext || null, country);
+    const { tokens: positiveTokens, topicalTokens } = this.extractPositiveTokens(query, industry, locationTokenSet);
+    const matchTokens = (topicalTokens.length ? topicalTokens : positiveTokens).map((token) => token.toLowerCase());
+
     const ships: Array<{ query: string; params: Record<string, unknown>; label: string }> = [];
 
-    const primaryQuery = this.buildShardQuery(query, industry, country, from, to);
+    const primaryQuery = this.buildShardQuery(positiveTokens, locationTokenSet, country, from, to);
     const fallbackQuery = this.buildSearchQueryInternal(query, industry, country, from, to);
 
     const baseParams = {
       limit: Math.min(maxResults, 20),
       sources: ["web"],
-      location: location || countryContext?.countryNames?.[0] || this.mapCountryToLocation(country),
-      country: countryContext?.iso2 || country?.toUpperCase() || undefined,
+      location: location || resolvedCountryContext?.countryNames?.[0] || this.mapCountryToLocation(country),
+      country: resolvedCountryContext?.iso2 || country?.toUpperCase() || undefined,
       tbs: this.buildTimeBasedSearch(from, to),
       ignoreInvalidURLs: true,
       scrapeOptions: {
@@ -112,8 +117,8 @@ export class FirecrawlSearchService {
         blockAds: false,
         removeBase64Images: false,
         location: {
-          country: countryContext?.iso2 || this.mapCountryCode(country),
-          languages: [countryContext?.locale || locale || this.getLanguageForCountry(country)]
+          country: resolvedCountryContext?.iso2 || this.mapCountryCode(country),
+          languages: [resolvedCountryContext?.locale || locale || this.getLanguageForCountry(country)]
         }
       }
     };
@@ -159,21 +164,26 @@ export class FirecrawlSearchService {
             const hostname = new URL(url).hostname.toLowerCase();
             const socialMediaDomains = [
               "instagram.com", "www.instagram.com",
-              "facebook.com", "www.facebook.com",
+              "facebook.com", "www.facebook.com", 
               "twitter.com", "www.twitter.com", "x.com", "www.x.com",
               "linkedin.com", "www.linkedin.com",
               "youtube.com", "www.youtube.com",
               "tiktok.com", "www.tiktok.com",
               "reddit.com", "www.reddit.com"
             ];
-
+            
             if (socialMediaDomains.includes(hostname)) {
               continue;
             }
-
+            
             const content = (result.title + " " + result.description + " " + (result.markdown || "")).toLowerCase();
             const isEventRelated = this.isEventRelated(content);
             if (!isEventRelated) continue;
+
+            const hasPositiveMatch = matchTokens.length === 0 ? true : matchTokens.some((token) => token.length > 2 && content.includes(token));
+            if (!hasPositiveMatch) {
+              continue;
+            }
 
             const extractedDateRaw = this.extractDateFromContent(result.markdown);
             const parsedDate = extractedDateRaw ? parseEventDate(extractedDateRaw) : { startISO: null, endISO: null, confidence: 'low' };
@@ -185,7 +195,7 @@ export class FirecrawlSearchService {
 
             const extractedLocation = this.extractLocationFromContent(result.markdown);
             const extractedOrganizer = this.extractOrganizerFromContent(result.markdown);
-
+            
             items.push({
               title: result.title || "Event",
               link: result.url || "",
@@ -252,37 +262,127 @@ export class FirecrawlSearchService {
   }
 
   private static buildShardQuery(
-    query: string,
-    industry: string,
+    tokens: string[],
+    locationTokens: Set<string>,
     country: string,
     from?: string,
     to?: string
   ): string {
-    const normalized = query.replace(/\s+/g, ' ').trim();
-    if (!normalized) {
-      return `${this.getIndustryTerms(industry)} conference ${country}`.trim();
+    const keywords: string[] = [];
+    const seen = new Set<string>();
+
+    for (const token of tokens) {
+      const formatted = this.formatTokenForQuery(token);
+      if (!formatted || seen.has(formatted)) continue;
+      keywords.push(formatted);
+      seen.add(formatted);
+      if (keywords.length >= 6) break;
     }
 
-    const tokens = normalized
-      .replace(/\([^)]*\)/g, ' ')
-      .replace(/"/g, ' ')
-      .replace(/\b(?:OR|AND|NOT)\b/gi, ' ')
-      .replace(/site:[^\s]+/gi, ' ')
-      .split(/\s+/)
-      .filter((term) => term.length > 2)
-      .slice(0, 6);
+    if (!keywords.some((word) => /(event|conference|summit|kongress|tagung)/i.test(word))) {
+      keywords.push('event');
+    }
 
-    if (!tokens.length) {
-      return `${this.getIndustryTerms(industry)} conference ${country}`.trim();
+    const locationKeywords = Array.from(locationTokens)
+      .filter((token) => token.length > 2)
+      .slice(0, 2)
+      .map((token) => this.formatTokenForQuery(token));
+
+    for (const loc of locationKeywords) {
+      if (loc && !seen.has(loc)) {
+        keywords.push(loc);
+        seen.add(loc);
+      }
+    }
+
+    const year = this.deriveYear(from, to);
+    if (year && !seen.has(year)) {
+      keywords.push(year);
+      seen.add(year);
     }
 
     if (country) {
-      tokens.push(country);
+      const countryToken = this.formatTokenForQuery(country);
+      if (countryToken && !seen.has(countryToken)) {
+        keywords.push(countryToken);
+        seen.add(countryToken);
+      }
     }
 
-    const currentYear = new Date().getFullYear();
-    tokens.push(String(currentYear));
-    return tokens.join(' ');
+    return keywords.join(' ');
+  }
+
+  private static extractPositiveTokens(query: string, industry: string, locationTokens: Set<string>): { tokens: string[]; topicalTokens: string[] } {
+    const normalized = query.replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+      const fallback = this.getIndustryTerms(industry).split(' ').filter(Boolean);
+      return { tokens: fallback, topicalTokens: fallback };
+    }
+
+    const positiveSegments = normalized
+      .split(/-\s*/)
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0);
+
+    const tokens = new Set<string>();
+    const topical = new Set<string>();
+
+    for (const segment of positiveSegments) {
+      const inner = segment.replace(/[()]/g, ' ');
+      for (const raw of inner.split(/\bOR\b|\bAND\b|\bNOT\b/i)) {
+        const token = raw.trim().replace(/"/g, ' ');
+        if (!token) continue;
+        const pieces = token.split(/\s+/).filter(Boolean);
+        for (const piece of pieces) {
+          const formatted = this.formatTokenForQuery(piece);
+          if (!formatted) continue;
+          tokens.add(formatted);
+          if (!locationTokens.has(formatted.toLowerCase())) {
+            topical.add(formatted);
+          }
+        }
+      }
+    }
+
+    if (!tokens.size) {
+      const fallback = this.getIndustryTerms(industry).split(' ').filter(Boolean);
+      fallback.forEach((word) => tokens.add(word));
+      fallback.forEach((word) => topical.add(word));
+    }
+
+    return { tokens: Array.from(tokens), topicalTokens: Array.from(topical) };
+  }
+
+  private static formatTokenForQuery(token: string): string | null {
+    const trimmed = token.trim();
+    if (!trimmed || trimmed.length < 2) return null;
+    if (/^[-]+$/.test(trimmed)) return null;
+    if (trimmed.startsWith('site:')) return null;
+    if (trimmed.startsWith('-')) return null;
+    return trimmed.toLowerCase();
+  }
+
+  private static buildLocationTokenSet(countryContext: CountryContext | null, country: string): Set<string> {
+    const tokens = new Set<string>();
+    if (countryContext) {
+      countryContext.countryNames.forEach((name) => tokens.add(name.toLowerCase()));
+      countryContext.cities.forEach((city) => tokens.add(city.toLowerCase()));
+      if (countryContext.locationTokens) {
+        countryContext.locationTokens.forEach((token) => tokens.add(token.toLowerCase()));
+      }
+    }
+    if (country) {
+      tokens.add(country.toLowerCase());
+    }
+    return tokens;
+  }
+
+  private static deriveYear(from?: string, to?: string): string | null {
+    const source = from ?? to;
+    if (!source) return String(new Date().getFullYear());
+    const parsed = new Date(source);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return String(parsed.getFullYear());
   }
 
   /**
