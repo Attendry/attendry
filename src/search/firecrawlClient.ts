@@ -48,7 +48,8 @@ export async function runFirecrawlSearch(
       logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: settings.timeoutMs });
 
     try {
-      const response = await firecrawlSearch(query, { signal: abortController.signal });
+      const requestQuery = attempt === 1 ? query : buildShardQuery(query);
+      const response = await firecrawlSearch(requestQuery, { signal: abortController.signal });
       clearTimeout(timeoutHandle);
       consecutiveFailures = 0;
       circuitOpenedAt = null;
@@ -56,7 +57,7 @@ export async function runFirecrawlSearch(
       metrics.firecrawlSuccessTotal.inc();
       metrics.firecrawlLatency.observe(Date.now() - attemptStart);
       if (attempt > 1) {
-        logSynthetic('firecrawl_retry_success', { attempt, query, correlationId });
+        logSynthetic('firecrawl_retry_success', { attempt, query, shardQuery: requestQuery, correlationId });
       }
       return response;
     } catch (error) {
@@ -113,4 +114,30 @@ export async function runFirecrawlSearch(
 export function resetFirecrawlCircuit(): void {
   consecutiveFailures = 0;
   circuitOpenedAt = null;
+}
+
+const SHARD_KEYWORDS = [
+  'legal compliance conference',
+  'regulatory conference',
+  'risk management event',
+  'data protection conference'
+];
+
+function buildShardQuery(original: string): string {
+  const trimmed = original.trim();
+  if (!trimmed) return SHARD_KEYWORDS[0];
+
+  // Remove complex boolean operators and site filters
+  const simplified = trimmed
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/site:[^\s]+/gi, ' ')
+    .replace(/"/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const countryMatch = simplified.match(/\b([A-Z]{2})\b/);
+  const countryCode = countryMatch ? countryMatch[1] : '';
+
+  const keyword = SHARD_KEYWORDS[Math.floor(Math.random() * SHARD_KEYWORDS.length)];
+  return `${keyword} ${countryCode}`.trim();
 }

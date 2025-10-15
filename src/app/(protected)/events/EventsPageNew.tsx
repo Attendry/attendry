@@ -121,16 +121,24 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
 
   // Advanced search handlers - matching existing architecture
 
-  const handleResetFilters = useCallback(() => {
-    setKeywords('');
-    setRange('next');
-    setDays(7);
+  const handleQuickRange = useCallback((newRange: "next" | "past", dayWindow: 7 | 14 | 30) => {
+    setRange(newRange);
+    setDays(dayWindow);
     const now = new Date();
-    setFrom(todayISO(now));
-    setTo(todayISO(addDays(now, 7)));
-    setCountry('EU');
+    if (newRange === "next") {
+      setFrom(todayISO(now));
+      setTo(todayISO(addDays(now, dayWindow)));
+    } else {
+      setFrom(todayISO(addDays(now, -dayWindow)));
+      setTo(todayISO(now));
+    }
   }, []);
 
+  const handleResetFilters = useCallback(() => {
+    setKeywords('');
+    handleQuickRange('next', 7);
+    setCountry('EU');
+  }, [handleQuickRange]);
   async function run(e?: React.FormEvent) {
     e?.preventDefault();
     if (from > to) {
@@ -198,7 +206,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           />
         }
       >
-        <div className="space-y-4">
+        <form onSubmit={run} className="space-y-4">
           {/* Search Input */}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
@@ -209,7 +217,6 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                   placeholder="Search events..."
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && run()}
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -259,7 +266,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setRange("next")}
+                    onClick={() => handleQuickRange('next', days)}
                     className={`px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
                       range === "next" 
                         ? "bg-blue-600 text-white shadow-sm" 
@@ -270,11 +277,11 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRange("past")}
+                    onClick={() => handleQuickRange('past', days)}
                     className={`px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
                       range === "past" 
                         ? "bg-blue-600 text-white shadow-sm" 
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover-bg-gray-600"
                     }`}
                   >
                     Past {days} days
@@ -283,39 +290,20 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                 
                 {/* Days Selection */}
                 <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setDays(7)}
-                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                      days === 7 
-                        ? "bg-green-600 text-white shadow-sm" 
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                    }`}
-                  >
-                    7 days
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDays(14)}
-                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                      days === 14 
-                        ? "bg-green-600 text-white shadow-sm" 
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                    }`}
-                  >
-                    14 days
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDays(30)}
-                    className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
-                      days === 30 
-                        ? "bg-green-600 text-white shadow-sm" 
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-                    }`}
-                  >
-                    30 days
-                  </button>
+                  {[7, 14, 30].map((window) => (
+                    <button
+                      key={window}
+                      type="button"
+                      onClick={() => handleQuickRange(range, window as 7 | 14 | 30)}
+                      className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+                        days === window
+                          ? "bg-green-600 text-white shadow-sm"
+                          : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      }`}
+                    >
+                      {window} days
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -345,7 +333,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
               </div>
             </div>
           </div>
-        </div>
+        </form>
       </PageHeader>
 
       <ContentContainer>
