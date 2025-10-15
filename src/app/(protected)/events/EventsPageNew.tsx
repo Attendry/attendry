@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
+import { useRouter } from "next/navigation";
 
 type EventRec = {
   id?: string;
@@ -76,6 +77,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [error, setError] = useState<string | null>(null);
   const [savedSet, setSavedSet] = useState<Set<string>>(initialSavedSet);
   const [debug, setDebug] = useState<any>(null);
+  const router = useRouter();
 
   // Keep dates in sync when advanced is OFF - matching existing logic
   useEffect(() => {
@@ -341,9 +343,13 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         </form>
         <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
           <span>Need to adjust your search profile?</span>
-          <Link href="/admin" className="text-blue-600 hover:text-blue-500 font-medium">
+          <button
+            type="button"
+            onClick={() => router.push('/admin')}
+            className="text-blue-600 hover:text-blue-500 font-medium"
+          >
             Go to settings →
-          </Link>
+          </button>
         </div>
       </PageHeader>
 
