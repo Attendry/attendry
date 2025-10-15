@@ -216,6 +216,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             </div>
             <div className="flex gap-2">
               <select
+                name="country"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
                 className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -226,7 +227,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                   </option>
                 ))}
               </select>
-              <Button
+              <button
                 type="submit"
                 disabled={loading}
                 className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors duration-200"
@@ -245,7 +246,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                     Search
                   </span>
                 )}
-              </Button>
+              </button>
             </div>
           </div>
 
