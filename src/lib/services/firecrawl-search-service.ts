@@ -96,13 +96,15 @@ export class FirecrawlSearchService {
     const resolvedCountryContext = countryContext ?? (country ? getCountryContext(country) : undefined);
     const targetCountry = (resolvedCountryContext?.iso2 || country || '').toUpperCase();
     const locationTokenSet = this.buildLocationTokenSet(resolvedCountryContext || null, country);
+    const timeframeTokens = this.buildTimeframeTokens(from, to);
     const { tokens: positiveTokens, topicalTokens } = this.extractPositiveTokens(query, industry, locationTokenSet);
     const baseTokens = topicalTokens.length ? topicalTokens : positiveTokens;
-    const matchTokens = baseTokens.length ? baseTokens.map((token) => token.toLowerCase()) : [];
+    const matchTokensSource = [...baseTokens, ...timeframeTokens];
+    const matchTokens = matchTokensSource.length ? matchTokensSource.map((token) => token.toLowerCase()) : [];
 
     const ships: Array<{ query: string; params: Record<string, unknown>; label: string }> = [];
 
-    const primaryQuery = this.buildShardQuery(positiveTokens, locationTokenSet, country, from, to);
+    const primaryQuery = this.buildShardQuery(positiveTokens, locationTokenSet, timeframeTokens, country, from, to);
     const fallbackQuery = this.buildSearchQueryInternal(query, industry, country, from, to);
 
     const baseParams = {
@@ -272,6 +274,7 @@ export class FirecrawlSearchService {
   private static buildShardQuery(
     tokens: string[],
     locationTokens: Set<string>,
+    timeframeTokens: string[],
     country: string,
     from?: string,
     to?: string
@@ -308,6 +311,14 @@ export class FirecrawlSearchService {
       keywords.push(year);
       seen.add(year);
     }
+
+    timeframeTokens.forEach((token) => {
+      const formatted = this.formatTokenForQuery(token);
+      if (formatted && !seen.has(formatted)) {
+        keywords.push(formatted);
+        seen.add(formatted);
+      }
+    });
 
     if (country) {
       const countryToken = this.formatTokenForQuery(country);
@@ -382,6 +393,28 @@ export class FirecrawlSearchService {
     if (country) {
       tokens.add(country.toLowerCase());
     }
+    return tokens;
+  }
+
+  private static buildTimeframeTokens(from?: string, to?: string): string[] {
+    const tokens: string[] = [];
+    if (from) {
+      const fromDate = new Date(from);
+      if (!Number.isNaN(fromDate.getTime())) {
+        tokens.push(`after ${fromDate.getFullYear()}`);
+        tokens.push(fromDate.getFullYear().toString());
+      }
+    }
+    if (to) {
+      const toDate = new Date(to);
+      if (!Number.isNaN(toDate.getTime())) {
+        tokens.push(`before ${toDate.getFullYear()}`);
+        if (!tokens.includes(toDate.getFullYear().toString())) {
+          tokens.push(toDate.getFullYear().toString());
+        }
+      }
+    }
+
     return tokens;
   }
 
