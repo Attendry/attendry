@@ -7,8 +7,8 @@ let consecutiveFailures = 0;
 let circuitOpenedAt: number | null = null;
 
 const DEFAULT_CONFIG: FirecrawlClientConfig = {
-  timeoutMs: Number(process.env.FIRECRAWL_TIMEOUT_MS ?? 25_000),
-  maxRetries: Number(process.env.FIRECRAWL_MAX_RETRIES ?? 3),
+  timeoutMs: Number(process.env.FIRECRAWL_TIMEOUT_MS ?? 12_000),
+  maxRetries: Number(process.env.FIRECRAWL_MAX_RETRIES ?? 2),
   openThreshold: Number(process.env.FIRECRAWL_CIRCUIT_OPEN_THRESHOLD ?? 5),
   halfOpenAfterMs: Number(process.env.FIRECRAWL_CIRCUIT_HALF_OPEN_AFTER_MS ?? 60_000),
 };
@@ -44,8 +44,8 @@ export async function runFirecrawlSearch(
     const timeoutHandle = setTimeout(() => abortController.abort(), settings.timeoutMs);
 
     const attemptStart = Date.now();
-    metrics.firecrawlAttemptsTotal.inc();
-    logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: settings.timeoutMs });
+      metrics.firecrawlAttemptsTotal.inc();
+      logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: settings.timeoutMs });
 
     try {
       const response = await firecrawlSearch(query, { signal: abortController.signal });
@@ -55,6 +55,9 @@ export async function runFirecrawlSearch(
 
       metrics.firecrawlSuccessTotal.inc();
       metrics.firecrawlLatency.observe(Date.now() - attemptStart);
+      if (attempt > 1) {
+        logSynthetic('firecrawl_retry_success', { attempt, query, correlationId });
+      }
       return response;
     } catch (error) {
       clearTimeout(timeoutHandle);
@@ -72,6 +75,7 @@ export async function runFirecrawlSearch(
         correlationId,
         error: (error as Error)?.message,
         timeout: isTimeout,
+        level: isTimeout ? 'info' : 'warn'
       });
 
       if (attempt >= settings.maxRetries) {

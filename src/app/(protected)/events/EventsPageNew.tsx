@@ -3,16 +3,13 @@
 import React, { useEffect, useMemo, useState, useCallback, memo } from "react";
 import { PageHeader, PageHeaderActions } from "@/components/Layout/PageHeader";
 import { ContentContainer } from "@/components/Layout/PageContainer";
-import { EmptyState, EmptyEvents } from "@/components/States/EmptyState";
-import { LoadingState, SkeletonList } from "@/components/States/LoadingState";
+import { EmptyEvents } from "@/components/States/EmptyState";
+import { SkeletonList } from "@/components/States/LoadingState";
 import { ErrorState } from "@/components/States/ErrorState";
 import EventCard from "@/components/EventCard";
-import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
-import AdvancedSearch from "@/components/AdvancedSearch";
-import SearchHistory from "@/components/SearchHistory";
 import { deriveLocale, toISO2Country } from "@/lib/utils/country";
 import { Button } from "@/components/ui/button";
-import { Calendar, Search, Filter, Download, ChevronDown, ChevronUp } from "lucide-react";
+import { Search } from "lucide-react";
 
 type EventRec = {
   id?: string;
@@ -68,11 +65,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [country, setCountry] = useState<string>("EU");
   const [range, setRange] = useState<"next" | "past">("next");
   const [days, setDays] = useState<7 | 14 | 30>(7);
-  const [advanced, setAdvanced] = useState(false);
   const [from, setFrom] = useState<string>(todayISO());
   const [to, setTo] = useState<string>(todayISO(addDays(new Date(), 7)));
   const [keywords, setKeywords] = useState<string>("");
-  const [useAdvancedSearch, setUseAdvancedSearch] = useState(false);
 
   const [events, setEvents] = useState<EventRec[]>([]);
   const [loading, setLoading] = useState(false);
@@ -82,17 +77,15 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
 
   // Keep dates in sync when advanced is OFF - matching existing logic
   useEffect(() => {
-    if (!advanced) {
-      const now = new Date();
-      if (range === "next") {
-        setFrom(todayISO(now));
-        setTo(todayISO(addDays(now, days)));
-      } else {
-        setFrom(todayISO(addDays(now, -days)));
-        setTo(todayISO(now));
-      }
+    const now = new Date();
+    if (range === "next") {
+      setFrom(todayISO(now));
+      setTo(todayISO(addDays(now, days)));
+    } else {
+      setFrom(todayISO(addDays(now, -days)));
+      setTo(todayISO(now));
     }
-  }, [range, days, advanced]);
+  }, [range, days]);
 
   const q = useMemo(() => keywords.trim(), [keywords]);
 
@@ -127,38 +120,14 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   ];
 
   // Advanced search handlers - matching existing architecture
-  const handleAdvancedSearch = useCallback((query: string, filters: any) => {
-    setKeywords(query);
-    if (filters.dateRange.from) setFrom(filters.dateRange.from);
-    if (filters.dateRange.to) setTo(filters.dateRange.to);
-    if (filters.location.length > 0) {
-      // Use first location as country for now
-      const location = filters.location[0];
-      const euCountry = EU.find(c => c.name.toLowerCase().includes(location.toLowerCase()));
-      if (euCountry) setCountry(euCountry.code);
-    }
-    run();
-  }, []);
-
-  const handleSuggestionSelect = useCallback((suggestion: any) => {
-    setKeywords(suggestion.text);
-  }, []);
-
-  const handleSearchHistorySelect = useCallback((query: string) => {
-    setKeywords(query);
-    run();
-  }, []);
-
-  const handleClearSearchHistory = useCallback(() => {
-    // History is cleared in the SearchHistory component
-  }, []);
 
   const handleResetFilters = useCallback(() => {
     setKeywords('');
     setRange('next');
     setDays(7);
-    setFrom(todayISO());
-    setTo(todayISO(addDays(new Date(), 7)));
+    const now = new Date();
+    setFrom(todayISO(now));
+    setTo(todayISO(addDays(now, 7)));
     setCountry('EU');
   }, []);
 
@@ -201,15 +170,6 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     }
   }
 
-  const handleExport = useCallback(() => {
-    // Export functionality
-    console.log("Exporting events...");
-  }, []);
-
-  const handleRefresh = useCallback(() => {
-    run();
-  }, []);
-
   const filteredEvents = useMemo(() => {
     return events; // Events are already filtered by the API
   }, [events]);
@@ -218,31 +178,25 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     { label: "Events" }
   ];
 
-  const actions = (
-    <PageHeaderActions
-      primary={{
-        label: "Search Events",
-        onClick: run,
-        loading: loading
-      }}
-      secondary={{
-        label: "Export",
-        onClick: handleExport
-      }}
-      tertiary={{
-        label: 'Clear Filters',
-        onClick: handleResetFilters
-      }}
-    />
-  );
-
   return (
     <>
       <PageHeader
         title="Events"
         subtitle="Discover and manage your event calendar"
         breadcrumbs={breadcrumbs}
-        actions={actions}
+        actions={
+          <PageHeaderActions
+            primary={{
+              label: "Search Events",
+              onClick: run,
+              loading
+            }}
+            tertiary={{
+              label: 'Clear Filters',
+              onClick: handleResetFilters
+            }}
+          />
+        }
       >
         <div className="space-y-4">
           {/* Search Input */}
@@ -272,8 +226,25 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                   </option>
                 ))}
               </select>
-              <Button variant="outline" onClick={handleRefresh} loading={loading}>
-                <Filter className="h-4 w-4" />
+              <Button
+                type="submit"
+                disabled={loading}
+                className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors duration-200"
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 0v4a8 8 0 108 8h-4l3.5 3.5L24 12h-4a8 8 0 00-8-8z"></path>
+                    </svg>
+                    Searching…
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <Search className="h-4 w-4" />
+                    Search
+                  </span>
+                )}
               </Button>
             </div>
           </div>
@@ -378,30 +349,6 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
 
       <ContentContainer>
         <div className="py-6">
-          {/* Setup Status */}
-          <div className="mb-6">
-            <SetupStatusIndicator />
-          </div>
-
-          {/* Advanced Search */}
-          <AdvancedSearch
-            onSearch={handleAdvancedSearch}
-            loading={loading}
-            error={error}
-            initialFilters={{
-              dateRange: { from, to },
-              location: country !== "EU" ? [EU.find(c => c.code === country)?.name || ""] : []
-            }}
-          />
-
-          {/* Search History */}
-          <div className="mb-6">
-            <SearchHistory 
-              onSearchSelect={handleSearchHistorySelect}
-              onClearHistory={handleClearSearchHistory}
-            />
-          </div>
-
           {/* Content */}
           {loading ? (
             <SkeletonList count={3} />
@@ -422,10 +369,6 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                   {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} found
                 </h2>
-                <Button variant="outline" size="sm" onClick={handleExport}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
               </div>
               
               <div className="grid gap-4">
