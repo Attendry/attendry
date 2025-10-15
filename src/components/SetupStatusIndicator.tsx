@@ -170,7 +170,7 @@ export function SetupStatusIndicator({ className = "" }: SetupStatusIndicatorPro
             )}
             {!status.searchConfig && (
               <Link 
-                href="/settings?tab=search"
+                href="/admin?tab=search"
                 className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200 transition-colors"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
