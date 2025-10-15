@@ -94,6 +94,7 @@ export class FirecrawlSearchService {
     }
 
     const resolvedCountryContext = countryContext ?? (country ? getCountryContext(country) : undefined);
+    const targetCountry = (resolvedCountryContext?.iso2 || country || '').toUpperCase();
     const locationTokenSet = this.buildLocationTokenSet(resolvedCountryContext || null, country);
     const { tokens: positiveTokens, topicalTokens } = this.extractPositiveTokens(query, industry, locationTokenSet);
     const baseTokens = topicalTokens.length ? topicalTokens : positiveTokens;
@@ -109,15 +110,15 @@ export class FirecrawlSearchService {
       sources: ["web"],
       location: location || resolvedCountryContext?.countryNames?.[0] || this.mapCountryToLocation(country),
       country: resolvedCountryContext?.iso2 || country?.toUpperCase() || undefined,
-      tbs: this.buildTimeBasedSearch(from, to),
-      ignoreInvalidURLs: true,
-      scrapeOptions: {
-        formats: ["markdown"],
+        tbs: this.buildTimeBasedSearch(from, to),
+        ignoreInvalidURLs: true,
+        scrapeOptions: {
+          formats: ["markdown"],
         onlyMainContent: false,
         waitFor: 500,
         blockAds: false,
         removeBase64Images: false,
-        location: {
+          location: {
           country: resolvedCountryContext?.iso2 || this.mapCountryCode(country),
           languages: [resolvedCountryContext?.locale || locale || this.getLanguageForCountry(country)]
         }
@@ -135,50 +136,50 @@ export class FirecrawlSearchService {
         const payload = { ...ship.params, query: ship.query };
         console.log(JSON.stringify({ at: 'firecrawl_call', label: ship.label, query: ship.query, params: payload }));
 
-        const response = await RetryService.fetchWithRetry(
-          "firecrawl",
-          "search",
-          this.FIRECRAWL_SEARCH_URL,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${firecrawlKey}`,
-              "Content-Type": "application/json"
-            },
+      const response = await RetryService.fetchWithRetry(
+        "firecrawl",
+        "search",
+        this.FIRECRAWL_SEARCH_URL,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${firecrawlKey}`,
+            "Content-Type": "application/json"
+          },
             body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(this.SEARCH_TIMEOUT)
-          }
-        );
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Firecrawl Search API error: ${response.status} - ${errorText}`);
+          signal: AbortSignal.timeout(this.SEARCH_TIMEOUT)
         }
+      );
 
-        const data = await response.json();
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Firecrawl Search API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
         console.log(JSON.stringify({ at: 'firecrawl_call_result', label: ship.label, status: response.status, success: data.success, webResults: data.data?.web?.length || 0 }));
 
-        const items: SearchItem[] = [];
-        if (data.success && data.data?.web) {
-          for (const result of data.data.web) {
-            const url = result.url || "";
-            const hostname = new URL(url).hostname.toLowerCase();
-            const socialMediaDomains = [
-              "instagram.com", "www.instagram.com",
-              "facebook.com", "www.facebook.com", 
-              "twitter.com", "www.twitter.com", "x.com", "www.x.com",
-              "linkedin.com", "www.linkedin.com",
-              "youtube.com", "www.youtube.com",
-              "tiktok.com", "www.tiktok.com",
-              "reddit.com", "www.reddit.com"
-            ];
-            
-            if (socialMediaDomains.includes(hostname)) {
+      const items: SearchItem[] = [];
+      if (data.success && data.data?.web) {
+        for (const result of data.data.web) {
+          const url = result.url || "";
+          const hostname = new URL(url).hostname.toLowerCase();
+          const socialMediaDomains = [
+            "instagram.com", "www.instagram.com",
+            "facebook.com", "www.facebook.com", 
+            "twitter.com", "www.twitter.com", "x.com", "www.x.com",
+            "linkedin.com", "www.linkedin.com",
+            "youtube.com", "www.youtube.com",
+            "tiktok.com", "www.tiktok.com",
+            "reddit.com", "www.reddit.com"
+          ];
+          
+          if (socialMediaDomains.includes(hostname)) {
               continue;
-            }
-            
-            const content = (result.title + " " + result.description + " " + (result.markdown || "")).toLowerCase();
-            const isEventRelated = this.isEventRelated(content);
+          }
+          
+          const content = (result.title + " " + result.description + " " + (result.markdown || "")).toLowerCase();
+          const isEventRelated = this.isEventRelated(content);
             if (!isEventRelated) continue;
 
             const hasPositiveMatch = !matchTokens.length || matchTokens.some((token) => token.length > 2 && content.includes(token));
@@ -196,6 +197,10 @@ export class FirecrawlSearchService {
 
             const extractedLocation = this.extractLocationFromContent(result.markdown);
             const extractedOrganizer = this.extractOrganizerFromContent(result.markdown);
+
+            if (targetCountry && !this.matchesCountry(hostname, extractedLocation, targetCountry)) {
+              continue;
+            }
             
             items.push({
               title: result.title || "Event",
@@ -209,23 +214,23 @@ export class FirecrawlSearchService {
                 confidence: this.calculateRelevanceScore(content, parsedDate.startISO, extractedLocation)
               }
             });
-          }
         }
+      }
 
         if (items.length) {
-          return {
-            provider: "firecrawl",
-            items: items.slice(0, maxResults),
-            cached: false,
-            searchMetadata: {
-              totalResults: items.length,
+      return {
+        provider: "firecrawl",
+        items: items.slice(0, maxResults),
+        cached: false,
+        searchMetadata: {
+          totalResults: items.length,
               query: ship.query
             }
           };
         }
 
         lastError = new Error('firecrawl_empty_results');
-      } catch (error) {
+    } catch (error) {
         lastError = error;
         console.warn(JSON.stringify({ at: 'firecrawl_call_failure', label: ship.label, error: error instanceof Error ? error.message : String(error) }));
         if (ship !== ships[ships.length - 1]) {
@@ -685,5 +690,31 @@ export class FirecrawlSearchService {
         lastError: error instanceof Error ? error.message : 'Unknown error'
       };
     }
+  }
+
+  private static matchesCountry(hostname: string, location: string | undefined, countryIso: string): boolean {
+    if (!countryIso) return true;
+    const lowerHost = hostname.toLowerCase();
+    const lowerCountry = countryIso.toLowerCase();
+
+    if (lowerHost.endsWith(`.${lowerCountry}`)) {
+      return true;
+    }
+
+    if (location) {
+      const normalizedLocation = location.toLowerCase();
+      if (normalizedLocation.includes(countryIso.toLowerCase())) {
+        return true;
+      }
+      const context = getCountryContext(countryIso);
+      if (context.countryNames.some((name) => normalizedLocation.includes(name.toLowerCase()))) {
+        return true;
+      }
+      if (context.cities.some((city) => normalizedLocation.includes(city.toLowerCase()))) {
+        return true;
+      }
+    }
+
+    return false;
   }
 }
