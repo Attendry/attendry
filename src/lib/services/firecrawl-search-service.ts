@@ -96,7 +96,7 @@ export class FirecrawlSearchService {
     const resolvedCountryContext = countryContext ?? (country ? getCountryContext(country) : undefined);
     const targetCountry = (resolvedCountryContext?.iso2 || country || '').toUpperCase();
     const locationTokenSet = this.buildLocationTokenSet(resolvedCountryContext || null, country);
-    const timeframeTokens = this.buildTimeframeTokens(from, to);
+    const timeframeTokens = this.buildTimeframeTokens(from, to, locale);
     const { tokens: positiveTokens, topicalTokens } = this.extractPositiveTokens(query, industry, locationTokenSet);
     const baseTokens = topicalTokens.length ? topicalTokens : positiveTokens;
     const matchTokensSource = [...baseTokens, ...timeframeTokens];
@@ -193,9 +193,19 @@ export class FirecrawlSearchService {
               ?? this.extractDateFromContent(result.title)
               ?? this.extractDateFromContent(result.description);
             const parsedDate = extractedDateRaw ? parseEventDate(extractedDateRaw) : { startISO: null, endISO: null, confidence: 'low' };
-            const withinRange = this.isWithinRange(parsedDate.startISO, from, to);
+
             const hasSomeDate = Boolean(parsedDate.startISO);
-            if (!hasSomeDate || !withinRange) {
+            const withinRange = this.isWithinRange(parsedDate.startISO, from, to);
+            const timeframeHint = this.matchesTimeframeHint(content, timeframeTokens);
+
+            if (from || to) {
+              if (!hasSomeDate && !timeframeHint) {
+                continue;
+              }
+              if (parsedDate.startISO && !withinRange) {
+                continue;
+              }
+            } else if (!hasSomeDate && !timeframeHint) {
               continue;
             }
 
@@ -396,7 +406,7 @@ export class FirecrawlSearchService {
     return tokens;
   }
 
-  private static buildTimeframeTokens(from?: string, to?: string): string[] {
+  private static buildTimeframeTokens(from?: string, to?: string, locale?: string | null): string[] {
     const tokens: string[] = [];
     if (from) {
       const fromDate = new Date(from);
@@ -416,6 +426,12 @@ export class FirecrawlSearchService {
     }
 
     return tokens;
+  }
+
+  private static matchesTimeframeHint(content: string, timeframeTokens: string[]): boolean {
+    if (!timeframeTokens.length) return false;
+    const lower = content.toLowerCase();
+    return timeframeTokens.some((token) => lower.includes(token.toLowerCase()));
   }
 
   private static deriveYear(from?: string, to?: string): string | null {
