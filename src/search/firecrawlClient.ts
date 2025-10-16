@@ -49,28 +49,38 @@ export async function runFirecrawlSearch(
     logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: extendedTimeoutMs });
 
     const shardQuery = buildShardQuery(query);
-    const variantOrder = (attempt === 1 ? ['full', 'shard'] : ['shard', 'full']) as const;
-    const variantQueries = {
-      full: query,
-      shard: shardQuery,
-    } as const;
+    const variantOrder: Array<'full' | 'shard'> =
+      attempt === 1 ? ['shard'] : attempt === 2 ? ['full'] : ['shard'];
 
-    const attemptFailures: Array<{ variant: 'full' | 'shard'; error: unknown }> = [];
+    const variantFailures: Array<{ variant: 'full' | 'shard'; error: unknown }> = [];
 
-    try {
-      const winner = await Promise.any(
-        variantOrder.map((variant) =>
-          firecrawlSearch(variantQueries[variant], {
-            signal: abortController.signal,
-            ...(variant === 'shard' ? { depth: 0, limit: 8, textOnly: true } : {}),
-          })
-            .then((value) => ({ variant, value }))
-            .catch((error) => {
-              attemptFailures.push({ variant, error });
-              throw error;
-            }),
-        ),
-      );
+    let winningVariant: 'full' | 'shard' | null = null;
+    let winningResponse: string[] | null = null;
+
+    for (const variant of variantOrder) {
+      const variantTimeoutMs = variant === 'shard' ? Math.min(extendedTimeoutMs, 15_000) : extendedTimeoutMs;
+      const variantController = new AbortController();
+      const variantTimeoutHandle = setTimeout(() => variantController.abort(), variantTimeoutMs);
+
+      try {
+        const response = await firecrawlSearch(variant === 'full' ? query : shardQuery, {
+          signal: variantController.signal,
+          ...(variant === 'shard' ? { depth: 0, limit: 8, textOnly: true } : {}),
+        });
+
+        clearTimeout(variantTimeoutHandle);
+        if (!winningResponse) {
+          winningVariant = variant;
+          winningResponse = response;
+        }
+        break;
+      } catch (variantError) {
+        clearTimeout(variantTimeoutHandle);
+        variantFailures.push({ variant, error: variantError });
+      }
+    }
+
+    if (winningResponse) {
       clearTimeout(timeoutHandle);
       abortController.abort();
       consecutiveFailures = 0;
@@ -82,42 +92,42 @@ export async function runFirecrawlSearch(
         logSynthetic('firecrawl_retry_success', {
           attempt,
           query,
-          variant: winner.variant,
+          variant: winningVariant,
           shardQuery,
           correlationId,
         });
       } else {
-        logSynthetic('firecrawl_success', { query, variant: winner.variant, shardQuery, correlationId });
+        logSynthetic('firecrawl_success', { query, variant: winningVariant, shardQuery, correlationId });
       }
-      return winner.value;
-    } catch (error) {
-      clearTimeout(timeoutHandle);
-      abortController.abort();
-      lastError = attemptFailures.at(-1)?.error ?? error;
-      metrics.firecrawlErrorsTotal.inc();
+      return winningResponse;
+    }
 
-      const timeoutDetected = (err: unknown) =>
-        (err as Error | undefined)?.name === 'AbortError'
-        || String((err as Error | undefined)?.message ?? '').toLowerCase().includes('timeout');
+    clearTimeout(timeoutHandle);
+    abortController.abort();
+    const finalError = variantFailures.at(-1)?.error ?? new Error('firecrawl_failed_variants');
+    lastError = finalError;
+    metrics.firecrawlErrorsTotal.inc();
 
-      const isTimeout = timeoutDetected(lastError)
-        || attemptFailures.some((entry) => timeoutDetected(entry.error))
-        || timeoutDetected(error);
+    const timeoutDetected = (err: unknown) =>
+      (err as Error | undefined)?.name === 'AbortError'
+      || String((err as Error | undefined)?.message ?? '').toLowerCase().includes('timeout');
 
-      if (isTimeout) {
-        metrics.firecrawlTimeoutsTotal.inc();
-      }
+    const isTimeout = timeoutDetected(finalError) || variantFailures.some((entry) => timeoutDetected(entry.error));
 
-      logSynthetic('firecrawl_attempt_failed', {
-        attempt,
-        query,
-        correlationId,
-        shardQuery,
-        variantsTried: attemptFailures.map((entry) => entry.variant),
-        error: (lastError as Error)?.message ?? (error as Error)?.message,
-        timeout: isTimeout,
-        level: isTimeout ? 'info' : 'warn',
-      });
+    if (isTimeout) {
+      metrics.firecrawlTimeoutsTotal.inc();
+    }
+
+    logSynthetic('firecrawl_attempt_failed', {
+      attempt,
+      query,
+      correlationId,
+      shardQuery,
+      variantsTried: variantFailures.map((entry) => entry.variant),
+      error: (finalError as Error)?.message,
+      timeout: isTimeout,
+      level: isTimeout ? 'info' : 'warn',
+    });
 
       if (attempt >= settings.maxRetries) {
         consecutiveFailures += 1;
