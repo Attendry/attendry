@@ -340,7 +340,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         {/* Sponsors Summary */}
         {Array.isArray(ev.sponsors) && ev.sponsors.length > 0 && (
           <div>
-            <div className="text-sm font-medium text-slate-700 mb-1">💰 Sponsors ({ev.sponsors.length}):</div>
+            <div className="text-sm font-medium text-slate-700 mb-1">Sponsors ({ev.sponsors.length}):</div>
             <div className="flex flex-wrap gap-1">
               {ev.sponsors.slice(0, 4).map((sponsor, idx) => (
                 <span key={idx} className="text-xs font-medium rounded-full bg-green-100 text-green-800 px-2 py-1">
@@ -359,7 +359,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         {/* Participating Organizations Summary */}
         {ev.participating_organizations && ev.participating_organizations.length > 0 && (
           <div>
-            <div className="text-sm font-medium text-slate-700 mb-1">🏢 Participating Organizations ({ev.participating_organizations.length}):</div>
+            <div className="text-sm font-medium text-slate-700 mb-1">Participating Organizations ({ev.participating_organizations.length}):</div>
             <div className="flex flex-wrap gap-1">
               {ev.participating_organizations.slice(0, 4).map((org: string, idx: number) => (
                 <span key={idx} className="text-xs font-medium rounded-full bg-blue-100 text-blue-800 px-2 py-1">
@@ -379,7 +379,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         {/* Partners */}
         {ev.partners && ev.partners.length > 0 && (
           <div>
-            <div className="text-sm font-medium text-slate-700 mb-1">🤝 Partners:</div>
+            <div className="text-sm font-medium text-slate-700 mb-1">Partners:</div>
             <div className="flex flex-wrap gap-2">
               {ev.partners.slice(0, 4).map((partner: string, idx: number) => (
                 <span key={idx} className="text-xs font-medium rounded-full bg-purple-100 text-purple-800 px-2 py-1">
@@ -398,7 +398,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         {/* Competitors */}
         {ev.competitors && ev.competitors.length > 0 && (
           <div>
-            <div className="text-sm font-medium text-slate-700 mb-1">⚔️ Industry Competitors:</div>
+            <div className="text-sm font-medium text-slate-700 mb-1">Industry Competitors:</div>
             <div className="flex flex-wrap gap-2">
               {ev.competitors.slice(0, 4).map((competitor: string, idx: number) => (
                 <span key={idx} className="text-xs font-medium rounded-full bg-red-100 text-red-800 px-2 py-1">
