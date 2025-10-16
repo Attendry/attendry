@@ -7,7 +7,7 @@ let consecutiveFailures = 0;
 let circuitOpenedAt: number | null = null;
 
 const DEFAULT_CONFIG: FirecrawlClientConfig = {
-  timeoutMs: Number(process.env.FIRECRAWL_TIMEOUT_MS ?? 12_000),
+  timeoutMs: Number(process.env.FIRECRAWL_TIMEOUT_MS ?? 20_000),
   maxRetries: Number(process.env.FIRECRAWL_MAX_RETRIES ?? 2),
   openThreshold: Number(process.env.FIRECRAWL_CIRCUIT_OPEN_THRESHOLD ?? 5),
   halfOpenAfterMs: Number(process.env.FIRECRAWL_CIRCUIT_HALF_OPEN_AFTER_MS ?? 60_000),
@@ -45,29 +45,65 @@ export async function runFirecrawlSearch(
     const timeoutHandle = setTimeout(() => abortController.abort(), extendedTimeoutMs);
 
     const attemptStart = Date.now();
-      metrics.firecrawlAttemptsTotal.inc();
-      logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: extendedTimeoutMs });
+    metrics.firecrawlAttemptsTotal.inc();
+    logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: extendedTimeoutMs });
+
+    const shardQuery = buildShardQuery(query);
+    const variantOrder = (attempt === 1 ? ['full', 'shard'] : ['shard', 'full']) as const;
+    const variantQueries = {
+      full: query,
+      shard: shardQuery,
+    } as const;
+
+    const attemptFailures: Array<{ variant: 'full' | 'shard'; error: unknown }> = [];
 
     try {
-      const shardPromise = firecrawlSearch(buildShardQuery(query), { signal: abortController.signal, depth: 0, limit: 8 });
-      const fullPromise = firecrawlSearch(query, { signal: abortController.signal });
-      const response = attempt === 1 ? await fullPromise : await Promise.race([fullPromise, shardPromise]);
+      const winner = await Promise.any(
+        variantOrder.map((variant) =>
+          firecrawlSearch(variantQueries[variant], {
+            signal: abortController.signal,
+            ...(variant === 'shard' ? { depth: 0, limit: 8, textOnly: true } : {}),
+          })
+            .then((value) => ({ variant, value }))
+            .catch((error) => {
+              attemptFailures.push({ variant, error });
+              throw error;
+            }),
+        ),
+      );
       clearTimeout(timeoutHandle);
+      abortController.abort();
       consecutiveFailures = 0;
       circuitOpenedAt = null;
 
       metrics.firecrawlSuccessTotal.inc();
       metrics.firecrawlLatency.observe(Date.now() - attemptStart);
       if (attempt > 1) {
-        logSynthetic('firecrawl_retry_success', { attempt, query, shardQuery: requestQuery, correlationId });
+        logSynthetic('firecrawl_retry_success', {
+          attempt,
+          query,
+          variant: winner.variant,
+          shardQuery,
+          correlationId,
+        });
+      } else {
+        logSynthetic('firecrawl_success', { query, variant: winner.variant, shardQuery, correlationId });
       }
-      return response;
+      return winner.value;
     } catch (error) {
       clearTimeout(timeoutHandle);
-      lastError = error;
+      abortController.abort();
+      lastError = attemptFailures.at(-1)?.error ?? error;
       metrics.firecrawlErrorsTotal.inc();
 
-    const isTimeout = (error as Error)?.name === 'AbortError' || String((error as Error)?.message).includes('timeout');
+      const timeoutDetected = (err: unknown) =>
+        (err as Error | undefined)?.name === 'AbortError'
+        || String((err as Error | undefined)?.message ?? '').toLowerCase().includes('timeout');
+
+      const isTimeout = timeoutDetected(lastError)
+        || attemptFailures.some((entry) => timeoutDetected(entry.error))
+        || timeoutDetected(error);
+
       if (isTimeout) {
         metrics.firecrawlTimeoutsTotal.inc();
       }
@@ -76,9 +112,11 @@ export async function runFirecrawlSearch(
         attempt,
         query,
         correlationId,
-        error: (error as Error)?.message,
+        shardQuery,
+        variantsTried: attemptFailures.map((entry) => entry.variant),
+        error: (lastError as Error)?.message ?? (error as Error)?.message,
         timeout: isTimeout,
-        level: isTimeout ? 'info' : 'warn'
+        level: isTimeout ? 'info' : 'warn',
       });
 
       if (attempt >= settings.maxRetries) {

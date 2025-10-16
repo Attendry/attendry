@@ -13,7 +13,7 @@ import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triag
 import { chunk } from '@/lib/utils/array';
 
 const MIN_URLS = 8;
-const MAX_CONCURRENT_FC = Number(process.env.FIRECRAWL_MAX_CONCURRENCY ?? 10);
+const MAX_CONCURRENT_FC = Number(process.env.FIRECRAWL_MAX_CONCURRENCY ?? 25);
 const FC_PAGE_SIZE = Number(process.env.FIRECRAWL_PAGE_SIZE ?? 15);
 const FC_MAX_PAGES = Number(process.env.FIRECRAWL_MAX_PAGES ?? 2);
 
