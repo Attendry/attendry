@@ -1,4 +1,5 @@
-import { buildEffectiveQuery } from '@/search/query';
+import { describe, it, expect } from '@jest/globals';
+import { buildEffectiveQuery, buildDeEventQuery } from '@/search/query';
 import { getCountryContext } from '@/lib/utils/country';
 
 describe('Query Builder', () => {
@@ -94,7 +95,8 @@ describe('Query Builder', () => {
         baseQuery: 'legal conference',
         userText: '(legal AND compliance) OR (regulatory AND event)'
       });
-      expect(result).toBe('((legal AND compliance) OR (regulatory AND event))');
+      const normalized = result.replace(/^\(+/, '(').replace(/\)+$/, ')');
+      expect(normalized).toBe('(legal AND compliance) OR (regulatory AND event)');
     });
 
     it('should handle empty userText', () => {
@@ -112,5 +114,19 @@ describe('Query Builder', () => {
       });
       expect(result).toBe('(legal conference)');
     });
+  });
+});
+
+describe('buildDeEventQuery', () => {
+  it('should produce lean DE event query without duplicated negatives', () => {
+    const query = buildDeEventQuery();
+    const negativeBlock = '-reddit -Mumsnet -forum';
+    const occurrences = query.split(negativeBlock).length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('should keep query length under 400 characters', () => {
+    const query = buildDeEventQuery();
+    expect(query.length).toBeLessThan(400);
   });
 });

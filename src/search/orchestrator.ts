@@ -4,7 +4,8 @@
  * Runs tiers, then retry with base if 0
  */
 
-import { buildTierQueries, assertClean, EVENT_DE, CITY_DE } from './query';
+import { buildTierQueries, assertClean, EVENT_DE, CITY_DE, buildDeEventQuery } from './query';
+import { DEFAULT_SHARD_KEYWORDS } from '@/config/search-dictionaries';
 import { runFirecrawlSearch } from './firecrawlClient';
 import { cseSearch } from './providers/cse';
 import { prefilter } from './url-filters';
@@ -26,7 +27,8 @@ export async function runSearch(opts: {
   const country = opts.country ? opts.country.toUpperCase() : null;
 
   const correlationId = ensureCorrelation();
-  const tiers = buildTierQueries(opts.baseQuery, !!opts.enableAug);
+  const baseQuery = country === 'DE' ? buildDeEventQuery() : opts.baseQuery;
+  const tiers = buildTierQueries(baseQuery, !!opts.enableAug);
   const urlsAll: string[] = [];
 
   // Firecrawl params (kept small & robust)
@@ -114,12 +116,7 @@ export async function runSearch(opts: {
       }
     } else {
       // For non-German or pan-European searches, use broader search terms
-      const BROAD_SHARDS = [
-        'conference', 'summit', 'event', 'workshop', 'seminar',
-        'meeting', 'symposium', 'forum', 'exhibition'
-      ];
-
-      for (const w of BROAD_SHARDS) {
+      for (const w of DEFAULT_SHARD_KEYWORDS) {
         const q = `(${opts.baseQuery}) ${w}`;
         assertClean(q);
         urls.push(...await runFirecrawlSearch(q, fcParams));

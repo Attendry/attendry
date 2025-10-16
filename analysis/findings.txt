@@ -1,0 +1,30 @@
+=== Shared hard-coded data spotted during codebase audit ===
+
+1. Country / locale mappings
+   - `src/lib/services/firecrawl-search-service.ts` has `mapCountryToLocation`, `getCountryTerms`, `mapCountryCode`, `getLanguageForCountry` with duplicated details already in `COUNTRY_CONFIG`.
+   - `src/lib/services/firecrawl-search-service.ts` and `src/lib/services/search-service.ts` define independent German/European city lists and content heuristics (`extractCountryFromVenue`, `extractCountryFromContent`, etc.).
+   - `src/lib/event-pipeline/discover.ts` and `src/search/orchestrator.ts` include `.endsWith(.iso2)` and German shard lists, duplicating the same country data.
+
+2. Event keyword lists
+   - `firecrawl-search-service.isEventRelated`, `calculateRelevanceScore`, `search-service.calculateHeuristicScore`, `search-service.buildSimpleQuery`, `search-service.executeSearch` (fallback heuristics) all keep their own `conference/summit/workshop/...` arrays.
+   - `src/lib/search/deduplication.ts`, `src/lib/search/ranking-stack.ts`, `src/lib/event-pipeline/logger.ts`, `src/lib/filters/relaxed-filters.ts`, `src/lib/ai/gemini-bypass.ts` define near-identical event keyword arrays.
+
+3. Social media / blocked domains
+   - `firecrawl-search-service` has a `socialMediaDomains` list.
+   - Similar lists appear in `search-service` (during CSE filtering) and in the orchestrator’s `prefilter` logic (via `src/search/url-filters.ts`). Need to cross-check to consolidate.
+
+4. Query shard words
+   - `src/search/orchestrator.ts` `BROAD_SHARDS` lists `'conference', 'summit', ...`.
+   - `firecrawl-search-service.buildShardQuery` ensures `'event'` presence; `src/lib/search/ranking-stack.ts` also defines event keywords.
+
+5. Default base queries / fallback strings
+   - `src/lib/event-pipeline/fallback.ts` hardcodes `'legal compliance conference event summit workshop'`.
+   - `search-service.buildEnhancedQuery`, `search-service.executeSearch`, `src/app/api/events/run/route.ts` set default user queries `'legal conference'` etc. Should ideally be derived from active search config.
+
+6. Timeframe keyword logic
+   - `firecrawl-search-service.buildTimeframeTokens` and `buildTimeRange` emit English strings ("after", "before"). Similar logic in `search-service` `toCdr`. Potential duplication but consistent.
+
+Next steps:
+- Propose extracting shared dictionaries (countries, cities, event keywords, blocklists) into a single module (maybe in `src/config/search-dictionaries.ts`).
+- Update orchestrator/discover/search-service to import from `CountryContext` or new shared module instead of local copies.
+- Audit route defaults (`'legal conference'`) to see if they can read from user-config.

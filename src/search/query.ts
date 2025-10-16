@@ -12,58 +12,77 @@ export type BuildQueryOpts = {
   } | null;
 };
 
+const wrap = (value: string) => {
+  const trimmed = value.trim();
+  return trimmed.startsWith('(') && trimmed.endsWith(')') ? trimmed : `(${trimmed})`;
+};
+
+export function buildDeEventQuery(): string {
+  const positives = [
+    '(compliance OR "e-discovery" OR ediscovery OR "legal tech" OR GDPR OR cybersecurity)',
+    '(event OR konferenz OR konferenzen OR kongress OR summit)',
+    '(Germany OR Deutschland OR DE OR Berlin OR München OR Frankfurt OR Hamburg OR Köln OR Stuttgart OR Düsseldorf OR Leipzig OR Hannover OR Nürnberg)'
+  ];
+  const negatives = '-reddit -Mumsnet -forum';
+  return `${positives.join(' ')} ${negatives}`;
+}
+
 export function buildSearchQuery(opts: BuildQueryOpts): string {
   if (!opts || !opts.baseQuery || !opts.baseQuery.trim()) {
     throw new Error('buildSearchQuery: baseQuery missing');
   }
-  const bq = opts.baseQuery.trim();
-  const ut = (opts.userText ?? '').trim();
-  const maxLen = opts.maxLen;
-  const ctx = opts.countryContext;
-  const timeframe = opts.timeframeContext;
-  
-  let result: string;
-  if (ut) {
-    result = ut.startsWith('(') && ut.endsWith(')') ? ut : `(${ut})`;
-  } else {
-    result = bq.startsWith('(') && bq.endsWith(')') ? bq : `(${bq})`;
+
+  const baseQuery = opts.baseQuery.trim();
+  const userText = (opts.userText ?? '').trim();
+  let query = wrap(userText || baseQuery);
+
+  if (opts.countryContext) {
+    const ctx = opts.countryContext;
+    const negatives = ctx.negativeSites.join(' ').trim();
+    const locationSegments = [
+      ctx.countryNames.join(' OR '),
+      ctx.cities.join(' OR '),
+      ctx.locationTokens.join(' OR ')
+    ].filter(Boolean)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    const parts: string[] = [wrap(query)];
+
+    if (negatives) {
+      parts.push(negatives);
+    }
+
+    if (locationSegments.length) {
+      parts.push(`(${locationSegments.join(' ')})`);
+    }
+
+    parts.push(`(site:${ctx.tld} OR ${ctx.inPhrase})`);
+
+    query = parts.join(' ').replace(/\s+/g, ' ').trim();
   }
 
-  if (ctx) {
-    const countries = ctx.countryNames.map((name) => name.trim()).filter(Boolean);
-    const cities = ctx.cities.map((city) => city.trim()).filter(Boolean);
-    const locationHints = ctx.locationTokens.map((token) => token.trim()).filter(Boolean);
-    const negatives = ctx.negativeSites.join(' ');
-    const countryTokens = countries.length ? `(${countries.join(' OR ')})` : '';
-    const cityTokens = cities.length ? `(${cities.join(' OR ')})` : '';
-    const locationHintTokens = locationHints.length ? `(${locationHints.join(' OR ')})` : '';
-    const locationBias = [countryTokens, cityTokens, locationHintTokens].filter(Boolean).join(' ');
-    const biasParts = [
-      `(${result})`,
-      negatives,
-      locationBias ? `(${locationBias})` : '',
-      `(site:${ctx.tld} OR ${ctx.inPhrase})`,
-    ].filter((part) => Boolean(part && part.trim()));
-    result = biasParts.join(' ').trim();
-  }
-
-  if (timeframe?.tokens?.length) {
-    const tokens = timeframe.tokens.map((token) => token.trim()).filter(Boolean);
+  if (opts.timeframeContext?.tokens?.length) {
+    const tokens = opts.timeframeContext.tokens.map((token) => token.trim()).filter(Boolean);
     if (tokens.length) {
-      const timeframeSegment = `(${tokens.join(' OR ')})`;
-      result = [`(${result})`, timeframeSegment].join(' ').trim();
+      query = `${wrap(query)} (${tokens.join(' OR ')})`;
     }
   }
-  
-  if (maxLen && result.length > maxLen) {
-    // Truncate and ensure balanced parentheses
-    result = result.substring(0, maxLen - 2) + ')';
-    if (!result.startsWith('(')) {
-      result = '(' + result;
+
+  if (opts.maxLen && query.length > opts.maxLen) {
+    query = query.slice(0, opts.maxLen).trimEnd();
+    if (!query.endsWith(')')) {
+      query = `${query})`;
+    }
+    if (!query.startsWith('(')) {
+      query = `(${query}`;
+    }
+    if (query.length > opts.maxLen) {
+      query = query.slice(0, opts.maxLen);
     }
   }
-  
-  return result;
+
+  return query;
 }
 
 export type QueryToken = {

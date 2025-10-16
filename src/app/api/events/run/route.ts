@@ -600,6 +600,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
   let telemetry: any = {

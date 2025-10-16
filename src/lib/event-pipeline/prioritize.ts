@@ -52,6 +52,11 @@ export class EventPrioritizer {
     private geminiService: any
   ) {}
 
+  setThresholdForDegradedMode(isDegraded: boolean): void {
+    // WHY: Lower prioritization threshold when Firecrawl is degraded to avoid dropping all candidates
+    this.config.thresholds.prioritization = isDegraded ? 0.3 : 0.5;
+  }
+
   async prioritize(candidates: EventCandidate[], targetCountry?: string | null): Promise<EventCandidate[]> {
     const startTime = Date.now();
     logger.info({ message: '[prioritize] Starting prioritization', 
@@ -206,19 +211,26 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
         adjustedIsRecent = 0;
       }
 
+      const germanLocaleSignals = this.containsGermanLocaleSignals(candidate);
+      const cityBonus = this.detectCityTokens(candidate, targetCountry);
+
       const weightedOverall = hasCountryRelevance ? (
-        scores.is_event * 0.25 +
-        scores.has_agenda * 0.2 +
-        scores.has_speakers * 0.15 +
-        adjustedIsRecent * 0.2 +
-        scores.is_relevant * 0.1 +
-        (scores.is_country_relevant || 0) * 0.1
+        scores.is_event * 0.22 +
+        scores.has_agenda * 0.18 +
+        scores.has_speakers * 0.14 +
+        adjustedIsRecent * 0.18 +
+        scores.is_relevant * 0.08 +
+        (scores.is_country_relevant || 0) * 0.1 +
+        germanLocaleSignals * 0.05 +
+        cityBonus * 0.05
       ) : (
-        scores.is_event * 0.3 +
-        scores.has_agenda * 0.25 +
-        scores.has_speakers * 0.2 +
-        adjustedIsRecent * 0.2 +
-        scores.is_relevant * 0.05
+        scores.is_event * 0.28 +
+        scores.has_agenda * 0.22 +
+        scores.has_speakers * 0.18 +
+        adjustedIsRecent * 0.18 +
+        scores.is_relevant * 0.09 +
+        germanLocaleSignals * 0.03 +
+        cityBonus * 0.02
       );
 
       const overallPenalty = hasDate ? 1 : 0.85;
@@ -259,6 +271,8 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
   private fallbackScoring(candidate: EventCandidate): PrioritizationScore {
     const url = candidate.url.toLowerCase();
     const normalizedDate = this.normalizeCandidateDate(candidate);
+    const germanSignal = this.containsGermanLocaleSignals(candidate);
+    const cityBonus = this.detectCityTokens(candidate);
     
     let is_event = 0.2;
     let has_agenda = 0.1;
@@ -283,7 +297,15 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
       is_relevant = 0.8;
     }
     
-    const overall = (is_event * 0.3 + has_agenda * 0.2 + has_speakers * 0.2 + is_recent * 0.2 + is_relevant * 0.1);
+    const overall = (
+      is_event * 0.28 +
+      has_agenda * 0.2 +
+      has_speakers * 0.18 +
+      is_recent * 0.18 +
+      is_relevant * 0.1 +
+      germanSignal * 0.03 +
+      cityBonus * 0.03
+    );
     
     logger.warn({ message: '[prioritize] Using fallback scoring',
       url: candidate.url,
@@ -313,5 +335,33 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
     if (Number.isNaN(date.getTime())) return false;
     const diffDays = (date.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
     return diffDays >= -30 && diffDays <= 365;
+  }
+
+  private containsGermanLocaleSignals(candidate: EventCandidate): number {
+    const text = [candidate.url, candidate.parseResult?.description, candidate.extractResult?.description]
+      .filter(Boolean)
+      .join(' ') 
+      .toLowerCase();
+    if (!text) return 0;
+    const germanMonths = ['januar', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'dezember'];
+    const langMatch = text.includes('lang=de') || text.includes('sprache deutsch');
+    const monthMatch = germanMonths.some((month) => text.includes(month));
+    if (langMatch && monthMatch) return 1;
+    if (langMatch || monthMatch) return 0.6;
+    return 0;
+  }
+
+  private detectCityTokens(candidate: EventCandidate, targetCountry?: string | null): number {
+    if (targetCountry && targetCountry.toUpperCase() !== 'DE') return 0;
+    const text = [candidate.url, candidate.parseResult?.location, candidate.extractResult?.location, candidate.parseResult?.title]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (!text) return 0;
+    const cities = ['berlin', 'münchen', 'munich', 'frankfurt', 'hamburg', 'köln', 'cologne', 'stuttgart', 'düsseldorf', 'leipzig', 'hannover', 'nürnberg'];
+    const hits = cities.filter((city) => text.includes(city)).length;
+    if (hits >= 2) return 1;
+    if (hits === 1) return 0.6;
+    return 0;
   }
 }

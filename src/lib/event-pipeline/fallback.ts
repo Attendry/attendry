@@ -9,7 +9,7 @@ import { EventPipeline } from './orchestrator';
 import { isNewPipelineEnabled, getPipelineConfig } from './config';
 import { logger } from '@/utils/logger';
 import { getCountryContext, deriveLocale } from '@/lib/utils/country';
-import { buildEffectiveQuery } from '@/search/query';
+import { buildEffectiveQuery, buildDeEventQuery } from '@/search/query';
 
 export class PipelineFallback {
   constructor(
@@ -460,6 +460,11 @@ export async function executeNewPipeline(args: {
       logger.warn({ message: '[executeNewPipeline] Failed to load config, using fallback query', error: (error as any).message });
       baseQuery = 'legal compliance conference event summit workshop';
     }
+  }
+
+  if (ctx.iso2 === 'DE' && (!args.userText || !args.userText.trim())) {
+    // WHY: Use lean German query to avoid duplication and oversized boolean strings
+    baseQuery = buildDeEventQuery();
   }
 
   const finalQuery = buildEffectiveQuery({ baseQuery, userText: args.userText, countryContext: ctx });

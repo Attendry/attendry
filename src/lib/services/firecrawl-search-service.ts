@@ -2,6 +2,7 @@ import { RetryService } from "./retry-service";
 import { buildSearchQuery } from '@/search/query';
 import { getCountryContext, type CountryContext } from '@/lib/utils/country';
 import { parseEventDate } from '@/search/date';
+import { EVENT_KEYWORDS, SOCIAL_DOMAINS, DEFAULT_SHARD_KEYWORDS, detectCountryFromText, detectCityFromText } from '@/config/search-dictionaries';
 
 /**
  * Firecrawl Search Service
@@ -115,19 +116,8 @@ export class FirecrawlSearchService {
       sources: ["web"],
       location: location || resolvedCountryContext?.countryNames?.[0] || this.mapCountryToLocation(country),
       country: resolvedCountryContext?.iso2 || country?.toUpperCase() || undefined,
-        tbs: this.buildTimeBasedSearch(from, to),
-        ignoreInvalidURLs: true,
-        scrapeOptions: {
-          formats: ["markdown"],
-        onlyMainContent: false,
-        waitFor: 500,
-        blockAds: false,
-        removeBase64Images: false,
-          location: {
-          country: resolvedCountryContext?.iso2 || this.mapCountryCode(country),
-          languages: [resolvedCountryContext?.locale || locale || this.getLanguageForCountry(country)]
-        }
-      }
+      tbs: this.buildTimeBasedSearch(from, to),
+      ignoreInvalidURLs: true,
     };
 
     ships.push({ query: primaryQuery, params: baseParams, label: 'shard' });
@@ -169,17 +159,7 @@ export class FirecrawlSearchService {
         for (const result of data.data.web) {
           const url = result.url || "";
           const hostname = new URL(url).hostname.toLowerCase();
-          const socialMediaDomains = [
-            "instagram.com", "www.instagram.com",
-            "facebook.com", "www.facebook.com", 
-            "twitter.com", "www.twitter.com", "x.com", "www.x.com",
-            "linkedin.com", "www.linkedin.com",
-            "youtube.com", "www.youtube.com",
-            "tiktok.com", "www.tiktok.com",
-            "reddit.com", "www.reddit.com"
-          ];
-          
-          if (socialMediaDomains.includes(hostname)) {
+          if (SOCIAL_DOMAINS.includes(hostname)) {
               continue;
           }
           
@@ -308,7 +288,7 @@ export class FirecrawlSearchService {
       if (keywords.length >= 6) break;
     }
 
-    if (!keywords.some((word) => /(event|conference|summit|kongress|tagung)/i.test(word))) {
+    if (!keywords.some((word) => EVENT_KEYWORDS.includes(word))) {
       keywords.push('event');
     }
 
@@ -577,21 +557,7 @@ export class FirecrawlSearchService {
    * Check if content is event-related
    */
   private static isEventRelated(content: string): boolean {
-    const eventKeywords = [
-      // English event keywords
-      'conference', 'summit', 'event', 'workshop', 'seminar', 'exhibition',
-      'trade show', 'convention', 'symposium', 'meeting', 'gathering',
-      'forum', 'expo', 'showcase', 'networking', 'training', 'webinar',
-      // German event keywords
-      'veranstaltung', 'kongress', 'fachkonferenz', 'fachkongress',
-      'tagung', 'messe', 'ausstellung', 'seminar', 'workshop',
-      'netzwerk', 'treffen', 'event', 'konferenz', 'symposium',
-      'fachmesse', 'handelsmesse', 'veranstaltungsreihe', 'fortbildung'
-    ];
-    
-    const hasEventKeywords = eventKeywords.some(keyword => 
-      content.includes(keyword)
-    );
+    const hasEventKeywords = EVENT_KEYWORDS.some(keyword => content.includes(keyword));
     
     // Also check for date patterns (events usually have dates)
     const hasDatePattern = /\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2}|(January|February|March|April|May|June|July|August|September|October|November|December)/i.test(content);
@@ -612,8 +578,7 @@ export class FirecrawlSearchService {
     if (location) score += 0.2;
     
     // Higher score for event-specific keywords
-    const eventKeywords = ['conference', 'summit', 'event', 'workshop', 'seminar'];
-    const keywordCount = eventKeywords.filter(keyword => content.includes(keyword)).length;
+    const keywordCount = EVENT_KEYWORDS.filter(keyword => content.includes(keyword)).length;
     score += Math.min(keywordCount * 0.1, 0.3);
     
     // Higher score for professional/industry terms
