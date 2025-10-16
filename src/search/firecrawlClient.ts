@@ -19,6 +19,7 @@ export async function runFirecrawlSearch(
   correlationId?: string,
 ): Promise<string[]> {
   const settings = { ...DEFAULT_CONFIG, ...config };
+  const extendedTimeoutMs = Math.max(settings.timeoutMs, 20_000);
 
   if (circuitOpenedAt) {
     const elapsed = Date.now() - circuitOpenedAt;
@@ -41,15 +42,18 @@ export async function runFirecrawlSearch(
     }
 
     const abortController = new AbortController();
-    const timeoutHandle = setTimeout(() => abortController.abort(), settings.timeoutMs);
+    const timeoutHandle = setTimeout(() => abortController.abort(), extendedTimeoutMs);
 
     const attemptStart = Date.now();
       metrics.firecrawlAttemptsTotal.inc();
-      logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: settings.timeoutMs });
+      logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: extendedTimeoutMs });
 
     try {
       const requestQuery = attempt === 1 ? query : buildShardQuery(query);
-      const response = await firecrawlSearch(requestQuery, { signal: abortController.signal });
+      const response = await firecrawlSearch(requestQuery, {
+        signal: abortController.signal,
+        ...(attempt > 1 ? { depth: 0 } : {}),
+      });
       clearTimeout(timeoutHandle);
       consecutiveFailures = 0;
       circuitOpenedAt = null;
@@ -90,6 +94,7 @@ export async function runFirecrawlSearch(
             signal: new AbortController().signal,
             depth: 0,
             textOnly: true,
+            limit: 8,
           });
 
           logSynthetic('firecrawl_fallback_success', { query, correlationId });
