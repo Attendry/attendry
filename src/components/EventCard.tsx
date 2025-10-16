@@ -26,6 +26,8 @@ import { SpeakerData } from "@/lib/types/core";
 /**
  * Event data structure interface
  */
+type Sponsor = string | { name?: string | null; tier?: string | null; description?: string | null };
+
 interface Event {
   id?: string;                      // Event ID
   title?: string;                   // Event title
@@ -38,7 +40,7 @@ interface Event {
   organizer?: string | null;        // Event organizer
   topics?: string[];                // Event topics/themes
   speakers?: SpeakerData[] | null;  // Array of speaker objects
-  sponsors?: string[] | null;       // Array of sponsor names
+  sponsors?: Sponsor[] | null;       // Array of sponsors
   participating_organizations?: string[] | null; // Participating organizations
   partners?: string[] | null;       // Event partners
   competitors?: string[] | null;    // Industry competitors
@@ -336,13 +338,13 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         )}
 
         {/* Sponsors Summary */}
-        {ev.sponsors && ev.sponsors.length > 0 && (
+        {Array.isArray(ev.sponsors) && ev.sponsors.length > 0 && (
           <div>
             <div className="text-sm font-medium text-slate-700 mb-1">💰 Sponsors ({ev.sponsors.length}):</div>
             <div className="flex flex-wrap gap-1">
-              {ev.sponsors.slice(0, 4).map((sponsor: string, idx: number) => (
+              {ev.sponsors.slice(0, 4).map((sponsor, idx) => (
                 <span key={idx} className="text-xs font-medium rounded-full bg-green-100 text-green-800 px-2 py-1">
-                  {sponsor}
+                  {typeof sponsor === 'string' ? sponsor : sponsor?.name || sponsor?.tier || 'Sponsor'}
                 </span>
               ))}
               {ev.sponsors.length > 4 && (
@@ -485,7 +487,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
           )}
 
           {/* Sponsors Section */}
-          {ev.sponsors && ev.sponsors.length > 0 && (
+        {Array.isArray(ev.sponsors) && ev.sponsors.length > 0 && (
             <div className="mt-6">
               <div className="flex items-center gap-2 mb-4">
                 <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -496,9 +498,9 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {ev.sponsors.map((sponsor: string, idx: number) => (
+              {ev.sponsors.map((sponsor, idx) => (
                   <span key={idx} className="text-sm font-medium rounded-full bg-green-100 text-green-800 px-3 py-1">
-                    {sponsor}
+                  {typeof sponsor === 'string' ? sponsor : sponsor?.name || sponsor?.tier || 'Sponsor'}
                   </span>
                 ))}
               </div>
