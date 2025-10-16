@@ -6,6 +6,7 @@
 
 import { EventCandidate, EventPipelineConfig, PrioritizationScore, PrioritizationError } from './types';
 import { logger } from '@/utils/logger';
+import { parseEventDate } from '@/search/date';
 
 // Import country bias function from fallback
 function getCountrySpecificBias(country: string): { searchTerms: string; locationContext?: string } | null {
@@ -139,6 +140,7 @@ export class EventPrioritizer {
   }
 
   private async scoreCandidate(candidate: EventCandidate, targetCountry?: string | null): Promise<PrioritizationScore> {
+    const normalizedDate = this.normalizeCandidateDate(candidate);
     // Build country-specific context for prioritization
     let countryContext = '';
     if (targetCountry && targetCountry !== 'EU' && targetCountry !== '') {
@@ -192,23 +194,26 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
       // Calculate weighted overall score
       const hasCountryRelevance = targetCountry && targetCountry !== 'EU' && targetCountry !== '' && scores.is_country_relevant !== undefined;
       const overall = hasCountryRelevance ? (
-        scores.is_event * 0.25 +           // Most important - must be an event
-        scores.has_agenda * 0.2 +          // Important - shows it's a real event
-        scores.has_speakers * 0.15 +       // Important - shows quality
-        scores.is_recent * 0.15 +          // Important - must be current
-        scores.is_relevant * 0.1 +         // Less important - we can filter later
-        (scores.is_country_relevant || 0) * 0.15  // Country relevance for targeted searches
+        scores.is_event * 0.25 +
+        scores.has_agenda * 0.2 +
+        scores.has_speakers * 0.15 +
+        scores.is_recent * 0.2 +
+        scores.is_relevant * 0.1 +
+        (scores.is_country_relevant || 0) * 0.1
       ) : (
-        scores.is_event * 0.3 +      // Most important - must be an event
-        scores.has_agenda * 0.25 +   // Important - shows it's a real event
-        scores.has_speakers * 0.2 +  // Important - shows quality
-        scores.is_recent * 0.15 +    // Important - must be current
-        scores.is_relevant * 0.1     // Less important - we can filter later
+        scores.is_event * 0.3 +
+        scores.has_agenda * 0.25 +
+        scores.has_speakers * 0.2 +
+        scores.is_recent * 0.2 +
+        scores.is_relevant * 0.05
       );
-      
+
+      const withinRange = normalizedDate ? this.isWithinRange(normalizedDate) : false;
+
       return {
         ...scores,
-        overall: Math.round(overall * 100) / 100 // Round to 2 decimal places
+        is_recent: withinRange ? scores.is_recent : 0,
+        overall: withinRange ? Math.round(overall * 100) / 100 : 0
       };
     } catch (error) {
       logger.error({ message: '[prioritize] LLM scoring failed',
@@ -239,36 +244,32 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
 
   private fallbackScoring(candidate: EventCandidate): PrioritizationScore {
     const url = candidate.url.toLowerCase();
+    const normalizedDate = this.normalizeCandidateDate(candidate);
     
-    // Simple heuristic scoring based on URL patterns
-    let is_event = 0.5;
-    let has_agenda = 0.3;
-    let has_speakers = 0.3;
-    let is_recent = 0.5;
-    let is_relevant = 0.5;
+    let is_event = 0.2;
+    let has_agenda = 0.1;
+    let has_speakers = 0.1;
+    let is_recent = normalizedDate ? 0.2 : 0;
+    let is_relevant = 0.3;
     
-    // Event indicators
     if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
       is_event = 0.8;
     }
     if (url.includes('agenda') || url.includes('program') || url.includes('schedule')) {
-      has_agenda = 0.7;
+      has_agenda = 0.6;
     }
     if (url.includes('speaker') || url.includes('presenter')) {
-      has_speakers = 0.7;
+      has_speakers = 0.6;
     }
-    
-    // Recent indicators
-    if (url.includes('2025') || url.includes('2024')) {
-      is_recent = 0.8;
+    if (normalizedDate) {
+      const diffDays = (new Date(normalizedDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+      is_recent = diffDays >= -30 && diffDays <= 365 ? 0.7 : 0;
     }
-    
-    // Relevance indicators
     if (url.includes('compliance') || url.includes('legal') || url.includes('regulation')) {
       is_relevant = 0.8;
     }
     
-    const overall = (is_event * 0.3 + has_agenda * 0.25 + has_speakers * 0.2 + is_recent * 0.15 + is_relevant * 0.1);
+    const overall = (is_event * 0.3 + has_agenda * 0.2 + has_speakers * 0.2 + is_recent * 0.2 + is_relevant * 0.1);
     
     logger.warn({ message: '[prioritize] Using fallback scoring',
       url: candidate.url,
@@ -283,5 +284,20 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
       is_relevant,
       overall: Math.round(overall * 100) / 100
     };
+  }
+
+  private normalizeCandidateDate(candidate: EventCandidate): string | null {
+    const raw = candidate.extractResult?.startISO ?? candidate.parseResult?.startISO ?? candidate.dateISO ?? candidate.parseResult?.date ?? null;
+    if (!raw) return null;
+    const parsed = parseEventDate(raw);
+    return parsed.startISO ?? null;
+  }
+
+  private isWithinRange(startISO: string): boolean {
+    if (!startISO) return false;
+    const date = new Date(startISO);
+    if (Number.isNaN(date.getTime())) return false;
+    const diffDays = (date.getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    return diffDays >= -30 && diffDays <= 365;
   }
 }

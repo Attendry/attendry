@@ -193,10 +193,10 @@ export class FirecrawlSearchService {
               ?? this.extractDateFromContent(result.title)
               ?? this.extractDateFromContent(result.description);
             const parsedDate = extractedDateRaw ? parseEventDate(extractedDateRaw) : { startISO: null, endISO: null, confidence: 'low' };
-            if (from || to) {
-              if (!this.isWithinRange(parsedDate.startISO, from, to)) {
-                continue;
-              }
+            const withinRange = this.isWithinRange(parsedDate.startISO, from, to);
+            const hasSomeDate = Boolean(parsedDate.startISO);
+            if (!hasSomeDate || !withinRange) {
+              continue;
             }
 
             const extractedLocation = this.extractLocationFromContent(result.markdown);
