@@ -264,6 +264,18 @@ export class PipelineFallback {
       }
     }
 
+    const partialResults = {
+      hasPartial: Array.isArray(candidates) && candidates.length > 0,
+      candidates: candidates.slice(0, 8).map((candidate) => ({
+        id: candidate.id,
+        url: candidate.url,
+        source: candidate.source,
+        priorityScore: candidate.priorityScore ?? null,
+        status: candidate.status,
+        discoveredAt: candidate.discoveredAt
+      }))
+    };
+
     // Apply date filtering if dateFrom/dateTo are provided
     if (context && (context.dateFrom || context.dateTo)) {
       const originalCount = events.length;
@@ -302,6 +314,7 @@ export class PipelineFallback {
       events,
       provider: 'new_pipeline',
       count: events.length,
+      partialResults,
       pipeline_metrics: {
         totalCandidates: metrics.totalCandidates,
         prioritizedCandidates: metrics.prioritizedCandidates,
@@ -446,30 +459,28 @@ export async function executeNewPipeline(args: {
 }): Promise<any> {
   const pipelineWithFallback = await createPipelineWithFallback();
   
-  // Build query using the same logic as enhanced orchestrator
+  // Build simple query like enhanced orchestrator
   const ctx = getCountryContext(args.country);
-  let baseQuery = args.userText && args.userText.trim() ? args.userText.trim() : '';
+  let query = args.userText && args.userText.trim() ? args.userText.trim() : '';
 
-  if (!baseQuery) {
+  if (!query) {
     try {
       const { loadActiveConfig } = await import('@/common/search/config');
       const cfg = await loadActiveConfig();
-      baseQuery = cfg.baseQuery;
-      logger.info({ message: '[executeNewPipeline] Using baseQuery for empty userText', baseQuery: baseQuery.substring(0, 100) + '...' });
+      query = cfg.baseQuery;
+      logger.info({ message: '[executeNewPipeline] Using baseQuery for empty userText', baseQuery: query.substring(0, 100) + '...' });
     } catch (error) {
       logger.warn({ message: '[executeNewPipeline] Failed to load config, using fallback query', error: (error as any).message });
-      baseQuery = 'legal compliance conference event summit workshop';
+      query = 'legal compliance conference event summit workshop';
     }
   }
 
-  if (ctx.iso2 === 'DE' && (!args.userText || !args.userText.trim())) {
-    // WHY: Use lean German query to avoid duplication and oversized boolean strings
-    baseQuery = buildDeEventQuery();
+  // For German searches, add country context but keep query simple
+  if (ctx.iso2 === 'DE') {
+    query = `${query} Germany Deutschland`;
   }
-
-  const finalQuery = buildEffectiveQuery({ baseQuery, userText: args.userText, countryContext: ctx });
   const context: PipelineContext = {
-    query: finalQuery,
+    query: query,
     country: args.country,
     dateFrom: args.dateFrom,
     dateTo: args.dateTo,

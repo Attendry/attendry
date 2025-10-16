@@ -25,62 +25,57 @@ export class EventDiscoverer {
     const candidates: EventCandidate[] = [];
     
     try {
-      // Parallel discovery from all enabled sources
-      const discoveryPromises: Promise<{ candidates: EventCandidate[]; provider: string }>[] = [];
+      // Try Firecrawl first (like enhanced orchestrator), then CSE if needed
+      let allResults: { candidates: EventCandidate[]; provider: string }[] = [];
       
-      if (this.config.sources.cse) {
-        metrics.discoveryProvidersAttempt.inc({ provider: 'cse' });
-        discoveryPromises.push(
-          this.discoverFromCSE(query, country, context)
-            .then((result) => {
-              metrics.discoveryProvidersSuccess.inc({ provider: 'cse' });
-              metrics.discoveryProvidersLatency.observe({ provider: 'cse' }, Date.now() - startTime);
-              return result;
-            })
-            .catch((error: any) => {
-              metrics.discoveryProvidersFailure.inc({ provider: 'cse' });
-              logger.error({ message: '[discover] CSE discovery failed', error: error.message });
-              return { candidates: [], provider: 'cse' };
-            })
-        );
-      }
-      
+      // Try Firecrawl first
       if (this.config.sources.firecrawl) {
-        metrics.discoveryProvidersAttempt.inc({ provider: 'firecrawl' });
-        discoveryPromises.push(
-          this.discoverFromFirecrawl(query, country, context)
-            .then((result) => {
-              metrics.discoveryProvidersSuccess.inc({ provider: 'firecrawl' });
-              metrics.discoveryProvidersLatency.observe({ provider: 'firecrawl' }, Date.now() - startTime);
-              return result;
-            })
-            .catch((error: any) => {
-              metrics.discoveryProvidersFailure.inc({ provider: 'firecrawl' });
-              logger.error({ message: '[discover] Firecrawl discovery failed', error: error.message });
-              return { candidates: [], provider: 'firecrawl' };
-            })
-        );
+        try {
+          metrics.discoveryProvidersAttempt.inc({ provider: 'firecrawl' });
+          const firecrawlResult = await this.discoverFromFirecrawl(query, country, context);
+          metrics.discoveryProvidersSuccess.inc({ provider: 'firecrawl' });
+          metrics.discoveryProvidersLatency.observe({ provider: 'firecrawl' }, Date.now() - startTime);
+          allResults.push(firecrawlResult);
+          logger.info({ message: '[discover] Firecrawl found candidates', count: firecrawlResult.candidates.length });
+        } catch (error: any) {
+          metrics.discoveryProvidersFailure.inc({ provider: 'firecrawl' });
+          logger.error({ message: '[discover] Firecrawl discovery failed', error: error.message });
+        }
       }
       
-      if (this.config.sources.curated && this.curatedService) {
-        metrics.discoveryProvidersAttempt.inc({ provider: 'curated' });
-        discoveryPromises.push(
-          this.discoverFromCurated(query, country, context)
-            .then((result) => {
-              metrics.discoveryProvidersSuccess.inc({ provider: 'curated' });
-              metrics.discoveryProvidersLatency.observe({ provider: 'curated' }, Date.now() - startTime);
-              return result;
-            })
-            .catch((error: any) => {
-              metrics.discoveryProvidersFailure.inc({ provider: 'curated' });
-              logger.error({ message: '[discover] Curated discovery failed', error: error.message });
-              return { candidates: [], provider: 'curated' };
-            })
-        );
+      // Try CSE if Firecrawl didn't return enough (like enhanced orchestrator)
+      const totalCandidates = allResults.reduce((sum, result) => sum + result.candidates.length, 0);
+      if (this.config.sources.cse && totalCandidates < 10) {
+        try {
+          metrics.discoveryProvidersAttempt.inc({ provider: 'cse' });
+          const cseResult = await this.discoverFromCSE(query, country, context);
+          metrics.discoveryProvidersSuccess.inc({ provider: 'cse' });
+          metrics.discoveryProvidersLatency.observe({ provider: 'cse' }, Date.now() - startTime);
+          allResults.push(cseResult);
+          logger.info({ message: '[discover] CSE found candidates', count: cseResult.candidates.length });
+        } catch (error: any) {
+          metrics.discoveryProvidersFailure.inc({ provider: 'cse' });
+          logger.error({ message: '[discover] CSE discovery failed', error: error.message });
+        }
       }
       
-      // Wait for all discovery sources with timeout
-      const results = await Promise.all(discoveryPromises);
+      // Try curated if still not enough
+      const updatedTotalCandidates = allResults.reduce((sum, result) => sum + result.candidates.length, 0);
+      if (this.config.sources.curated && this.curatedService && updatedTotalCandidates < 10) {
+        try {
+          metrics.discoveryProvidersAttempt.inc({ provider: 'curated' });
+          const curatedResult = await this.discoverFromCurated(query, country, context);
+          metrics.discoveryProvidersSuccess.inc({ provider: 'curated' });
+          metrics.discoveryProvidersLatency.observe({ provider: 'curated' }, Date.now() - startTime);
+          allResults.push(curatedResult);
+          logger.info({ message: '[discover] Curated found candidates', count: curatedResult.candidates.length });
+        } catch (error: any) {
+          metrics.discoveryProvidersFailure.inc({ provider: 'curated' });
+          logger.error({ message: '[discover] Curated discovery failed', error: error.message });
+        }
+      }
+      
+      const results = allResults;
 
       // Flatten results from all sources
       results.forEach((result, index) => {
@@ -168,28 +163,42 @@ export class EventDiscoverer {
     logger.info({ message: '[discover:firecrawl] Starting Firecrawl discovery', query, country, locale: context?.locale });
     
     try {
-      const countryContext = context?.countryContext ?? (country ? getCountryContext(country) : undefined);
-      const countryCode = (countryContext?.iso2 || country || '').toUpperCase();
-      const results = await this.firecrawlService.search({ 
-        q: query,
-        country,
-        limit: Math.min(20, this.config.limits.maxCandidates),
-        countryContext,
-        geoBias: countryCode,
-        from: context?.dateFrom,
-        to: context?.dateTo,
+      // Use the same approach as enhanced orchestrator - simple query with retry and circuit breaker
+      const { RetryService } = await import('@/lib/services/retry-service');
+      const { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } = await import('@/lib/services/circuit-breaker');
+      const { search: firecrawlSearch } = await import('@/providers/firecrawl');
+      
+      const firecrawlRes = await RetryService.executeWithRetry(
+        'firecrawl',
+        'search',
+        () => executeWithCircuitBreaker(
+          'firecrawl',
+          () => firecrawlSearch({ 
+            q: query, 
+            dateFrom: context?.dateFrom || undefined, 
+            dateTo: context?.dateTo || undefined 
+          }),
+          CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+        )
+      );
+      
+      const urls = firecrawlRes.data?.items || [];
+      
+      logger.info({ message: '[discover:firecrawl] Firecrawl search completed',
+        urlsFound: urls.length,
+        retryAttempts: firecrawlRes.metrics.attempts,
+        totalDelayMs: firecrawlRes.metrics.totalDelayMs,
+        duration: Date.now() - startTime
       });
       
-      const candidates = results.items
-        .map((item: any, index: number) => ({
+      const candidates = urls
+        .map((url: string, index: number) => ({
           id: `firecrawl_${Date.now()}_${index}`,
-          url: item.url,
+          url: url,
           source: 'firecrawl' as const,
           discoveredAt: new Date(),
-          relatedUrls: item.relatedUrls ?? [],
+          relatedUrls: [],
           status: 'discovered' as const,
-          dateISO: item.extractedData?.eventDate ?? null,
-          dateConfidence: item.extractedData?.confidence ?? undefined,
           metadata: {
             originalQuery: query,
             country,
@@ -198,27 +207,7 @@ export class EventDiscoverer {
               discovery: Date.now() - startTime
             }
           }
-        }))
-        .filter((candidate) => {
-          const hostname = candidate.url ? new URL(candidate.url).hostname : '';
-          if (countryCode && !hostname.toLowerCase().endsWith(`.${countryCode.toLowerCase()}`)) {
-            candidate.metadata.geoReason = 'tld_mismatch';
-          }
-
-          if ((context?.dateFrom || context?.dateTo) && candidate.dateISO) {
-            const from = context.dateFrom ? new Date(context.dateFrom) : null;
-            const to = context.dateTo ? new Date(context.dateTo) : null;
-            const parsed = new Date(candidate.dateISO);
-            if (!Number.isNaN(parsed.getTime())) {
-              if ((from && parsed < from) || (to && parsed > to)) {
-                candidate.metadata.dateReason = 'out_of_window';
-                return false;
-              }
-            }
-          }
-
-          return true;
-        });
+        }));
       
       logger.info({ message: '[discover:firecrawl] Firecrawl discovery completed',
         candidatesFound: candidates.length,
