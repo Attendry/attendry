@@ -191,29 +191,43 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
         throw new Error('Invalid score response structure');
       }
       
-      // Calculate weighted overall score
       const hasCountryRelevance = targetCountry && targetCountry !== 'EU' && targetCountry !== '' && scores.is_country_relevant !== undefined;
-      const overall = hasCountryRelevance ? (
+      const hasDate = Boolean(normalizedDate);
+      const withinRange = hasDate ? this.isWithinRange(normalizedDate) : true;
+
+      const baseIsRecent = typeof scores.is_recent === 'number' ? scores.is_recent : 0;
+      let adjustedIsRecent = baseIsRecent;
+
+      if (!hasDate) {
+        adjustedIsRecent = Math.min(adjustedIsRecent, 0.3);
+      }
+
+      if (hasDate && !withinRange) {
+        adjustedIsRecent = 0;
+      }
+
+      const weightedOverall = hasCountryRelevance ? (
         scores.is_event * 0.25 +
         scores.has_agenda * 0.2 +
         scores.has_speakers * 0.15 +
-        scores.is_recent * 0.2 +
+        adjustedIsRecent * 0.2 +
         scores.is_relevant * 0.1 +
         (scores.is_country_relevant || 0) * 0.1
       ) : (
         scores.is_event * 0.3 +
         scores.has_agenda * 0.25 +
         scores.has_speakers * 0.2 +
-        scores.is_recent * 0.2 +
+        adjustedIsRecent * 0.2 +
         scores.is_relevant * 0.05
       );
 
-      const withinRange = normalizedDate ? this.isWithinRange(normalizedDate) : false;
+      const overallPenalty = hasDate ? 1 : 0.85;
+      const adjustedOverall = (hasDate && !withinRange) ? 0 : Math.round(weightedOverall * overallPenalty * 100) / 100;
 
       return {
         ...scores,
-        is_recent: withinRange ? scores.is_recent : 0,
-        overall: withinRange ? Math.round(overall * 100) / 100 : 0
+        is_recent: adjustedIsRecent,
+        overall: adjustedOverall
       };
     } catch (error) {
       logger.error({ message: '[prioritize] LLM scoring failed',
