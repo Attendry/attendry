@@ -201,9 +201,8 @@ export class EventDiscoverer {
         }))
         .filter((candidate) => {
           const hostname = candidate.url ? new URL(candidate.url).hostname : '';
-          if (countryCode && !hostname.toLowerCase().endsWith(`.${countryCode.toLowerCase()}`) && (candidate.metadata.country ?? '').toUpperCase() !== countryCode) {
+          if (countryCode && !hostname.toLowerCase().endsWith(`.${countryCode.toLowerCase()}`)) {
             candidate.metadata.geoReason = 'tld_mismatch';
-            return false;
           }
 
           if ((context?.dateFrom || context?.dateTo) && candidate.dateISO) {

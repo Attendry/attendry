@@ -202,9 +202,6 @@ export class FirecrawlSearchService {
             const timeframeHint = this.matchesTimeframeHint(content, timeframeTokens);
 
             if (from || to) {
-              if (!hasSomeDate && !timeframeHint) {
-                continue;
-              }
               if (parsedDate.startISO && !withinRange) {
                 continue;
               }
@@ -215,9 +212,7 @@ export class FirecrawlSearchService {
             const extractedLocation = this.extractLocationFromContent(result.markdown);
             const extractedOrganizer = this.extractOrganizerFromContent(result.markdown);
 
-            if (targetCountry && !this.matchesCountry(hostname, extractedLocation, targetCountry)) {
-              continue;
-            }
+            const countryMismatch = targetCountry && !this.matchesCountry(hostname, extractedLocation, targetCountry);
             
             items.push({
               title: result.title || "Event",
@@ -228,7 +223,8 @@ export class FirecrawlSearchService {
                 eventDate: parsedDate.startISO ?? extractedDateRaw ?? undefined,
                 location: extractedLocation || undefined,
                 organizer: extractedOrganizer || undefined,
-                confidence: this.calculateRelevanceScore(content, parsedDate.startISO, extractedLocation)
+                confidence: this.calculateRelevanceScore(content, parsedDate.startISO, extractedLocation) - (countryMismatch ? 0.2 : 0),
+                geoMismatch: countryMismatch || undefined,
               }
             });
         }
@@ -256,10 +252,19 @@ export class FirecrawlSearchService {
       }
     }
 
-    console.error('Firecrawl Search failed:', lastError);
-    if (lastError instanceof Error && (lastError.name === 'TimeoutError' || lastError.message.includes('timeout'))) {
-      console.warn('Firecrawl search timed out after 15 seconds - this is expected for complex queries');
+    if (!lastError) {
+      return { provider: 'firecrawl', items: [], cached: false };
     }
+
+    if (lastError instanceof Error && (lastError.name === 'TimeoutError' || lastError.message.includes('timeout'))) {
+      console.warn('Firecrawl search timed out after configured budget');
+    }
+
+    if (lastError instanceof Error && lastError.message === 'firecrawl_empty_results') {
+      return { provider: 'firecrawl', items: [], cached: false };
+    }
+
+    console.error('Firecrawl Search failed:', lastError);
     throw lastError instanceof Error ? lastError : new Error('firecrawl_failed');
   }
 
