@@ -19,7 +19,7 @@ export async function runFirecrawlSearch(
   correlationId?: string,
 ): Promise<string[]> {
   const settings = { ...DEFAULT_CONFIG, ...config };
-  const extendedTimeoutMs = Math.max(settings.timeoutMs, 20_000);
+  const extendedTimeoutMs = Math.max(settings.timeoutMs, 30_000);
 
   if (circuitOpenedAt) {
     const elapsed = Date.now() - circuitOpenedAt;
@@ -49,11 +49,9 @@ export async function runFirecrawlSearch(
       logSynthetic('firecrawl_attempt', { attempt, query, correlationId, timeoutMs: extendedTimeoutMs });
 
     try {
-      const requestQuery = attempt === 1 ? query : buildShardQuery(query);
-      const response = await firecrawlSearch(requestQuery, {
-        signal: abortController.signal,
-        ...(attempt > 1 ? { depth: 0 } : {}),
-      });
+      const shardPromise = firecrawlSearch(buildShardQuery(query), { signal: abortController.signal, depth: 0, limit: 8 });
+      const fullPromise = firecrawlSearch(query, { signal: abortController.signal });
+      const response = attempt === 1 ? await fullPromise : await Promise.race([fullPromise, shardPromise]);
       clearTimeout(timeoutHandle);
       consecutiveFailures = 0;
       circuitOpenedAt = null;
@@ -69,7 +67,7 @@ export async function runFirecrawlSearch(
       lastError = error;
       metrics.firecrawlErrorsTotal.inc();
 
-      const isTimeout = (error as Error)?.name === 'AbortError' || String((error as Error)?.message).includes('timeout');
+    const isTimeout = (error as Error)?.name === 'AbortError' || String((error as Error)?.message).includes('timeout');
       if (isTimeout) {
         metrics.firecrawlTimeoutsTotal.inc();
       }
