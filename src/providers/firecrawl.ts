@@ -21,16 +21,16 @@ export async function search(params: {
     const body: any = {
       query: params.q,
       limit: params.limit || 20,
-      // Use news source for better event discovery
-      sources: ['web', 'news'],
-      // Add timeout for better reliability
-      timeout: 10000
+      // Use web source for better event discovery
+      sources: ['web'],
+      // Increase timeout for better reliability (docs suggest 60s)
+      timeout: 60000
     };
 
-    // Add content scraping if requested
+    // Add content scraping if requested - use correct v2 API format
     if (params.scrapeContent) {
       body.scrapeOptions = {
-        formats: ['markdown', 'links'],
+        formats: ['markdown'],
         onlyMainContent: true
       };
     }
@@ -52,21 +52,9 @@ export async function search(params: {
       console.log('[firecrawl] Using location-based search:', location);
     }
 
-          // Add time-based search for recent events
-          if (params.dateFrom || params.dateTo) {
-            // Use past year for event searches to catch upcoming events
-            body.tbs = 'qdr:y';
-            console.log('[firecrawl] Using time-based search: past year');
-          } else {
-            // Default to past year for event searches
-            body.tbs = 'qdr:y';
-          }
-          
-          // Try without time restriction if no results
-          if (params.dateFrom && params.dateTo) {
-            // For specific date ranges, also try without time restriction
-            console.log('[firecrawl] Will try without time restriction if no results');
-          }
+          // Don't use time-based search initially - it can be too restrictive
+          // Let Firecrawl return all relevant results, then filter if needed
+          console.log('[firecrawl] Not using time-based search for broader results');
 
     console.log('[firecrawl] Making request with body:', JSON.stringify(body, null, 2));
 
@@ -100,31 +88,9 @@ export async function search(params: {
       console.log('[firecrawl] No web results in response');
     }
     
-    // If no results and we have a complex query, try a simpler fallback
-    if ((!json?.data?.web || json.data.web.length === 0) && params.q.includes(' ')) {
-      console.log('[firecrawl] No results with complex query, trying simpler fallback');
-      const simpleQuery = params.q.split(' ').slice(0, 2).join(' '); // Take first 2 words
-      if (simpleQuery !== params.q) {
-        console.log('[firecrawl] Trying fallback query:', simpleQuery);
-        const fallbackBody = { ...body, query: simpleQuery };
-        const fallbackRes = await fetch('https://api.firecrawl.dev/v2/search', { 
-          method: 'POST', 
-          headers: {
-            'content-type':'application/json', 
-            'Authorization': `Bearer ${apiKey}`
-          }, 
-          body: JSON.stringify(fallbackBody) 
-        });
-        
-        if (fallbackRes.ok) {
-          const fallbackJson = await fallbackRes.json();
-          console.log('[firecrawl] Fallback response:', JSON.stringify(fallbackJson, null, 2));
-          if (fallbackJson?.data?.web && fallbackJson.data.web.length > 0) {
-            console.log('[firecrawl] Fallback found results:', fallbackJson.data.web.length);
-            json = fallbackJson; // Use fallback results
-          }
-        }
-      }
+    // Log if no results found
+    if (!json?.data?.web || json.data.web.length === 0) {
+      console.log('[firecrawl] No results found with query:', params.q);
     }
 
     // Map to {items: string[]} or {items: Array<{url, content}>} based on scrapeContent

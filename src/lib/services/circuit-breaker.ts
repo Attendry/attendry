@@ -58,7 +58,7 @@ export class CircuitBreaker {
     this.config = {
       failureThreshold: 5,
       successThreshold: 3,
-      timeout: 10000,
+      timeout: 60000,
       resetTimeout: 60000,
       monitoringPeriod: 60000,
       maxRequests: 3,
@@ -354,7 +354,7 @@ export const CIRCUIT_BREAKER_CONFIGS = {
   GOOGLE_CSE: {
     failureThreshold: 3,
     successThreshold: 2,
-    timeout: 10000,
+    timeout: 60000,
     resetTimeout: 30000,
     monitoringPeriod: 60000,
     maxRequests: 2,
@@ -362,7 +362,7 @@ export const CIRCUIT_BREAKER_CONFIGS = {
   FIRECRAWL: {
     failureThreshold: 3,
     successThreshold: 2,
-    timeout: 10000,
+    timeout: 60000,
     resetTimeout: 30000,
     monitoringPeriod: 60000,
     maxRequests: 2,
@@ -370,7 +370,7 @@ export const CIRCUIT_BREAKER_CONFIGS = {
   GEMINI: {
     failureThreshold: 5,
     successThreshold: 3,
-    timeout: 10000,
+    timeout: 60000,
     resetTimeout: 30000,
     monitoringPeriod: 60000,
     maxRequests: 3,

@@ -493,35 +493,24 @@ export async function executeNewPipeline(args: {
     locationTerms = ['Netherlands', 'Amsterdam'];
   }
   
-      // Build simple query optimized for Firecrawl's search capabilities
-      // Remove ALL boolean logic, parentheses, and quotes - use only simple terms
-      const industryTerms = query
-        .replace(/[()"]/g, '') // Remove parentheses and quotes
-        .split(' ')
-        .filter(term => term.length > 2 && !['OR', 'AND'].includes(term.toUpperCase()));
+      // Build ultra-simple query optimized for Firecrawl's search capabilities
+      // Use only the most essential terms - Firecrawl works best with simple queries
+      const simpleTerms = ['conference', 'event', 'summit'];
+      const locationTerm = locationTerms.length > 0 ? locationTerms[0] : 'Germany';
+      const yearTerm = '2025';
       
-      // Use simple, focused query structure that works well with Firecrawl
-      // Focus on: industry + event type + temporal + location
-      const eventQuery = `${industryTerms.slice(0, 3).join(' ')} ${eventTypes.slice(0, 1).join(' ')} ${temporalTerms.slice(0, 1).join(' ')}`;
+      // Use the simplest possible query structure
+      query = `${simpleTerms[0]} ${locationTerm} ${yearTerm}`;
       
-      if (locationTerms.length > 0) {
-        query = `${eventQuery} ${locationTerms.slice(0, 1).join(' ')}`;
-      } else {
-        query = eventQuery;
-      }
-      
-      // Ensure query is not empty and is simple
-      if (!query || query.trim().length === 0) {
-        query = 'conference Germany 2025';
-      }
+      logger.info({ message: '[executeNewPipeline] Using ultra-simple query for Firecrawl compatibility', 
+        originalQuery: args.userText,
+        simplifiedQuery: query
+      });
   
   logger.info({ message: '[executeNewPipeline] Built structured event query', 
     originalQuery: args.userText,
     structuredQuery: query,
-    industryTerms: industryTerms.length,
-    eventTypes: eventTypes.length,
-    temporalTerms: temporalTerms.length,
-    locationTerms: locationTerms.length
+    queryType: 'ultra-simple'
   });
   const context: PipelineContext = {
     query: query,
