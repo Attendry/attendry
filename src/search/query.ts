@@ -17,6 +17,67 @@ const wrap = (value: string) => {
   return trimmed.startsWith('(') && trimmed.endsWith(')') ? trimmed : `(${trimmed})`;
 };
 
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
+const DISALLOWED_CHARS = /[^\p{L}\p{N}\s"':().-]/gu;
+
+const sanitize = (input: string): string =>
+  input
+    .replace(CONTROL_CHARS, '')
+    .replace(DISALLOWED_CHARS, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const containsCaseInsensitive = (haystack: string, needle: string) =>
+  haystack.toLowerCase().includes(needle.toLowerCase());
+
+const balanceParentheses = (input: string): string => {
+  let balance = 0;
+  let result = '';
+  for (const ch of input) {
+    if (ch === '(') {
+      balance += 1;
+      result += ch;
+    } else if (ch === ')') {
+      if (balance > 0) {
+        balance -= 1;
+        result += ch;
+      }
+    } else {
+      result += ch;
+    }
+  }
+
+  if (balance > 0) {
+    result += ')'.repeat(balance);
+  }
+
+  return result.trim();
+};
+
+const collapseOuterParens = (input: string): string => {
+  let value = input.trim();
+  while (value.startsWith('(') && value.endsWith(')')) {
+    const inner = value.slice(1, -1).trim();
+    if (!inner || inner === value || !isBalanced(inner)) {
+      break;
+    }
+    value = inner;
+  }
+  return value;
+};
+
+const isBalanced = (input: string): boolean => {
+  let depth = 0;
+  for (const ch of input) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') {
+      depth -= 1;
+      if (depth < 0) return false;
+    }
+  }
+  return depth === 0;
+};
+
 export function buildDeEventQuery(): string {
   const positives = [
     '(compliance OR "e-discovery" OR ediscovery OR "legal tech" OR GDPR OR cybersecurity)',
@@ -32,42 +93,57 @@ export function buildSearchQuery(opts: BuildQueryOpts): string {
     throw new Error('buildSearchQuery: baseQuery missing');
   }
 
-  const baseQuery = opts.baseQuery.trim();
-  const userText = (opts.userText ?? '').trim();
-  let query = wrap(userText || baseQuery);
+  const baseQuery = sanitize(opts.baseQuery.trim());
+  const userText = sanitize((opts.userText ?? '').trim());
+  let query = balanceParentheses(userText || baseQuery);
+  query = wrap(query);
 
   if (opts.countryContext) {
     const ctx = opts.countryContext;
-    const negatives = ctx.negativeSites.join(' ').trim();
-    const locationSegments = [
+    const negatives = ctx.negativeSites.map((token) => token.trim()).filter(Boolean);
+    const missingNegatives = negatives.filter((token) => !containsCaseInsensitive(query, token));
+
+    const locationSegmentsRaw = [
       ctx.countryNames.join(' OR '),
       ctx.cities.join(' OR '),
       ctx.locationTokens.join(' OR ')
-    ].filter(Boolean)
-      .map((segment) => segment.trim())
-      .filter(Boolean);
+    ];
 
-    const parts: string[] = [wrap(query)];
+    const locationSegments = locationSegmentsRaw
+      .map((segment) => sanitize(segment))
+      .filter(Boolean)
+      .filter((segment) => !containsCaseInsensitive(query, segment));
 
-    if (negatives) {
-      parts.push(negatives);
+    const siteClause = `(site:${ctx.tld} OR ${ctx.inPhrase})`;
+    const needsSiteClause = !containsCaseInsensitive(query, `site:${ctx.tld}`) && !containsCaseInsensitive(query, ctx.inPhrase);
+
+    const parts: string[] = [query];
+    if (missingNegatives.length) {
+      parts.push(missingNegatives.join(' '));
     }
-
     if (locationSegments.length) {
       parts.push(`(${locationSegments.join(' ')})`);
     }
-
-    parts.push(`(site:${ctx.tld} OR ${ctx.inPhrase})`);
+    if (needsSiteClause) {
+      parts.push(siteClause);
+    }
 
     query = parts.join(' ').replace(/\s+/g, ' ').trim();
   }
 
   if (opts.timeframeContext?.tokens?.length) {
-    const tokens = opts.timeframeContext.tokens.map((token) => token.trim()).filter(Boolean);
+    const tokens = opts.timeframeContext.tokens.map((token) => sanitize(token)).filter(Boolean);
     if (tokens.length) {
-      query = `${wrap(query)} (${tokens.join(' OR ')})`;
+      const timeframeSegment = `(${tokens.join(' OR ')})`;
+      if (!containsCaseInsensitive(query, timeframeSegment)) {
+        query = `${query} ${timeframeSegment}`.trim();
+      }
     }
   }
+
+  query = balanceParentheses(query);
+  query = collapseOuterParens(query);
+  query = wrap(query);
 
   if (opts.maxLen && query.length > opts.maxLen) {
     query = query.slice(0, opts.maxLen).trimEnd();

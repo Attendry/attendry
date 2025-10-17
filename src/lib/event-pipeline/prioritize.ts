@@ -32,7 +32,7 @@ function getCountrySpecificBias(country: string): { searchTerms: string; locatio
     'SK': { searchTerms: 'Slovakia Slovensko Bratislava Kosice' },
     'SI': { searchTerms: 'Slovenia Slovenija Ljubljana Maribor' },
     'HR': { searchTerms: 'Croatia Hrvatska Zagreb Split Dubrovnik' },
-    'BG': { searchTerms: 'Bulgaria България Sofia София Plovdiv Varna' },
+    'BG': { searchTerms: 'Bulgaria България София София Plovdiv Varna' },
     'RO': { searchTerms: 'Romania România Bucharest București Cluj Timisoara' },
     'EE': { searchTerms: 'Estonia Eesti Tallinn Tartu' },
     'LV': { searchTerms: 'Latvia Latvija Riga Daugavpils' },
@@ -59,6 +59,13 @@ export class EventPrioritizer {
 
   async prioritize(candidates: EventCandidate[], targetCountry?: string | null): Promise<EventCandidate[]> {
     const startTime = Date.now();
+    const originalThreshold = this.config.thresholds.prioritization;
+
+    if (candidates.length <= 3) {
+      this.setThresholdForDegradedMode(true);
+      logger.warn({ message: '[prioritize] Degraded mode enabled due to limited candidate pool', candidateCount: candidates.length });
+    }
+
     logger.info({ message: '[prioritize] Starting prioritization', 
       totalCandidates: candidates.length,
       threshold: this.config.thresholds.prioritization
@@ -96,6 +103,8 @@ export class EventPrioritizer {
       const duration = Date.now() - startTime;
       logger.error({ message: '[prioritize] Prioritization failed', error: (error as any).message, duration });
       throw new PrioritizationError(`Prioritization failed: ${(error as any).message}`, undefined, error as Error);
+    } finally {
+      this.config.thresholds.prioritization = originalThreshold;
     }
   }
 

@@ -167,6 +167,10 @@ type EnhancedSearchResult = {
   searchRetriedWithBase?: boolean;
   providersTried?: string[];
   logs?: Record<string, unknown>[];
+  partialResults?: {
+    candidates: unknown[];
+    // Add other partial results if needed
+  };
 };
 
 function ensureString(value: unknown): string | null {
@@ -720,6 +724,20 @@ export async function POST(req: NextRequest) {
     } else {
       // Enhanced orchestrator needs processing
       result = await processEnhancedResults(res, normalizedCountry, dateFrom, dateTo, includeDebug);
+    }
+
+    const partialCandidates = Array.isArray(res?.partialResults?.candidates) ? res.partialResults.candidates : [];
+    if ((!result.events || result.events.length === 0) && partialCandidates.length > 0) {
+      // Return early with partial results rather than dropping to demo fallback
+      console.log('[api/events/run] Returning partial results');
+      telemetry.fallbackUsed = false;
+      return NextResponse.json({
+        provider: 'partial_results',
+        events: [],
+        count: 0,
+        partialResults: res.partialResults,
+        telemetry
+      });
     }
 
     if ((!result.events || result.events.length === 0) && demoFallbackEnabled()) {
