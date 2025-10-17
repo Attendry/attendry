@@ -459,7 +459,7 @@ export async function executeNewPipeline(args: {
 }): Promise<any> {
   const pipelineWithFallback = await createPipelineWithFallback();
   
-  // Build simple query like enhanced orchestrator
+  // Build event-focused query with proper structure
   const ctx = getCountryContext(args.country);
   let query = args.userText && args.userText.trim() ? args.userText.trim() : '';
 
@@ -471,14 +471,46 @@ export async function executeNewPipeline(args: {
       logger.info({ message: '[executeNewPipeline] Using baseQuery for empty userText', baseQuery: query.substring(0, 100) + '...' });
     } catch (error) {
       logger.warn({ message: '[executeNewPipeline] Failed to load config, using fallback query', error: (error as any).message });
-      query = 'legal compliance conference event summit workshop';
+      query = 'legal compliance';
     }
   }
 
-  // For German searches, add country context but keep query simple
+  // Build structured event query: (Industry Terms) AND (Event Types) AND (Location) AND (Temporal)
+  const eventTypes = ['conference', 'event', 'summit', 'workshop', 'seminar', 'exhibition', 'trade show', 'meeting', 'symposium', 'forum'];
+  const temporalTerms = ['2025', '2026', 'upcoming', 'next', 'future', 'register', 'registration', 'agenda', 'speakers'];
+  
+  // Get location terms based on country
+  let locationTerms: string[] = [];
   if (ctx.iso2 === 'DE') {
-    query = `${query} Germany Deutschland`;
+    locationTerms = ['Germany', 'Deutschland', 'Berlin', 'München', 'Frankfurt', 'Hamburg', 'Köln', 'Stuttgart', 'Düsseldorf'];
+  } else if (ctx.iso2 === 'FR') {
+    locationTerms = ['France', 'Paris', 'Lyon', 'Marseille', 'Toulouse'];
+  } else if (ctx.iso2 === 'IT') {
+    locationTerms = ['Italy', 'Italia', 'Rome', 'Milan', 'Naples'];
+  } else if (ctx.iso2 === 'ES') {
+    locationTerms = ['Spain', 'España', 'Madrid', 'Barcelona', 'Valencia'];
+  } else if (ctx.iso2 === 'NL') {
+    locationTerms = ['Netherlands', 'Nederland', 'Amsterdam', 'Rotterdam', 'The Hague'];
   }
+  
+  // Structure: (industry terms) AND (event types) AND (location) AND (temporal terms)
+  const industryTerms = query.split(' ').filter(term => term.length > 2);
+  const eventQuery = `(${industryTerms.join(' OR ')}) AND (${eventTypes.join(' OR ')}) AND (${temporalTerms.join(' OR ')})`;
+  
+  if (locationTerms.length > 0) {
+    query = `${eventQuery} AND (${locationTerms.join(' OR ')})`;
+  } else {
+    query = eventQuery;
+  }
+  
+  logger.info({ message: '[executeNewPipeline] Built structured event query', 
+    originalQuery: args.userText,
+    structuredQuery: query,
+    industryTerms: industryTerms.length,
+    eventTypes: eventTypes.length,
+    temporalTerms: temporalTerms.length,
+    locationTerms: locationTerms.length
+  });
   const context: PipelineContext = {
     query: query,
     country: args.country,
