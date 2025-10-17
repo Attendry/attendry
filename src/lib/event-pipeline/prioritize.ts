@@ -240,7 +240,7 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
       
       const hasCountryRelevance = targetCountry && targetCountry !== 'EU' && targetCountry !== '' && scores.is_country_relevant !== undefined;
       const hasDate = Boolean(normalizedDate);
-      const withinRange = hasDate ? this.isWithinRange(normalizedDate) : true;
+      const withinRange = hasDate && normalizedDate ? this.isWithinRange(normalizedDate) : true;
 
       const baseIsRecent = typeof scores.is_recent === 'number' ? scores.is_recent : 0;
       let adjustedIsRecent = baseIsRecent;
@@ -254,7 +254,7 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
       }
 
       const germanLocaleSignals = this.containsGermanLocaleSignals(candidate);
-      const cityBonus = this.detectCityTokens(candidate, targetCountry);
+      const cityBonus = this.detectCityTokens(candidate, targetCountry || undefined);
 
       const weightedOverall = hasCountryRelevance ? (
         scores.is_event * 0.22 +
@@ -364,7 +364,7 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
       
       const hasCountryRelevance = targetCountry && targetCountry !== 'EU' && targetCountry !== '' && scores.is_country_relevant !== undefined;
       const hasDate = Boolean(normalizedDate);
-      const withinRange = hasDate ? this.isWithinRange(normalizedDate) : true;
+      const withinRange = hasDate && normalizedDate ? this.isWithinRange(normalizedDate) : true;
 
       const baseIsRecent = typeof scores.is_recent === 'number' ? scores.is_recent : 0;
       let adjustedIsRecent = baseIsRecent;
@@ -378,7 +378,7 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
       }
 
       const germanLocaleSignals = this.containsGermanLocaleSignals(candidate);
-      const cityBonus = this.detectCityTokens(candidate, targetCountry);
+      const cityBonus = this.detectCityTokens(candidate, targetCountry || undefined);
 
       const weightedOverall = hasCountryRelevance ? (
         scores.is_event * 0.22 +
@@ -540,7 +540,7 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
     return 0;
   }
 
-  private detectCityTokens(candidate: EventCandidate, targetCountry?: string | null): number {
+  private detectCityTokens(candidate: EventCandidate, targetCountry?: string): number {
     if (targetCountry && targetCountry.toUpperCase() !== 'DE') return 0;
     const text = [candidate.url, candidate.parseResult?.location, candidate.extractResult?.location, candidate.parseResult?.title]
       .filter(Boolean)

@@ -69,6 +69,11 @@ export interface EventCandidate {
     };
     geoReason?: string;
     dateReason?: string;
+    // Scraped content fields for content-based prioritization
+    title?: string;
+    description?: string;
+    scrapedContent?: string;
+    scrapedLinks?: string[];
   };
 }
 
