@@ -328,6 +328,10 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
     try {
       // For URL-only analysis, use fallback scoring more often since LLM is too strict
       // Only use LLM for URLs that clearly look like events
+      if (!candidate.url) {
+        logger.error({ message: '[prioritize] Candidate has no URL', candidate });
+        return this.fallbackScoring(candidate);
+      }
       const url = candidate.url.toLowerCase();
       const isLikelyEvent = url.includes('conference') || url.includes('summit') || 
                            url.includes('event') || url.includes('workshop') || 
@@ -435,6 +439,17 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
   }
 
   private fallbackScoring(candidate: EventCandidate): PrioritizationScore {
+    if (!candidate.url) {
+      logger.error({ message: '[prioritize] Candidate has no URL for fallback scoring', candidate });
+      return {
+        is_event: 0,
+        has_agenda: 0,
+        has_speakers: 0,
+        is_recent: 0,
+        is_relevant: 0,
+        overall: 0
+      };
+    }
     const url = candidate.url.toLowerCase();
     const normalizedDate = this.normalizeCandidateDate(candidate);
     const germanSignal = this.containsGermanLocaleSignals(candidate);
