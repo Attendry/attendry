@@ -9,7 +9,7 @@ import { EventPipelineConfig } from './types';
 // Default pipeline configuration
 export const DEFAULT_PIPELINE_CONFIG: EventPipelineConfig = {
   thresholds: {
-    prioritization: 0.3,      // Minimum score to proceed from prioritization (lowered to allow more candidates)
+    prioritization: 0.2,      // Minimum score to proceed from prioritization (further lowered for testing)
     confidence: 0.2,          // Minimum confidence to publish (lowered for testing)
     parseQuality: 0.1         // Minimum parse quality (lowered for testing)
   },
