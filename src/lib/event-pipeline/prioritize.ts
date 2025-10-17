@@ -117,24 +117,6 @@ export class EventPrioritizer {
         candidate.priorityScore = score.overall;
         candidate.metadata.stageTimings.prioritization = Date.now() - candidate.metadata.processingTime;
         
-        // TEMPORARY: Accept all candidates for testing
-        candidate.status = 'prioritized';
-        prioritized.push(candidate);
-        
-        logger.info({ message: '[prioritize] Candidate accepted (testing mode)',
-          url: candidate.url,
-          score: score.overall,
-          breakdown: {
-            is_event: score.is_event,
-            has_agenda: score.has_agenda,
-            has_speakers: score.has_speakers,
-            is_recent: score.is_recent,
-            is_relevant: score.is_relevant
-          }
-        });
-        
-        // Original logic commented out for testing
-        /*
         if (score.overall >= this.config.thresholds.prioritization) {
           candidate.status = 'prioritized';
           prioritized.push(candidate);
@@ -166,7 +148,6 @@ export class EventPrioritizer {
             }
           });
         }
-        */
       } catch (error) {
         logger.error({ message: '[prioritize] Failed to score candidate',
           url: candidate.url,
