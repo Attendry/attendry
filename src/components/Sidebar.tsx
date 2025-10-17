@@ -11,6 +11,7 @@ import {
   Bookmark,
   Briefcase,
   Calendar,
+  CalendarDays,
   House,
   Search,
   Settings,
@@ -85,7 +86,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         items: [
           { href: "/", label: "Home", icon: House },
           { href: "/search", label: "Smart Search", icon: Search },
-          { href: "/compare", label: "Compare Events", icon: Briefcase },
+          { href: "/calendar", label: "Relevant Events", icon: CalendarDays },
         ],
       },
     ],
