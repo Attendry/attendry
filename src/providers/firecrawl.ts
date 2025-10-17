@@ -1,6 +1,12 @@
 import type { SearchParams } from './types';
 
-export async function search(params: { q: string; dateFrom?: string; dateTo?: string }) {
+export async function search(params: { 
+  q: string; 
+  dateFrom?: string; 
+  dateTo?: string;
+  country?: string;
+  limit?: number;
+}) {
   try {
     // Check for API key
     const apiKey = process.env.FIRECRAWL_KEY;
@@ -10,22 +16,41 @@ export async function search(params: { q: string; dateFrom?: string; dateTo?: st
       return { items: [], debug: { error: 'Missing API key: FIRECRAWL_KEY not set', rawCount: 0 } };
     }
 
-    const body:any = {
+    // Build optimized search body based on Firecrawl v2 API
+    const body: any = {
       query: params.q,
-      limit: 20,
-      // Remove 'sources' parameter as it's not recognized in v1 API
-      // Only pass typed dates if the backend actually supports them; otherwise omit.
-      // DO NOT pass tbs/location unless behind a flag.
+      limit: params.limit || 20,
+      // Use news source for better event discovery
+      sources: ['web', 'news'],
+      // Add timeout for better reliability
+      timeout: 30000
     };
 
-    // Example feature flag (default false)
-    if (process.env.FIRECRAWL_LEGACY_KNOBS === 'true') {
-      body.tbs = `cdr:1,cd_min:${params.dateFrom ?? ''},cd_max:${params.dateTo ?? ''}`;
-      body.location = 'Germany';
+    // Add location-based search for better regional results
+    if (params.country) {
+      const countryMap: Record<string, string> = {
+        'DE': 'Germany',
+        'FR': 'France', 
+        'IT': 'Italy',
+        'ES': 'Spain',
+        'NL': 'Netherlands',
+        'GB': 'United Kingdom',
+        'US': 'United States'
+      };
+      
+      const location = countryMap[params.country] || params.country;
+      body.location = location;
+      console.log('[firecrawl] Using location-based search:', location);
     }
 
-    if (body.tbs || body.location) {
-      console.warn('[firecrawl] legacy knobs in use', { tbs: body.tbs, location: body.location });
+    // Add time-based search for recent events
+    if (params.dateFrom || params.dateTo) {
+      // Use past year for event searches to catch upcoming events
+      body.tbs = 'qdr:y';
+      console.log('[firecrawl] Using time-based search: past year');
+    } else {
+      // Default to past year for event searches
+      body.tbs = 'qdr:y';
     }
 
     console.log('[firecrawl] Making request with body:', JSON.stringify(body, null, 2));

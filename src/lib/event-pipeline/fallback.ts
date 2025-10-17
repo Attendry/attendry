@@ -475,33 +475,33 @@ export async function executeNewPipeline(args: {
     }
   }
 
-  // Build structured event query: (Industry Terms) AND (Event Types) AND (Location) AND (Temporal)
-  const eventTypes = ['conference', 'event', 'summit', 'workshop', 'seminar', 'exhibition', 'trade show', 'meeting', 'symposium', 'forum'];
-  const temporalTerms = ['2025', '2026', 'upcoming', 'next', 'future', 'register', 'registration', 'agenda', 'speakers'];
+  // Build optimized event query for Firecrawl v2 API
+  const eventTypes = ['conference', 'event', 'summit', 'workshop', 'seminar'];
+  const temporalTerms = ['2025', '2026', 'upcoming', 'register'];
   
   // Get location terms based on country
   let locationTerms: string[] = [];
   if (ctx.iso2 === 'DE') {
-    locationTerms = ['Germany', 'Deutschland', 'Berlin', 'München', 'Frankfurt', 'Hamburg', 'Köln', 'Stuttgart', 'Düsseldorf'];
+    locationTerms = ['Germany', 'Berlin', 'München', 'Frankfurt'];
   } else if (ctx.iso2 === 'FR') {
-    locationTerms = ['France', 'Paris', 'Lyon', 'Marseille', 'Toulouse'];
+    locationTerms = ['France', 'Paris', 'Lyon'];
   } else if (ctx.iso2 === 'IT') {
-    locationTerms = ['Italy', 'Italia', 'Rome', 'Milan', 'Naples'];
+    locationTerms = ['Italy', 'Rome', 'Milan'];
   } else if (ctx.iso2 === 'ES') {
-    locationTerms = ['Spain', 'España', 'Madrid', 'Barcelona', 'Valencia'];
+    locationTerms = ['Spain', 'Madrid', 'Barcelona'];
   } else if (ctx.iso2 === 'NL') {
-    locationTerms = ['Netherlands', 'Nederland', 'Amsterdam', 'Rotterdam', 'The Hague'];
+    locationTerms = ['Netherlands', 'Amsterdam'];
   }
   
-  // Structure: (industry terms) AND (event types) AND (location) AND (temporal terms)
+  // Build query optimized for Firecrawl's search capabilities
   const industryTerms = query.split(' ').filter(term => term.length > 2);
   
-  // Simplified query structure for better Firecrawl compatibility
-  // Use space-separated terms instead of complex boolean logic
-  const eventQuery = `${industryTerms.join(' ')} ${eventTypes.slice(0, 4).join(' ')} ${temporalTerms.slice(0, 3).join(' ')}`;
+  // Use simple, focused query structure that works well with Firecrawl
+  // Focus on: industry + event type + temporal + location
+  const eventQuery = `${industryTerms.join(' ')} ${eventTypes.slice(0, 2).join(' ')} ${temporalTerms.slice(0, 2).join(' ')}`;
   
   if (locationTerms.length > 0) {
-    query = `${eventQuery} ${locationTerms.slice(0, 3).join(' ')}`;
+    query = `${eventQuery} ${locationTerms.slice(0, 2).join(' ')}`;
   } else {
     query = eventQuery;
   }

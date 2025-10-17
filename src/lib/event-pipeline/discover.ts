@@ -168,19 +168,21 @@ export class EventDiscoverer {
       const { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } = await import('@/lib/services/circuit-breaker');
       const { search: firecrawlSearch } = await import('@/providers/firecrawl');
       
-      const firecrawlRes = await RetryService.executeWithRetry(
-        'firecrawl',
-        'search',
-        () => executeWithCircuitBreaker(
-          'firecrawl',
-          () => firecrawlSearch({ 
-            q: query, 
-            dateFrom: context?.dateFrom || undefined, 
-            dateTo: context?.dateTo || undefined 
-          }),
-          CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
-        )
-      );
+          const firecrawlRes = await RetryService.executeWithRetry(
+            'firecrawl',
+            'search',
+            () => executeWithCircuitBreaker(
+              'firecrawl',
+              () => firecrawlSearch({ 
+                q: query, 
+                dateFrom: context?.dateFrom || undefined, 
+                dateTo: context?.dateTo || undefined,
+                country: country || undefined,
+                limit: 25 // Increase limit for better results
+              }),
+              CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
+            )
+          );
       
       const urls = firecrawlRes.data?.items || [];
       
