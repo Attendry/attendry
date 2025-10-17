@@ -493,24 +493,31 @@ export async function executeNewPipeline(args: {
     locationTerms = ['Netherlands', 'Amsterdam'];
   }
   
-      // Build ultra-simple query optimized for Firecrawl's search capabilities
-      // Use only the most essential terms - Firecrawl works best with simple queries
-      const simpleTerms = ['conference', 'event', 'summit'];
+      // Build targeted natural language query for Firecrawl
+      // Firecrawl works best with natural language queries that describe what we're looking for
       const locationTerm = locationTerms.length > 0 ? locationTerms[0] : 'Germany';
       const yearTerm = '2025';
       
-      // Use the simplest possible query structure
-      query = `${simpleTerms[0]} ${locationTerm} ${yearTerm}`;
+      // Create targeted natural language query incorporating key legal/compliance terms
+      // Use terms from the baseQuery but in natural language format
+      const keyTerms = ['legal', 'compliance', 'GDPR', 'data protection', 'regulatory'];
+      const eventTypes = ['conference', 'summit', 'workshop'];
       
-      logger.info({ message: '[executeNewPipeline] Using ultra-simple query for Firecrawl compatibility', 
+      // Build a natural language query that's targeted but not overly complex
+      query = `${keyTerms[0]} ${keyTerms[1]} ${eventTypes[0]} ${locationTerm} ${yearTerm} agenda speakers`;
+      
+      logger.info({ message: '[executeNewPipeline] Using targeted natural language query for Firecrawl', 
         originalQuery: args.userText,
-        simplifiedQuery: query
+        targetedQuery: query,
+        keyTerms: keyTerms.slice(0, 2),
+        eventType: eventTypes[0],
+        location: locationTerm
       });
   
   logger.info({ message: '[executeNewPipeline] Built structured event query', 
     originalQuery: args.userText,
     structuredQuery: query,
-    queryType: 'ultra-simple'
+    queryType: 'targeted-natural-language'
   });
   const context: PipelineContext = {
     query: query,

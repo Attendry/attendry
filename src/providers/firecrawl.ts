@@ -88,9 +88,39 @@ export async function search(params: {
       console.log('[firecrawl] No web results in response');
     }
     
-    // Log if no results found
+    // If no results found, try alternative targeted queries
     if (!json?.data?.web || json.data.web.length === 0) {
       console.log('[firecrawl] No results found with query:', params.q);
+      
+      // Try alternative targeted queries for legal/compliance events
+      const alternatives = [
+        `legal conference ${params.country || 'Germany'} 2025`,
+        `compliance summit ${params.country || 'Germany'} 2025`,
+        `GDPR conference ${params.country || 'Germany'} 2025`,
+        `data protection event ${params.country || 'Germany'} 2025`
+      ];
+      
+      for (const altQuery of alternatives) {
+        console.log('[firecrawl] Trying alternative query:', altQuery);
+        const altBody = { ...body, query: altQuery };
+        const altRes = await fetch('https://api.firecrawl.dev/v2/search', { 
+          method: 'POST', 
+          headers: {
+            'content-type':'application/json', 
+            'Authorization': `Bearer ${apiKey}`
+          }, 
+          body: JSON.stringify(altBody) 
+        });
+        
+        if (altRes.ok) {
+          const altJson = await altRes.json();
+          if (altJson?.data?.web && altJson.data.web.length > 0) {
+            console.log('[firecrawl] Alternative query found results:', altJson.data.web.length);
+            json = altJson; // Use alternative results
+            break;
+          }
+        }
+      }
     }
 
     // Map to {items: string[]} or {items: Array<{url, content}>} based on scrapeContent
