@@ -91,6 +91,8 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   }, [state.searchParams]);
 
   // Check watchlist matches when events change
+  // Temporarily disabled until database migration is applied
+  /*
   useEffect(() => {
     if (state.events.length > 0) {
       checkWatchlistMatches(state.events);
@@ -117,6 +119,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
       console.warn('Failed to check watchlist matches:', error);
     }
   };
+  */
 
   const q = useMemo(() => keywords.trim(), [keywords]);
 

@@ -19,7 +19,17 @@ async function saveSearchResultsAsync(params: {
   apiEndpoint: string;
 }) {
   try {
+    // Validate inputs
+    if (!params.results || !Array.isArray(params.results) || params.results.length === 0) {
+      return;
+    }
+
     const supabase = await supabaseServer();
+    if (!supabase) {
+      console.warn('Supabase client not available for search history saving');
+      return;
+    }
+
     const { data: userRes, error: userErr } = await supabase.auth.getUser();
     
     // Only save if user is authenticated
@@ -28,17 +38,32 @@ async function saveSearchResultsAsync(params: {
     }
 
     const searchParams = {
-      keywords: params.userText,
+      keywords: params.userText || '',
       country: params.country || 'EU',
       from: params.dateFrom || '',
       to: params.dateTo || '',
       timestamp: Date.now(),
     };
 
+    // Ensure results are serializable
+    const serializableResults = params.results.map(event => ({
+      id: event.id,
+      title: event.title,
+      source_url: event.source_url,
+      starts_at: event.starts_at,
+      ends_at: event.ends_at,
+      city: event.city,
+      country: event.country,
+      venue: event.venue,
+      organizer: event.organizer,
+      description: event.description,
+      confidence: event.confidence,
+    }));
+
     await supabase.rpc('save_search_results', {
       p_user_id: userRes.user.id,
       p_search_params: searchParams,
-      p_results: params.results,
+      p_results: serializableResults,
       p_search_duration_ms: params.searchDuration,
       p_api_endpoint: params.apiEndpoint
     });
@@ -812,19 +837,25 @@ export async function POST(req: NextRequest) {
     console.log('[api/events/run] TELEMETRY:', JSON.stringify(telemetry));
 
     // Save search results to history (async, don't wait for it)
-    const searchDuration = Date.now() - startTime;
-    saveSearchResultsAsync({
-      userText,
-      country: normalizedCountry,
-      dateFrom,
-      dateTo,
-      locale,
-      results: result.events || [],
-      searchDuration,
-      apiEndpoint: 'events/run'
-    }).catch(err => {
-      console.warn('[api/events/run] Failed to save search history:', err);
-    });
+    // Only save if we have actual results and no errors
+    // Temporarily disabled until database migration is applied
+    /*
+    if (result.events && result.events.length > 0 && !result.error) {
+      const searchDuration = Date.now() - startTime;
+      saveSearchResultsAsync({
+        userText,
+        country: normalizedCountry,
+        dateFrom,
+        dateTo,
+        locale,
+        results: result.events,
+        searchDuration,
+        apiEndpoint: 'events/run'
+      }).catch(err => {
+        console.warn('[api/events/run] Failed to save search history:', err);
+      });
+    }
+    */
 
     return NextResponse.json({
       ...result,

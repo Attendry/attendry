@@ -107,6 +107,8 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
   }, []);
 
   // Check watchlist matches when events change
+  // Temporarily disabled until database migration is applied
+  /*
   useEffect(() => {
     if (state.events.length > 0) {
       checkWatchlistMatches(state.events);
@@ -133,6 +135,7 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
       console.warn('Failed to check watchlist matches:', error);
     }
   };
+  */
 
   async function run(e?: React.FormEvent) {
     e?.preventDefault();
