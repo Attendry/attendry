@@ -476,7 +476,6 @@ export async function executeNewPipeline(args: {
   }
 
   // Build optimized event query for Firecrawl v2 API
-  const eventTypes = ['conference', 'event', 'summit', 'workshop', 'seminar'];
   const temporalTerms = ['2025', '2026', 'upcoming', 'register'];
   
   // Get location terms based on country
