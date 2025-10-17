@@ -83,6 +83,16 @@ export async function search(params: {
 
     const json = await res.json();
     console.log('[firecrawl] Response data:', JSON.stringify(json, null, 2));
+    
+    // Log response structure for debugging
+    if (json?.data?.web) {
+      console.log('[firecrawl] Web results found:', json.data.web.length);
+      if (json.data.web.length > 0) {
+        console.log('[firecrawl] First result:', JSON.stringify(json.data.web[0], null, 2));
+      }
+    } else {
+      console.log('[firecrawl] No web results in response');
+    }
 
     // Map to {items: string[]} or {items: Array<{url, content}>} based on scrapeContent
     const webResults = json?.data?.web || [];

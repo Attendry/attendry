@@ -494,8 +494,11 @@ export async function executeNewPipeline(args: {
   }
   
       // Build simple query optimized for Firecrawl's search capabilities
-      // Remove complex boolean logic and use simple space-separated terms
-      const industryTerms = query.split(' ').filter(term => term.length > 2);
+      // Remove ALL boolean logic, parentheses, and quotes - use only simple terms
+      const industryTerms = query
+        .replace(/[()"]/g, '') // Remove parentheses and quotes
+        .split(' ')
+        .filter(term => term.length > 2 && !['OR', 'AND'].includes(term.toUpperCase()));
       
       // Use simple, focused query structure that works well with Firecrawl
       // Focus on: industry + event type + temporal + location
@@ -505,6 +508,11 @@ export async function executeNewPipeline(args: {
         query = `${eventQuery} ${locationTerms.slice(0, 1).join(' ')}`;
       } else {
         query = eventQuery;
+      }
+      
+      // Ensure query is not empty and is simple
+      if (!query || query.trim().length === 0) {
+        query = 'conference Germany 2025';
       }
   
   logger.info({ message: '[executeNewPipeline] Built structured event query', 
