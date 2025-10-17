@@ -180,7 +180,8 @@ export class EventExtractor {
       2. Standardizing date formats (use YYYY-MM-DD)
       3. Improving location formatting (City, Country) - be very specific about the actual location
       4. Extracting additional speaker information if possible - ONLY include actual person names (First Last format), NOT job titles, organizations, or generic terms
-      5. Validating that this is actually an event page
+      5. Extracting organization data (sponsors, participating companies, partners, competitors)
+      6. Validating that this is actually an event page
       
       IMPORTANT LOCATION RULES:
       - If the event is in Ho Chi Minh City, Vietnam, set location to "Ho Chi Minh City, Vietnam"
@@ -201,6 +202,19 @@ export class EventExtractor {
       - EXCLUDE generic terms like "Speaker", "Presenter", "Panelist" (unless they are actual names)
       - If no actual person names are found, return empty array []
       
+      IMPORTANT ORGANIZATION RULES:
+      - Extract ALL organizations mentioned on the page and categorize them by role
+      - Look for sponsor sections, partner sections, exhibitor lists, and company mentions
+      - Categorize organizations as follows:
+        * sponsors: Companies that financially support the event (look for "Platinum", "Gold", "Silver", "Bronze" tiers)
+        * participating_organizations: Companies sending attendees or mentioned as participants
+        * partners: Co-organizers, collaborators, media partners, technology partners
+        * competitors: Rival companies in the same industry space (be conservative, only include obvious competitors)
+      - Extract company names, sponsorship levels, and descriptions where available
+      - Look for patterns like "Platinum Sponsor: Microsoft", "Gold Sponsor: Google", "Partner: IBM"
+      - Look for exhibitor lists, attendee company lists, and speaker company affiliations
+      - If no organizations are found, return empty arrays []
+      
       Return JSON with enhanced fields:
       {
         "title": "Enhanced title or original if good",
@@ -220,6 +234,21 @@ export class EventExtractor {
             "company": "XYZ Law Firm"
           }
         ],
+        "sponsors": [
+          {
+            "name": "Microsoft",
+            "level": "Platinum",
+            "description": "Technology partner"
+          },
+          {
+            "name": "Google",
+            "level": "Gold",
+            "description": "Cloud solutions provider"
+          }
+        ],
+        "participating_organizations": ["Deloitte", "PwC", "EY", "KPMG"],
+        "partners": ["Media Partner", "Technology Partner"],
+        "competitors": ["Competitor A", "Competitor B"],
         "agenda": ["Session 1", "Session 2", ...],
         "confidence": 0.0-1.0,
         "notes": "Brief description of enhancements made"

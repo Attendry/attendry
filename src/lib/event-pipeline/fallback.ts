@@ -153,6 +153,11 @@ export class PipelineFallback {
           location: result?.location,
           venue: result?.venue,
           speakers,
+          // Organization data
+          sponsors: result?.sponsors || [],
+          participating_organizations: result?.participating_organizations || [],
+          partners: result?.partners || [],
+          competitors: result?.competitors || [],
           confidence: result?.confidence || 0.5,
           confidence_reason: 'new_pipeline',
           // Additional pipeline metadata
@@ -276,34 +281,56 @@ export class PipelineFallback {
       }))
     };
 
-    // Apply date filtering if dateFrom/dateTo are provided
+    // Apply relaxed date filtering if dateFrom/dateTo are provided
     if (context && (context.dateFrom || context.dateTo)) {
       const originalCount = events.length;
       const today = new Date();
       const dateFrom = context.dateFrom ? new Date(context.dateFrom) : new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
       const dateTo = context.dateTo ? new Date(context.dateTo) : new Date(today.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
       
-      events = events.filter((candidate: EventCandidate) => {
+      const validDateEvents: any[] = [];
+      const undatedEvents: any[] = [];
+      
+      events.forEach((candidate: EventCandidate) => {
         const sourceDate = candidate.extractResult?.startISO ?? candidate.parseResult?.startISO ?? candidate.dateISO ?? candidate.parseResult?.date;
-        if (!sourceDate) return true;
+        
+        if (!sourceDate) {
+          // No date - include as undated candidate
+          undatedEvents.push(candidate);
+          return;
+        }
+        
         const eventDateObj = new Date(sourceDate);
-        if (Number.isNaN(eventDateObj.getTime())) return true;
-
-        if (eventDateObj < dateFrom) {
-          logger.info({ message: '[fallback] Filtering out event before date range', url: candidate.url, eventDate: sourceDate, dateFrom: context.dateFrom });
-          return false;
+        if (Number.isNaN(eventDateObj.getTime())) {
+          // Invalid date - include as undated candidate
+          undatedEvents.push(candidate);
+          return;
         }
-        if (eventDateObj > dateTo) {
-          logger.info({ message: '[fallback] Filtering out event after date range', url: candidate.url, eventDate: sourceDate, dateTo: context.dateTo });
-          return false;
+        
+        if (eventDateObj >= dateFrom && eventDateObj <= dateTo) {
+          // Valid date within range
+          validDateEvents.push(candidate);
+        } else {
+          // Outside date range - include as undated candidate for relaxed mode
+          undatedEvents.push(candidate);
+          logger.info({ message: '[fallback] Event outside date range, including as undated candidate', 
+            url: candidate.url, 
+            eventDate: sourceDate, 
+            dateFrom: context.dateFrom,
+            dateTo: context.dateTo 
+          });
         }
-        return true;
       });
       
+      // Use relaxed filtering - include both valid date events and undated events
+      events = [...validDateEvents, ...undatedEvents];
+      
       if (originalCount !== events.length) {
-        logger.info({ message: '[fallback] Date filtering applied', 
+        logger.info({ message: '[fallback] Relaxed date filtering applied', 
           originalCount, 
-          filteredCount: events.length,
+          validDateEvents: validDateEvents.length,
+          undatedEvents: undatedEvents.length,
+          finalCount: events.length,
           dateFrom: context.dateFrom,
           dateTo: context.dateTo
         });

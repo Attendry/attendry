@@ -6,7 +6,10 @@
  */
 
 import type { CountryContext } from '@/lib/utils/country';
-import type { ConfidenceLevel } from '@/search/types';
+import type { PublishedEvent } from './publish';
+
+// Confidence level type
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
 
 // Core pipeline configuration
 export interface EventPipelineConfig {
@@ -84,6 +87,13 @@ export interface SpeakerInfo {
   company?: string;
 }
 
+// Sponsor information structure
+export interface SponsorInfo {
+  name: string;
+  level?: string;
+  description?: string;
+}
+
 // Deterministic parsing result
 export interface ParseResult {
   title?: string;
@@ -96,6 +106,10 @@ export interface ParseResult {
   venue?: string;
   speakers?: string[] | SpeakerInfo[];  // Support both formats
   agenda?: string[];
+  sponsors?: SponsorInfo[];             // Sponsor information
+  participating_organizations?: string[]; // Participating companies
+  partners?: string[];                  // Partner organizations
+  competitors?: string[];               // Competitor companies
   confidence: number;         // Confidence in parsing result (0-1)
   evidence: Evidence[];       // Evidence for each extracted field
   parseMethod: 'deterministic' | 'llm_enhanced';
