@@ -91,6 +91,16 @@ export default function ExpandableSpeakerCard({
   } = useSpeakerEnhancement(speaker);
 
   // ============================================================================
+  // COMPUTED VALUES
+  // ============================================================================
+  
+  // Normalize the speaker data to ensure consistent field access
+  const normalizedSpeaker = normalizeSpeakerData(speaker);
+  
+  // Always use enhanced data if available, but fall back to basic speaker data
+  const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || normalizedSpeaker;
+
+  // ============================================================================
   // EVENT HANDLERS
   // ============================================================================
   
@@ -148,16 +158,6 @@ export default function ExpandableSpeakerCard({
     }
   }
 
-  // ============================================================================
-  // COMPUTED VALUES
-  // ============================================================================
-  
-  // Normalize the speaker data to ensure consistent field access
-  const normalizedSpeaker = normalizeSpeakerData(speaker);
-  
-  // Always use enhanced data if available, but fall back to basic speaker data
-  const displaySpeaker: EnhancedSpeaker = enhancedSpeaker || normalizedSpeaker;
-  
   // Use the utility functions to get display values
   const displayTitle = getDisplayTitle(normalizedSpeaker, enhancedSpeaker);
   const displayOrg = getDisplayOrganization(normalizedSpeaker, enhancedSpeaker);
