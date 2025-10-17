@@ -92,13 +92,18 @@ export async function search(params: {
     if (!json?.data?.web || json.data.web.length === 0) {
       console.log('[firecrawl] No results found with query:', params.q);
       
-      // Try alternative targeted queries for legal/compliance events
+      // Try alternative targeted queries using terms from the original query
+      const originalTerms = params.q.split(' ').filter(term => term.length > 2);
+      const eventTypes = ['conference', 'summit', 'workshop', 'event']; // fallback event types
+      const location = params.country || 'Germany';
+      
+      // Create alternative queries using different combinations of terms
       const alternatives = [
-        `legal conference ${params.country || 'Germany'} 2025`,
-        `compliance summit ${params.country || 'Germany'} 2025`,
-        `GDPR conference ${params.country || 'Germany'} 2025`,
-        `data protection event ${params.country || 'Germany'} 2025`
-      ];
+        `${originalTerms[0]} ${eventTypes[0]} ${location} 2025`,
+        `${originalTerms[1] || originalTerms[0]} ${eventTypes[1]} ${location} 2025`,
+        `${originalTerms[0]} ${eventTypes[2]} ${location} 2025`,
+        `${originalTerms.slice(0, 2).join(' ')} ${eventTypes[0]} ${location} 2025`
+      ].filter(alt => alt && alt.length > 10); // Ensure we have meaningful alternatives
       
       for (const altQuery of alternatives) {
         console.log('[firecrawl] Trying alternative query:', altQuery);

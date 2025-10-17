@@ -493,23 +493,41 @@ export async function executeNewPipeline(args: {
     locationTerms = ['Netherlands', 'Amsterdam'];
   }
   
-      // Build targeted natural language query for Firecrawl
+      // Build targeted natural language query for Firecrawl using admin-configured terms
       // Firecrawl works best with natural language queries that describe what we're looking for
       const locationTerm = locationTerms.length > 0 ? locationTerms[0] : 'Germany';
       const yearTerm = '2025';
       
-      // Create targeted natural language query incorporating key legal/compliance terms
-      // Use terms from the baseQuery but in natural language format
-      const keyTerms = ['legal', 'compliance', 'GDPR', 'data protection', 'regulatory'];
-      const eventTypes = ['conference', 'summit', 'workshop'];
+      // Extract key terms from the baseQuery (admin-configured) and convert to natural language
+      // Remove boolean operators and parentheses to create natural language terms
+      const baseQueryTerms = query
+        .replace(/[()"]/g, '') // Remove parentheses and quotes
+        .split(/\s+(?:OR|AND)\s+/i) // Split on OR/AND operators
+        .map(term => term.trim())
+        .filter(term => term.length > 2 && !['OR', 'AND'].includes(term.toUpperCase()))
+        .slice(0, 3); // Take first 3 meaningful terms
       
-      // Build a natural language query that's targeted but not overly complex
-      query = `${keyTerms[0]} ${keyTerms[1]} ${eventTypes[0]} ${locationTerm} ${yearTerm} agenda speakers`;
+      // Get event types from admin configuration
+      let eventTypes = ['conference', 'summit', 'workshop', 'event']; // fallback
+      try {
+        const { loadActiveConfig } = await import('@/common/search/config');
+        const cfg = await loadActiveConfig();
+        if (cfg.eventTerms && cfg.eventTerms.length > 0) {
+          eventTypes = cfg.eventTerms;
+        }
+      } catch (error) {
+        logger.warn({ message: '[executeNewPipeline] Failed to load eventTerms from config, using fallback', error: (error as any).message });
+      }
       
-      logger.info({ message: '[executeNewPipeline] Using targeted natural language query for Firecrawl', 
+      // Build a natural language query using admin-configured terms
+      const industryTerms = baseQueryTerms.length > 0 ? baseQueryTerms.join(' ') : 'business';
+      query = `${industryTerms} ${eventTypes[0]} ${locationTerm} ${yearTerm} agenda speakers`;
+      
+      logger.info({ message: '[executeNewPipeline] Using admin-configured natural language query for Firecrawl', 
         originalQuery: args.userText,
+        baseQueryTerms: baseQueryTerms,
         targetedQuery: query,
-        keyTerms: keyTerms.slice(0, 2),
+        industryTerms: industryTerms,
         eventType: eventTypes[0],
         location: locationTerm
       });
