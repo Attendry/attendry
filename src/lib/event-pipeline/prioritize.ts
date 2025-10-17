@@ -191,6 +191,21 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
 {"is_event": 0.9, "has_agenda": 0.7, "has_speakers": 0.8, "is_recent": 0.9, "is_relevant": 0.8${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? ', "is_country_relevant": 0.9' : ''}, "overall": 0.82}`;
     
     try {
+      // For URL-only analysis, use fallback scoring more often since LLM is too strict
+      // Only use LLM for URLs that clearly look like events
+      const url = candidate.url.toLowerCase();
+      const isLikelyEvent = url.includes('conference') || url.includes('summit') || 
+                           url.includes('event') || url.includes('workshop') || 
+                           url.includes('seminar') || url.includes('exhibition');
+      
+      if (!isLikelyEvent) {
+        logger.info({ message: '[prioritize] Using fallback scoring for non-event URL',
+          url: candidate.url,
+          reason: 'URL does not contain event indicators'
+        });
+        return this.fallbackScoring(candidate);
+      }
+      
       const response = await this.geminiService.generateContent(prompt);
       
       // Enhanced JSON parsing with fallback
@@ -290,37 +305,60 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
     const germanSignal = this.containsGermanLocaleSignals(candidate);
     const cityBonus = this.detectCityTokens(candidate);
     
-    let is_event = 0.2;
-    let has_agenda = 0.1;
-    let has_speakers = 0.1;
-    let is_recent = normalizedDate ? 0.2 : 0;
-    let is_relevant = 0.3;
+    // Enhanced fallback scoring based on enhanced orchestrator approach
+    let is_event = 0.4; // Higher base score for any URL
+    let has_agenda = 0.3;
+    let has_speakers = 0.3;
+    let is_recent = normalizedDate ? 0.4 : 0.2;
+    let is_relevant = 0.5;
     
-    if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+    // Event type indicators (more generous scoring)
+    if (url.includes('conference') || url.includes('summit') || url.includes('event') || 
+        url.includes('workshop') || url.includes('seminar') || url.includes('exhibition')) {
       is_event = 0.8;
     }
-    if (url.includes('agenda') || url.includes('program') || url.includes('schedule')) {
-      has_agenda = 0.6;
+    
+    // Agenda/program indicators
+    if (url.includes('agenda') || url.includes('program') || url.includes('schedule') || 
+        url.includes('session') || url.includes('track')) {
+      has_agenda = 0.7;
     }
-    if (url.includes('speaker') || url.includes('presenter')) {
-      has_speakers = 0.6;
+    
+    // Speaker indicators
+    if (url.includes('speaker') || url.includes('presenter') || url.includes('keynote') || 
+        url.includes('faculty') || url.includes('panel')) {
+      has_speakers = 0.7;
     }
+    
+    // Date relevance
     if (normalizedDate) {
       const diffDays = (new Date(normalizedDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
-      is_recent = diffDays >= -30 && diffDays <= 365 ? 0.7 : 0;
+      is_recent = diffDays >= -30 && diffDays <= 365 ? 0.8 : 0.4;
     }
-    if (url.includes('compliance') || url.includes('legal') || url.includes('regulation')) {
+    
+    // Industry relevance (more generous)
+    if (url.includes('compliance') || url.includes('legal') || url.includes('regulation') || 
+        url.includes('business') || url.includes('tech') || url.includes('data') || 
+        url.includes('security') || url.includes('privacy')) {
       is_relevant = 0.8;
     }
     
+    // Country relevance bonus
+    let countryBonus = 0;
+    if (url.includes('.de') || url.includes('germany') || url.includes('deutschland') || 
+        url.includes('berlin') || url.includes('münchen') || url.includes('frankfurt')) {
+      countryBonus = 0.2;
+    }
+    
     const overall = (
-      is_event * 0.28 +
+      is_event * 0.25 +
       has_agenda * 0.2 +
-      has_speakers * 0.18 +
-      is_recent * 0.18 +
-      is_relevant * 0.1 +
-      germanSignal * 0.03 +
-      cityBonus * 0.03
+      has_speakers * 0.15 +
+      is_recent * 0.15 +
+      is_relevant * 0.15 +
+      germanSignal * 0.05 +
+      cityBonus * 0.03 +
+      countryBonus
     );
     
     logger.warn({ message: '[prioritize] Using fallback scoring',
@@ -334,7 +372,7 @@ RESPOND WITH JSON ONLY - NO OTHER TEXT:
       has_speakers,
       is_recent,
       is_relevant,
-      overall: Math.round(overall * 100) / 100
+      overall: Math.min(Math.round(overall * 100) / 100, 1.0)
     };
   }
 
