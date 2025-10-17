@@ -362,7 +362,7 @@ export const CIRCUIT_BREAKER_CONFIGS = {
   FIRECRAWL: {
     failureThreshold: 3,
     successThreshold: 2,
-    timeout: 20000,
+    timeout: 10000,
     resetTimeout: 30000,
     monitoringPeriod: 60000,
     maxRequests: 2,
@@ -370,7 +370,7 @@ export const CIRCUIT_BREAKER_CONFIGS = {
   GEMINI: {
     failureThreshold: 5,
     successThreshold: 3,
-    timeout: 20000,
+    timeout: 10000,
     resetTimeout: 30000,
     monitoringPeriod: 60000,
     maxRequests: 3,

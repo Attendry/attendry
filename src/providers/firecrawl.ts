@@ -24,7 +24,7 @@ export async function search(params: {
       // Use news source for better event discovery
       sources: ['web', 'news'],
       // Add timeout for better reliability
-      timeout: 30000
+      timeout: 10000
     };
 
     // Add content scraping if requested

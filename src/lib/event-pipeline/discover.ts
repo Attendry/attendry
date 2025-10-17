@@ -129,22 +129,37 @@ export class EventDiscoverer {
         countryContext: context?.countryContext ?? null,
       });
       
-      const candidates = results.items.map((item: any, index: number) => ({
-        id: `cse_${Date.now()}_${index}`,
-        url: item.url,
-        source: 'cse' as const,
-        discoveredAt: new Date(),
-        relatedUrls: (Array.isArray(item.relatedUrls) ? item.relatedUrls : (item.metadata?.relatedUrls ?? [])).filter((value: unknown): value is string => typeof value === 'string'),
-        status: 'discovered' as const,
-        metadata: {
-          originalQuery: query,
-          country,
-          processingTime: Date.now() - startTime,
-          stageTimings: {
-            discovery: Date.now() - startTime
+      // Debug logging to see what CSE returns
+      logger.info({ message: '[discover:cse] CSE results structure', 
+        itemsCount: results.items?.length || 0,
+        firstItem: results.items?.[0] ? JSON.stringify(results.items[0], null, 2) : 'No items'
+      });
+      
+      const candidates = results.items
+        .filter((item: any) => {
+          // Filter out items without URLs
+          if (!item.url && !item.link) {
+            logger.warn({ message: '[discover:cse] Item missing URL', item: JSON.stringify(item, null, 2) });
+            return false;
           }
-        }
-      }));
+          return true;
+        })
+        .map((item: any, index: number) => ({
+          id: `cse_${Date.now()}_${index}`,
+          url: item.url || item.link, // Try both url and link fields
+          source: 'cse' as const,
+          discoveredAt: new Date(),
+          relatedUrls: (Array.isArray(item.relatedUrls) ? item.relatedUrls : (item.metadata?.relatedUrls ?? [])).filter((value: unknown): value is string => typeof value === 'string'),
+          status: 'discovered' as const,
+          metadata: {
+            originalQuery: query,
+            country,
+            processingTime: Date.now() - startTime,
+            stageTimings: {
+              discovery: Date.now() - startTime
+            }
+          }
+        }));
       
       logger.info({ message: '[discover:cse] CSE discovery completed',
         candidatesFound: candidates.length,
