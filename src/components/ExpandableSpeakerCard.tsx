@@ -43,6 +43,13 @@ interface EnhancedSpeaker extends SpeakerData {
   achievements?: string[];
   industry_connections?: Array<{name: string, org?: string, url?: string}> | string[];
   recent_news?: Array<{title: string, url: string, date?: string}> | string[];
+  recent_projects?: Array<{name: string, description: string, date?: string}>;
+  company_size?: string;
+  team_info?: string;
+  speaking_topics?: string[];
+  media_mentions?: Array<{outlet: string, title: string, url: string, date: string}>;
+  board_positions?: string[];
+  certifications?: string[];
 }
 
 /**
@@ -70,6 +77,8 @@ export default function ExpandableSpeakerCard({
   
   const [expanded, setExpanded] = useState(isExpanded);
   const [busy, setBusy] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   
   // Use the custom hook for speaker enhancement
   const {
@@ -97,7 +106,7 @@ export default function ExpandableSpeakerCard({
   };
 
 
-  async function save() {
+  async function saveToWatchlist() {
     setBusy(true);
     try {
       const res = await fetch("/api/watchlist/add", {
@@ -118,6 +127,27 @@ export default function ExpandableSpeakerCard({
     }
   }
 
+  async function saveProfile() {
+    setSavingProfile(true);
+    try {
+      const res = await fetch("/api/profiles/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          speaker_data: speaker,
+          enhanced_data: displaySpeaker,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Save failed");
+      setProfileSaved(true);
+    } catch (e: unknown) {
+      alert((e as Error)?.message || "Save failed");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
   // ============================================================================
   // COMPUTED VALUES
   // ============================================================================
@@ -134,6 +164,61 @@ export default function ExpandableSpeakerCard({
   
   // Check if we have any basic information available
   const hasBasicInfo = !!(displayTitle || displayOrg);
+
+  // Date filtering utilities
+  const isWithinLast12Months = (dateString: string): boolean => {
+    try {
+      const date = new Date(dateString);
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+      return date >= twelveMonthsAgo;
+    } catch {
+      return false;
+    }
+  };
+
+  const filterRecentItems = <T extends { date?: string }>(items: T[]): T[] => {
+    return items.filter(item => {
+      if (!item.date) return true; // Keep items without dates
+      return isWithinLast12Months(item.date);
+    });
+  };
+
+  const formatRelativeDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInMonths = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 30));
+      
+      if (diffInMonths === 0) return "This month";
+      if (diffInMonths === 1) return "1 month ago";
+      if (diffInMonths < 12) return `${diffInMonths} months ago`;
+      
+      const diffInYears = Math.floor(diffInMonths / 12);
+      if (diffInYears === 1) return "1 year ago";
+      return `${diffInYears} years ago`;
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Filter time-sensitive data
+  const filteredRecentNews = displaySpeaker.recent_news ? 
+    filterRecentItems(Array.isArray(displaySpeaker.recent_news) ? 
+      displaySpeaker.recent_news.filter(item => typeof item === 'object' && item !== null) : []) : [];
+  
+  const filteredMediaMentions = displaySpeaker.media_mentions ? 
+    filterRecentItems(displaySpeaker.media_mentions) : [];
+  
+  const filteredSpeakingHistory = displaySpeaker.speaking_history ? 
+    displaySpeaker.speaking_history.filter((item: string) => {
+      // For speaking history, try to extract dates from the string
+      const dateMatch = item.match(/\b(20\d{2})\b/);
+      if (dateMatch) {
+        return isWithinLast12Months(`${dateMatch[1]}-01-01`);
+      }
+      return true; // Keep items without clear dates
+    }) : [];
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400";
@@ -180,33 +265,50 @@ export default function ExpandableSpeakerCard({
               {displaySpeaker.name}
             </div>
             
-            {/* Job Title and Organization */}
+            {/* Original Title and Organization (Always Visible) */}
             <div className="mb-3">
               <div className={`font-medium text-slate-800 dark:text-slate-200 mb-1 flex flex-wrap items-baseline gap-2 ${
                 expanded ? 'text-lg' : 'text-base'
               }`}>
-                {displayTitle ? (
-                  <span>{displayTitle}</span>
+                {speaker.title ? (
+                  <span className="bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-md text-blue-800 dark:text-blue-300 font-medium">
+                    {speaker.title}
+                  </span>
                 ) : (
-                  <span className="italic text-slate-400 dark:text-slate-500">Title not provided yet</span>
+                  <span className="italic text-slate-400 dark:text-slate-500">Title not provided</span>
                 )}
-                {displayTitle && displayOrg && (
+                {speaker.title && speaker.org && (
                   <span className="text-slate-400 dark:text-slate-500">·</span>
                 )}
-                {displayOrg ? (
+                {speaker.org ? (
                   <span className={`font-medium text-slate-700 dark:text-slate-300 ${
                     expanded ? 'text-base' : 'text-sm'
                   }`}>
-                    {displayOrg}
+                    {speaker.org}
                   </span>
                 ) : (
                   <span className={`font-medium text-slate-700 dark:text-slate-300 italic ${
                     expanded ? 'text-base' : 'text-sm'
                   }`}>
-                    Organization not provided yet
+                    Organization not provided
                   </span>
                 )}
               </div>
+              
+              {/* Enhanced Title/Organization (if different from original) */}
+              {enhancedSpeaker && (enhancedSpeaker.title !== speaker.title || enhancedSpeaker.organization !== speaker.org) && (
+                <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <div className="text-xs font-medium text-green-800 dark:text-green-300 mb-1">Enhanced Information:</div>
+                  <div className="text-sm text-green-900 dark:text-green-200">
+                    {enhancedSpeaker.title && enhancedSpeaker.title !== speaker.title && (
+                      <div className="font-medium">{enhancedSpeaker.title}</div>
+                    )}
+                    {enhancedSpeaker.organization && enhancedSpeaker.organization !== speaker.org && (
+                      <div className="text-green-700 dark:text-green-300">{enhancedSpeaker.organization}</div>
+                    )}
+                  </div>
+                </div>
+              )}
               {displaySpeaker.location && (
                 <div className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,11 +386,23 @@ export default function ExpandableSpeakerCard({
           )}
           
           <button
-            onClick={save}
+            onClick={saveToWatchlist}
             disabled={busy}
             className="text-xs rounded-full border border-slate-300 dark:border-slate-600 px-3 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 text-slate-700 dark:text-slate-300 transition-colors duration-200"
           >
             {busy ? "Saving…" : "Save to Watchlist"}
+          </button>
+
+          <button
+            onClick={saveProfile}
+            disabled={savingProfile || profileSaved}
+            className={`text-xs rounded-full border px-3 py-1 disabled:opacity-50 transition-colors duration-200 ${
+              profileSaved 
+                ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300" 
+                : "border-slate-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-slate-700 dark:text-slate-300"
+            }`}
+          >
+            {savingProfile ? "Saving…" : profileSaved ? "Saved ✓" : "Save Profile"}
           </button>
         </div>
 
@@ -414,6 +528,152 @@ export default function ExpandableSpeakerCard({
                     </ul>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Recent News */}
+            {filteredRecentNews.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Recent News & Media (Last 12 months)</h4>
+                <ul className="space-y-2">
+                  {filteredRecentNews.map((news: any, idx: number) => {
+                    if (!news) return null;
+                    
+                    const isStructured = typeof news === 'object' && news !== null && news.title;
+                    const title = isStructured ? String(news.title || '') : String(news || '');
+                    const url = isStructured ? String(news.url || '') : null;
+                    const date = isStructured ? String(news.date || '') : null;
+                    
+                    if (!title || title === 'undefined' || title === 'null') return null;
+                    
+                    return (
+                      <li key={idx} className="text-sm text-slate-700 dark:text-slate-300">
+                        • {url && url !== 'undefined' && url !== 'null' && url.startsWith('http') ? (
+                          <a href={url} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
+                            {title}
+                          </a>
+                        ) : title}
+                        {date && date !== 'undefined' && date !== 'null' && (
+                          <span className="text-slate-500 dark:text-slate-400 text-xs ml-2">
+                            ({formatRelativeDate(date)})
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {/* Media Mentions */}
+            {filteredMediaMentions.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Media Mentions (Last 12 months)</h4>
+                <ul className="space-y-2">
+                  {filteredMediaMentions.map((mention: any, idx: number) => (
+                    <li key={idx} className="text-sm text-slate-700 dark:text-slate-300">
+                      • <span className="font-medium">{mention.outlet}</span>: {mention.url && mention.url.startsWith('http') ? (
+                        <a href={mention.url} target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
+                          {mention.title}
+                        </a>
+                      ) : mention.title}
+                      {mention.date && (
+                        <span className="text-slate-500 dark:text-slate-400 text-xs ml-2">
+                          ({formatRelativeDate(mention.date)})
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Recent Projects */}
+            {displaySpeaker.recent_projects && displaySpeaker.recent_projects.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Recent Projects</h4>
+                <ul className="space-y-3">
+                  {displaySpeaker.recent_projects.map((project: any, idx: number) => (
+                    <li key={idx} className="text-sm text-slate-700 dark:text-slate-300">
+                      <div className="font-medium">{project.name}</div>
+                      <div className="text-slate-600 dark:text-slate-400">{project.description}</div>
+                      {project.date && (
+                        <div className="text-slate-500 dark:text-slate-500 text-xs">
+                          {formatRelativeDate(project.date)}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Company & Team Information */}
+            {(displaySpeaker.company_size || displaySpeaker.team_info) && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Company & Team</h4>
+                <div className="space-y-2">
+                  {displaySpeaker.company_size && (
+                    <div className="text-sm text-slate-700 dark:text-slate-300">
+                      <span className="font-medium">Company Size:</span> {displaySpeaker.company_size}
+                    </div>
+                  )}
+                  {displaySpeaker.team_info && (
+                    <div className="text-sm text-slate-700 dark:text-slate-300">
+                      <span className="font-medium">Team:</span> {displaySpeaker.team_info}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Speaking Topics */}
+            {displaySpeaker.speaking_topics && displaySpeaker.speaking_topics.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Speaking Topics</h4>
+                <div className="flex flex-wrap gap-2">
+                  {displaySpeaker.speaking_topics.map((topic: string, idx: number) => (
+                    <span key={idx} className="text-xs font-medium rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 px-3 py-1">
+                      {topic}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Board Positions */}
+            {displaySpeaker.board_positions && displaySpeaker.board_positions.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Board Positions & Advisory Roles</h4>
+                <ul className="space-y-2">
+                  {displaySpeaker.board_positions.map((position: string, idx: number) => (
+                    <li key={idx} className="text-sm text-slate-700 dark:text-slate-300">• {position}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Certifications */}
+            {displaySpeaker.certifications && displaySpeaker.certifications.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Certifications</h4>
+                <ul className="space-y-2">
+                  {displaySpeaker.certifications.map((cert: string, idx: number) => (
+                    <li key={idx} className="text-sm text-slate-700 dark:text-slate-300">• {cert}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Recent Speaking History */}
+            {filteredSpeakingHistory.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">Recent Speaking History (Last 12 months)</h4>
+                <ul className="space-y-2">
+                  {filteredSpeakingHistory.map((event: string, idx: number) => (
+                    <li key={idx} className="text-sm text-slate-700 dark:text-slate-300">• {event}</li>
+                  ))}
+                </ul>
               </div>
             )}
 
