@@ -493,18 +493,19 @@ export async function executeNewPipeline(args: {
     locationTerms = ['Netherlands', 'Amsterdam'];
   }
   
-  // Build query optimized for Firecrawl's search capabilities
-  const industryTerms = query.split(' ').filter(term => term.length > 2);
-  
-  // Use simple, focused query structure that works well with Firecrawl
-  // Focus on: industry + event type + temporal + location
-  const eventQuery = `${industryTerms.join(' ')} ${eventTypes.slice(0, 2).join(' ')} ${temporalTerms.slice(0, 2).join(' ')}`;
-  
-  if (locationTerms.length > 0) {
-    query = `${eventQuery} ${locationTerms.slice(0, 2).join(' ')}`;
-  } else {
-    query = eventQuery;
-  }
+      // Build simple query optimized for Firecrawl's search capabilities
+      // Remove complex boolean logic and use simple space-separated terms
+      const industryTerms = query.split(' ').filter(term => term.length > 2);
+      
+      // Use simple, focused query structure that works well with Firecrawl
+      // Focus on: industry + event type + temporal + location
+      const eventQuery = `${industryTerms.slice(0, 3).join(' ')} ${eventTypes.slice(0, 1).join(' ')} ${temporalTerms.slice(0, 1).join(' ')}`;
+      
+      if (locationTerms.length > 0) {
+        query = `${eventQuery} ${locationTerms.slice(0, 1).join(' ')}`;
+      } else {
+        query = eventQuery;
+      }
   
   logger.info({ message: '[executeNewPipeline] Built structured event query', 
     originalQuery: args.userText,

@@ -31,8 +31,7 @@ export async function search(params: {
     if (params.scrapeContent) {
       body.scrapeOptions = {
         formats: ['markdown', 'links'],
-        onlyMainContent: true,
-        includeHtml: false
+        onlyMainContent: true
       };
     }
 
