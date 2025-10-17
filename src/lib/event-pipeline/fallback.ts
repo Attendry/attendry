@@ -495,10 +495,13 @@ export async function executeNewPipeline(args: {
   
   // Structure: (industry terms) AND (event types) AND (location) AND (temporal terms)
   const industryTerms = query.split(' ').filter(term => term.length > 2);
-  const eventQuery = `(${industryTerms.join(' OR ')}) AND (${eventTypes.join(' OR ')}) AND (${temporalTerms.join(' OR ')})`;
+  
+  // Simplified query structure for better Firecrawl compatibility
+  // Use space-separated terms instead of complex boolean logic
+  const eventQuery = `${industryTerms.join(' ')} ${eventTypes.slice(0, 4).join(' ')} ${temporalTerms.slice(0, 3).join(' ')}`;
   
   if (locationTerms.length > 0) {
-    query = `${eventQuery} AND (${locationTerms.join(' OR ')})`;
+    query = `${eventQuery} ${locationTerms.slice(0, 3).join(' ')}`;
   } else {
     query = eventQuery;
   }
