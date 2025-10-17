@@ -7,31 +7,16 @@ import { EmptyEvents } from "@/components/States/EmptyState";
 import { SkeletonList } from "@/components/States/LoadingState";
 import { ErrorState } from "@/components/States/ErrorState";
 import EventCard from "@/components/EventCard";
+import EventsPagination from "@/components/EventsPagination";
 import { deriveLocale, toISO2Country } from "@/lib/utils/country";
 import { Button } from "@/components/ui/button";
-import { Search } from "lucide-react";
+import { Search, Clock } from "lucide-react";
 import Link from "next/link";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import { useRouter } from "next/navigation";
+import { useSearchResults, EventRec } from "@/context/SearchResultsContext";
 
-type EventRec = {
-  id?: string;
-  source_url: string;
-  link?: string;
-  title: string;
-  starts_at?: string | null;
-  ends_at?: string | null;
-  city?: string | null;
-  country?: string | null;
-  organizer?: string | null;
-  speakers?: any[] | null;
-  description?: string | null;
-  venue?: string | null;
-  location?: string | null;
-  confidence?: number | null;
-  confidence_reason?: string | null;
-  pipeline_metadata?: any | null;
-};
+// EventRec type is now imported from SearchResultsContext
 
 const EU = [
   { code: "EU", name: "All Europe" },
@@ -64,7 +49,10 @@ interface EventsPageNewProps {
 }
 
 export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
-  // Events search state - matching existing architecture
+  // Use SearchResultsContext for global state management
+  const { state, actions } = useSearchResults();
+  
+  // Local UI state for search form
   const [country, setCountry] = useState<string>("EU");
   const [range, setRange] = useState<"next" | "past">("next");
   const [days, setDays] = useState<7 | 14 | 30>(7);
@@ -72,12 +60,13 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [to, setTo] = useState<string>(todayISO(addDays(new Date(), 7)));
   const [keywords, setKeywords] = useState<string>("");
 
-  const [events, setEvents] = useState<EventRec[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [savedSet, setSavedSet] = useState<Set<string>>(initialSavedSet);
   const [debug, setDebug] = useState<any>(null);
+  const [watchlistMatches, setWatchlistMatches] = useState<Map<string, any>>(new Map());
   const router = useRouter();
+
+  // Get current page events from context
+  const currentPageEvents = actions.getCurrentPageEvents();
 
   // Keep dates in sync when advanced is OFF - matching existing logic
   useEffect(() => {
@@ -90,6 +79,44 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
       setTo(todayISO(now));
     }
   }, [range, days]);
+
+  // Restore search form state from context if available
+  useEffect(() => {
+    if (state.searchParams) {
+      setKeywords(state.searchParams.keywords);
+      setCountry(state.searchParams.country);
+      setFrom(state.searchParams.from);
+      setTo(state.searchParams.to);
+    }
+  }, [state.searchParams]);
+
+  // Check watchlist matches when events change
+  useEffect(() => {
+    if (state.events.length > 0) {
+      checkWatchlistMatches(state.events);
+    }
+  }, [state.events]);
+
+  const checkWatchlistMatches = async (events: any[]) => {
+    try {
+      const response = await fetch('/api/watchlist/check-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ events }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const matchesMap = new Map();
+        data.matches.forEach((match: any) => {
+          matchesMap.set(match.eventId, match);
+        });
+        setWatchlistMatches(matchesMap);
+      }
+    } catch (error) {
+      console.warn('Failed to check watchlist matches:', error);
+    }
+  };
 
   const q = useMemo(() => keywords.trim(), [keywords]);
 
@@ -142,16 +169,19 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     setKeywords('');
     handleQuickRange('next', 7);
     setCountry('EU');
-  }, [handleQuickRange]);
+    actions.clearResults();
+  }, [handleQuickRange, actions]);
+
   async function run(e?: React.FormEvent) {
     e?.preventDefault();
     if (from > to) {
-      setError("'From' must be before 'To'");
+      actions.setError("'From' must be before 'To'");
       return;
     }
-    setError("");
-    setLoading(true);
-    setEvents([]);
+    
+    actions.setError(null);
+    actions.setLoading(true);
+    
     try {
       const normalizedCountry = toISO2Country(country) ?? 'EU';
       const locale = deriveLocale(normalizedCountry);
@@ -169,22 +199,32 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
+      
       setDebug(data);
-      setEvents((data.events || data.items || []).map((e: EventRec) => ({
+      const events = (data.events || data.items || []).map((e: EventRec) => ({
         ...e,
         source_url: e.source_url || e.link
-      })));
+      }));
+
+      // Store results in context
+      actions.setSearchResults(events, {
+        keywords: q,
+        country: normalizedCountry,
+        from,
+        to,
+        timestamp: Date.now(),
+      }, events.length);
+      
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load events");
+      actions.setError(err instanceof Error ? err.message : "Failed to load events");
       console.error("Search error:", err);
-    } finally {
-      setLoading(false);
     }
   }
 
+  // Use current page events from context instead of local state
   const filteredEvents = useMemo(() => {
-    return events; // Events are already filtered by the API
-  }, [events]);
+    return currentPageEvents; // Events are already filtered by the API and paginated
+  }, [currentPageEvents]);
 
   const breadcrumbs = [
     { label: "Events" }
@@ -201,7 +241,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             primary={{
               label: "Search Events",
               onClick: run,
-              loading
+              loading: state.isLoading
             }}
             tertiary={{
               label: 'Clear Filters',
@@ -243,10 +283,10 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
               </select>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={state.isLoading}
                 className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors duration-200"
               >
-                {loading ? (
+                {state.isLoading ? (
                   <span className="flex items-center gap-2">
                     <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -355,16 +395,32 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
 
       <ContentContainer>
         <div className="py-6">
+          {/* Show search timestamp if we have cached results */}
+          {state.hasResults && state.lastSearchTimestamp && (
+            <div className="mb-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+              <Clock className="w-4 h-4" />
+              <span>
+                Showing results from {new Date(state.lastSearchTimestamp).toLocaleString()}
+              </span>
+              <button
+                onClick={actions.clearResults}
+                className="text-blue-600 hover:text-blue-500 font-medium"
+              >
+                Clear & New Search
+              </button>
+            </div>
+          )}
+
           {/* Content */}
-          {loading ? (
+          {state.isLoading ? (
             <SkeletonList count={3} />
-          ) : error ? (
+          ) : state.error ? (
             <ErrorState
               title="Failed to load events"
-              message={error}
+              message={state.error}
               action={{
                 label: "Try Again",
-                onClick: handleRefresh
+                onClick: run
               }}
             />
           ) : filteredEvents.length === 0 ? (
@@ -373,7 +429,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} found
+                  {state.pagination.totalResults} event{state.pagination.totalResults !== 1 ? 's' : ''} found
                 </h2>
               </div>
               
@@ -383,12 +439,16 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                     key={event.id || event.source_url}
                     ev={event as any}
                     initiallySaved={savedSet.has(event.id || event.source_url)}
+                    watchlistMatch={watchlistMatches.get(event.id || event.source_url)}
                     onAddToComparison={(event) => {
                       console.log('Add to comparison:', event);
                     }}
                   />
                 ))}
               </div>
+
+              {/* Pagination */}
+              <EventsPagination className="mt-6" />
             </div>
           )}
         </div>

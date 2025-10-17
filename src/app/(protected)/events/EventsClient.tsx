@@ -1,29 +1,14 @@
 "use client";
 import React, { useEffect, useMemo, useState, useCallback, memo } from "react";
 import EventCard from "@/components/EventCard";
+import EventsPagination from "@/components/EventsPagination";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import AdvancedSearch from "@/components/AdvancedSearch";
 import SearchHistory from "@/components/SearchHistory";
 import { deriveLocale, toISO2Country } from "@/lib/utils/country";
+import { useSearchResults, EventRec } from "@/context/SearchResultsContext";
 
-type EventRec = {
-  id?: string;
-  source_url: string;
-  link?: string; // Alternative field name
-  title: string;
-  starts_at?: string | null;
-  ends_at?: string | null;
-  city?: string | null;
-  country?: string | null;
-  organizer?: string | null;
-  speakers?: any[] | null; // Speaker data from pipeline
-  description?: string | null; // Event description
-  venue?: string | null; // Event venue
-  location?: string | null; // Event location
-  confidence?: number | null; // Confidence score
-  confidence_reason?: string | null; // Confidence reason
-  pipeline_metadata?: any | null; // Pipeline metadata
-};
+// EventRec type is now imported from SearchResultsContext
 
 const EU = [
   { code: "EU", name: "All Europe" },
@@ -51,8 +36,10 @@ function addDays(base: Date, n: number) {
 }
 
 const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSavedSet: Set<string> }) {
+  // Use SearchResultsContext for global state management
+  const { state, actions } = useSearchResults();
   
-  // Events search state
+  // Local UI state for search form
   const [country, setCountry] = useState<string>("EU");
   const [range, setRange] = useState<"next" | "past">("next");
   const [days, setDays] = useState<7 | 14 | 30>(7);
@@ -62,10 +49,11 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
   const [to, setTo] = useState<string>(todayISO(addDays(new Date(), 7)));
   const [keywords, setKeywords] = useState<string>("");
 
-  const [events, setEvents] = useState<EventRec[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string>("");
   const [debug, setDebug] = useState<any>(null);
+  const [watchlistMatches, setWatchlistMatches] = useState<Map<string, any>>(new Map());
+
+  // Get current page events from context
+  const currentPageEvents = actions.getCurrentPageEvents();
   const showDebug = useMemo(() => {
     if (typeof window === 'undefined') return process.env.NODE_ENV !== 'production';
     if (typeof window !== 'undefined') {
@@ -118,15 +106,44 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
     // History is cleared in the SearchHistory component
   }, []);
 
+  // Check watchlist matches when events change
+  useEffect(() => {
+    if (state.events.length > 0) {
+      checkWatchlistMatches(state.events);
+    }
+  }, [state.events]);
+
+  const checkWatchlistMatches = async (events: any[]) => {
+    try {
+      const response = await fetch('/api/watchlist/check-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ events }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const matchesMap = new Map();
+        data.matches.forEach((match: any) => {
+          matchesMap.set(match.eventId, match);
+        });
+        setWatchlistMatches(matchesMap);
+      }
+    } catch (error) {
+      console.warn('Failed to check watchlist matches:', error);
+    }
+  };
+
   async function run(e?: React.FormEvent) {
     e?.preventDefault();
     if (from > to) {
-      setErr("'From' must be before 'To'");
+      actions.setError("'From' must be before 'To'");
       return;
     }
-    setErr("");
-    setLoading(true);
-    setEvents([]);
+    
+    actions.setError(null);
+    actions.setLoading(true);
+    
     try {
       const normalizedCountry = toISO2Country(country) ?? 'EU';
       const locale = deriveLocale(normalizedCountry);
@@ -144,8 +161,9 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
+      
       setDebug(data);
-      setEvents((data.events || data.items || []).map((e: EventRec) => ({
+      const events = (data.events || data.items || []).map((e: EventRec) => ({
         source_url: e.source_url || e.link,
         title: e.title || e.source_url || "Untitled",
         starts_at: e.starts_at ?? null,
@@ -160,12 +178,20 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         confidence: e.confidence ?? null, // ✅ Include confidence
         confidence_reason: e.confidence_reason ?? null, // ✅ Include confidence reason
         pipeline_metadata: e.pipeline_metadata ?? null, // ✅ Include pipeline metadata
-      })));
+      }));
+
+      // Store results in context
+      actions.setSearchResults(events, {
+        keywords: q,
+        country: normalizedCountry,
+        from,
+        to,
+        timestamp: Date.now(),
+      }, currentPageEvents.length);
+      
     } catch (err: unknown) {
       const error = err instanceof Error ? err.message : 'Unknown error';
-      setErr(error || "Search failed");
-    } finally {
-      setLoading(false);
+      actions.setError(error || "Search failed");
     }
   }
 
@@ -327,10 +353,10 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
             <div className="flex flex-col sm:flex-row gap-3 pt-6 border-t border-slate-200">
               <button 
                 type="submit" 
-                disabled={loading} 
+                disabled={state.isLoading} 
                 className="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
               >
-                {loading ? (
+                {state.isLoading ? (
                   <>
                     <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -355,8 +381,7 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
                   setDays(7);
                   setAdvanced(false);
                   setKeywords("");
-                  setEvents([]);
-                  setErr("");
+                  actions.clearResults();
                   setDebug(null);
                 }}
                 className="px-6 py-3 border border-slate-300 text-slate-700 hover:bg-slate-50 font-medium rounded-lg transition-colors duration-200"
@@ -366,9 +391,9 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
             </div>
 
             {/* Error Display */}
-            {err && (
+            {state.error && (
               <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-600">{err}</p>
+                <p className="text-sm text-red-600">{state.error}</p>
               </div>
             )}
 
@@ -402,7 +427,7 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         )}
 
         {/* Search History */}
-        {!loading && events.length === 0 && !debug && (
+        {!state.isLoading && currentPageEvents.length === 0 && !debug && (
           <div className="max-w-6xl mx-auto mb-8">
             <SearchHistory
               onSearchSelect={handleSearchHistorySelect}
@@ -415,7 +440,7 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         {/* Results Section */}
         <div className="max-w-6xl mx-auto">
           {/* Empty State */}
-          {!loading && events.length === 0 && !debug && (
+          {!state.isLoading && currentPageEvents.length === 0 && !debug && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -434,7 +459,7 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
           )}
 
           {/* Loading State */}
-          {loading && (
+          {state.isLoading && (
             <div className="space-y-6">
               <div className="text-center">
                 <div className="inline-flex items-center gap-2 text-slate-600">
@@ -458,11 +483,11 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
           )}
 
           {/* Results */}
-          {!loading && events.length > 0 && (
+          {!state.isLoading && currentPageEvents.length > 0 && (
             <div className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-slate-900">Found {events.length} Events</h2>
+                  <h2 className="text-2xl font-bold text-slate-900">Found {state.pagination.totalResults} Events</h2>
                   <p className="text-slate-600 mt-1">
                     {country ? `in ${EU.find(c => c.code === country)?.name || country}` : 'across Europe'}
                     {range === 'next' ? ` (next ${days} days)` : ` (past ${days} days)`}
@@ -477,10 +502,18 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
                 </div>
               </div>
               <div className="grid gap-6">
-                {events.map((ev: EventRec) => (
-                  <EventCard key={ev.source_url} ev={ev} initiallySaved={initialSavedSet.has(ev.source_url)} />
+                {currentPageEvents.map((ev: EventRec) => (
+                  <EventCard 
+                    key={ev.source_url} 
+                    ev={ev} 
+                    initiallySaved={initialSavedSet.has(ev.source_url)}
+                    watchlistMatch={watchlistMatches.get(ev.id || ev.source_url)}
+                  />
                 ))}
               </div>
+              
+              {/* Pagination */}
+              <EventsPagination className="mt-6" />
             </div>
           )}
         </div>

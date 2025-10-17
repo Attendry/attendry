@@ -17,11 +17,12 @@
  */
 
 "use client";
-import React, { useState, useMemo, useCallback, memo } from "react";
+import React, { useState, useMemo, useCallback, memo, useEffect } from "react";
 import AttendeeCard from "./AttendeeCard";
 import DynamicSpeakerLayout from "./DynamicSpeakerLayout"; // Dynamic speaker layout component
 import CompanyCard from "./CompanyCard"; // Company/sponsor card component
 import { SpeakerData } from "@/lib/types/core";
+import { Star, Eye } from "lucide-react";
 
 /**
  * Event data structure interface
@@ -52,12 +53,31 @@ interface Event {
 }
 
 /**
+ * Watchlist match interface
+ */
+interface WatchlistMatch {
+  hasMatch: boolean;
+  matchedEntities: Array<{
+    watchlistItem: {
+      id: string;
+      kind: 'attendee' | 'company';
+      label: string;
+    };
+    matchType: 'organizer' | 'sponsor' | 'speaker' | 'participant' | 'partner' | 'competitor';
+    matchedValue: string;
+    confidence: number;
+  }>;
+  totalMatches: number;
+}
+
+/**
  * EventCard component props
  */
 interface EventCardProps {
   ev: Event;                        // Event data object
   initiallySaved?: boolean;         // Whether the event is initially saved to watchlist
   onAddToComparison?: (event: Event) => void; // Callback for adding to comparison
+  watchlistMatch?: WatchlistMatch;  // Watchlist match data
 }
 
 /**
@@ -67,7 +87,7 @@ interface EventCardProps {
  * @param initiallySaved - Whether the event is initially saved to watchlist
  * @returns JSX element representing the event card
  */
-const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToComparison }: EventCardProps) {
+const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToComparison, watchlistMatch }: EventCardProps) {
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -79,6 +99,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   const [loadingSpeakers, setLoadingSpeakers] = useState(false); // Loading state for speaker extraction
   const [speakers, setSpeakers] = useState<SpeakerData[] | null>(null); // Extracted speaker data
   const [followed, setFollowed] = useState<string[]>([]);       // List of followed speakers
+  const [showWatchlistDetails, setShowWatchlistDetails] = useState(false); // Show watchlist match details
 
   // ============================================================================
   // DEBUG: Log event data to understand what we're receiving
@@ -162,6 +183,35 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   }, [busy, saved, ev.title, ev.source_url]);
 
   /**
+   * Add a company to watchlist
+   */
+  const addCompanyToWatchlist = useCallback(async (companyName: string) => {
+    try {
+      const response = await fetch("/api/watchlist/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "company",
+          label: companyName,
+          ref_id: companyName.toLowerCase().replace(/\s+/g, '-'),
+          company_type: "general",
+          metadata: { added_via: "event_card" }
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to add company to watchlist");
+      }
+      
+      // Show success feedback
+      alert(`Added "${companyName}" to your watchlist!`);
+    } catch (e: any) {
+      alert(e.message || "Failed to add company to watchlist");
+    }
+  }, []);
+
+  /**
    * Load speaker information for the event
    * 
    * This function fetches detailed speaker information from the event URL,
@@ -214,7 +264,58 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   }, [open, speakers, ev.speakers, loadSpeakers]);
 
   return (
-    <div className="group bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-all duration-200">
+    <div className={`group bg-white rounded-2xl border p-6 shadow-sm hover:shadow-md transition-all duration-200 ${
+      watchlistMatch?.hasMatch 
+        ? 'border-yellow-300 bg-yellow-50/30' 
+        : 'border-slate-200'
+    }`}>
+      {/* Watchlist Match Badge */}
+      {watchlistMatch?.hasMatch && (
+        <div className="mb-3 flex items-center gap-2">
+          <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+            <Star className="w-3 h-3" />
+            <span>Watchlist Match</span>
+          </div>
+          <button
+            onClick={() => setShowWatchlistDetails(!showWatchlistDetails)}
+            className="flex items-center gap-1 px-2 py-1 text-yellow-700 hover:bg-yellow-100 rounded-full text-xs font-medium transition-colors"
+          >
+            <Eye className="w-3 h-3" />
+            <span>{watchlistMatch.totalMatches} match{watchlistMatch.totalMatches !== 1 ? 'es' : ''}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Watchlist Match Details */}
+      {watchlistMatch?.hasMatch && showWatchlistDetails && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <h4 className="text-sm font-medium text-yellow-800 mb-2">Watchlist Matches:</h4>
+          <div className="space-y-2">
+            {watchlistMatch.matchedEntities.map((match, index) => (
+              <div key={index} className="flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-1 bg-yellow-200 text-yellow-800 rounded">
+                    {match.matchType}
+                  </span>
+                  <span className="text-yellow-700 font-medium">{match.matchedValue}</span>
+                  <span className="text-yellow-600">
+                    ({match.watchlistItem.label})
+                  </span>
+                </div>
+                {match.matchType === 'organizer' || match.matchType === 'sponsor' || match.matchType === 'participant' ? (
+                  <button
+                    onClick={() => addCompanyToWatchlist(match.matchedValue)}
+                    className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded text-xs font-medium transition-colors"
+                  >
+                    + Add Company
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-4 mb-4">
         <div className="flex-1 min-w-0">
           <a 

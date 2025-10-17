@@ -5,6 +5,48 @@ import { executeNewPipeline } from '@/lib/event-pipeline';
 import { isNewPipelineEnabled } from '@/lib/event-pipeline/config';
 import { loadActiveConfig, type ActiveConfig } from '@/common/search/config';
 import { deriveLocale, getCountryContext, isValidISO2Country, toISO2Country } from '@/lib/utils/country';
+import { supabaseServer } from '@/lib/supabase-server';
+
+// Helper function to save search results asynchronously
+async function saveSearchResultsAsync(params: {
+  userText: string;
+  country: string | null;
+  dateFrom: string | null;
+  dateTo: string | null;
+  locale: string;
+  results: any[];
+  searchDuration: number;
+  apiEndpoint: string;
+}) {
+  try {
+    const supabase = await supabaseServer();
+    const { data: userRes, error: userErr } = await supabase.auth.getUser();
+    
+    // Only save if user is authenticated
+    if (userErr || !userRes?.user) {
+      return;
+    }
+
+    const searchParams = {
+      keywords: params.userText,
+      country: params.country || 'EU',
+      from: params.dateFrom || '',
+      to: params.dateTo || '',
+      timestamp: Date.now(),
+    };
+
+    await supabase.rpc('save_search_results', {
+      p_user_id: userRes.user.id,
+      p_search_params: searchParams,
+      p_results: params.results,
+      p_search_duration_ms: params.searchDuration,
+      p_api_endpoint: params.apiEndpoint
+    });
+  } catch (error) {
+    // Silently fail - this shouldn't break the main search functionality
+    console.warn('Failed to save search results:', error);
+  }
+}
 
 const DEMO_FALLBACK_EVENTS: Array<Omit<ApiEvent, 'id'>> = [
   {
@@ -768,6 +810,21 @@ export async function POST(req: NextRequest) {
 
     // Log structured telemetry
     console.log('[api/events/run] TELEMETRY:', JSON.stringify(telemetry));
+
+    // Save search results to history (async, don't wait for it)
+    const searchDuration = Date.now() - startTime;
+    saveSearchResultsAsync({
+      userText,
+      country: normalizedCountry,
+      dateFrom,
+      dateTo,
+      locale,
+      results: result.events || [],
+      searchDuration,
+      apiEndpoint: 'events/run'
+    }).catch(err => {
+      console.warn('[api/events/run] Failed to save search history:', err);
+    });
 
     return NextResponse.json({
       ...result,

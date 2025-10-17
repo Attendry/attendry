@@ -5,7 +5,15 @@ import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 
-type WatchItem = { id: string; label: string | null; kind: "company" | "attendee"; created_at: string; owner?: string };
+type WatchItem = { 
+  id: string; 
+  label: string | null; 
+  kind: "company" | "attendee"; 
+  created_at: string; 
+  owner?: string;
+  company_type?: string;
+  metadata?: any;
+};
 
 type TabType = "watchlist" | "saved-profiles";
 
@@ -18,6 +26,8 @@ export default function Watchlist() {
   const [items, setItems] = useState<WatchItem[]>([]);
   const [label, setLabel] = useState("");
   const [status, setStatus] = useState("");
+  const [newItemKind, setNewItemKind] = useState<"attendee" | "company">("attendee");
+  const [newCompanyType, setNewCompanyType] = useState<string>("general");
   
   // Saved profiles state
   const [savedProfiles, setSavedProfiles] = useState<SavedSpeakerProfile[]>([]);
@@ -85,16 +95,25 @@ export default function Watchlist() {
 
   async function add() {
     if (!userId) { setStatus("Please sign in first."); return; }
+    if (!label.trim()) { setStatus("Please enter a label."); return; }
+    
     setStatus("adding…");
     const supabase = supabaseBrowser();
+    
     const { data, error } = await supabase.rpc("add_watchlist_item", {
-      p_owner: userId,
-      p_kind: "attendee",
-      p_label: label || "Keynote speakers",
-      p_ref_id: "00000000-0000-0000-0000-000000000000",
+      p_kind: newItemKind,
+      p_label: label.trim(),
+      p_ref_id: label.trim().toLowerCase().replace(/\s+/g, '-'),
+      p_company_type: newItemKind === "company" ? newCompanyType : "general",
+      p_metadata: newItemKind === "company" ? { added_via: "manual" } : {}
     });
+    
     if (error) setStatus(`Insert error: ${error.message}`);
-    else { setLabel(""); setStatus("added"); await load(); }
+    else { 
+      setLabel(""); 
+      setStatus("added"); 
+      await load(); 
+    }
   }
 
   if (!authReady) {
@@ -197,10 +216,55 @@ export default function Watchlist() {
                   <input
                     value={label}
                     onChange={(e) => setLabel(e.target.value)}
-                    placeholder="e.g., AI conferences, keynote speakers, networking events"
+                    placeholder={newItemKind === "company" ? "e.g., Microsoft, Google, Salesforce" : "e.g., AI conferences, keynote speakers, networking events"}
                     className="input"
                   />
                 </div>
+                <div>
+                  <label style={{
+                    display: "block",
+                    fontSize: "0.875rem",
+                    fontWeight: "500",
+                    marginBottom: "0.5rem",
+                    color: "var(--foreground)"
+                  }}>
+                    Type
+                  </label>
+                  <select
+                    value={newItemKind}
+                    onChange={(e) => setNewItemKind(e.target.value as "attendee" | "company")}
+                    className="input"
+                    style={{ minWidth: "120px" }}
+                  >
+                    <option value="attendee">Person</option>
+                    <option value="company">Company</option>
+                  </select>
+                </div>
+                {newItemKind === "company" && (
+                  <div>
+                    <label style={{
+                      display: "block",
+                      fontSize: "0.875rem",
+                      fontWeight: "500",
+                      marginBottom: "0.5rem",
+                      color: "var(--foreground)"
+                    }}>
+                      Company Type
+                    </label>
+                    <select
+                      value={newCompanyType}
+                      onChange={(e) => setNewCompanyType(e.target.value)}
+                      className="input"
+                      style={{ minWidth: "120px" }}
+                    >
+                      <option value="general">General</option>
+                      <option value="competitor">Competitor</option>
+                      <option value="partner">Partner</option>
+                      <option value="customer">Customer</option>
+                      <option value="prospect">Prospect</option>
+                    </select>
+                  </div>
+                )}
                 <button 
                   onClick={add} 
                   className="btn btn-primary"
@@ -252,14 +316,38 @@ export default function Watchlist() {
                     <div key={i.id} className="card">
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                         <div style={{ flex: 1 }}>
-                          <h3 style={{
-                            fontSize: "1.125rem",
-                            fontWeight: "600",
-                            marginBottom: "0.5rem",
-                            color: "var(--foreground)"
-                          }}>
-                            {i.label || "(no label)"}
-                          </h3>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                            <h3 style={{
+                              fontSize: "1.125rem",
+                              fontWeight: "600",
+                              color: "var(--foreground)",
+                              margin: 0
+                            }}>
+                              {i.label || "(no label)"}
+                            </h3>
+                            <span style={{
+                              fontSize: "0.75rem",
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "0.375rem",
+                              backgroundColor: i.kind === "company" ? "#dbeafe" : "#f3f4f6",
+                              color: i.kind === "company" ? "#1e40af" : "#374151",
+                              fontWeight: "500"
+                            }}>
+                              {i.kind === "company" ? "Company" : "Person"}
+                            </span>
+                            {i.kind === "company" && i.company_type && i.company_type !== "general" && (
+                              <span style={{
+                                fontSize: "0.75rem",
+                                padding: "0.25rem 0.5rem",
+                                borderRadius: "0.375rem",
+                                backgroundColor: "#fef3c7",
+                                color: "#92400e",
+                                fontWeight: "500"
+                              }}>
+                                {i.company_type}
+                              </span>
+                            )}
+                          </div>
                           <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
                             <span style={{
                               fontSize: "0.875rem",
