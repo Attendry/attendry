@@ -6,6 +6,7 @@ export async function search(params: {
   dateTo?: string;
   country?: string;
   limit?: number;
+  scrapeContent?: boolean;
 }) {
   try {
     // Check for API key
@@ -25,6 +26,15 @@ export async function search(params: {
       // Add timeout for better reliability
       timeout: 30000
     };
+
+    // Add content scraping if requested
+    if (params.scrapeContent) {
+      body.scrapeOptions = {
+        formats: ['markdown', 'links'],
+        onlyMainContent: true,
+        includeHtml: false
+      };
+    }
 
     // Add location-based search for better regional results
     if (params.country) {
@@ -75,17 +85,36 @@ export async function search(params: {
     const json = await res.json();
     console.log('[firecrawl] Response data:', JSON.stringify(json, null, 2));
 
-    // Map to {items:string[]} - v2 API structure
+    // Map to {items: string[]} or {items: Array<{url, content}>} based on scrapeContent
     const webResults = json?.data?.web || [];
-    const items: string[] = Array.isArray(webResults) 
-      ? webResults
-          .map((x:any) => x?.url || x?.link)
-          .filter((u:string) => typeof u === 'string' && u.startsWith('http'))
-      : [];
+    
+    if (params.scrapeContent) {
+      // Return items with content for content-based prioritization
+      const itemsWithContent = Array.isArray(webResults) 
+        ? webResults
+            .map((x: any) => ({
+              url: x?.url || x?.link,
+              title: x?.title,
+              description: x?.description,
+              content: x?.markdown || x?.content,
+              links: x?.links || []
+            }))
+            .filter((item: any) => typeof item.url === 'string' && item.url.startsWith('http'))
+        : [];
 
-    console.log('[firecrawl] Extracted URLs:', items.length, items.slice(0, 3));
+      console.log('[firecrawl] Extracted items with content:', itemsWithContent.length);
+      return { items: itemsWithContent, debug: { rawCount: itemsWithContent.length, responseKeys: Object.keys(json) } };
+    } else {
+      // Return URLs only for URL-based prioritization
+      const items: string[] = Array.isArray(webResults) 
+        ? webResults
+            .map((x:any) => x?.url || x?.link)
+            .filter((u:string) => typeof u === 'string' && u.startsWith('http'))
+        : [];
 
-    return { items, debug: { rawCount: items.length, responseKeys: Object.keys(json) } };
+      console.log('[firecrawl] Extracted URLs:', items.length, items.slice(0, 3));
+      return { items, debug: { rawCount: items.length, responseKeys: Object.keys(json) } };
+    }
   } catch (error) {
     console.error('[firecrawl] Request failed:', error);
     return { items: [], debug: { error: error instanceof Error ? error.message : 'Unknown error', rawCount: 0 } };

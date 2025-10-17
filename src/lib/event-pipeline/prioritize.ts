@@ -117,25 +117,6 @@ export class EventPrioritizer {
         candidate.priorityScore = score.overall;
         candidate.metadata.stageTimings.prioritization = Date.now() - candidate.metadata.processingTime;
         
-        // TEMPORARY: Accept all candidates to see actual scores
-        candidate.status = 'prioritized';
-        prioritized.push(candidate);
-        
-        logger.info({ message: '[prioritize] Candidate accepted (debug mode)',
-          url: candidate.url,
-          score: score.overall,
-          threshold: this.config.thresholds.prioritization,
-          breakdown: {
-            is_event: score.is_event,
-            has_agenda: score.has_agenda,
-            has_speakers: score.has_speakers,
-            is_recent: score.is_recent,
-            is_relevant: score.is_relevant
-          }
-        });
-        
-        // Original logic commented out for debugging
-        /*
         if (score.overall >= this.config.thresholds.prioritization) {
           candidate.status = 'prioritized';
           prioritized.push(candidate);
@@ -143,6 +124,7 @@ export class EventPrioritizer {
           logger.info({ message: '[prioritize] Candidate prioritized',
             url: candidate.url,
             score: score.overall,
+            hasContent: !!candidate.metadata?.scrapedContent,
             breakdown: {
               is_event: score.is_event,
               has_agenda: score.has_agenda,
@@ -158,6 +140,7 @@ export class EventPrioritizer {
             url: candidate.url,
             score: score.overall,
             threshold: this.config.thresholds.prioritization,
+            hasContent: !!candidate.metadata?.scrapedContent,
             breakdown: {
               is_event: score.is_event,
               has_agenda: score.has_agenda,
@@ -167,7 +150,6 @@ export class EventPrioritizer {
             }
           });
         }
-        */
       } catch (error) {
         logger.error({ message: '[prioritize] Failed to score candidate',
           url: candidate.url,
@@ -182,6 +164,139 @@ export class EventPrioritizer {
 
   private async scoreCandidate(candidate: EventCandidate, targetCountry?: string | null): Promise<PrioritizationScore> {
     const normalizedDate = this.normalizeCandidateDate(candidate);
+    
+    // Check if we have scraped content for content-based evaluation
+    const hasContent = candidate.metadata?.scrapedContent;
+    
+    if (hasContent) {
+      return this.scoreCandidateWithContent(candidate, targetCountry);
+    } else {
+      return this.scoreCandidateUrlOnly(candidate, targetCountry);
+    }
+  }
+
+  private async scoreCandidateWithContent(candidate: EventCandidate, targetCountry?: string | null): Promise<PrioritizationScore> {
+    const normalizedDate = this.normalizeCandidateDate(candidate);
+    const content = candidate.metadata?.scrapedContent || '';
+    const title = candidate.metadata?.title || '';
+    const description = candidate.metadata?.description || '';
+    
+    // Build country-specific context for prioritization
+    let countryContext = '';
+    if (targetCountry && targetCountry !== 'EU' && targetCountry !== '') {
+      const countryBias = getCountrySpecificBias(targetCountry);
+      if (countryBias) {
+        countryContext = `\n\nCOUNTRY CONTEXT: This search is specifically for events in ${targetCountry}. Prioritize events that are clearly located in ${targetCountry} or mention ${countryBias.searchTerms.split(' ').slice(0, 3).join(', ')}.`;
+      }
+    }
+    
+    const prompt = `You are a JSON-only response system. You must respond with valid JSON only, no other text.
+
+Analyze this event page content for relevance and score it (0-1):
+URL: ${candidate.url}
+Title: ${title}
+Description: ${description}
+Content: ${content.substring(0, 2000)}${countryContext}
+
+Rate on these criteria:
+- is_event: Is this an actual event page (conference, workshop, summit, etc.)? (0-1)
+- has_agenda: Does the content contain agenda/program information, schedule, or session details? (0-1)
+- has_speakers: Does the content list speakers, presenters, or keynotes? (0-1)
+- is_recent: Is this for a current/future event (not past events)? (0-1)
+- is_relevant: Does it match compliance, legal, or regulatory themes? (0-1)
+${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? '- is_country_relevant: Does this event appear to be in the target country or region? (0-1)' : ''}
+
+Be thorough in your analysis. Look for:
+- Event dates, venues, registration information
+- Speaker names, bios, or speaker lists
+- Agenda items, session titles, or program schedules
+- Event type indicators (conference, workshop, summit, etc.)
+- Location mentions and country relevance
+
+RESPOND WITH JSON ONLY - NO OTHER TEXT:
+{"is_event": 0.9, "has_agenda": 0.7, "has_speakers": 0.8, "is_recent": 0.9, "is_relevant": 0.8${targetCountry && targetCountry !== 'EU' && targetCountry !== '' ? ', "is_country_relevant": 0.9' : ''}, "overall": 0.82}`;
+    
+    try {
+      const response = await this.geminiService.generateContent(prompt);
+      
+      // Enhanced JSON parsing with fallback
+      let scores;
+      try {
+        scores = JSON.parse(response);
+      } catch (parseError) {
+        // Try to extract JSON from response if it's wrapped in text
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          scores = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error(`Invalid JSON response: ${response.substring(0, 100)}...`);
+        }
+      }
+      
+      // Validate response structure
+      if (!this.isValidScoreResponse(scores)) {
+        throw new Error('Invalid score response structure');
+      }
+      
+      const hasCountryRelevance = targetCountry && targetCountry !== 'EU' && targetCountry !== '' && scores.is_country_relevant !== undefined;
+      const hasDate = Boolean(normalizedDate);
+      const withinRange = hasDate ? this.isWithinRange(normalizedDate) : true;
+
+      const baseIsRecent = typeof scores.is_recent === 'number' ? scores.is_recent : 0;
+      let adjustedIsRecent = baseIsRecent;
+
+      if (!hasDate) {
+        adjustedIsRecent = Math.min(adjustedIsRecent, 0.3);
+      }
+
+      if (hasDate && !withinRange) {
+        adjustedIsRecent = 0;
+      }
+
+      const germanLocaleSignals = this.containsGermanLocaleSignals(candidate);
+      const cityBonus = this.detectCityTokens(candidate, targetCountry);
+
+      const weightedOverall = hasCountryRelevance ? (
+        scores.is_event * 0.22 +
+        scores.has_agenda * 0.18 +
+        scores.has_speakers * 0.14 +
+        adjustedIsRecent * 0.18 +
+        scores.is_relevant * 0.08 +
+        (scores.is_country_relevant || 0) * 0.1 +
+        germanLocaleSignals * 0.05 +
+        cityBonus * 0.05
+      ) : (
+        scores.is_event * 0.28 +
+        scores.has_agenda * 0.22 +
+        scores.has_speakers * 0.18 +
+        adjustedIsRecent * 0.18 +
+        scores.is_relevant * 0.09 +
+        germanLocaleSignals * 0.03 +
+        cityBonus * 0.02
+      );
+
+      const overallPenalty = hasDate ? 1 : 0.85;
+      const adjustedOverall = (hasDate && !withinRange) ? 0 : Math.round(weightedOverall * overallPenalty * 100) / 100;
+
+      return {
+        ...scores,
+        is_recent: adjustedIsRecent,
+        overall: adjustedOverall
+      };
+    } catch (error) {
+      logger.error({ message: '[prioritize] LLM scoring failed',
+        url: candidate.url,
+        error: (error as any).message
+      });
+      
+      // Fallback scoring based on URL patterns
+      return this.fallbackScoring(candidate);
+    }
+  }
+
+  private async scoreCandidateUrlOnly(candidate: EventCandidate, targetCountry?: string | null): Promise<PrioritizationScore> {
+    const normalizedDate = this.normalizeCandidateDate(candidate);
+    
     // Build country-specific context for prioritization
     let countryContext = '';
     if (targetCountry && targetCountry !== 'EU' && targetCountry !== '') {

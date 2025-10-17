@@ -178,25 +178,26 @@ export class EventDiscoverer {
                 dateFrom: context?.dateFrom || undefined, 
                 dateTo: context?.dateTo || undefined,
                 country: country || undefined,
-                limit: 25 // Increase limit for better results
+                limit: 15, // Reduced limit since we're scraping content
+                scrapeContent: true // Enable content scraping for better prioritization
               }),
               CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
             )
           );
       
-      const urls = firecrawlRes.data?.items || [];
+      const items = firecrawlRes.data?.items || [];
       
       logger.info({ message: '[discover:firecrawl] Firecrawl search completed',
-        urlsFound: urls.length,
+        itemsFound: items.length,
         retryAttempts: firecrawlRes.metrics.attempts,
         totalDelayMs: firecrawlRes.metrics.totalDelayMs,
         duration: Date.now() - startTime
       });
       
-      const candidates = urls
-        .map((url: string, index: number) => ({
+      const candidates = items
+        .map((item: any, index: number) => ({
           id: `firecrawl_${Date.now()}_${index}`,
-          url: url,
+          url: typeof item === 'string' ? item : item.url,
           source: 'firecrawl' as const,
           discoveredAt: new Date(),
           relatedUrls: [],
@@ -207,7 +208,14 @@ export class EventDiscoverer {
             processingTime: Date.now() - startTime,
             stageTimings: {
               discovery: Date.now() - startTime
-            }
+            },
+            // Include scraped content if available
+            ...(typeof item === 'object' && {
+              title: item.title,
+              description: item.description,
+              scrapedContent: item.content,
+              scrapedLinks: item.links
+            })
           }
         }));
       
