@@ -138,7 +138,14 @@ export class EventPrioritizer {
           logger.info({ message: '[prioritize] Candidate rejected',
             url: candidate.url,
             score: score.overall,
-            threshold: this.config.thresholds.prioritization
+            threshold: this.config.thresholds.prioritization,
+            breakdown: {
+              is_event: score.is_event,
+              has_agenda: score.has_agenda,
+              has_speakers: score.has_speakers,
+              is_recent: score.is_recent,
+              is_relevant: score.is_relevant
+            }
           });
         }
       } catch (error) {

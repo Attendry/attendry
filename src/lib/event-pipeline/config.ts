@@ -9,9 +9,9 @@ import { EventPipelineConfig } from './types';
 // Default pipeline configuration
 export const DEFAULT_PIPELINE_CONFIG: EventPipelineConfig = {
   thresholds: {
-    prioritization: 0.2,      // Minimum score to proceed from prioritization (lowered for better results)
-    confidence: 0.3,          // Minimum confidence to publish (lowered for better results)
-    parseQuality: 0.2         // Minimum parse quality (lowered for better results)
+    prioritization: 0.1,      // Minimum score to proceed from prioritization (very low for testing)
+    confidence: 0.2,          // Minimum confidence to publish (lowered for testing)
+    parseQuality: 0.1         // Minimum parse quality (lowered for testing)
   },
   sources: {
     cse: true,                // Google Custom Search Engine - high precision
