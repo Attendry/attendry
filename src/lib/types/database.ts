@@ -173,6 +173,21 @@ export interface EnhancedSpeakerProfile {
 }
 
 /**
+ * Saved speaker profiles table structure
+ */
+export interface SavedSpeakerProfile {
+  id: string;
+  user_id: string;
+  speaker_data: any;
+  enhanced_data: any;
+  notes?: string | null;
+  tags?: string[] | null;
+  outreach_status: 'not_started' | 'contacted' | 'responded' | 'meeting_scheduled';
+  saved_at: string;
+  last_updated: string;
+}
+
+/**
  * Database operation result types
  */
 export interface DatabaseResult<T = any> {

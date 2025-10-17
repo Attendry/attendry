@@ -18,6 +18,13 @@ export interface EnhancedSpeaker extends SpeakerData {
   achievements?: string[];
   industry_connections?: Array<{ name: string; org?: string; url?: string }>;
   recent_news?: Array<{ title: string; url: string; date?: string }>;
+  recent_projects?: Array<{ name: string; description: string; date?: string }>;
+  company_size?: string;
+  team_info?: string;
+  speaking_topics?: string[];
+  media_mentions?: Array<{ outlet: string; title: string; url: string; date: string }>;
+  board_positions?: string[];
+  certifications?: string[];
   confidence?: number;
   enhanced_at?: string;
   cached?: boolean;

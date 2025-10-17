@@ -259,7 +259,11 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
       console.log('Processing search results with AI...');
       console.log('Search context length:', searchContext.length);
 
-      const prompt = `You are a professional research assistant. Based on the following information about a speaker and real search results, generate a comprehensive professional profile. Always include provenance (source URLs) for media and, when available, for connections.
+      const currentDate = new Date().toISOString().split('T')[0];
+      
+      const prompt = `You are a professional research assistant with access to current business intelligence. Based on the following information about a speaker and real search results, generate a comprehensive professional profile. Focus on RECENT information (last 12 months) and always include provenance (source URLs) for media and, when available, for connections.
+
+Current Date: ${currentDate}
 
 Speaker Information:
 - Name: ${speaker.name}
@@ -269,25 +273,39 @@ Speaker Information:
 Real Search Results:
 ${searchContext}
 
-Please extract and synthesize real information from the search results. Create a professional profile based on actual data found online. Be specific and accurate, avoiding generic statements.
+Please extract and synthesize real information from the search results. Create a professional profile based on actual data found online. Be specific and accurate, avoiding generic statements. Prioritize recent information and current roles.
 
 Return ONLY a valid JSON object with these fields and nothing else. Do not include any markdown fences or extra text:
 {
   "title": "Current job title based on search results or existing data",
   "organization": "Current organization/company/affiliation based on search results or existing data",
   "location": "Specific location based on search results or organization",
-  "education": ["List of 2-3 relevant educational background items based on actual data"],
-  "expertise_areas": ["List of 3-5 specific areas of expertise based on real information"],
-  "achievements": ["List of 2-3 specific professional achievements based on search results"],
+  "education": ["List of 3-5 relevant educational background items based on actual data"],
+  "expertise_areas": ["List of 5-8 specific areas of expertise based on real information"],
+  "achievements": ["List of 5-7 specific professional achievements based on search results, prioritizing recent ones"],
   "industry_connections": [
     { "name": "Full name or entity", "org": "Organization if relevant", "url": "https://... (if available)" }
   ],
   "recent_news": [
     { "title": "Headline", "url": "https://...", "date": "YYYY-MM-DD" }
-  ]
+  ],
+  "recent_projects": [
+    { "name": "Project name", "description": "Brief description", "date": "YYYY-MM-DD" }
+  ],
+  "company_size": "Company size description (e.g., '500-1000 employees', 'Fortune 500', 'Startup')",
+  "team_info": "Team leadership information (e.g., 'Leads team of 15 compliance analysts')",
+  "speaking_topics": ["List of 5-8 key topics they speak about or are known for"],
+  "media_mentions": [
+    { "outlet": "Media outlet name", "title": "Article/interview title", "url": "https://...", "date": "YYYY-MM-DD" }
+  ],
+  "board_positions": ["List of current board positions and advisory roles"],
+  "certifications": ["List of relevant professional certifications and credentials"],
+  "career_history": ["List of 5-7 most recent career positions with dates"],
+  "publications": ["List of 5-10 most relevant publications, articles, or thought leadership pieces"],
+  "speaking_history": ["List of 5-8 recent speaking engagements and conferences"]
 }
 
-Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements.`;
+Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements. Focus on current and recent information (last 12 months) when available.`;
 
       const url = `https://generativelanguage.googleapis.com/${GEMINI_MODEL_PATH}?key=${geminiKey}`;
       const resp = await fetch(url, {

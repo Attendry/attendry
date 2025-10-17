@@ -44,6 +44,13 @@ interface EnhancedSpeaker extends SpeakerData {
   achievements?: string[];         // Professional achievements and awards
   industry_connections?: Array<{name: string, org?: string, url?: string}> | string[]; // Industry associations and connections
   recent_news?: Array<{title: string, url: string, date?: string}> | string[];          // Recent media mentions and news
+  recent_projects?: Array<{name: string, description: string, date?: string}>;         // Recent projects and initiatives
+  company_size?: string;           // Company size (e.g., "500-1000 employees")
+  team_info?: string;              // Team leadership information
+  speaking_topics?: string[];      // Key topics they speak about
+  media_mentions?: Array<{outlet: string, title: string, url: string, date: string}>; // Media appearances and mentions
+  board_positions?: string[];      // Board positions and advisory roles
+  certifications?: string[];       // Professional certifications
 }
 
 /**
@@ -68,6 +75,8 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
   
   const [expanded, setExpanded] = useState(false);  // Whether detailed sections are expanded
   const [busy, setBusy] = useState(false);          // Loading state for save operation
+  const [profileSaved, setProfileSaved] = useState(false); // Whether profile is saved
+  const [savingProfile, setSavingProfile] = useState(false); // Loading state for profile save
   
   // Use the custom hook for speaker enhancement
   const {
@@ -101,7 +110,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
    * This function adds the speaker to the user's watchlist for later reference.
    * It uses the speaker's profile URL or creates a unique identifier.
    */
-  async function save() {
+  async function saveToWatchlist() {
     setBusy(true);
     try {
       const res = await fetch("/api/watchlist/add", {
@@ -119,6 +128,30 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
       alert((e as Error)?.message || "Save failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Save enhanced speaker profile for outreach and relationship management
+   */
+  async function saveProfile() {
+    setSavingProfile(true);
+    try {
+      const res = await fetch("/api/profiles/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          speaker_data: speaker,
+          enhanced_data: displaySpeaker,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Save failed");
+      setProfileSaved(true);
+    } catch (e: unknown) {
+      alert((e as Error)?.message || "Save failed");
+    } finally {
+      setSavingProfile(false);
     }
   }
 
@@ -146,6 +179,61 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
     return "bg-red-100 text-red-800";
   };
 
+  // Date filtering utilities
+  const isWithinLast12Months = (dateString: string): boolean => {
+    try {
+      const date = new Date(dateString);
+      const twelveMonthsAgo = new Date();
+      twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+      return date >= twelveMonthsAgo;
+    } catch {
+      return false;
+    }
+  };
+
+  const filterRecentItems = <T extends { date?: string }>(items: T[]): T[] => {
+    return items.filter(item => {
+      if (!item.date) return true; // Keep items without dates
+      return isWithinLast12Months(item.date);
+    });
+  };
+
+  const formatRelativeDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInMonths = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 30));
+      
+      if (diffInMonths === 0) return "This month";
+      if (diffInMonths === 1) return "1 month ago";
+      if (diffInMonths < 12) return `${diffInMonths} months ago`;
+      
+      const diffInYears = Math.floor(diffInMonths / 12);
+      if (diffInYears === 1) return "1 year ago";
+      return `${diffInYears} years ago`;
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Filter time-sensitive data
+  const filteredRecentNews = displaySpeaker.recent_news ? 
+    filterRecentItems(Array.isArray(displaySpeaker.recent_news) ? 
+      displaySpeaker.recent_news.filter(item => typeof item === 'object' && item !== null) : []) : [];
+  
+  const filteredMediaMentions = displaySpeaker.media_mentions ? 
+    filterRecentItems(displaySpeaker.media_mentions) : [];
+  
+  const filteredSpeakingHistory = displaySpeaker.speaking_history ? 
+    displaySpeaker.speaking_history.filter((item: string) => {
+      // For speaking history, try to extract dates from the string
+      const dateMatch = item.match(/\b(20\d{2})\b/);
+      if (dateMatch) {
+        return isWithinLast12Months(`${dateMatch[1]}-01-01`);
+      }
+      return true; // Keep items without clear dates
+    }) : [];
+
   return (
     <div className="rounded-xl border p-4 bg-white shadow-sm">
       <SpeakerDataDebugger speaker={speaker} label="EnhancedSpeakerCard Data" />
@@ -153,25 +241,43 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
         <div className="flex-1">
           <div className="font-semibold text-xl text-slate-900 mb-2">{displaySpeaker.name}</div>
           
-          {/* Prominent Job Title and Organization */}
+          {/* Original Title and Organization (Always Visible) */}
           <div className="mb-3">
             <div className="text-lg font-medium text-slate-800 mb-1 flex flex-wrap items-baseline gap-2">
-              {displayTitle ? (
-                <span>{displayTitle}</span>
+              {speaker.title ? (
+                <span className="bg-blue-50 px-2 py-1 rounded-md text-blue-800 font-medium">
+                  {speaker.title}
+                </span>
               ) : (
-                <span className="italic text-opacity-40">Title not provided yet</span>
+                <span className="italic text-slate-400">Title not provided</span>
               )}
-              {displayTitle && displayOrg && (
+              {speaker.title && speaker.org && (
                 <span className="text-slate-400">·</span>
               )}
-              {displayOrg ? (
-                <span className="text-base font-medium text-slate-700">{displayOrg}</span>
+              {speaker.org ? (
+                <span className="text-base font-medium text-slate-700">{speaker.org}</span>
               ) : (
-                <span className="text-base font-medium text-slate-700 italic text-opacity-40">Organization not provided yet</span>
+                <span className="text-base font-medium text-slate-700 italic text-slate-400">Organization not provided</span>
               )}
             </div>
+            
+            {/* Enhanced Title/Organization (if different from original) */}
+            {enhancedSpeaker && (enhancedSpeaker.title !== speaker.title || enhancedSpeaker.organization !== speaker.org) && (
+              <div className="mt-2 p-2 bg-green-50 rounded-lg border border-green-200">
+                <div className="text-xs font-medium text-green-800 mb-1">Enhanced Information:</div>
+                <div className="text-sm text-green-900">
+                  {enhancedSpeaker.title && enhancedSpeaker.title !== speaker.title && (
+                    <div className="font-medium">{enhancedSpeaker.title}</div>
+                  )}
+                  {enhancedSpeaker.organization && enhancedSpeaker.organization !== speaker.org && (
+                    <div className="text-green-700">{enhancedSpeaker.organization}</div>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {displaySpeaker.location && (
-              <div className="text-sm text-slate-600 flex items-center gap-1">
+              <div className="text-sm text-slate-600 flex items-center gap-1 mt-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -244,11 +350,23 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
         )}
         
         <button
-          onClick={save}
+          onClick={saveToWatchlist}
           disabled={busy}
           className="text-xs rounded-full border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
         >
           {busy ? "Saving…" : "Save to Watchlist"}
+        </button>
+
+        <button
+          onClick={saveProfile}
+          disabled={savingProfile || profileSaved}
+          className={`text-xs rounded-full border px-3 py-1 disabled:opacity-50 ${
+            profileSaved 
+              ? "bg-green-50 border-green-200 text-green-700" 
+              : "hover:bg-gray-50"
+          }`}
+        >
+          {savingProfile ? "Saving…" : profileSaved ? "Saved ✓" : "Save Profile"}
         </button>
       </div>
 
@@ -361,11 +479,11 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           )}
 
           {/* Speaking History */}
-          {displaySpeaker.speaking_history && displaySpeaker.speaking_history.length > 0 && (
+          {filteredSpeakingHistory.length > 0 && (
             <div>
-              <h4 className="text-sm font-semibold text-slate-900 mb-2">Speaking History</h4>
+              <h4 className="text-sm font-semibold text-slate-900 mb-2">Recent Speaking History (Last 12 months)</h4>
               <ul className="space-y-1">
-                {displaySpeaker.speaking_history.map((event: string, idx: number) => (
+                {filteredSpeakingHistory.map((event: string, idx: number) => (
                   <li key={idx} className="text-sm text-slate-700">• {event}</li>
                 ))}
               </ul>
@@ -420,11 +538,11 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           )}
 
           {/* Recent News */}
-          {displaySpeaker.recent_news && displaySpeaker.recent_news.length > 0 && (
+          {filteredRecentNews.length > 0 && (
             <div>
-              <h4 className="text-sm font-semibold text-slate-900 mb-2">Recent News & Media</h4>
+              <h4 className="text-sm font-semibold text-slate-900 mb-2">Recent News & Media (Last 12 months)</h4>
               <ul className="space-y-1">
-                {displaySpeaker.recent_news.map((news: any, idx: number) => {
+                {filteredRecentNews.map((news: any, idx: number) => {
                   // Defensive programming: handle various data structures
                   if (!news) return null;
                   
@@ -445,12 +563,112 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
                       ) : title}
                       {date && date !== 'undefined' && date !== 'null' && (
                         <span className="text-slate-500 text-xs ml-2">
-                          ({new Date(date).toLocaleDateString()})
+                          ({formatRelativeDate(date)})
                         </span>
                       )}
                     </li>
                   );
                 })}
+              </ul>
+            </div>
+          )}
+
+          {/* Media Mentions */}
+          {filteredMediaMentions.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900 mb-2">Media Mentions (Last 12 months)</h4>
+              <ul className="space-y-1">
+                {filteredMediaMentions.map((mention: any, idx: number) => (
+                  <li key={idx} className="text-sm text-slate-700">
+                    • <span className="font-medium">{mention.outlet}</span>: {mention.url && mention.url.startsWith('http') ? (
+                      <a href={mention.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                        {mention.title}
+                      </a>
+                    ) : mention.title}
+                    {mention.date && (
+                      <span className="text-slate-500 text-xs ml-2">
+                        ({formatRelativeDate(mention.date)})
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Recent Projects */}
+          {displaySpeaker.recent_projects && displaySpeaker.recent_projects.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900 mb-2">Recent Projects</h4>
+              <ul className="space-y-2">
+                {displaySpeaker.recent_projects.map((project: any, idx: number) => (
+                  <li key={idx} className="text-sm text-slate-700">
+                    <div className="font-medium">{project.name}</div>
+                    <div className="text-slate-600">{project.description}</div>
+                    {project.date && (
+                      <div className="text-slate-500 text-xs">
+                        {formatRelativeDate(project.date)}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Company & Team Information */}
+          {(displaySpeaker.company_size || displaySpeaker.team_info) && (
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900 mb-2">Company & Team</h4>
+              <div className="space-y-1">
+                {displaySpeaker.company_size && (
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">Company Size:</span> {displaySpeaker.company_size}
+                  </div>
+                )}
+                {displaySpeaker.team_info && (
+                  <div className="text-sm text-slate-700">
+                    <span className="font-medium">Team:</span> {displaySpeaker.team_info}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Speaking Topics */}
+          {displaySpeaker.speaking_topics && displaySpeaker.speaking_topics.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900 mb-2">Speaking Topics</h4>
+              <div className="flex flex-wrap gap-2">
+                {displaySpeaker.speaking_topics.map((topic: string, idx: number) => (
+                  <span key={idx} className="text-xs font-medium rounded-full bg-purple-100 text-purple-800 px-2 py-1">
+                    {topic}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Board Positions */}
+          {displaySpeaker.board_positions && displaySpeaker.board_positions.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900 mb-2">Board Positions & Advisory Roles</h4>
+              <ul className="space-y-1">
+                {displaySpeaker.board_positions.map((position: string, idx: number) => (
+                  <li key={idx} className="text-sm text-slate-700">• {position}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Certifications */}
+          {displaySpeaker.certifications && displaySpeaker.certifications.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900 mb-2">Certifications</h4>
+              <ul className="space-y-1">
+                {displaySpeaker.certifications.map((cert: string, idx: number) => (
+                  <li key={idx} className="text-sm text-slate-700">• {cert}</li>
+                ))}
               </ul>
             </div>
           )}
