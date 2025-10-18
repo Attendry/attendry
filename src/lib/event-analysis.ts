@@ -175,7 +175,7 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
   try {
     console.log('Starting deep crawl for:', eventUrl);
     
-    // First, crawl the main page
+    // First, crawl the main page with enhanced configuration
     const mainPageResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -185,8 +185,10 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
       body: JSON.stringify({
         url: eventUrl,
         formats: ['markdown'],
-        onlyMainContent: true,
-        includeTags: ['a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span']
+        onlyMainContent: false, // Get more content, not just main content
+        includeTags: ['a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'li', 'td', 'th'],
+        waitFor: 2000, // Wait for dynamic content to load
+        timeout: 30000 // Increase timeout
       })
     });
     
@@ -228,7 +230,10 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
           body: JSON.stringify({
             url: subUrl,
             formats: ['markdown'],
-            onlyMainContent: true
+            onlyMainContent: false,
+            includeTags: ['a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'li', 'td', 'th'],
+            waitFor: 2000,
+            timeout: 30000
           })
         });
         
@@ -285,6 +290,39 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
   }
   
   return [...new Set(urls)]; // Remove duplicates
+}
+
+function extractSpeakerNamesManually(text: string): string[] {
+  const speakerNames: string[] = [];
+  
+  // Common patterns for speaker names in text
+  const patterns = [
+    /(?:Speaker|Presenter|Keynote|Panelist):\s*([A-Z][a-z]+ [A-Z][a-z]+)/g,
+    /([A-Z][a-z]+ [A-Z][a-z]+)(?:\s*,\s*(?:Dr\.|Prof\.|CEO|CTO|Director|Manager))/g,
+    /(?:Dr\.|Prof\.)\s*([A-Z][a-z]+ [A-Z][a-z]+)/g,
+    /([A-Z][a-z]+ [A-Z][a-z]+)(?:\s*-\s*[A-Z][a-z\s&]+)/g
+  ];
+  
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const name = match[1] || match[0];
+      if (name && name.length > 3 && name.length < 50) {
+        speakerNames.push(name.trim());
+      }
+    }
+  }
+  
+  // Remove duplicates and filter out common false positives
+  const filteredNames = [...new Set(speakerNames)].filter(name => 
+    !name.toLowerCase().includes('event') &&
+    !name.toLowerCase().includes('conference') &&
+    !name.toLowerCase().includes('compliance') &&
+    !name.toLowerCase().includes('berlin') &&
+    name.split(' ').length >= 2
+  );
+  
+  return filteredNames.slice(0, 10); // Limit to 10 speakers
 }
 
 export async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string): Promise<CrawlResult[]> {
@@ -458,16 +496,69 @@ Focus on extracting real, factual information from the content. If information i
     const response = await result.response;
     const text = response.text();
     
-    // Try to parse JSON
+    // Try to parse JSON with better error handling
     try {
-      const jsonMatch = text.match(/\{[\s\S]*?\}/);
-      if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[0]);
-        if (data.speakers && Array.isArray(data.speakers)) {
-          console.log('Extracted', data.speakers.length, 'speakers');
-          return data.speakers;
+      console.log('Raw Gemini response for speakers:', text.substring(0, 1000) + '...');
+      
+      // Try multiple JSON extraction patterns
+      const jsonPatterns = [
+        /\{[\s\S]*?"speakers"[\s\S]*?\}/,  // Look for speakers object specifically
+        /\{[\s\S]*?\}/,                    // General JSON object
+        /\[[\s\S]*?\]/                     // Array format
+      ];
+      
+      let parsedData = null;
+      for (const pattern of jsonPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          try {
+            parsedData = JSON.parse(match[0]);
+            console.log('Successfully parsed JSON with pattern:', pattern.toString());
+            break;
+          } catch (e) {
+            console.warn('Failed to parse with pattern:', pattern.toString(), e);
+          }
         }
       }
+      
+      if (parsedData) {
+        // Handle different response formats
+        let speakers = [];
+        if (parsedData.speakers && Array.isArray(parsedData.speakers)) {
+          speakers = parsedData.speakers;
+        } else if (Array.isArray(parsedData)) {
+          speakers = parsedData;
+        } else if (parsedData && typeof parsedData === 'object') {
+          // Single speaker object
+          speakers = [parsedData];
+        }
+        
+        if (speakers.length > 0) {
+          console.log('Extracted', speakers.length, 'speakers');
+          return speakers;
+        }
+      }
+      
+      // If JSON parsing failed, try to extract speaker names manually
+      console.warn('JSON parsing failed, attempting manual extraction');
+      const speakerNames = extractSpeakerNamesManually(text);
+      if (speakerNames.length > 0) {
+        console.log('Manually extracted', speakerNames.length, 'speaker names');
+        return speakerNames.map(name => ({
+          name: name,
+          title: "Speaker",
+          company: "Unknown",
+          bio: `Speaker at ${eventTitle || 'the event'}`,
+          expertise_areas: [],
+          social_links: {},
+          speaking_history: [],
+          education: [],
+          achievements: [],
+          industry_connections: [],
+          recent_news: []
+        }));
+      }
+      
     } catch (parseError) {
       console.warn('Failed to parse speakers JSON:', parseError);
     }
