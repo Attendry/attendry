@@ -109,39 +109,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     try {
       console.log('Triggering analysis pipeline for promoted event:', eventId);
       
-      // Use the new purpose-built event analysis API
-      console.log('Calling event analysis API for:', eventData.source_url);
+      // Call the event analysis logic directly instead of making HTTP request
+      console.log('Starting direct event analysis for:', eventData.source_url);
       
-      const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/events/analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventUrl: eventData.source_url,
-          eventTitle: eventData.title,
-          eventDate: eventData.starts_at,
-          country: eventData.country
-        })
+      // Import the analysis functions directly
+      const { analyzeEvent } = await import('@/lib/event-analysis');
+      
+      const analysisResult = await analyzeEvent({
+        eventUrl: eventData.source_url,
+        eventTitle: eventData.title,
+        eventDate: eventData.starts_at,
+        country: eventData.country
       });
       
-      console.log('Analysis response status:', analysisResponse.status, analysisResponse.statusText);
+      console.log('Event analysis completed for promoted event:', eventId);
+      console.log('Analysis result success:', analysisResult.success);
+      console.log('Analysis result cached:', analysisResult.cached);
+      console.log('Event metadata:', analysisResult.event);
+      console.log('Speakers found:', analysisResult.speakers?.length || 0);
+      console.log('Crawl stats:', analysisResult.crawl_stats);
       
-      if (analysisResponse.ok) {
-        const analysisResult = await analysisResponse.json();
-        console.log('Event analysis completed for promoted event:', eventId);
-        console.log('Analysis result success:', analysisResult.success);
-        console.log('Analysis result cached:', analysisResult.cached);
-        console.log('Event metadata:', analysisResult.event);
-        console.log('Speakers found:', analysisResult.speakers?.length || 0);
-        console.log('Crawl stats:', analysisResult.crawl_stats);
-        
-        if (analysisResult.speakers && analysisResult.speakers.length > 0) {
-          console.log('First speaker:', {
-            name: analysisResult.speakers[0].name,
-            title: analysisResult.speakers[0].title,
-            company: analysisResult.speakers[0].company
-          });
-        }
-        
+      if (analysisResult.speakers && analysisResult.speakers.length > 0) {
+        console.log('First speaker:', {
+          name: analysisResult.speakers[0].name,
+          title: analysisResult.speakers[0].title,
+          company: analysisResult.speakers[0].company
+        });
+      }
+      
+      if (analysisResult.success) {
         // Update the extraction record with analysis results
         await supabase
           .from('event_extractions')
@@ -160,8 +156,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           
         console.log('Updated extraction record with analysis results');
       } else {
-        const errorText = await analysisResponse.text();
-        console.warn('Event analysis failed for promoted event:', eventId, 'Status:', analysisResponse.status, 'Error:', errorText);
+        console.warn('Event analysis failed for promoted event:', eventId, 'Error:', analysisResult.error);
       }
     } catch (analysisError) {
       console.error('Failed to trigger analysis pipeline:', analysisError);

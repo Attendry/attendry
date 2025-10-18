@@ -1,15 +1,10 @@
 /**
- * Purpose-Built Event Analysis API
+ * Event Analysis Library
  * 
- * This endpoint analyzes events by:
- * 1. Deep crawling the event domain with Firecrawl
- * 2. Extracting event metadata and speaker information
- * 3. Enhancing speaker data with Gemini AI
- * 4. Caching results to avoid re-analysis
- * 5. Providing Google CSE fallback for failed crawls
+ * This library contains the core event analysis logic that can be used
+ * both by API routes and other parts of the application.
  */
 
-import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createHash } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
@@ -30,14 +25,14 @@ const FIRECRAWL_RATE_LIMIT = {
 // Cache configuration
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
-interface EventAnalysisRequest {
+export interface EventAnalysisRequest {
   eventUrl: string;
   eventTitle?: string;
   eventDate?: string;
   country?: string;
 }
 
-interface EventMetadata {
+export interface EventMetadata {
   title: string;
   description: string;
   date: string;
@@ -47,7 +42,7 @@ interface EventMetadata {
   registrationUrl?: string;
 }
 
-interface SpeakerData {
+export interface SpeakerData {
   name: string;
   title: string;
   company: string;
@@ -66,7 +61,7 @@ interface SpeakerData {
   contact?: string;
 }
 
-interface CrawlResult {
+export interface CrawlResult {
   url: string;
   title: string;
   content: string;
@@ -74,7 +69,7 @@ interface CrawlResult {
   metadata: any;
 }
 
-interface EventAnalysisResponse {
+export interface EventAnalysisResponse {
   success: boolean;
   cached: boolean;
   event: EventMetadata;
@@ -112,7 +107,7 @@ function checkRateLimit(): boolean {
   return true;
 }
 
-async function getCachedAnalysis(eventUrl: string): Promise<EventAnalysisResponse | null> {
+export async function getCachedAnalysis(eventUrl: string): Promise<EventAnalysisResponse | null> {
   try {
     const supabase = await supabaseServer();
     const urlHash = createHash('sha256').update(eventUrl).digest('hex');
@@ -141,7 +136,7 @@ async function getCachedAnalysis(eventUrl: string): Promise<EventAnalysisRespons
   }
 }
 
-async function cacheAnalysis(eventUrl: string, analysis: EventAnalysisResponse): Promise<void> {
+export async function cacheAnalysis(eventUrl: string, analysis: EventAnalysisResponse): Promise<void> {
   try {
     const supabase = await supabaseServer();
     const urlHash = createHash('sha256').update(eventUrl).digest('hex');
@@ -163,7 +158,7 @@ async function cacheAnalysis(eventUrl: string, analysis: EventAnalysisResponse):
   }
 }
 
-async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
+export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
   const results: CrawlResult[] = [];
   
   if (!firecrawlKey) {
@@ -292,7 +287,7 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
   return [...new Set(urls)]; // Remove duplicates
 }
 
-async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string): Promise<CrawlResult[]> {
+export async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string): Promise<CrawlResult[]> {
   const results: CrawlResult[] = [];
   
   if (!googleKey || !googleCx) {
@@ -339,7 +334,7 @@ async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string): Promis
   return results;
 }
 
-async function extractEventMetadata(crawlResults: CrawlResult[], eventTitle?: string, eventDate?: string, country?: string): Promise<EventMetadata> {
+export async function extractEventMetadata(crawlResults: CrawlResult[], eventTitle?: string, eventDate?: string, country?: string): Promise<EventMetadata> {
   if (!geminiKey) {
     // Fallback to basic extraction
     return {
@@ -416,7 +411,7 @@ Focus on extracting accurate, factual information. If information is not availab
   };
 }
 
-async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Promise<SpeakerData[]> {
+export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Promise<SpeakerData[]> {
   if (!geminiKey) {
     return [];
   }
@@ -483,20 +478,16 @@ Focus on extracting real, factual information from the content. If information i
   return [];
 }
 
-export async function POST(req: NextRequest): Promise<NextResponse<EventAnalysisResponse>> {
+export async function analyzeEvent(request: EventAnalysisRequest): Promise<EventAnalysisResponse> {
   const startTime = Date.now();
   
   try {
-    console.log('Event analysis API called');
-    console.log('Request method:', req.method);
-    console.log('Request URL:', req.url);
-    console.log('Request headers:', Object.fromEntries(req.headers.entries()));
+    console.log('Starting event analysis for:', request.eventUrl);
     
-    const requestData: EventAnalysisRequest = await req.json();
-    const { eventUrl, eventTitle, eventDate, country } = requestData;
+    const { eventUrl, eventTitle, eventDate, country } = request;
     
     if (!eventUrl) {
-      return NextResponse.json({
+      return {
         success: false,
         cached: false,
         event: {} as EventMetadata,
@@ -508,15 +499,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventAnalysis
           crawl_duration_ms: 0
         },
         error: "Event URL is required"
-      }, { status: 400 });
+      };
     }
-    
-    console.log('Analyzing event:', eventUrl);
     
     // Check cache first
     const cachedResult = await getCachedAnalysis(eventUrl);
     if (cachedResult) {
-      return NextResponse.json(cachedResult);
+      return cachedResult;
     }
     
     // Deep crawl the event
@@ -529,7 +518,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventAnalysis
     }
     
     if (crawlResults.length === 0) {
-      return NextResponse.json({
+      return {
         success: false,
         cached: false,
         event: {} as EventMetadata,
@@ -541,7 +530,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventAnalysis
           crawl_duration_ms: Date.now() - startTime
         },
         error: "Failed to crawl event content"
-      }, { status: 500 });
+      };
     }
     
     // Extract event metadata
@@ -575,12 +564,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventAnalysis
       duration_ms: crawlDuration
     });
     
-    return NextResponse.json(analysisResult);
+    return analysisResult;
     
   } catch (error) {
     console.error('Event analysis error:', error);
     
-    return NextResponse.json({
+    return {
       success: false,
       cached: false,
       event: {} as EventMetadata,
@@ -592,6 +581,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventAnalysis
         crawl_duration_ms: Date.now() - startTime
       },
       error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    };
   }
 }
