@@ -181,7 +181,16 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
           locale,
         }),
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (jsonError) {
+        // If response is not JSON, it's likely an HTML error page
+        const text = await res.text();
+        throw new Error(`Server returned non-JSON response: ${res.status} ${res.statusText}`);
+      }
+      
       if (!res.ok) throw new Error(data?.error || res.statusText);
       
       setDebug(data);

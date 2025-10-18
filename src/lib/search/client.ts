@@ -75,7 +75,12 @@ export async function fetchEvents(
     throw new Error(typeof error?.error === 'string' ? error.error : "Search failed");
   }
 
-  return (await res.json()) as EventsSearchResponse;
+  const data = await safeReadJson(res);
+  if (!data) {
+    throw new Error("Invalid response format");
+  }
+  
+  return data as EventsSearchResponse;
 }
 
 async function safeReadJson(response: Response): Promise<Record<string, unknown> | null> {

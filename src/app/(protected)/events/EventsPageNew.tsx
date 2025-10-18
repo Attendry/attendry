@@ -65,6 +65,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [debug, setDebug] = useState<any>(null);
   const [watchlistMatches, setWatchlistMatches] = useState<Map<string, any>>(new Map());
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [promotionMessage, setPromotionMessage] = useState<string | null>(null);
   const router = useRouter();
 
   // Get current page events from context
@@ -85,6 +86,77 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     }
     loadUserProfile();
   }, []);
+
+  // Handle promotion context from URL parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const isPromoted = urlParams.get('promoted') === 'true';
+    const extractionId = urlParams.get('extractionId');
+    
+    if (isPromoted) {
+      // Load promoted events
+      loadPromotedEvents(extractionId);
+      
+      // Clean up URL parameters
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('promoted');
+      newUrl.searchParams.delete('extractionId');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, [actions]);
+
+  const loadPromotedEvents = async (extractionId?: string | null) => {
+    try {
+      actions.setLoading(true);
+      actions.setError(null);
+      
+      const params = new URLSearchParams();
+      if (extractionId) {
+        params.set('extractionId', extractionId);
+      }
+      params.set('limit', '20');
+      
+      const response = await fetch(`/api/events/promoted?${params}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to load promoted events');
+      }
+      
+      const events = data.events || [];
+      
+      // Store promoted events in context
+      actions.setSearchResults(events, {
+        keywords: 'Promoted Events',
+        country: 'EU',
+        from: new Date().toISOString().split('T')[0],
+        to: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        timestamp: Date.now(),
+        userProfile: userProfile ? {
+          industryTerms: userProfile.industry_terms || [],
+          icpTerms: userProfile.icp_terms || [],
+          competitors: userProfile.competitors || [],
+        } : undefined,
+        profileFilters: userProfile ? {
+          includeIndustryMatch: true,
+          includeIcpMatch: true,
+          includeCompetitorMatch: true,
+        } : undefined,
+      }, events.length);
+      
+      // Show success message
+      setPromotionMessage(`Successfully loaded ${events.length} promoted event${events.length !== 1 ? 's' : ''}`);
+      
+      // Clear message after 5 seconds
+      setTimeout(() => setPromotionMessage(null), 5000);
+      
+    } catch (error) {
+      actions.setError(error instanceof Error ? error.message : 'Failed to load promoted events');
+      console.error('Failed to load promoted events:', error);
+    } finally {
+      actions.setLoading(false);
+    }
+  };
 
   // Keep dates in sync when advanced is OFF - matching existing logic
   useEffect(() => {
@@ -218,7 +290,16 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           locale,
         }),
       });
-      const data = await res.json();
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (jsonError) {
+        // If response is not JSON, it's likely an HTML error page
+        const text = await res.text();
+        throw new Error(`Server returned non-JSON response: ${res.status} ${res.statusText}`);
+      }
+      
       if (!res.ok) throw new Error(data?.error || res.statusText);
       
       setDebug(data);
@@ -423,6 +504,32 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           </button>
         </div>
       </PageHeader>
+
+      {/* Promotion Success Message */}
+      {promotionMessage && (
+        <div className="px-6 py-4">
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+            <div className="flex items-center gap-2">
+              <div className="w-5 h-5 bg-green-100 dark:bg-green-800 rounded-full flex items-center justify-center">
+                <svg className="w-3 h-3 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <span className="text-sm font-medium text-green-800 dark:text-green-200">
+                {promotionMessage}
+              </span>
+              <button
+                onClick={() => setPromotionMessage(null)}
+                className="ml-auto text-green-600 hover:text-green-500"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Active Filters Display */}
       {state.hasResults && state.searchParams && (

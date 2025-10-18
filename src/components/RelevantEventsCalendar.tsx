@@ -44,6 +44,8 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
   const [sortBy, setSortBy] = useState<'relevance' | 'date' | 'title'>('relevance');
   const [showDetails, setShowDetails] = useState<Set<string>>(new Set());
   const [promotingEvents, setPromotingEvents] = useState<Set<string>>(new Set());
+  const [promotedEvents, setPromotedEvents] = useState<Map<string, any>>(new Map());
+  const [showPromotionResults, setShowPromotionResults] = useState<Set<string>>(new Set());
 
   // Sort events based on selected criteria
   const sortedEvents = useMemo(() => {
@@ -75,6 +77,16 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
     setShowDetails(newShowDetails);
   };
 
+  const togglePromotionResults = (eventId: string) => {
+    const newShowResults = new Set(showPromotionResults);
+    if (newShowResults.has(eventId)) {
+      newShowResults.delete(eventId);
+    } else {
+      newShowResults.add(eventId);
+    }
+    setShowPromotionResults(newShowResults);
+  };
+
   const promoteEvent = async (eventId: string) => {
     setPromotingEvents(prev => new Set(prev).add(eventId));
     
@@ -85,19 +97,26 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         body: JSON.stringify({ eventId })
       });
       
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        throw new Error(`Server returned invalid response: ${response.status} ${response.statusText}`);
+      }
       
       if (!response.ok) {
         throw new Error(data.error || 'Failed to promote event');
       }
       
-      // Show success message with navigation option
-      const shouldNavigate = confirm(`Event promoted to analysis pipeline! Extraction ID: ${data.extractionId}\n\nWould you like to view the analysis results?`);
+      // Store the promotion result and show it inline
+      setPromotedEvents(prev => new Map(prev).set(eventId, {
+        extractionId: data.extractionId,
+        promotedAt: new Date().toISOString(),
+        status: 'success'
+      }));
       
-      if (shouldNavigate) {
-        // Navigate to the events page to see the analysis results
-        window.location.href = '/events';
-      }
+      // Show the promotion results inline
+      setShowPromotionResults(prev => new Set(prev).add(eventId));
       
       // Optionally refresh the calendar
       if (onRefresh) {
@@ -105,7 +124,16 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       }
     } catch (error) {
       console.error('Failed to promote event:', error);
-      alert(`Failed to promote event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Store error state
+      setPromotedEvents(prev => new Map(prev).set(eventId, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        promotedAt: new Date().toISOString(),
+        status: 'error'
+      }));
+      
+      // Show the error inline
+      setShowPromotionResults(prev => new Set(prev).add(eventId));
     } finally {
       setPromotingEvents(prev => {
         const newSet = new Set(prev);
@@ -311,23 +339,33 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                   <span>View Event</span>
                 </a>
                 
-                <button
-                  onClick={() => promoteEvent(event.id)}
-                  disabled={promotingEvents.has(event.id)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  {promotingEvents.has(event.id) ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Promoting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <TrendingUp className="w-4 h-4" />
-                      <span>Promote to Analysis</span>
-                    </>
-                  )}
-                </button>
+                {promotedEvents.has(event.id) ? (
+                  <button
+                    onClick={() => togglePromotionResults(event.id)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    <TrendingUp className="w-4 h-4" />
+                    <span>{showPromotionResults.has(event.id) ? 'Hide' : 'Show'} Results</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => promoteEvent(event.id)}
+                    disabled={promotingEvents.has(event.id)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {promotingEvents.has(event.id) ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Promoting...</span>
+                      </>
+                    ) : (
+                      <>
+                        <TrendingUp className="w-4 h-4" />
+                        <span>Promote to Analysis</span>
+                      </>
+                    )}
+                  </button>
+                )}
                 
                 <button
                   onClick={() => toggleDetails(event.id)}
@@ -421,6 +459,90 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                       )}
                     </div>
                   </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Promotion Results */}
+            {showPromotionResults.has(event.id) && promotedEvents.has(event.id) && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700"
+              >
+                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <TrendingUp className="w-5 h-5 text-green-600" />
+                    <h4 className="text-sm font-medium text-green-900 dark:text-green-100">
+                      Promotion Results
+                    </h4>
+                  </div>
+                  
+                  {promotedEvents.get(event.id)?.status === 'success' ? (
+                    <div className="space-y-2">
+                      <div className="text-sm text-green-800 dark:text-green-200">
+                        ✅ Event successfully promoted to analysis pipeline!
+                      </div>
+                      <div className="text-xs text-green-700 dark:text-green-300">
+                        Extraction ID: {promotedEvents.get(event.id)?.extractionId}
+                      </div>
+                      <div className="text-xs text-green-700 dark:text-green-300">
+                        Promoted at: {new Date(promotedEvents.get(event.id)?.promotedAt).toLocaleString()}
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          onClick={() => {
+                            // Navigate to events page with promotion context
+                            const url = new URL('/events', window.location.origin);
+                            url.searchParams.set('promoted', 'true');
+                            url.searchParams.set('extractionId', promotedEvents.get(event.id)?.extractionId || '');
+                            window.location.href = url.toString();
+                          }}
+                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md transition-colors"
+                        >
+                          View in Events
+                        </button>
+                        <button
+                          onClick={() => setShowPromotionResults(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(event.id);
+                            return newSet;
+                          })}
+                          className="px-3 py-1 border border-green-600 text-green-600 hover:bg-green-50 text-xs font-medium rounded-md transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="text-sm text-red-800 dark:text-red-200">
+                        ❌ Failed to promote event
+                      </div>
+                      <div className="text-xs text-red-700 dark:text-red-300">
+                        Error: {promotedEvents.get(event.id)?.error}
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          onClick={() => promoteEvent(event.id)}
+                          className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-md transition-colors"
+                        >
+                          Retry
+                        </button>
+                        <button
+                          onClick={() => setShowPromotionResults(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(event.id);
+                            return newSet;
+                          })}
+                          className="px-3 py-1 border border-red-600 text-red-600 hover:bg-red-50 text-xs font-medium rounded-md transition-colors"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}
