@@ -652,10 +652,13 @@ export async function analyzeEvent(request: EventAnalysisRequest): Promise<Event
       };
     }
     
-    // Check cache first
+    // Check cache first (but allow cache bypass for debugging)
     const cachedResult = await getCachedAnalysis(eventUrl);
-    if (cachedResult) {
+    if (cachedResult && !process.env.BYPASS_CACHE) {
+      console.log('Returning cached result for:', eventUrl);
       return cachedResult;
+    } else if (cachedResult) {
+      console.log('Cache bypassed for:', eventUrl);
     }
     
     // Deep crawl the event

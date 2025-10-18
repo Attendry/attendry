@@ -118,13 +118,14 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       }
       
       // Store the promotion result and show it inline
-      console.log('Promotion successful, storing result:', { eventId, extractionId: data.extractionId });
+      console.log('Promotion successful, storing result:', { eventId, extractionId: data.extractionId, analysisResults: data.analysisResults });
       
       // Update both states together to ensure consistency
       const promotionResult = {
         extractionId: data.extractionId,
         promotedAt: new Date().toISOString(),
-        status: 'success'
+        status: 'success',
+        analysisResults: data.analysisResults // Store the analysis results
       };
       
       console.log('Setting promotion result:', promotionResult);
@@ -524,10 +525,66 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                   </div>
                   
                   {promotedEvents.get(event.id)?.status === 'success' ? (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <div className="text-sm text-green-800 dark:text-green-200">
-                        ✅ Event successfully promoted to analysis pipeline!
+                        ✅ Event successfully analyzed!
                       </div>
+                      
+                      {/* Analysis Results */}
+                      {promotedEvents.get(event.id)?.analysisResults && (
+                        <div className="space-y-3">
+                          {/* Event Metadata */}
+                          {promotedEvents.get(event.id)?.analysisResults?.event && (
+                            <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
+                              <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Event Details</h5>
+                              <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
+                                <div><strong>Title:</strong> {promotedEvents.get(event.id)?.analysisResults?.event?.title}</div>
+                                <div><strong>Date:</strong> {promotedEvents.get(event.id)?.analysisResults?.event?.date}</div>
+                                <div><strong>Location:</strong> {promotedEvents.get(event.id)?.analysisResults?.event?.location}</div>
+                                <div><strong>Organizer:</strong> {promotedEvents.get(event.id)?.analysisResults?.event?.organizer}</div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Speakers */}
+                          {promotedEvents.get(event.id)?.analysisResults?.speakers && 
+                           promotedEvents.get(event.id)?.analysisResults?.speakers?.length > 0 && (
+                            <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
+                              <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                                Speakers Found ({promotedEvents.get(event.id)?.analysisResults?.speakers?.length})
+                              </h5>
+                              <div className="space-y-2 max-h-40 overflow-y-auto">
+                                {promotedEvents.get(event.id)?.analysisResults?.speakers?.slice(0, 5).map((speaker: any, index: number) => (
+                                  <div key={index} className="text-xs text-gray-600 dark:text-gray-300 border-l-2 border-blue-200 pl-2">
+                                    <div className="font-medium">{speaker.name}</div>
+                                    {speaker.title && <div className="text-gray-500">{speaker.title}</div>}
+                                    {speaker.company && <div className="text-gray-500">{speaker.company}</div>}
+                                  </div>
+                                ))}
+                                {promotedEvents.get(event.id)?.analysisResults?.speakers?.length > 5 && (
+                                  <div className="text-xs text-gray-500 italic">
+                                    ... and {promotedEvents.get(event.id)?.analysisResults?.speakers?.length - 5} more speakers
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Crawl Stats */}
+                          {promotedEvents.get(event.id)?.analysisResults?.crawl_stats && (
+                            <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
+                              <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Analysis Stats</h5>
+                              <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                                <div><strong>Pages Crawled:</strong> {promotedEvents.get(event.id)?.analysisResults?.crawl_stats?.pages_crawled}</div>
+                                <div><strong>Content Length:</strong> {promotedEvents.get(event.id)?.analysisResults?.crawl_stats?.total_content_length?.toLocaleString()} chars</div>
+                                <div><strong>Speakers Found:</strong> {promotedEvents.get(event.id)?.analysisResults?.crawl_stats?.speakers_found}</div>
+                                <div><strong>Duration:</strong> {promotedEvents.get(event.id)?.analysisResults?.crawl_stats?.crawl_duration_ms}ms</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
                       <div className="text-xs text-green-700 dark:text-green-300">
                         Extraction ID: {promotedEvents.get(event.id)?.extractionId}
                       </div>

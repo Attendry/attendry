@@ -106,6 +106,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // Now trigger the actual analysis pipeline for the promoted event
+    let analysisResult = null;
     try {
       console.log('Triggering analysis pipeline for promoted event:', eventId);
       
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // Import the analysis functions directly
       const { analyzeEvent } = await import('@/lib/event-analysis');
       
-      const analysisResult = await analyzeEvent({
+      analysisResult = await analyzeEvent({
         eventUrl: eventData.source_url,
         eventTitle: eventData.title,
         eventDate: eventData.starts_at,
@@ -167,7 +168,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       success: true, 
       message: "Event promoted to analysis pipeline and processing started",
       extractionId: extractionData.id,
-      eventId: eventId
+      eventId: eventId,
+      analysisResults: analysisResult // Include the analysis results in the response
     });
   } catch (e: any) {
     return NextResponse.json({ 
