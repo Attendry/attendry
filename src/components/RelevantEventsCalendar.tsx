@@ -144,9 +144,11 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       console.log('Setting promotion result:', promotionResult);
       console.log('About to update promotion state for eventId:', eventId);
-      console.log('DEBUG: Reached state update section - Vercel deployment test v4 - FORCE DEPLOY');
-      console.log('DEBUG: Current timestamp:', new Date().toISOString());
-      console.log('DEBUG: Build trigger - State management fix applied');
+      console.log('🚀 VERCEL DEPLOYMENT TEST v5 - CACHE BUST');
+      console.log('🔥 State management fix applied - should work now!');
+      console.log('⏰ Current timestamp:', new Date().toISOString());
+      console.log('📊 Analysis results available:', !!data.analysisResults);
+      console.log('🎯 Event ID:', eventId);
       
       // Update promotion state
       try {
@@ -450,7 +452,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>Promote to Analysis</span>
+                        <span>🚀 Promote to Analysis (v5)</span>
                       </>
                     )}
                   </button>
