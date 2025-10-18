@@ -72,13 +72,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // The analysis pipeline can be triggered manually or through a separate process
     console.log('Event promoted from calendar:', eventId, 'by user:', userRes.user.id);
 
-    // Create a new event extraction record to track the promotion
+    // Create or update an event extraction record to track the promotion
+    const eventDate = eventData.starts_at ? new Date(eventData.starts_at).toISOString().split('T')[0] : null;
+    
     const { data: extractionData, error: extractionError } = await supabase
       .from('event_extractions')
-      .insert({
+      .upsert({
         url: eventData.source_url,
         normalized_url: eventData.source_url,
-        event_date: eventData.starts_at ? new Date(eventData.starts_at).toISOString().split('T')[0] : null,
+        event_date: eventDate,
         country: eventData.country,
         locality: eventData.city,
         payload: {
@@ -89,6 +91,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           status: 'promoted',
           ready_for_analysis: true
         }
+      }, {
+        onConflict: 'normalized_url,event_date',
+        ignoreDuplicates: false
       })
       .select()
       .single();
