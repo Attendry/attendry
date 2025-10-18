@@ -110,7 +110,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       console.log('Triggering analysis pipeline for promoted event:', eventId);
       
       // For promoted events, we need to directly analyze the specific event URL
-      // The events/run API is for searching, not for analyzing specific URLs
+      // Let's try calling the API with proper authentication headers
       console.log('Directly analyzing promoted event URL:', eventData.source_url);
       console.log('Event data being processed:', {
         title: eventData.title,
@@ -122,17 +122,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // Create a mock speaker object to trigger the enhancement pipeline
       const mockSpeaker = {
         name: eventData.title || 'Event Speaker',
-        title: 'Event Organizer',
-        company: 'Event Company',
+        org: 'Event Company',
         bio: `Event: ${eventData.title}`,
         url: eventData.source_url,
         event_date: eventData.starts_at,
         country: eventData.country
       };
       
+      // Get the authorization header from the current request
+      const authHeader = req.headers.get('authorization');
+      console.log('Auth header present:', !!authHeader);
+      
       const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/speakers/enhance`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(authHeader && { 'Authorization': authHeader })
+        },
         body: JSON.stringify({
           speaker: mockSpeaker
         })
