@@ -109,8 +109,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const { error: updateError } = await supabase
       .from('collected_events')
       .update({
-        metadata: {
-          ...eventData.metadata,
+        collection_metadata: {
+          ...eventData.collection_metadata,
           promoted_to_analysis: true,
           promoted_at: new Date().toISOString(),
           promoted_by: userRes.user.id
