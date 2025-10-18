@@ -45,11 +45,11 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
   const [showDetails, setShowDetails] = useState<Set<string>>(new Set());
   const [promotingEvents, setPromotingEvents] = useState<Set<string>>(new Set());
   const [promotionState, setPromotionState] = useState<{
-    promotedEvents: Map<string, any>;
-    showResults: Set<string>;
+    promotedEvents: Record<string, any>;
+    showResults: Record<string, boolean>;
   }>({
-    promotedEvents: new Map(),
-    showResults: new Set()
+    promotedEvents: {},
+    showResults: {}
   });
 
   // Unified state management for promotion results
@@ -85,18 +85,13 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
   };
 
   const togglePromotionResults = (eventId: string) => {
-    setPromotionState(prev => {
-      const newSet = new Set(prev.showResults);
-      if (newSet.has(eventId)) {
-        newSet.delete(eventId);
-      } else {
-        newSet.add(eventId);
+    setPromotionState(prev => ({
+      ...prev,
+      showResults: {
+        ...prev.showResults,
+        [eventId]: !prev.showResults[eventId]
       }
-      return {
-        ...prev,
-        showResults: newSet
-      };
-    });
+    }));
   };
 
   const promoteEvent = async (eventId: string) => {
@@ -165,18 +160,15 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       setPromotionState(prev => {
         console.log('✅ Inside setPromotionState callback');
-        const newMap = new Map(prev.promotedEvents);
-        const newSet = new Set(prev.showResults);
+        const newPromotedEvents = { ...prev.promotedEvents, [eventId]: promotionResult };
+        const newShowResults = { ...prev.showResults, [eventId]: true };
         
-        newMap.set(eventId, promotionResult);
-        newSet.add(eventId);
-        
-        console.log('✅ New promotedEvents size:', newMap.size);
-        console.log('✅ New showResults size:', newSet.size);
+        console.log('✅ New promotedEvents keys:', Object.keys(newPromotedEvents));
+        console.log('✅ New showResults keys:', Object.keys(newShowResults));
         
         return {
-          promotedEvents: newMap,
-          showResults: newSet
+          promotedEvents: newPromotedEvents,
+          showResults: newShowResults
         };
       });
       
@@ -210,22 +202,20 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         }
       }
       
-      setPromotionState(prev => {
-        const newMap = new Map(prev.promotedEvents);
-        const newSet = new Set(prev.showResults);
-        
-        newMap.set(eventId, {
-          error: errorMessage,
-          promotedAt: new Date().toISOString(),
-          status: 'error'
-        });
-        newSet.add(eventId);
-        
-        return {
-          promotedEvents: newMap,
-          showResults: newSet
-        };
-      });
+      setPromotionState(prev => ({
+        promotedEvents: {
+          ...prev.promotedEvents,
+          [eventId]: {
+            error: errorMessage,
+            promotedAt: new Date().toISOString(),
+            status: 'error'
+          }
+        },
+        showResults: {
+          ...prev.showResults,
+          [eventId]: true
+        }
+      }));
     } finally {
       setPromotingEvents(prev => {
         const newSet = new Set(prev);
@@ -431,7 +421,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                   <span>View Event</span>
                 </a>
                 
-                {promotionState.promotedEvents.has(event.id) ? (
+                {promotionState.promotedEvents[event.id] ? (
                   <button
                     onClick={() => {
                       console.log('Toggling promotion results for event:', event.id);
@@ -440,7 +430,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
                   >
                     <TrendingUp className="w-4 h-4" />
-                    <span>{promotionState.showResults.has(event.id) ? 'Hide' : 'Show'} Results</span>
+                    <span>{promotionState.showResults[event.id] ? 'Hide' : 'Show'} Results</span>
                   </button>
                 ) : (
                   <button
@@ -456,7 +446,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v6.5)</span>
+                        <span>🚀 Promote to Analysis (v6.6)</span>
                       </>
                     )}
                   </button>
@@ -560,19 +550,19 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
 
             {/* Promotion Results */}
             {(() => {
-              const shouldShow = promotionState.showResults.has(event.id) && promotionState.promotedEvents.has(event.id);
-              const promotedData = promotionState.promotedEvents.get(event.id);
+              const shouldShow = promotionState.showResults[event.id] && promotionState.promotedEvents[event.id];
+              const promotedData = promotionState.promotedEvents[event.id];
               console.log('RENDER: Should show promotion results for event', event.id, ':', shouldShow, {
                 checkingEventId: event.id,
                 eventIdType: typeof event.id,
                 eventIdLength: event.id.length,
-                showResults: promotionState.showResults.has(event.id),
-                promotedEvents: promotionState.promotedEvents.has(event.id),
+                showResults: promotionState.showResults[event.id],
+                promotedEvents: !!promotionState.promotedEvents[event.id],
                 promotedEventData: promotedData,
                 hasAnalysisResults: !!promotedData?.analysisResults,
                 analysisResultsKeys: promotedData?.analysisResults ? Object.keys(promotedData.analysisResults) : [],
-                allPromotedEvents: Array.from(promotionState.promotedEvents.keys()),
-                allShowResults: Array.from(promotionState.showResults)
+                allPromotedEvents: Object.keys(promotionState.promotedEvents),
+                allShowResults: Object.keys(promotionState.showResults)
               });
               return shouldShow;
             })() && (
@@ -590,46 +580,46 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     </h4>
                   </div>
                   
-                  {promotionState.promotedEvents.get(event.id)?.status === 'success' ? (
+                  {promotionState.promotedEvents[event.id]?.status === 'success' ? (
                     <div className="space-y-3">
                       <div className="text-sm text-green-800 dark:text-green-200">
                         ✅ Event successfully analyzed!
                       </div>
                       
                       {/* Analysis Results */}
-                      {promotionState.promotedEvents.get(event.id)?.analysisResults && (
+                      {promotionState.promotedEvents[event.id]?.analysisResults && (
                         <div className="space-y-3">
                           {/* Event Metadata */}
-                          {promotionState.promotedEvents.get(event.id)?.analysisResults?.event && (
+                          {promotionState.promotedEvents[event.id]?.analysisResults?.event && (
                             <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
                               <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Event Details</h5>
                               <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
-                                <div><strong>Title:</strong> {promotionState.promotedEvents.get(event.id)?.analysisResults?.event?.title}</div>
-                                <div><strong>Date:</strong> {promotionState.promotedEvents.get(event.id)?.analysisResults?.event?.date}</div>
-                                <div><strong>Location:</strong> {promotionState.promotedEvents.get(event.id)?.analysisResults?.event?.location}</div>
-                                <div><strong>Organizer:</strong> {promotionState.promotedEvents.get(event.id)?.analysisResults?.event?.organizer}</div>
+                                <div><strong>Title:</strong> {promotionState.promotedEvents[event.id]?.analysisResults?.event?.title}</div>
+                                <div><strong>Date:</strong> {promotionState.promotedEvents[event.id]?.analysisResults?.event?.date}</div>
+                                <div><strong>Location:</strong> {promotionState.promotedEvents[event.id]?.analysisResults?.event?.location}</div>
+                                <div><strong>Organizer:</strong> {promotionState.promotedEvents[event.id]?.analysisResults?.event?.organizer}</div>
                               </div>
                             </div>
                           )}
                           
                           {/* Speakers */}
-                          {promotionState.promotedEvents.get(event.id)?.analysisResults?.speakers && 
-                           promotionState.promotedEvents.get(event.id)?.analysisResults?.speakers?.length > 0 && (
+                          {promotionState.promotedEvents[event.id]?.analysisResults?.speakers && 
+                           promotionState.promotedEvents[event.id]?.analysisResults?.speakers?.length > 0 && (
                             <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
                               <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                                Speakers Found ({promotionState.promotedEvents.get(event.id)?.analysisResults?.speakers?.length})
+                                Speakers Found ({promotionState.promotedEvents[event.id]?.analysisResults?.speakers?.length})
                               </h5>
                               <div className="space-y-2 max-h-40 overflow-y-auto">
-                                {promotionState.promotedEvents.get(event.id)?.analysisResults?.speakers?.slice(0, 5).map((speaker: any, index: number) => (
+                                {promotionState.promotedEvents[event.id]?.analysisResults?.speakers?.slice(0, 5).map((speaker: any, index: number) => (
                                   <div key={index} className="text-xs text-gray-600 dark:text-gray-300 border-l-2 border-blue-200 pl-2">
                                     <div className="font-medium">{speaker.name}</div>
                                     {speaker.title && <div className="text-gray-500">{speaker.title}</div>}
                                     {speaker.company && <div className="text-gray-500">{speaker.company}</div>}
                                   </div>
                                 ))}
-                                {promotionState.promotedEvents.get(event.id)?.analysisResults?.speakers?.length > 5 && (
+                                {promotionState.promotedEvents[event.id]?.analysisResults?.speakers?.length > 5 && (
                                   <div className="text-xs text-gray-500 italic">
-                                    ... and {promotionState.promotedEvents.get(event.id)?.analysisResults?.speakers?.length - 5} more speakers
+                                    ... and {promotionState.promotedEvents[event.id]?.analysisResults?.speakers?.length - 5} more speakers
                                   </div>
                                 )}
                               </div>
@@ -637,14 +627,14 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                           )}
                           
                           {/* Crawl Stats */}
-                          {promotionState.promotedEvents.get(event.id)?.analysisResults?.crawl_stats && (
+                          {promotionState.promotedEvents[event.id]?.analysisResults?.crawl_stats && (
                             <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
                               <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Analysis Stats</h5>
                               <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
-                                <div><strong>Pages Crawled:</strong> {promotionState.promotedEvents.get(event.id)?.analysisResults?.crawl_stats?.pages_crawled}</div>
-                                <div><strong>Content Length:</strong> {promotionState.promotedEvents.get(event.id)?.analysisResults?.crawl_stats?.total_content_length?.toLocaleString()} chars</div>
-                                <div><strong>Speakers Found:</strong> {promotionState.promotedEvents.get(event.id)?.analysisResults?.crawl_stats?.speakers_found}</div>
-                                <div><strong>Duration:</strong> {promotionState.promotedEvents.get(event.id)?.analysisResults?.crawl_stats?.crawl_duration_ms}ms</div>
+                                <div><strong>Pages Crawled:</strong> {promotionState.promotedEvents[event.id]?.analysisResults?.crawl_stats?.pages_crawled}</div>
+                                <div><strong>Content Length:</strong> {promotionState.promotedEvents[event.id]?.analysisResults?.crawl_stats?.total_content_length?.toLocaleString()} chars</div>
+                                <div><strong>Speakers Found:</strong> {promotionState.promotedEvents[event.id]?.analysisResults?.crawl_stats?.speakers_found}</div>
+                                <div><strong>Duration:</strong> {promotionState.promotedEvents[event.id]?.analysisResults?.crawl_stats?.crawl_duration_ms}ms</div>
                               </div>
                             </div>
                           )}
@@ -652,10 +642,10 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                       )}
                       
                       <div className="text-xs text-green-700 dark:text-green-300">
-                        Extraction ID: {promotionState.promotedEvents.get(event.id)?.extractionId}
+                        Extraction ID: {promotionState.promotedEvents[event.id]?.extractionId}
                       </div>
                       <div className="text-xs text-green-700 dark:text-green-300">
-                        Promoted at: {new Date(promotionState.promotedEvents.get(event.id)?.promotedAt).toLocaleString()}
+                        Promoted at: {new Date(promotionState.promotedEvents[event.id]?.promotedAt).toLocaleString()}
                       </div>
                       <div className="mt-3 flex gap-2">
                         <button
@@ -663,7 +653,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                             // Navigate to events page with promotion context
                             const url = new URL('/events', window.location.origin);
                             url.searchParams.set('promoted', 'true');
-                            url.searchParams.set('extractionId', promotionState.promotedEvents.get(event.id)?.extractionId || '');
+                            url.searchParams.set('extractionId', promotionState.promotedEvents[event.id]?.extractionId || '');
                             window.location.href = url.toString();
                           }}
                           className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md transition-colors"
@@ -673,7 +663,10 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                         <button
                           onClick={() => setPromotionState(prev => ({
                             ...prev,
-                            showResults: new Set([...prev.showResults].filter(id => id !== event.id))
+                            showResults: {
+                              ...prev.showResults,
+                              [event.id]: false
+                            }
                           }))}
                           className="px-3 py-1 border border-green-600 text-green-600 hover:bg-green-50 text-xs font-medium rounded-md transition-colors"
                         >
@@ -687,7 +680,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                         ❌ Failed to promote event
                       </div>
                       <div className="text-xs text-red-700 dark:text-red-300">
-                        Error: {promotionState.promotedEvents.get(event.id)?.error}
+                        Error: {promotionState.promotedEvents[event.id]?.error}
                       </div>
                       <div className="mt-3 flex gap-2">
                         <button
@@ -699,7 +692,10 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                         <button
                           onClick={() => setPromotionState(prev => ({
                             ...prev,
-                            showResults: new Set([...prev.showResults].filter(id => id !== event.id))
+                            showResults: {
+                              ...prev.showResults,
+                              [event.id]: false
+                            }
                           }))}
                           className="px-3 py-1 border border-red-600 text-red-600 hover:bg-red-50 text-xs font-medium rounded-md transition-colors"
                         >
