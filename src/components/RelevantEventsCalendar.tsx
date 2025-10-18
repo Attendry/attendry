@@ -180,14 +180,23 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       });
       
       // Store error state
-      setPromotedEvents(prev => new Map(prev).set(eventId, {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        promotedAt: new Date().toISOString(),
-        status: 'error'
-      }));
-      
-      // Show the error inline
-      setShowPromotionResults(prev => new Set(prev).add(eventId));
+      setPromotionState(prev => {
+        const newPromotedEvents = new Map(prev.promotedEvents);
+        const newShowResults = new Set(prev.showResults);
+        
+        newPromotedEvents.set(eventId, {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          promotedAt: new Date().toISOString(),
+          status: 'error'
+        });
+        
+        newShowResults.add(eventId);
+        
+        return {
+          promotedEvents: newPromotedEvents,
+          showResults: newShowResults
+        };
+      });
     } finally {
       setPromotingEvents(prev => {
         const newSet = new Set(prev);
@@ -523,7 +532,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
             {/* Promotion Results */}
             {(() => {
               const shouldShow = promotionState.showResults.has(event.id) && promotionState.promotedEvents.has(event.id);
-              const promotedData = promotionState.promotionState.promotedEvents.get(event.id);
+              const promotedData = promotionState.promotedEvents.get(event.id);
               console.log('RENDER: Should show promotion results for event', event.id, ':', shouldShow, {
                 showResults: promotionState.showResults.has(event.id),
                 promotedEvents: promotionState.promotedEvents.has(event.id),
@@ -549,17 +558,17 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     </h4>
                   </div>
                   
-                  {promotionState.promotionState.promotedEvents.get(event.id)?.status === 'success' ? (
+                  {promotionState.promotedEvents.get(event.id)?.status === 'success' ? (
                     <div className="space-y-3">
                       <div className="text-sm text-green-800 dark:text-green-200">
                         ✅ Event successfully analyzed!
                       </div>
                       
                       {/* Analysis Results */}
-                      {promotionState.promotionState.promotedEvents.get(event.id)?.analysisResults && (
+                      {promotionState.promotedEvents.get(event.id)?.analysisResults && (
                         <div className="space-y-3">
                           {/* Event Metadata */}
-                          {promotionState.promotionState.promotedEvents.get(event.id)?.analysisResults?.event && (
+                          {promotionState.promotedEvents.get(event.id)?.analysisResults?.event && (
                             <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
                               <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Event Details</h5>
                               <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
@@ -630,10 +639,13 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                           View in Events
                         </button>
                         <button
-                          onClick={() => setShowPromotionResults(prev => {
-                            const newSet = new Set(prev);
-                            newSet.delete(event.id);
-                            return newSet;
+                          onClick={() => setPromotionState(prev => {
+                            const newShowResults = new Set(prev.showResults);
+                            newShowResults.delete(event.id);
+                            return {
+                              ...prev,
+                              showResults: newShowResults
+                            };
                           })}
                           className="px-3 py-1 border border-green-600 text-green-600 hover:bg-green-50 text-xs font-medium rounded-md transition-colors"
                         >
@@ -657,10 +669,13 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                           Retry
                         </button>
                         <button
-                          onClick={() => setShowPromotionResults(prev => {
-                            const newSet = new Set(prev);
-                            newSet.delete(event.id);
-                            return newSet;
+                          onClick={() => setPromotionState(prev => {
+                            const newShowResults = new Set(prev.showResults);
+                            newShowResults.delete(event.id);
+                            return {
+                              ...prev,
+                              showResults: newShowResults
+                            };
                           })}
                           className="px-3 py-1 border border-red-600 text-red-600 hover:bg-red-50 text-xs font-medium rounded-md transition-colors"
                         >
