@@ -144,8 +144,9 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       console.log('Setting promotion result:', promotionResult);
       console.log('About to update promotion state for eventId:', eventId);
-      console.log('DEBUG: Reached state update section - Vercel deployment test v3 - State fix');
+      console.log('DEBUG: Reached state update section - Vercel deployment test v4 - FORCE DEPLOY');
       console.log('DEBUG: Current timestamp:', new Date().toISOString());
+      console.log('DEBUG: Build trigger - State management fix applied');
       
       // Update promotion state
       try {
