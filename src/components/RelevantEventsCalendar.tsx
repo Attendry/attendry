@@ -105,6 +105,10 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       try {
         data = await response.json();
         console.log('Parsed response data:', data);
+        console.log('Response data keys:', Object.keys(data));
+        console.log('Has analysisResults?', !!data.analysisResults);
+        console.log('AnalysisResults type:', typeof data.analysisResults);
+        console.log('AnalysisResults keys:', data.analysisResults ? Object.keys(data.analysisResults) : 'none');
       } catch (jsonError) {
         console.error('Failed to parse JSON response:', jsonError);
         const textResponse = await response.text();
@@ -136,6 +140,8 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         newMap.set(eventId, promotionResult);
         console.log('Updated promotedEvents:', newMap);
         console.log('New promotedEvents has eventId?', newMap.has(eventId));
+        console.log('Promotion result being stored:', promotionResult);
+        console.log('Analysis results in promotion result:', !!promotionResult.analysisResults);
         return newMap;
       });
       
@@ -504,12 +510,14 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
             {(() => {
               const shouldShow = showPromotionResults.has(event.id) && promotedEvents.has(event.id);
               const promotedData = promotedEvents.get(event.id);
-              console.log('Should show promotion results for event', event.id, ':', shouldShow, {
+              console.log('RENDER: Should show promotion results for event', event.id, ':', shouldShow, {
                 showPromotionResults: showPromotionResults.has(event.id),
                 promotedEvents: promotedEvents.has(event.id),
                 promotedEventData: promotedData,
                 hasAnalysisResults: !!promotedData?.analysisResults,
-                analysisResultsKeys: promotedData?.analysisResults ? Object.keys(promotedData.analysisResults) : []
+                analysisResultsKeys: promotedData?.analysisResults ? Object.keys(promotedData.analysisResults) : [],
+                allPromotedEvents: Array.from(promotedEvents.keys()),
+                allShowResults: Array.from(showPromotionResults)
               });
               return shouldShow;
             })() && (
