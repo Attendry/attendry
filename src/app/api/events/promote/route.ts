@@ -105,23 +105,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
-    // Update the event to mark it as promoted
-    const { error: updateError } = await supabase
-      .from('collected_events')
-      .update({
-        collection_metadata: {
-          ...eventData.collection_metadata,
-          promoted_to_analysis: true,
-          promoted_at: new Date().toISOString(),
-          promoted_by: userRes.user.id
-        }
-      })
-      .eq('id', eventId);
-
-    if (updateError) {
-      console.error('Failed to update event metadata:', updateError);
-      // Don't fail the request, just log the error
-    }
+    // Note: We don't need to update the collected_events table since
+    // the promotion information is already stored in event_extractions
+    // The event_extractions table serves as the promotion tracking mechanism
 
     return NextResponse.json({ 
       success: true, 
