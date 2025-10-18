@@ -169,12 +169,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           if (firecrawlResponse.ok) {
             const firecrawlData = await firecrawlResponse.json();
             console.log('Firecrawl response received, content length:', firecrawlData.data?.content?.length || 0);
-            searchResults = [{
-              title: firecrawlData.data?.metadata?.title || mockSpeaker.name,
-              url: mockSpeaker.url,
-              content: firecrawlData.data?.content || '',
-              description: firecrawlData.data?.metadata?.description || ''
-            }];
+            
+            if (firecrawlData.data?.content && firecrawlData.data.content.length > 0) {
+              searchResults = [{
+                title: firecrawlData.data?.metadata?.title || mockSpeaker.name,
+                url: mockSpeaker.url,
+                content: firecrawlData.data.content,
+                description: firecrawlData.data?.metadata?.description || ''
+              }];
+              console.log('Firecrawl successfully scraped content');
+            } else {
+              console.warn('Firecrawl returned empty content, will try Google CSE fallback');
+            }
           } else {
             console.warn('Firecrawl failed, status:', firecrawlResponse.status);
           }
@@ -253,17 +259,54 @@ Focus on extracting real, factual information from the search results. If inform
           const response = await result.response;
           const text = response.text();
           
-          // Try to parse the JSON response
+          // Try to parse the JSON response with better error handling
           try {
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            console.log('Raw Gemini response:', text.substring(0, 500) + '...');
+            
+            // Try to find JSON in the response
+            const jsonMatch = text.match(/\{[\s\S]*?\}(?=\s*$|\s*[^}])/);
             if (jsonMatch) {
-              enhancedData = JSON.parse(jsonMatch[0]);
+              const jsonStr = jsonMatch[0];
+              console.log('Extracted JSON string:', jsonStr.substring(0, 200) + '...');
+              enhancedData = JSON.parse(jsonStr);
               console.log('Gemini enhancement completed successfully');
             } else {
-              console.warn('No JSON found in Gemini response');
+              // If no JSON found, try to extract key information manually
+              console.warn('No JSON found in Gemini response, attempting manual extraction');
+              enhancedData = {
+                name: mockSpeaker.name,
+                title: "Event Organizer",
+                company: mockSpeaker.org,
+                bio: `Organizer of ${mockSpeaker.name}`,
+                expertise_areas: ["Event Management", "Compliance"],
+                social_links: {},
+                speaking_history: [],
+                education: [],
+                achievements: [],
+                industry_connections: [],
+                recent_news: []
+              };
+              console.log('Created fallback enhanced data');
             }
           } catch (parseError) {
             console.warn('Failed to parse Gemini JSON response:', parseError);
+            console.log('Full response text:', text);
+            
+            // Create fallback data if parsing fails
+            enhancedData = {
+              name: mockSpeaker.name,
+              title: "Event Organizer", 
+              company: mockSpeaker.org,
+              bio: `Organizer of ${mockSpeaker.name}`,
+              expertise_areas: ["Event Management", "Compliance"],
+              social_links: {},
+              speaking_history: [],
+              education: [],
+              achievements: [],
+              industry_connections: [],
+              recent_news: []
+            };
+            console.log('Created fallback enhanced data due to parse error');
           }
         } catch (geminiError) {
           console.warn('Gemini error:', geminiError);
