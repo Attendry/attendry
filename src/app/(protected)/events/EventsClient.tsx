@@ -7,6 +7,7 @@ import AdvancedSearch from "@/components/AdvancedSearch";
 import SearchHistory from "@/components/SearchHistory";
 import { deriveLocale, toISO2Country } from "@/lib/utils/country";
 import { useSearchResults, EventRec } from "@/context/SearchResultsContext";
+import { ActiveFilters } from "@/components/ActiveFilters";
 
 // EventRec type is now imported from SearchResultsContext
 
@@ -407,6 +408,26 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
             </div>
           </div>
         </form>
+
+        {/* Active Filters Display */}
+        {state.hasResults && state.searchParams && (
+          <div className="max-w-4xl mx-auto mb-6">
+            <ActiveFilters
+              searchParams={state.searchParams}
+              onClearFilters={actions.clearResults}
+              onModifySearch={() => {
+                // Scroll to search form
+                const searchForm = document.querySelector('form');
+                if (searchForm) {
+                  searchForm.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+              onRefresh={run}
+              showTimestamp={true}
+              compact={false}
+            />
+          </div>
+        )}
 
         {/* Debug Info - Collapsible */}
         {showDebug && debug && (

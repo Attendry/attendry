@@ -15,6 +15,7 @@ import Link from "next/link";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import { useRouter } from "next/navigation";
 import { useSearchResults, EventRec } from "@/context/SearchResultsContext";
+import { ActiveFilters } from "@/components/ActiveFilters";
 
 // EventRec type is now imported from SearchResultsContext
 
@@ -395,6 +396,26 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           </button>
         </div>
       </PageHeader>
+
+      {/* Active Filters Display */}
+      {state.hasResults && state.searchParams && (
+        <div className="px-6 py-4">
+          <ActiveFilters
+            searchParams={state.searchParams}
+            onClearFilters={handleResetFilters}
+            onModifySearch={() => {
+              // Scroll to search form
+              const searchForm = document.querySelector('form');
+              if (searchForm) {
+                searchForm.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+            onRefresh={run}
+            showTimestamp={true}
+            compact={false}
+          />
+        </div>
+      )}
 
       <ContentContainer>
         <div className="py-6">

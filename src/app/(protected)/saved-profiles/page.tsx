@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { SavedSpeakerProfile } from "@/lib/types/database";
+import { EnhancedSavedProfileCard } from "@/components/EnhancedSavedProfileCard";
 
 export default function SavedProfilesPage() {
   const [authReady, setAuthReady] = useState(false);
@@ -141,6 +142,44 @@ export default function SavedProfilesPage() {
     setEditingTags(editingTags.filter(t => t !== tag));
   }
 
+  async function updateProfileStatus(profileId: string, status: string) {
+    try {
+      const response = await fetch(`/api/profiles/saved/${profileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outreach_status: status })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update status");
+      }
+      
+      await loadProfiles();
+    } catch (e: any) {
+      alert(e.message || "Failed to update status");
+    }
+  }
+
+  async function updateProfileNotes(profileId: string, notes: string) {
+    try {
+      const response = await fetch(`/api/profiles/saved/${profileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update notes");
+      }
+      
+      await loadProfiles();
+    } catch (e: any) {
+      alert(e.message || "Failed to update notes");
+    }
+  }
+
   function exportProfiles() {
     const exportData = profiles.map(profile => ({
       name: profile.speaker_data.name,
@@ -275,90 +314,16 @@ export default function SavedProfilesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {profiles.map((profile) => (
-            <div key={profile.id} className="bg-white rounded-lg border p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="font-semibold text-lg text-slate-900 mb-1">
-                    {profile.speaker_data.name}
-                  </h3>
-                  <p className="text-slate-700 font-medium">
-                    {profile.enhanced_data.title || profile.speaker_data.title || "Title not available"}
-                  </p>
-                  <p className="text-slate-600 text-sm">
-                    {profile.enhanced_data.organization || profile.speaker_data.org || "Organization not available"}
-                  </p>
-                </div>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  profile.outreach_status === 'not_started' ? 'bg-gray-100 text-gray-800' :
-                  profile.outreach_status === 'contacted' ? 'bg-yellow-100 text-yellow-800' :
-                  profile.outreach_status === 'responded' ? 'bg-green-100 text-green-800' :
-                  'bg-blue-100 text-blue-800'
-                }`}>
-                  {profile.outreach_status.replace('_', ' ')}
-                </span>
-              </div>
-
-              {profile.enhanced_data.expertise_areas && profile.enhanced_data.expertise_areas.length > 0 && (
-                <div className="mb-4">
-                  <div className="flex flex-wrap gap-1">
-                    {profile.enhanced_data.expertise_areas.slice(0, 3).map((area: string, idx: number) => (
-                      <span key={idx} className="text-xs bg-indigo-100 text-indigo-800 px-2 py-1 rounded-full">
-                        {area}
-                      </span>
-                    ))}
-                    {profile.enhanced_data.expertise_areas.length > 3 && (
-                      <span className="text-xs text-slate-500">+{profile.enhanced_data.expertise_areas.length - 3} more</span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {profile.tags && profile.tags.length > 0 && (
-                <div className="mb-4">
-                  <div className="flex flex-wrap gap-1">
-                    {profile.tags.map((tag: string, idx: number) => (
-                      <span key={idx} className="text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded-full">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {profile.notes && (
-                <div className="mb-4">
-                  <p className="text-sm text-slate-600 line-clamp-2">{profile.notes}</p>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-xs text-slate-500 mb-4">
-                <span>Saved {new Date(profile.saved_at).toLocaleDateString()}</span>
-                {profile.enhanced_data.confidence && (
-                  <span className={`px-2 py-1 rounded-full ${
-                    profile.enhanced_data.confidence >= 0.8 ? 'bg-green-100 text-green-800' :
-                    profile.enhanced_data.confidence >= 0.6 ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {(profile.enhanced_data.confidence * 100).toFixed(0)}% confidence
-                  </span>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => openEditModal(profile)}
-                  className="flex-1 px-3 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => deleteProfile(profile.id)}
-                  className="px-3 py-2 bg-red-600 text-white text-sm rounded-md hover:bg-red-700"
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
+            <EnhancedSavedProfileCard
+              key={profile.id}
+              profile={profile}
+              onEdit={openEditModal}
+              onDelete={deleteProfile}
+              onStatusChange={updateProfileStatus}
+              onNotesChange={updateProfileNotes}
+              showActions={true}
+              compact={false}
+            />
           ))}
         </div>
       )}

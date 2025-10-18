@@ -356,6 +356,66 @@ export default function ExpandableSpeakerCard({
           </div>
         )}
 
+        {/* Quick Facts Section - Show key info without expansion */}
+        {!expanded && (displaySpeaker.expertise_areas || displaySpeaker.speaking_history || displaySpeaker.social_links || displaySpeaker.confidence) && (
+          <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+            <h4 className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-2">Quick Facts</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+              {displaySpeaker.expertise_areas && displaySpeaker.expertise_areas.length > 0 && (
+                <div>
+                  <span className="font-medium text-slate-600 dark:text-slate-400">Expertise:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {displaySpeaker.expertise_areas.slice(0, 2).map((area: string, idx: number) => (
+                      <span key={idx} className="px-1 py-0.5 bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 rounded text-xs">
+                        {area}
+                      </span>
+                    ))}
+                    {displaySpeaker.expertise_areas.length > 2 && (
+                      <span className="text-slate-500 dark:text-slate-400">+{displaySpeaker.expertise_areas.length - 2}</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {displaySpeaker.speaking_history && displaySpeaker.speaking_history.length > 0 && (
+                <div>
+                  <span className="font-medium text-slate-600 dark:text-slate-400">Recent:</span>
+                  <div className="text-slate-700 dark:text-slate-300 mt-1 line-clamp-1">
+                    {displaySpeaker.speaking_history[0]}
+                  </div>
+                </div>
+              )}
+              
+              {displaySpeaker.social_links && (
+                <div>
+                  <span className="font-medium text-slate-600 dark:text-slate-400">Contact:</span>
+                  <div className="flex gap-2 mt-1">
+                    {displaySpeaker.social_links.linkedin && (
+                      <a href={displaySpeaker.social_links.linkedin} target="_blank" rel="noreferrer" 
+                         className="text-blue-600 dark:text-blue-400 hover:underline">LinkedIn</a>
+                    )}
+                    {displaySpeaker.social_links.website && (
+                      <a href={displaySpeaker.social_links.website} target="_blank" rel="noreferrer" 
+                         className="text-purple-600 dark:text-purple-400 hover:underline">Website</a>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {displaySpeaker.confidence && (
+                <div>
+                  <span className="font-medium text-slate-600 dark:text-slate-400">Data Quality:</span>
+                  <div className="mt-1">
+                    <span className={`px-2 py-0.5 rounded-full text-xs ${getConfidenceColor(displaySpeaker.confidence)}`}>
+                      {(displaySpeaker.confidence * 100).toFixed(0)}% Confidence
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           <button

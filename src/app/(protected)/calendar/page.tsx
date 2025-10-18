@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/States/ErrorState";
 import RelevantEventsCalendar from "@/components/RelevantEventsCalendar";
 import { Calendar, Settings, Filter } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ActiveFilters } from "@/components/ActiveFilters";
 
 interface RelevantEvent {
   id: string;
@@ -83,7 +84,7 @@ export default function CalendarPage() {
       const data: CalendarResponse = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to load relevant events');
+        throw new Error('Failed to load relevant events');
       }
 
       setEvents(data.events || []);
@@ -127,8 +128,7 @@ export default function CalendarPage() {
             }}
             secondary={{
               label: "Profile Settings",
-              onClick: () => router.push('/admin'),
-              icon: Settings
+              onClick: () => router.push('/admin')
             }}
           />
         }
@@ -188,6 +188,27 @@ export default function CalendarPage() {
                   <option value={100}>100 events</option>
                 </select>
               </div>
+            </div>
+          </div>
+
+          {/* Active Filters Summary */}
+          <div className="mt-4 bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Filter className="w-4 h-4 text-green-600" />
+              <h3 className="text-sm font-medium text-green-900 dark:text-green-100">
+                Current Calendar Filters
+              </h3>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                Next {filters.daysAhead} days
+              </span>
+              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                Min Score: {filters.minScore}
+              </span>
+              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full">
+                Max {filters.limit} events
+              </span>
             </div>
           </div>
 

@@ -319,6 +319,66 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
         </p>
       )}
 
+      {/* Quick Facts Section - Show key info without expansion */}
+      {!expanded && (displaySpeaker.expertise_areas || displaySpeaker.speaking_history || displaySpeaker.social_links || displaySpeaker.confidence) && (
+        <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+          <h4 className="text-xs font-semibold text-slate-900 mb-2">Quick Facts</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+            {displaySpeaker.expertise_areas && displaySpeaker.expertise_areas.length > 0 && (
+              <div>
+                <span className="font-medium text-slate-600">Expertise:</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {displaySpeaker.expertise_areas.slice(0, 2).map((area: string, idx: number) => (
+                    <span key={idx} className="px-1 py-0.5 bg-indigo-100 text-indigo-800 rounded text-xs">
+                      {area}
+                    </span>
+                  ))}
+                  {displaySpeaker.expertise_areas.length > 2 && (
+                    <span className="text-slate-500">+{displaySpeaker.expertise_areas.length - 2}</span>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {displaySpeaker.speaking_history && displaySpeaker.speaking_history.length > 0 && (
+              <div>
+                <span className="font-medium text-slate-600">Recent:</span>
+                <div className="text-slate-700 mt-1 line-clamp-1">
+                  {displaySpeaker.speaking_history[0]}
+                </div>
+              </div>
+            )}
+            
+            {displaySpeaker.social_links && (
+              <div>
+                <span className="font-medium text-slate-600">Contact:</span>
+                <div className="flex gap-2 mt-1">
+                  {displaySpeaker.social_links.linkedin && (
+                    <a href={displaySpeaker.social_links.linkedin} target="_blank" rel="noreferrer" 
+                       className="text-blue-600 hover:underline">LinkedIn</a>
+                  )}
+                  {displaySpeaker.social_links.website && (
+                    <a href={displaySpeaker.social_links.website} target="_blank" rel="noreferrer" 
+                       className="text-purple-600 hover:underline">Website</a>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {displaySpeaker.confidence && (
+              <div>
+                <span className="font-medium text-slate-600">Data Quality:</span>
+                <div className="mt-1">
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${getConfidenceColor(displaySpeaker.confidence)}`}>
+                    {(displaySpeaker.confidence * 100).toFixed(0)}% Confidence
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mt-4 flex items-center gap-2 flex-wrap">
         <button
           onClick={handleToggleDetails}
