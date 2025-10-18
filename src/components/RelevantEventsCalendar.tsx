@@ -103,11 +103,17 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
     
     try {
       console.log('Making fetch request to /api/events/promote');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+      
       const response = await fetch('/api/events/promote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId })
+        body: JSON.stringify({ eventId }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       console.log('Received response:', { status: response.status, statusText: response.statusText, ok: response.ok });
       
@@ -121,14 +127,14 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         console.log('AnalysisResults keys:', data.analysisResults ? Object.keys(data.analysisResults) : 'none');
       } catch (jsonError) {
         console.error('Failed to parse JSON response:', jsonError);
-        const textResponse = await response.text();
-        console.error('Raw response text:', textResponse);
-        throw new Error(`Server returned invalid response: ${response.status} ${response.statusText}`);
+        // Don't try to read response.text() here as the body stream is already consumed
+        throw new Error(`Server returned invalid JSON response: ${response.status} ${response.statusText}`);
       }
       
       if (!response.ok) {
         console.error('Response not OK:', data);
-        throw new Error(data.error || 'Failed to promote event');
+        const errorMessage = data?.error || data?.message || `Server error: ${response.status} ${response.statusText}`;
+        throw new Error(errorMessage);
       }
       
       // Store the promotion result and show it inline
@@ -176,7 +182,8 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       console.error('Error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
-        eventId
+        eventId,
+        isAbortError: error instanceof Error && error.name === 'AbortError'
       });
       
       // Store error state
@@ -184,8 +191,19 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         const newPromotedEvents = new Map(prev.promotedEvents);
         const newShowResults = new Set(prev.showResults);
         
+        let errorMessage = 'Unknown error';
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            errorMessage = 'Request timed out. The analysis is taking longer than expected.';
+          } else if (error.message.includes('Failed to execute')) {
+            errorMessage = 'Network error occurred. Please try again.';
+          } else {
+            errorMessage = error.message;
+          }
+        }
+        
         newPromotedEvents.set(eventId, {
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMessage,
           promotedAt: new Date().toISOString(),
           status: 'error'
         });
