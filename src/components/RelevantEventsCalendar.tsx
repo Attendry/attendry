@@ -109,14 +109,23 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       }
       
       // Store the promotion result and show it inline
-      setPromotedEvents(prev => new Map(prev).set(eventId, {
-        extractionId: data.extractionId,
-        promotedAt: new Date().toISOString(),
-        status: 'success'
-      }));
+      console.log('Promotion successful, storing result:', { eventId, extractionId: data.extractionId });
+      setPromotedEvents(prev => {
+        const newMap = new Map(prev).set(eventId, {
+          extractionId: data.extractionId,
+          promotedAt: new Date().toISOString(),
+          status: 'success'
+        });
+        console.log('Updated promotedEvents:', newMap);
+        return newMap;
+      });
       
       // Show the promotion results inline
-      setShowPromotionResults(prev => new Set(prev).add(eventId));
+      setShowPromotionResults(prev => {
+        const newSet = new Set(prev).add(eventId);
+        console.log('Updated showPromotionResults:', newSet);
+        return newSet;
+      });
       
       // Optionally refresh the calendar
       if (onRefresh) {
@@ -341,7 +350,10 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                 
                 {promotedEvents.has(event.id) ? (
                   <button
-                    onClick={() => togglePromotionResults(event.id)}
+                    onClick={() => {
+                      console.log('Toggling promotion results for event:', event.id);
+                      togglePromotionResults(event.id);
+                    }}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors"
                   >
                     <TrendingUp className="w-4 h-4" />
@@ -464,7 +476,15 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
             )}
 
             {/* Promotion Results */}
-            {showPromotionResults.has(event.id) && promotedEvents.has(event.id) && (
+            {(() => {
+              const shouldShow = showPromotionResults.has(event.id) && promotedEvents.has(event.id);
+              console.log('Should show promotion results for event', event.id, ':', shouldShow, {
+                showPromotionResults: showPromotionResults.has(event.id),
+                promotedEvents: promotedEvents.has(event.id),
+                promotedEventData: promotedEvents.get(event.id)
+              });
+              return shouldShow;
+            })() && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
