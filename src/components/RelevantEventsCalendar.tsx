@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Calendar, MapPin, Clock, Star, Users, Building, TrendingUp, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -46,6 +46,33 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
   const [promotingEvents, setPromotingEvents] = useState<Set<string>>(new Set());
   const [promotedEvents, setPromotedEvents] = useState<Map<string, any>>(new Map());
   const [showPromotionResults, setShowPromotionResults] = useState<Set<string>>(new Set());
+  const [pendingPromotion, setPendingPromotion] = useState<{eventId: string, result: any} | null>(null);
+
+  // Handle pending promotion with useEffect to ensure proper state updates
+  useEffect(() => {
+    if (pendingPromotion) {
+      console.log('🔄 Processing pending promotion:', pendingPromotion.eventId);
+      
+      setPromotedEvents(prev => {
+        console.log('✅ Inside setPromotedEvents useEffect');
+        const newMap = new Map(prev);
+        newMap.set(pendingPromotion.eventId, pendingPromotion.result);
+        console.log('✅ New promotedEvents size:', newMap.size);
+        return newMap;
+      });
+      
+      setShowPromotionResults(prev => {
+        console.log('✅ Inside setShowPromotionResults useEffect');
+        const newSet = new Set(prev);
+        newSet.add(pendingPromotion.eventId);
+        console.log('✅ New showResults size:', newSet.size);
+        return newSet;
+      });
+      
+      setPendingPromotion(null);
+      console.log('✅ Pending promotion processed');
+    }
+  }, [pendingPromotion]);
 
   // Sort events based on selected criteria
   const sortedEvents = useMemo(() => {
@@ -144,43 +171,16 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       console.log('Setting promotion result:', promotionResult);
       console.log('About to update promotion state for eventId:', eventId);
-      console.log('🚀 VERCEL DEPLOYMENT TEST v5 - CACHE BUST');
-      console.log('🔥 State management fix applied - should work now!');
+      console.log('🚀 VERCEL DEPLOYMENT TEST v6 - useEffect approach');
+      console.log('🔥 State management fix with useEffect - should work now!');
       console.log('⏰ Current timestamp:', new Date().toISOString());
       console.log('📊 Analysis results available:', !!data.analysisResults);
       console.log('🎯 Event ID:', eventId);
       
-      // Update promotion state
-      try {
-        console.log('DEBUG: About to update state');
-        console.log('DEBUG: EventId:', eventId);
-        console.log('DEBUG: PromotionResult:', promotionResult);
-        
-        // Update promoted events
-        setPromotedEvents(prev => {
-          console.log('DEBUG: Inside setPromotedEvents function');
-          const newMap = new Map(prev);
-          newMap.set(eventId, promotionResult);
-          console.log('DEBUG: New promotedEvents size:', newMap.size);
-          console.log('DEBUG: Has eventId?', newMap.has(eventId));
-          return newMap;
-        });
-        
-        // Update show results
-        setShowPromotionResults(prev => {
-          console.log('DEBUG: Inside setShowPromotionResults function');
-          const newSet = new Set(prev);
-          newSet.add(eventId);
-          console.log('DEBUG: New showResults size:', newSet.size);
-          console.log('DEBUG: Has eventId?', newSet.has(eventId));
-          return newSet;
-        });
-        
-        console.log('DEBUG: State updates completed');
-        
-      } catch (stateError) {
-        console.error('DEBUG: Error updating promotion state:', stateError);
-      }
+      // Use pending promotion approach to ensure proper state updates
+      console.log('🔄 Setting pending promotion for eventId:', eventId);
+      setPendingPromotion({ eventId, result: promotionResult });
+      console.log('🔄 Pending promotion set, useEffect should handle the rest');
       
       // Optionally refresh the calendar
       if (onRefresh) {
@@ -452,7 +452,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v5)</span>
+                        <span>🚀 Promote to Analysis (v6)</span>
                       </>
                     )}
                   </button>
@@ -667,13 +667,10 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                           View in Events
                         </button>
                         <button
-                          onClick={() => setPromotionState(prev => {
-                            const newShowResults = new Set(prev.showResults);
-                            newShowResults.delete(event.id);
-                            return {
-                              ...prev,
-                              showResults: newShowResults
-                            };
+                          onClick={() => setShowPromotionResults(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(event.id);
+                            return newSet;
                           })}
                           className="px-3 py-1 border border-green-600 text-green-600 hover:bg-green-50 text-xs font-medium rounded-md transition-colors"
                         >
@@ -697,13 +694,10 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                           Retry
                         </button>
                         <button
-                          onClick={() => setPromotionState(prev => {
-                            const newShowResults = new Set(prev.showResults);
-                            newShowResults.delete(event.id);
-                            return {
-                              ...prev,
-                              showResults: newShowResults
-                            };
+                          onClick={() => setShowPromotionResults(prev => {
+                            const newSet = new Set(prev);
+                            newSet.delete(event.id);
+                            return newSet;
                           })}
                           className="px-3 py-1 border border-red-600 text-red-600 hover:bg-red-50 text-xs font-medium rounded-md transition-colors"
                         >
