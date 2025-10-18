@@ -22,6 +22,7 @@ interface RelevantEvent {
   competitors?: string[];
   confidence?: number;
   data_completeness?: number;
+  source_url?: string;
   relevance: {
     score: number;
     reasons: string[];
@@ -42,6 +43,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [sortBy, setSortBy] = useState<'relevance' | 'date' | 'title'>('relevance');
   const [showDetails, setShowDetails] = useState<Set<string>>(new Set());
+  const [promotingEvents, setPromotingEvents] = useState<Set<string>>(new Set());
 
   // Sort events based on selected criteria
   const sortedEvents = useMemo(() => {
@@ -71,6 +73,41 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       newShowDetails.add(eventId);
     }
     setShowDetails(newShowDetails);
+  };
+
+  const promoteEvent = async (eventId: string) => {
+    setPromotingEvents(prev => new Set(prev).add(eventId));
+    
+    try {
+      const response = await fetch('/api/events/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to promote event');
+      }
+      
+      // Show success message
+      alert(`Event promoted to analysis pipeline! Extraction ID: ${data.extractionId}`);
+      
+      // Optionally refresh the calendar
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (error) {
+      console.error('Failed to promote event:', error);
+      alert(`Failed to promote event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setPromotingEvents(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(eventId);
+        return newSet;
+      });
+    }
   };
 
   const formatDate = (dateString?: string) => {
@@ -268,6 +305,24 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                 >
                   <span>View Event</span>
                 </a>
+                
+                <button
+                  onClick={() => promoteEvent(event.id)}
+                  disabled={promotingEvents.has(event.id)}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {promotingEvents.has(event.id) ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Promoting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <TrendingUp className="w-4 h-4" />
+                      <span>Promote to Analysis</span>
+                    </>
+                  )}
+                </button>
                 
                 <button
                   onClick={() => toggleDetails(event.id)}

@@ -149,6 +149,35 @@ export function ActiveFilters({
             onClearFilters();
           }}
         />
+        
+        {/* Profile-based filters */}
+        {searchParams.userProfile?.icpTerms && searchParams.userProfile.icpTerms.length > 0 && (
+          <FilterChip 
+            label="ICP Terms" 
+            value={searchParams.userProfile.icpTerms.slice(0, 2).join(', ') + (searchParams.userProfile.icpTerms.length > 2 ? '...' : '')}
+            onRemove={() => {
+              onClearFilters();
+            }}
+          />
+        )}
+        {searchParams.userProfile?.industryTerms && searchParams.userProfile.industryTerms.length > 0 && (
+          <FilterChip 
+            label="Industry" 
+            value={searchParams.userProfile.industryTerms.slice(0, 2).join(', ') + (searchParams.userProfile.industryTerms.length > 2 ? '...' : '')}
+            onRemove={() => {
+              onClearFilters();
+            }}
+          />
+        )}
+        {searchParams.userProfile?.competitors && searchParams.userProfile.competitors.length > 0 && (
+          <FilterChip 
+            label="Competitors" 
+            value={searchParams.userProfile.competitors.slice(0, 2).join(', ') + (searchParams.userProfile.competitors.length > 2 ? '...' : '')}
+            onRemove={() => {
+              onClearFilters();
+            }}
+          />
+        )}
       </div>
     </div>
   );

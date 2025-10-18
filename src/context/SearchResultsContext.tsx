@@ -28,6 +28,16 @@ export interface SearchParams {
   from: string;
   to: string;
   timestamp: number;
+  userProfile?: {
+    industryTerms: string[];
+    icpTerms: string[];
+    competitors: string[];
+  };
+  profileFilters?: {
+    includeIndustryMatch: boolean;
+    includeIcpMatch: boolean;
+    includeCompetitorMatch: boolean;
+  };
 }
 
 export interface PaginationState {

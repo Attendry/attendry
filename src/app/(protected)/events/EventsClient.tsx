@@ -52,9 +52,27 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
 
   const [debug, setDebug] = useState<any>(null);
   const [watchlistMatches, setWatchlistMatches] = useState<Map<string, any>>(new Map());
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   // Get current page events from context
   const currentPageEvents = actions.getCurrentPageEvents();
+
+  // Load user profile data
+  useEffect(() => {
+    async function loadUserProfile() {
+      try {
+        const response = await fetch('/api/profiles/me');
+        if (response.ok) {
+          const data = await response.json();
+          setUserProfile(data.profile);
+        }
+      } catch (error) {
+        console.error('Failed to load user profile:', error);
+      }
+    }
+    loadUserProfile();
+  }, []);
+
   const showDebug = useMemo(() => {
     if (typeof window === 'undefined') return process.env.NODE_ENV !== 'production';
     if (typeof window !== 'undefined') {
@@ -184,13 +202,23 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         pipeline_metadata: e.pipeline_metadata ?? null, // ✅ Include pipeline metadata
       }));
 
-      // Store results in context
+      // Store results in context with user profile data
       actions.setSearchResults(events, {
         keywords: q,
         country: normalizedCountry,
         from,
         to,
         timestamp: Date.now(),
+        userProfile: userProfile ? {
+          industryTerms: userProfile.industry_terms || [],
+          icpTerms: userProfile.icp_terms || [],
+          competitors: userProfile.competitors || [],
+        } : undefined,
+        profileFilters: userProfile ? {
+          includeIndustryMatch: true,
+          includeIcpMatch: true,
+          includeCompetitorMatch: true,
+        } : undefined,
       }, currentPageEvents.length);
       
     } catch (err: unknown) {

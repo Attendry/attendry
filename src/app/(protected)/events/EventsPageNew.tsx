@@ -64,10 +64,27 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [savedSet, setSavedSet] = useState<Set<string>>(initialSavedSet);
   const [debug, setDebug] = useState<any>(null);
   const [watchlistMatches, setWatchlistMatches] = useState<Map<string, any>>(new Map());
+  const [userProfile, setUserProfile] = useState<any>(null);
   const router = useRouter();
 
   // Get current page events from context
   const currentPageEvents = actions.getCurrentPageEvents();
+
+  // Load user profile data
+  useEffect(() => {
+    async function loadUserProfile() {
+      try {
+        const response = await fetch('/api/profiles/me');
+        if (response.ok) {
+          const data = await response.json();
+          setUserProfile(data.profile);
+        }
+      } catch (error) {
+        console.error('Failed to load user profile:', error);
+      }
+    }
+    loadUserProfile();
+  }, []);
 
   // Keep dates in sync when advanced is OFF - matching existing logic
   useEffect(() => {
@@ -210,13 +227,23 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         source_url: e.source_url || e.link
       }));
 
-      // Store results in context
+      // Store results in context with user profile data
       actions.setSearchResults(events, {
         keywords: q,
         country: normalizedCountry,
         from,
         to,
         timestamp: Date.now(),
+        userProfile: userProfile ? {
+          industryTerms: userProfile.industry_terms || [],
+          icpTerms: userProfile.icp_terms || [],
+          competitors: userProfile.competitors || [],
+        } : undefined,
+        profileFilters: userProfile ? {
+          includeIndustryMatch: true,
+          includeIcpMatch: true,
+          includeCompetitorMatch: true,
+        } : undefined,
       }, events.length);
       
     } catch (err) {

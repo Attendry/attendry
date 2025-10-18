@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { SavedSpeakerProfile } from "@/lib/types/database";
+import { EnhancedSavedProfileCard } from "@/components/EnhancedSavedProfileCard";
 
 type WatchItem = { 
   id: string; 
@@ -79,6 +80,69 @@ export default function Watchlist() {
     } finally {
       setProfilesLoading(false);
     }
+  }
+
+  async function updateProfileStatus(profileId: string, status: string) {
+    try {
+      const response = await fetch(`/api/profiles/saved/${profileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outreach_status: status })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update status");
+      }
+      
+      await loadSavedProfiles();
+    } catch (e: any) {
+      alert(e.message || "Failed to update status");
+    }
+  }
+
+  async function updateProfileNotes(profileId: string, notes: string) {
+    try {
+      const response = await fetch(`/api/profiles/saved/${profileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes })
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update notes");
+      }
+      
+      await loadSavedProfiles();
+    } catch (e: any) {
+      alert(e.message || "Failed to update notes");
+    }
+  }
+
+  async function deleteProfile(profileId: string) {
+    if (!confirm("Are you sure you want to delete this profile?")) return;
+    
+    try {
+      const response = await fetch(`/api/profiles/saved/${profileId}`, {
+        method: "DELETE"
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete profile");
+      }
+      
+      await loadSavedProfiles();
+    } catch (e: any) {
+      alert(e.message || "Failed to delete profile");
+    }
+  }
+
+  function openEditModal(profile: SavedSpeakerProfile) {
+    // For now, we'll use a simple alert. In a full implementation,
+    // this would open a modal with detailed editing capabilities
+    alert(`Edit profile for ${profile.speaker_data.name}. This feature will be enhanced in a future update.`);
   }
 
   useEffect(() => {
@@ -441,97 +505,18 @@ export default function Watchlist() {
                 </p>
               </div>
             ) : (
-              <div style={{ display: "grid", gap: "1rem" }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {savedProfiles.map((profile) => (
-                  <div key={profile.id} className="card">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div style={{ flex: 1 }}>
-                        <h3 style={{
-                          fontSize: "1.125rem",
-                          fontWeight: "600",
-                          marginBottom: "0.5rem",
-                          color: "var(--foreground)"
-                        }}>
-                          {profile.speaker_data?.name || "Unknown Speaker"}
-                        </h3>
-                        <div style={{ display: "flex", gap: "1rem", alignItems: "center", marginBottom: "0.5rem" }}>
-                          {profile.speaker_data?.title && (
-                            <span style={{
-                              fontSize: "0.875rem",
-                              color: "var(--muted-foreground)",
-                              background: "var(--secondary)",
-                              padding: "0.25rem 0.75rem",
-                              borderRadius: "var(--radius)",
-                              fontWeight: "500"
-                            }}>
-                              {profile.speaker_data.title}
-                            </span>
-                          )}
-                          {profile.speaker_data?.org && (
-                            <span style={{
-                              fontSize: "0.875rem",
-                              color: "var(--muted-foreground)"
-                            }}>
-                              {profile.speaker_data.org}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-                          <span style={{
-                            fontSize: "0.875rem",
-                            background: profile.outreach_status === "not_started" ? "var(--secondary)" : 
-                                       profile.outreach_status === "contacted" ? "#fef3c7" :
-                                       profile.outreach_status === "responded" ? "#d1fae5" : "#dbeafe",
-                            color: profile.outreach_status === "not_started" ? "var(--muted-foreground)" :
-                                   profile.outreach_status === "contacted" ? "#92400e" :
-                                   profile.outreach_status === "responded" ? "#065f46" : "#1e40af",
-                            padding: "0.25rem 0.75rem",
-                            borderRadius: "var(--radius)",
-                            fontWeight: "500"
-                          }}>
-                            {profile.outreach_status.replace("_", " ")}
-                          </span>
-                          <span style={{
-                            fontSize: "0.875rem",
-                            color: "var(--muted-foreground)"
-                          }}>
-                            Saved {new Date(profile.saved_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        {profile.notes && (
-                          <p style={{
-                            fontSize: "0.875rem",
-                            color: "var(--muted-foreground)",
-                            marginTop: "0.5rem",
-                            fontStyle: "italic"
-                          }}>
-                            {profile.notes}
-                          </p>
-                        )}
-                      </div>
-                      <button 
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "var(--muted-foreground)",
-                          cursor: "pointer",
-                          padding: "0.5rem",
-                          borderRadius: "var(--radius)",
-                          transition: "all 0.2s ease"
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "var(--muted)";
-                          e.currentTarget.style.color = "var(--foreground)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "none";
-                          e.currentTarget.style.color = "var(--muted-foreground)";
-                        }}
-                      >
-                        ⋯
-                      </button>
-                    </div>
-                  </div>
+                  <EnhancedSavedProfileCard
+                    key={profile.id}
+                    profile={profile}
+                    onEdit={openEditModal}
+                    onDelete={deleteProfile}
+                    onStatusChange={updateProfileStatus}
+                    onNotesChange={updateProfileNotes}
+                    showActions={true}
+                    compact={false}
+                  />
                 ))}
               </div>
             )}
