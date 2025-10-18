@@ -1,8 +1,16 @@
 /**
- * Event Analysis Library
+ * Event Analysis Library - PERFORMANCE OPTIMIZED
  * 
  * This library contains the core event analysis logic that can be used
  * both by API routes and other parts of the application.
+ * 
+ * PERFORMANCE OPTIMIZATIONS:
+ * - Reduced Firecrawl delays from 6s to 1s between requests
+ * - Parallel sub-page crawling instead of sequential
+ * - Reduced timeouts from 30s to 15s (main) and 10s (sub-pages)
+ * - Limited to 3 sub-pages instead of 5
+ * - Reduced speaker extraction limit from 20 to 10
+ * - Increased rate limits for faster processing
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -15,11 +23,11 @@ const firecrawlKey = process.env.FIRECRAWL_KEY;
 const googleKey = process.env.GOOGLE_CSE_KEY;
 const googleCx = process.env.GOOGLE_CSE_CX;
 
-// Rate limiting configuration
+// Rate limiting configuration - OPTIMIZED FOR SPEED
 const FIRECRAWL_RATE_LIMIT = {
-  maxRequestsPerMinute: 10,
-  maxRequestsPerHour: 100,
-  delayBetweenRequests: 6000 // 6 seconds
+  maxRequestsPerMinute: 20, // Increased from 10
+  maxRequestsPerHour: 200,  // Increased from 100
+  delayBetweenRequests: 1000 // Reduced from 6000ms to 1000ms (1 second)
 };
 
 // Cache configuration
@@ -186,7 +194,7 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
         url: eventUrl,
         formats: ['markdown'],
         onlyMainContent: false, // Get more content, not just main content
-        timeout: 30000 // Increase timeout
+        timeout: 15000 // Reduced from 30s to 15s for faster response
       })
     });
     
@@ -208,15 +216,10 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
     const subPageUrls = extractSubPageUrls(eventUrl, results[0]?.content || '');
     console.log('Found potential sub-pages:', subPageUrls.length);
     
-    // Crawl sub-pages (with rate limiting)
-    for (const subUrl of subPageUrls.slice(0, 5)) { // Limit to 5 sub-pages
-      if (!checkRateLimit()) {
-        console.warn('Rate limit reached, stopping sub-page crawling');
-        break;
-      }
-      
-      // Add delay between requests
-      await new Promise(resolve => setTimeout(resolve, FIRECRAWL_RATE_LIMIT.delayBetweenRequests));
+    // Crawl sub-pages in parallel (OPTIMIZED FOR SPEED)
+    const subPagePromises = subPageUrls.slice(0, 3).map(async (subUrl, index) => { // Reduced to 3 sub-pages, parallel processing
+      // Stagger requests slightly to avoid overwhelming the API
+      await new Promise(resolve => setTimeout(resolve, index * 200)); // 200ms stagger
       
       try {
         const subPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
@@ -229,27 +232,32 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
             url: subUrl,
             formats: ['markdown'],
             onlyMainContent: false,
-            timeout: 30000
+            timeout: 10000 // Further reduced to 10s for sub-pages
           })
         });
         
         if (subPageResponse.ok) {
           const subPageData = await subPageResponse.json();
           if (subPageData.data?.markdown) {
-            results.push({
+            console.log('Sub-page crawled:', subUrl, 'content length:', subPageData.data.markdown.length);
+            return {
               url: subUrl,
               title: subPageData.data.metadata?.title || 'Sub Page',
               content: subPageData.data.markdown,
               description: subPageData.data.metadata?.description || '',
               metadata: subPageData.data.metadata
-            });
-            console.log('Sub-page crawled:', subUrl, 'content length:', subPageData.data.markdown.length);
+            };
           }
         }
       } catch (subPageError) {
         console.warn('Failed to crawl sub-page:', subUrl, subPageError);
       }
-    }
+      return null;
+    });
+    
+    // Wait for all sub-page crawls to complete
+    const subPageResults = await Promise.all(subPagePromises);
+    results.push(...subPageResults.filter(result => result !== null));
     
   } catch (error) {
     console.error('Deep crawl error:', error);
@@ -376,7 +384,7 @@ function extractSpeakerNamesManually(text: string): string[] {
     name.length > 5
   );
   
-  return filteredNames.slice(0, 20); // Increase limit to 20 speakers
+  return filteredNames.slice(0, 10); // Reduced to 10 speakers for faster processing
 }
 
 export async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string): Promise<CrawlResult[]> {
