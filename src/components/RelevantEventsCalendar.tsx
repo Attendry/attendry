@@ -88,23 +88,32 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
   };
 
   const promoteEvent = async (eventId: string) => {
+    console.log('Starting promotion for event:', eventId);
     setPromotingEvents(prev => new Set(prev).add(eventId));
     
     try {
+      console.log('Making fetch request to /api/events/promote');
       const response = await fetch('/api/events/promote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventId })
       });
       
+      console.log('Received response:', { status: response.status, statusText: response.statusText, ok: response.ok });
+      
       let data;
       try {
         data = await response.json();
+        console.log('Parsed response data:', data);
       } catch (jsonError) {
+        console.error('Failed to parse JSON response:', jsonError);
+        const textResponse = await response.text();
+        console.error('Raw response text:', textResponse);
         throw new Error(`Server returned invalid response: ${response.status} ${response.statusText}`);
       }
       
       if (!response.ok) {
+        console.error('Response not OK:', data);
         throw new Error(data.error || 'Failed to promote event');
       }
       
@@ -133,6 +142,11 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       }
     } catch (error) {
       console.error('Failed to promote event:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        eventId
+      });
       
       // Store error state
       setPromotedEvents(prev => new Map(prev).set(eventId, {
