@@ -503,10 +503,13 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
             {/* Promotion Results */}
             {(() => {
               const shouldShow = showPromotionResults.has(event.id) && promotedEvents.has(event.id);
+              const promotedData = promotedEvents.get(event.id);
               console.log('Should show promotion results for event', event.id, ':', shouldShow, {
                 showPromotionResults: showPromotionResults.has(event.id),
                 promotedEvents: promotedEvents.has(event.id),
-                promotedEventData: promotedEvents.get(event.id)
+                promotedEventData: promotedData,
+                hasAnalysisResults: !!promotedData?.analysisResults,
+                analysisResultsKeys: promotedData?.analysisResults ? Object.keys(promotedData.analysisResults) : []
               });
               return shouldShow;
             })() && (

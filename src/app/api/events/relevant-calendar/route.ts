@@ -19,6 +19,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const limit = parseInt(searchParams.get('limit') || '50');
     const daysAhead = parseInt(searchParams.get('daysAhead') || '90');
     const minScore = parseFloat(searchParams.get('minScore') || '0.1');
+    
+    console.log('Calendar API called with params:', { limit, daysAhead, minScore });
 
     // Get relevant events using the relevance service
     const { events, scores } = await RelevanceService.getRelevantEvents(
@@ -26,6 +28,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       limit,
       daysAhead
     );
+    
+    console.log('RelevanceService returned:', { eventsCount: events.length, scoresCount: scores.length });
 
     // Filter by minimum score
     const filteredEvents = events.filter((_, index) => scores[index]?.score >= minScore);

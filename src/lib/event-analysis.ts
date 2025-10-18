@@ -654,7 +654,7 @@ export async function analyzeEvent(request: EventAnalysisRequest): Promise<Event
     
     // Check cache first (but allow cache bypass for debugging)
     const cachedResult = await getCachedAnalysis(eventUrl);
-    if (cachedResult && !process.env.BYPASS_CACHE) {
+    if (cachedResult && !process.env.BYPASS_CACHE && !process.env.NODE_ENV?.includes('development')) {
       console.log('Returning cached result for:', eventUrl);
       return cachedResult;
     } else if (cachedResult) {

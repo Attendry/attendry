@@ -138,7 +138,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         });
       }
       
-      if (analysisResult.success) {
+      if (analysisResult && analysisResult.success) {
         // Update the extraction record with analysis results
         await supabase
           .from('event_extractions')
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           
         console.log('Updated extraction record with analysis results');
       } else {
-        console.warn('Event analysis failed for promoted event:', eventId, 'Error:', analysisResult.error);
+        console.warn('Event analysis failed for promoted event:', eventId, 'Error:', analysisResult?.error);
       }
     } catch (analysisError) {
       console.error('Failed to trigger analysis pipeline:', analysisError);
