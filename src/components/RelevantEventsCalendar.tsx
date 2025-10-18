@@ -119,6 +119,8 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       // Store the promotion result and show it inline
       console.log('Promotion successful, storing result:', { eventId, extractionId: data.extractionId });
+      
+      // Update both states together to ensure consistency
       setPromotedEvents(prev => {
         const newMap = new Map(prev).set(eventId, {
           extractionId: data.extractionId,
@@ -126,14 +128,17 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
           status: 'success'
         });
         console.log('Updated promotedEvents:', newMap);
+        console.log('New promotedEvents has eventId?', newMap.has(eventId));
+        
+        // Also update showPromotionResults in the same render cycle
+        setShowPromotionResults(prevShow => {
+          const newSet = new Set(prevShow).add(eventId);
+          console.log('Updated showPromotionResults:', newSet);
+          console.log('New showPromotionResults has eventId?', newSet.has(eventId));
+          return newSet;
+        });
+        
         return newMap;
-      });
-      
-      // Show the promotion results inline
-      setShowPromotionResults(prev => {
-        const newSet = new Set(prev).add(eventId);
-        console.log('Updated showPromotionResults:', newSet);
-        return newSet;
       });
       
       // Optionally refresh the calendar
