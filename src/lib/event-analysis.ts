@@ -262,26 +262,61 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
   const urls: string[] = [];
   const baseDomain = new URL(baseUrl).origin;
   
-  // Look for speaker, agenda, about, team related URLs
-  const speakerKeywords = ['speaker', 'agenda', 'about', 'team', 'organizer', 'presenter', 'faculty'];
+  // Look for speaker, agenda, about, team related URLs (including German terms)
+  const speakerKeywords = [
+    'speaker', 'agenda', 'about', 'team', 'organizer', 'presenter', 'faculty',
+    'referenten', 'programm', 'teilnehmer', 'sprecher', 'moderatoren'
+  ];
   
-  // Simple regex to find URLs in content
-  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
-  const matches = content.match(urlRegex) || [];
+  // Enhanced regex to find URLs in content (including relative URLs)
+  const urlPatterns = [
+    /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g,  // Absolute URLs
+    /href=["']([^"']+)["']/g,            // href attributes
+    /src=["']([^"']+)["']/g              // src attributes
+  ];
   
-  for (const match of matches) {
-    try {
-      const url = new URL(match);
-      // Only include URLs from the same domain
-      if (url.origin === baseDomain) {
-        // Check if URL contains speaker-related keywords
-        const urlLower = url.pathname.toLowerCase();
-        if (speakerKeywords.some(keyword => urlLower.includes(keyword))) {
-          urls.push(match);
-        }
+  for (const pattern of urlPatterns) {
+    let match;
+    while ((match = pattern.exec(content)) !== null) {
+      let urlString = match[1] || match[0];
+      
+      // Handle relative URLs
+      if (urlString.startsWith('/')) {
+        urlString = baseDomain + urlString;
+      } else if (!urlString.startsWith('http')) {
+        continue; // Skip non-URL matches
       }
-    } catch (e) {
-      // Invalid URL, skip
+      
+      try {
+        const url = new URL(urlString);
+        // Only include URLs from the same domain
+        if (url.origin === baseDomain) {
+          // Check if URL contains speaker-related keywords
+          const urlLower = url.pathname.toLowerCase();
+          if (speakerKeywords.some(keyword => urlLower.includes(keyword))) {
+            urls.push(urlString);
+          }
+        }
+      } catch (e) {
+        // Invalid URL, skip
+      }
+    }
+  }
+  
+  // Also add common speaker page patterns if not found
+  const commonSpeakerPaths = [
+    '/referenten/',
+    '/speakers/',
+    '/agenda/',
+    '/programm/',
+    '/presenters/',
+    '/faculty/'
+  ];
+  
+  for (const path of commonSpeakerPaths) {
+    const fullUrl = baseDomain + path;
+    if (!urls.includes(fullUrl)) {
+      urls.push(fullUrl);
     }
   }
   
@@ -291,12 +326,18 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
 function extractSpeakerNamesManually(text: string): string[] {
   const speakerNames: string[] = [];
   
-  // Common patterns for speaker names in text
+  // Enhanced patterns for speaker names (including German titles and names)
   const patterns = [
-    /(?:Speaker|Presenter|Keynote|Panelist):\s*([A-Z][a-z]+ [A-Z][a-z]+)/g,
-    /([A-Z][a-z]+ [A-Z][a-z]+)(?:\s*,\s*(?:Dr\.|Prof\.|CEO|CTO|Director|Manager))/g,
-    /(?:Dr\.|Prof\.)\s*([A-Z][a-z]+ [A-Z][a-z]+)/g,
-    /([A-Z][a-z]+ [A-Z][a-z]+)(?:\s*-\s*[A-Z][a-z\s&]+)/g
+    // German titles and names
+    /(?:Prof\.|Dr\.|Mag\.|MBA|LL\.M\.)\s*([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)/g,
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*,\s*(?:Dr\.|Prof\.|Mag\.|MBA|LL\.M\.|CEO|CTO|Director|Manager|Head|VP|Senior|Chief))/g,
+    // Standard patterns
+    /(?:Speaker|Presenter|Keynote|Panelist|Moderator|Moderatorin):\s*([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)/g,
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*-\s*[A-ZÄÖÜ][a-zäöüß\s&]+)/g,
+    // German specific patterns
+    /(?:Referent|Referentin|Sprecher|Sprecherin|Moderator|Moderatorin):\s*([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)/g,
+    // Names with titles in parentheses or after
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*\([^)]+\)|\s*\|[^|]+)/g
   ];
   
   for (const pattern of patterns) {
@@ -304,7 +345,15 @@ function extractSpeakerNamesManually(text: string): string[] {
     while ((match = pattern.exec(text)) !== null) {
       const name = match[1] || match[0];
       if (name && name.length > 3 && name.length < 50) {
-        speakerNames.push(name.trim());
+        // Clean up the name
+        const cleanName = name.trim()
+          .replace(/^[^A-ZÄÖÜ]*/, '') // Remove leading non-capital letters
+          .replace(/[^A-ZÄÖÜa-zäöüß\s].*$/, '') // Remove everything after first non-letter
+          .trim();
+        
+        if (cleanName && cleanName.split(' ').length >= 2) {
+          speakerNames.push(cleanName);
+        }
       }
     }
   }
@@ -315,10 +364,14 @@ function extractSpeakerNamesManually(text: string): string[] {
     !name.toLowerCase().includes('conference') &&
     !name.toLowerCase().includes('compliance') &&
     !name.toLowerCase().includes('berlin') &&
-    name.split(' ').length >= 2
+    !name.toLowerCase().includes('bundeskongress') &&
+    !name.toLowerCase().includes('tickets') &&
+    !name.toLowerCase().includes('programm') &&
+    name.split(' ').length >= 2 &&
+    name.length > 5
   );
   
-  return filteredNames.slice(0, 10); // Limit to 10 speakers
+  return filteredNames.slice(0, 20); // Increase limit to 20 speakers
 }
 
 export async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string): Promise<CrawlResult[]> {
@@ -458,7 +511,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`
     ).join('\n\n');
     
-    const prompt = `Analyze the following event content and extract all speakers/presenters with their detailed information:
+    const prompt = `Analyze the following event content and extract all speakers/presenters with their detailed information. This content may be in German or English.
 
 ${combinedContent}
 
@@ -466,10 +519,10 @@ For each speaker found, extract and return the following information in JSON for
 {
   "speakers": [
     {
-      "name": "Full name",
+      "name": "Full name (including titles like Dr., Prof., etc.)",
       "title": "Job title/position",
       "company": "Company/organization",
-      "bio": "Professional biography",
+      "bio": "Professional biography or description",
       "expertise_areas": ["area1", "area2"],
       "social_links": {
         "linkedin": "LinkedIn URL if found",
@@ -486,7 +539,17 @@ For each speaker found, extract and return the following information in JSON for
   ]
 }
 
-Focus on extracting real, factual information from the content. If information is not available, use null or empty arrays. Be thorough in finding all speakers mentioned in the content.`;
+Important instructions:
+- Look for German titles like "Prof. Dr.", "Dr.", "Mag.", "MBA", "LL.M."
+- Look for German job titles like "Director", "Manager", "Head of", "Chief", "VP", "Senior"
+- Look for German terms like "Referent", "Referentin", "Sprecher", "Sprecherin", "Moderator", "Moderatorin"
+- Extract ALL speakers mentioned, even if information is limited
+- If a speaker only has a name and title, still include them with available information
+- Focus on extracting real, factual information from the content
+- If information is not available, use null or empty arrays
+- Be thorough in finding all speakers mentioned in the content
+
+Return valid JSON only, no additional text.`;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
