@@ -91,8 +91,13 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         throw new Error(data.error || 'Failed to promote event');
       }
       
-      // Show success message
-      alert(`Event promoted to analysis pipeline! Extraction ID: ${data.extractionId}`);
+      // Show success message with navigation option
+      const shouldNavigate = confirm(`Event promoted to analysis pipeline! Extraction ID: ${data.extractionId}\n\nWould you like to view the analysis results?`);
+      
+      if (shouldNavigate) {
+        // Navigate to the events page to see the analysis results
+        window.location.href = '/events';
+      }
       
       // Optionally refresh the calendar
       if (onRefresh) {

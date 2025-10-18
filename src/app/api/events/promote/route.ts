@@ -44,18 +44,71 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 404 });
     }
 
-    // Create a new event extraction record to trigger analysis
+    // Convert the collected event to the format expected by the analysis pipeline
+    const eventForAnalysis = {
+      source_url: eventData.source_url,
+      title: eventData.title,
+      description: eventData.description,
+      starts_at: eventData.starts_at,
+      ends_at: eventData.ends_at,
+      city: eventData.city,
+      country: eventData.country,
+      venue: eventData.venue,
+      organizer: eventData.organizer,
+      speakers: eventData.speakers || [],
+      sponsors: eventData.sponsors || [],
+      participating_organizations: eventData.participating_organizations || [],
+      confidence: eventData.confidence,
+      data_completeness: eventData.data_completeness,
+      pipeline_metadata: {
+        ...eventData.pipeline_metadata,
+        promoted_from_calendar: true,
+        promoted_at: new Date().toISOString(),
+        promoted_by: userRes.user.id
+      }
+    };
+
+    // Trigger the analysis pipeline by calling the speaker enhancement API
+    let analysisResult = null;
+    try {
+      const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/speakers/enhance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': req.headers.get('authorization') || '',
+          'Cookie': req.headers.get('cookie') || ''
+        },
+        body: JSON.stringify({
+          events: [eventForAnalysis],
+          user_id: userRes.user.id
+        })
+      });
+
+      if (analysisResponse.ok) {
+        analysisResult = await analysisResponse.json();
+        console.log('Analysis pipeline triggered successfully for promoted event:', eventId);
+      } else {
+        console.error('Failed to trigger analysis pipeline:', analysisResponse.status, analysisResponse.statusText);
+      }
+    } catch (error) {
+      console.error('Error triggering analysis pipeline:', error);
+      // Don't fail the promotion if analysis fails
+    }
+
+    // Create a new event extraction record to track the promotion
     const { data: extractionData, error: extractionError } = await supabase
       .from('event_extractions')
       .insert({
         user_id: userRes.user.id,
         event_id: eventId,
         source_url: eventData.source_url,
-        status: 'pending',
+        status: analysisResult ? 'processing' : 'pending',
         extraction_type: 'promoted_from_calendar',
         metadata: {
           promoted_at: new Date().toISOString(),
-          original_event_data: eventData
+          original_event_data: eventData,
+          analysis_triggered: !!analysisResult,
+          analysis_result: analysisResult ? 'success' : 'failed'
         }
       })
       .select()
