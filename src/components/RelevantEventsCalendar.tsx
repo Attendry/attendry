@@ -152,40 +152,39 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       console.log('Setting promotion result:', promotionResult);
       console.log('About to update promotion state for eventId:', eventId);
+      console.log('DEBUG: Reached state update section');
       
       // Update promotion state atomically
       try {
+        console.log('DEBUG: About to call setPromotionState');
         setPromotionState(prev => {
-          console.log('Inside setPromotionState function');
+          console.log('DEBUG: Inside setPromotionState function');
+          console.log('DEBUG: Previous state:', prev);
+          
           const newPromotedEvents = new Map(prev.promotedEvents);
           const newShowResults = new Set(prev.showResults);
           
-          console.log('Storing promotion result for eventId:', eventId);
-          console.log('EventId type:', typeof eventId);
-          console.log('EventId length:', eventId.length);
+          console.log('DEBUG: Created new Maps and Sets');
+          console.log('DEBUG: Storing promotion result for eventId:', eventId);
           
           newPromotedEvents.set(eventId, promotionResult);
           newShowResults.add(eventId);
           
-          console.log('Updated promotion state:', {
-            storedEventId: eventId,
-            promotedEvents: newPromotedEvents,
-            showResults: newShowResults,
-            hasEventId: newPromotedEvents.has(eventId),
-            showResultsHasEventId: newShowResults.has(eventId),
-            promotionResult: promotionResult,
-            hasAnalysisResults: !!promotionResult.analysisResults,
-            allStoredEventIds: Array.from(newPromotedEvents.keys())
-          });
+          console.log('DEBUG: Added to Maps and Sets');
+          console.log('DEBUG: New promotedEvents size:', newPromotedEvents.size);
+          console.log('DEBUG: New showResults size:', newShowResults.size);
           
-          return {
+          const newState = {
             promotedEvents: newPromotedEvents,
             showResults: newShowResults
           };
+          
+          console.log('DEBUG: Returning new state:', newState);
+          return newState;
         });
-        console.log('State update completed successfully');
+        console.log('DEBUG: setPromotionState call completed');
       } catch (stateError) {
-        console.error('Error updating promotion state:', stateError);
+        console.error('DEBUG: Error updating promotion state:', stateError);
       }
       
       // Optionally refresh the calendar
