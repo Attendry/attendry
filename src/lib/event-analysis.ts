@@ -328,7 +328,7 @@ function extractSpeakerNamesManually(text: string): string[] {
   
   // Enhanced patterns for speaker names (including German titles and names)
   const patterns = [
-    // German titles and names
+    // German titles and names - more comprehensive
     /(?:Prof\.|Dr\.|Mag\.|MBA|LL\.M\.)\s*([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)/g,
     /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*,\s*(?:Dr\.|Prof\.|Mag\.|MBA|LL\.M\.|CEO|CTO|Director|Manager|Head|VP|Senior|Chief))/g,
     // Standard patterns
@@ -337,7 +337,12 @@ function extractSpeakerNamesManually(text: string): string[] {
     // German specific patterns
     /(?:Referent|Referentin|Sprecher|Sprecherin|Moderator|Moderatorin):\s*([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)/g,
     // Names with titles in parentheses or after
-    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*\([^)]+\)|\s*\|[^|]+)/g
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*\([^)]+\)|\s*\|[^|]+)/g,
+    // Simple name patterns for German names
+    /(?:###\s*)([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)/g,
+    /(?:####\s*)([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)/g,
+    // Names followed by job titles
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*\n\s*[A-ZÄÖÜ][a-zäöüß\s&|]+)/g
   ];
   
   for (const pattern of patterns) {
@@ -559,23 +564,44 @@ Return valid JSON only, no additional text.`;
     try {
       console.log('Raw Gemini response for speakers:', text.substring(0, 1000) + '...');
       
-      // Try multiple JSON extraction patterns
-      const jsonPatterns = [
-        /\{[\s\S]*?"speakers"[\s\S]*?\}/,  // Look for speakers object specifically
-        /\{[\s\S]*?\}/,                    // General JSON object
-        /\[[\s\S]*?\]/                     // Array format
-      ];
-      
+      // Try to extract JSON more carefully
       let parsedData = null;
-      for (const pattern of jsonPatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          try {
-            parsedData = JSON.parse(match[0]);
-            console.log('Successfully parsed JSON with pattern:', pattern.toString());
-            break;
-          } catch (e) {
-            console.warn('Failed to parse with pattern:', pattern.toString(), e);
+      
+      // First, try to find the JSON block between ```json and ```
+      const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+      if (jsonBlockMatch) {
+        try {
+          parsedData = JSON.parse(jsonBlockMatch[1]);
+          console.log('Successfully parsed JSON from code block');
+        } catch (e) {
+          console.warn('Failed to parse JSON from code block:', e);
+        }
+      }
+      
+      // If that didn't work, try to find the first complete JSON object
+      if (!parsedData) {
+        const jsonStart = text.indexOf('{');
+        if (jsonStart !== -1) {
+          let braceCount = 0;
+          let jsonEnd = jsonStart;
+          
+          for (let i = jsonStart; i < text.length; i++) {
+            if (text[i] === '{') braceCount++;
+            if (text[i] === '}') braceCount--;
+            if (braceCount === 0) {
+              jsonEnd = i;
+              break;
+            }
+          }
+          
+          if (braceCount === 0) {
+            try {
+              const jsonStr = text.substring(jsonStart, jsonEnd + 1);
+              parsedData = JSON.parse(jsonStr);
+              console.log('Successfully parsed JSON by counting braces');
+            } catch (e) {
+              console.warn('Failed to parse JSON by counting braces:', e);
+            }
           }
         }
       }
@@ -607,7 +633,7 @@ Return valid JSON only, no additional text.`;
           name: name,
           title: "Speaker",
           company: "Unknown",
-          bio: `Speaker at ${eventTitle || 'the event'}`,
+          bio: `Speaker at the event`,
           expertise_areas: [],
           social_links: {},
           speaking_history: [],
