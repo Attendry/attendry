@@ -355,7 +355,7 @@ async function extractEventMetadata(crawlResults: CrawlResult[], eventTitle?: st
   
   try {
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     const combinedContent = crawlResults.map(result => 
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1000)}...`
@@ -423,7 +423,7 @@ async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Promise<S
   
   try {
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     const combinedContent = crawlResults.map(result => 
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`

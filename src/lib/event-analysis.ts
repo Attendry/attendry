@@ -175,8 +175,8 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
   try {
     console.log('Starting deep crawl for:', eventUrl);
     
-    // First, crawl the main page with enhanced configuration
-    const mainPageResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    // First, crawl the main page with Firecrawl v2 API
+    const mainPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${firecrawlKey}`,
@@ -186,23 +186,21 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
         url: eventUrl,
         formats: ['markdown'],
         onlyMainContent: false, // Get more content, not just main content
-        includeTags: ['a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'li', 'td', 'th'],
-        waitFor: 2000, // Wait for dynamic content to load
         timeout: 30000 // Increase timeout
       })
     });
     
     if (mainPageResponse.ok) {
       const mainPageData = await mainPageResponse.json();
-      if (mainPageData.data?.content) {
+      if (mainPageData.data?.markdown) {
         results.push({
           url: eventUrl,
           title: mainPageData.data.metadata?.title || 'Main Page',
-          content: mainPageData.data.content,
+          content: mainPageData.data.markdown,
           description: mainPageData.data.metadata?.description || '',
           metadata: mainPageData.data.metadata
         });
-        console.log('Main page crawled, content length:', mainPageData.data.content.length);
+        console.log('Main page crawled, content length:', mainPageData.data.markdown.length);
       }
     }
     
@@ -221,7 +219,7 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
       await new Promise(resolve => setTimeout(resolve, FIRECRAWL_RATE_LIMIT.delayBetweenRequests));
       
       try {
-        const subPageResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        const subPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${firecrawlKey}`,
@@ -231,23 +229,21 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
             url: subUrl,
             formats: ['markdown'],
             onlyMainContent: false,
-            includeTags: ['a', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'li', 'td', 'th'],
-            waitFor: 2000,
             timeout: 30000
           })
         });
         
         if (subPageResponse.ok) {
           const subPageData = await subPageResponse.json();
-          if (subPageData.data?.content) {
+          if (subPageData.data?.markdown) {
             results.push({
               url: subUrl,
               title: subPageData.data.metadata?.title || 'Sub Page',
-              content: subPageData.data.content,
+              content: subPageData.data.markdown,
               description: subPageData.data.metadata?.description || '',
               metadata: subPageData.data.metadata
             });
-            console.log('Sub-page crawled:', subUrl, 'content length:', subPageData.data.content.length);
+            console.log('Sub-page crawled:', subUrl, 'content length:', subPageData.data.markdown.length);
           }
         }
       } catch (subPageError) {
@@ -388,7 +384,7 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
   
   try {
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     const combinedContent = crawlResults.map(result => 
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1000)}...`
@@ -456,7 +452,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
   
   try {
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     
     const combinedContent = crawlResults.map(result => 
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`

@@ -16,7 +16,7 @@ const firecrawlKey = process.env.FIRECRAWL_KEY;
 const googleKey = process.env.GOOGLE_CSE_KEY;
 const googleCx = process.env.GOOGLE_CSE_CX;
 // Use Gemini 2.5 Pro via REST (same pattern as elsewhere in app)
-const GEMINI_MODEL_PATH = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-pro:generateContent';
+const GEMINI_MODEL_PATH = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
 
 console.log('Environment check:', {
   geminiKey: !!geminiKey,
