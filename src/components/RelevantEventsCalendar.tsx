@@ -121,24 +121,29 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       console.log('Promotion successful, storing result:', { eventId, extractionId: data.extractionId });
       
       // Update both states together to ensure consistency
+      const promotionResult = {
+        extractionId: data.extractionId,
+        promotedAt: new Date().toISOString(),
+        status: 'success'
+      };
+      
+      console.log('Setting promotion result:', promotionResult);
+      
+      // Use functional updates to ensure we get the latest state
       setPromotedEvents(prev => {
-        const newMap = new Map(prev).set(eventId, {
-          extractionId: data.extractionId,
-          promotedAt: new Date().toISOString(),
-          status: 'success'
-        });
+        const newMap = new Map(prev);
+        newMap.set(eventId, promotionResult);
         console.log('Updated promotedEvents:', newMap);
         console.log('New promotedEvents has eventId?', newMap.has(eventId));
-        
-        // Also update showPromotionResults in the same render cycle
-        setShowPromotionResults(prevShow => {
-          const newSet = new Set(prevShow).add(eventId);
-          console.log('Updated showPromotionResults:', newSet);
-          console.log('New showPromotionResults has eventId?', newSet.has(eventId));
-          return newSet;
-        });
-        
         return newMap;
+      });
+      
+      setShowPromotionResults(prev => {
+        const newSet = new Set(prev);
+        newSet.add(eventId);
+        console.log('Updated showPromotionResults:', newSet);
+        console.log('New showPromotionResults has eventId?', newSet.has(eventId));
+        return newSet;
       });
       
       // Optionally refresh the calendar

@@ -105,13 +105,47 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
-    // Note: We don't need to update the collected_events table since
-    // the promotion information is already stored in event_extractions
-    // The event_extractions table serves as the promotion tracking mechanism
+    // Now trigger the actual analysis pipeline for the promoted event
+    try {
+      console.log('Triggering analysis pipeline for promoted event:', eventId);
+      
+      // Call the speaker enhancement API to process the promoted event
+      const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/speakers/enhance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: eventData.source_url,
+          eventData: eventForAnalysis
+        })
+      });
+      
+      if (analysisResponse.ok) {
+        const analysisResult = await analysisResponse.json();
+        console.log('Analysis pipeline completed for promoted event:', eventId);
+        
+        // Update the extraction record with analysis results
+        await supabase
+          .from('event_extractions')
+          .update({
+            payload: {
+              ...extractionData.payload,
+              analysis_completed: true,
+              analysis_results: analysisResult,
+              analyzed_at: new Date().toISOString()
+            }
+          })
+          .eq('id', extractionData.id);
+      } else {
+        console.warn('Analysis pipeline failed for promoted event:', eventId);
+      }
+    } catch (analysisError) {
+      console.error('Failed to trigger analysis pipeline:', analysisError);
+      // Don't fail the promotion if analysis fails
+    }
 
     return NextResponse.json({ 
       success: true, 
-      message: "Event promoted to analysis pipeline",
+      message: "Event promoted to analysis pipeline and processing started",
       extractionId: extractionData.id,
       eventId: eventId
     });
