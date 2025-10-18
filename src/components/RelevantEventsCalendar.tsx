@@ -151,35 +151,42 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       };
       
       console.log('Setting promotion result:', promotionResult);
+      console.log('About to update promotion state for eventId:', eventId);
       
       // Update promotion state atomically
-      setPromotionState(prev => {
-        const newPromotedEvents = new Map(prev.promotedEvents);
-        const newShowResults = new Set(prev.showResults);
-        
-        console.log('Storing promotion result for eventId:', eventId);
-        console.log('EventId type:', typeof eventId);
-        console.log('EventId length:', eventId.length);
-        
-        newPromotedEvents.set(eventId, promotionResult);
-        newShowResults.add(eventId);
-        
-        console.log('Updated promotion state:', {
-          storedEventId: eventId,
-          promotedEvents: newPromotedEvents,
-          showResults: newShowResults,
-          hasEventId: newPromotedEvents.has(eventId),
-          showResultsHasEventId: newShowResults.has(eventId),
-          promotionResult: promotionResult,
-          hasAnalysisResults: !!promotionResult.analysisResults,
-          allStoredEventIds: Array.from(newPromotedEvents.keys())
+      try {
+        setPromotionState(prev => {
+          console.log('Inside setPromotionState function');
+          const newPromotedEvents = new Map(prev.promotedEvents);
+          const newShowResults = new Set(prev.showResults);
+          
+          console.log('Storing promotion result for eventId:', eventId);
+          console.log('EventId type:', typeof eventId);
+          console.log('EventId length:', eventId.length);
+          
+          newPromotedEvents.set(eventId, promotionResult);
+          newShowResults.add(eventId);
+          
+          console.log('Updated promotion state:', {
+            storedEventId: eventId,
+            promotedEvents: newPromotedEvents,
+            showResults: newShowResults,
+            hasEventId: newPromotedEvents.has(eventId),
+            showResultsHasEventId: newShowResults.has(eventId),
+            promotionResult: promotionResult,
+            hasAnalysisResults: !!promotionResult.analysisResults,
+            allStoredEventIds: Array.from(newPromotedEvents.keys())
+          });
+          
+          return {
+            promotedEvents: newPromotedEvents,
+            showResults: newShowResults
+          };
         });
-        
-        return {
-          promotedEvents: newPromotedEvents,
-          showResults: newShowResults
-        };
-      });
+        console.log('State update completed successfully');
+      } catch (stateError) {
+        console.error('Error updating promotion state:', stateError);
+      }
       
       // Optionally refresh the calendar
       if (onRefresh) {
