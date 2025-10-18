@@ -109,18 +109,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     try {
       console.log('Triggering analysis pipeline for promoted event:', eventId);
       
-      // Call the events/run API to process the promoted event (this will extract speakers and enhance them)
-      const requestBody = {
-        userText: eventData.title || 'Event Analysis',
-        country: eventData.country || 'EU',
-        dateFrom: eventData.starts_at ? new Date(eventData.starts_at).toISOString().split('T')[0] : null,
-        dateTo: eventData.ends_at ? new Date(eventData.ends_at).toISOString().split('T')[0] : null,
-        locale: 'en',
-        // Add the specific event URL to focus the analysis
-        specificEventUrl: eventData.source_url
-      };
-      
-      console.log('Calling /api/events/run with request body:', requestBody);
+      // For promoted events, we need to directly analyze the specific event URL
+      // The events/run API is for searching, not for analyzing specific URLs
+      console.log('Directly analyzing promoted event URL:', eventData.source_url);
       console.log('Event data being processed:', {
         title: eventData.title,
         source_url: eventData.source_url,
@@ -128,10 +119,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         starts_at: eventData.starts_at
       });
       
-      const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/events/run`, {
+      // Create a mock speaker object to trigger the enhancement pipeline
+      const mockSpeaker = {
+        name: eventData.title || 'Event Speaker',
+        title: 'Event Organizer',
+        company: 'Event Company',
+        bio: `Event: ${eventData.title}`,
+        url: eventData.source_url,
+        event_date: eventData.starts_at,
+        country: eventData.country
+      };
+      
+      const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/speakers/enhance`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify({
+          speaker: mockSpeaker
+        })
       });
       
       console.log('Analysis response status:', analysisResponse.status, analysisResponse.statusText);
@@ -139,15 +143,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (analysisResponse.ok) {
         const analysisResult = await analysisResponse.json();
         console.log('Analysis pipeline completed for promoted event:', eventId);
-        console.log('Analysis result events count:', analysisResult.events?.length || 0);
         console.log('Analysis result keys:', Object.keys(analysisResult));
-        console.log('Analysis result provider:', analysisResult.provider);
-        console.log('Analysis result search status:', analysisResult.search);
-        if (analysisResult.events && analysisResult.events.length > 0) {
-          console.log('First event from analysis:', {
-            title: analysisResult.events[0].title,
-            speakers: analysisResult.events[0].speakers?.length || 0
+        console.log('Analysis result success:', analysisResult.success);
+        console.log('Analysis result enhanced:', analysisResult.enhanced);
+        console.log('Analysis result search results count:', analysisResult.searchResults?.length || 0);
+        console.log('Analysis result extracted data:', analysisResult.extractedData ? 'present' : 'missing');
+        if (analysisResult.searchResults && analysisResult.searchResults.length > 0) {
+          console.log('First search result:', {
+            title: analysisResult.searchResults[0].title,
+            url: analysisResult.searchResults[0].url
           });
+        }
+        if (analysisResult.extractedData) {
+          console.log('Extracted data keys:', Object.keys(analysisResult.extractedData));
         }
         
         // Update the extraction record with analysis results
