@@ -99,6 +99,8 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
 
   const promoteEvent = async (eventId: string) => {
     console.log('Starting promotion for event:', eventId);
+    console.log('Event ID type:', typeof eventId);
+    console.log('Event ID length:', eventId.length);
     setPromotingEvents(prev => new Set(prev).add(eventId));
     
     try {
@@ -155,16 +157,22 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         const newPromotedEvents = new Map(prev.promotedEvents);
         const newShowResults = new Set(prev.showResults);
         
+        console.log('Storing promotion result for eventId:', eventId);
+        console.log('EventId type:', typeof eventId);
+        console.log('EventId length:', eventId.length);
+        
         newPromotedEvents.set(eventId, promotionResult);
         newShowResults.add(eventId);
         
         console.log('Updated promotion state:', {
+          storedEventId: eventId,
           promotedEvents: newPromotedEvents,
           showResults: newShowResults,
           hasEventId: newPromotedEvents.has(eventId),
           showResultsHasEventId: newShowResults.has(eventId),
           promotionResult: promotionResult,
-          hasAnalysisResults: !!promotionResult.analysisResults
+          hasAnalysisResults: !!promotionResult.analysisResults,
+          allStoredEventIds: Array.from(newPromotedEvents.keys())
         });
         
         return {
@@ -552,6 +560,9 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
               const shouldShow = promotionState.showResults.has(event.id) && promotionState.promotedEvents.has(event.id);
               const promotedData = promotionState.promotedEvents.get(event.id);
               console.log('RENDER: Should show promotion results for event', event.id, ':', shouldShow, {
+                checkingEventId: event.id,
+                eventIdType: typeof event.id,
+                eventIdLength: event.id.length,
                 showResults: promotionState.showResults.has(event.id),
                 promotedEvents: promotionState.promotedEvents.has(event.id),
                 promotedEventData: promotedData,
