@@ -125,17 +125,16 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
     
     try {
       console.log('Making fetch request to /api/events/promote');
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout
+      console.log('Request body:', JSON.stringify({ eventId }));
       
+      // Remove AbortController for now to avoid timeout issues
       const response = await fetch('/api/events/promote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId }),
-        signal: controller.signal
+        body: JSON.stringify({ eventId })
       });
       
-      clearTimeout(timeoutId);
+      console.log('Fetch completed, response received');
       
       console.log('Received response:', { status: response.status, statusText: response.statusText, ok: response.ok });
       
@@ -199,8 +198,11 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
         eventId,
-        isAbortError: error instanceof Error && error.name === 'AbortError'
+        isAbortError: error instanceof Error && error.name === 'AbortError',
+        errorType: error instanceof Error ? error.constructor.name : typeof error
       });
+      
+      console.error('Full error object:', error);
       
       // Store error state
       let errorMessage = 'Unknown error';
@@ -459,7 +461,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v6.2)</span>
+                        <span>🚀 Promote to Analysis (v6.3)</span>
                       </>
                     )}
                   </button>
