@@ -109,19 +109,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     try {
       console.log('Triggering analysis pipeline for promoted event:', eventId);
       
-      // Call the speaker enhancement API to process the promoted event
-      const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/speakers/enhance`, {
+      // Call the events/run API to process the promoted event (this will extract speakers and enhance them)
+      const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/events/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          url: eventData.source_url,
-          eventData: eventForAnalysis
+          userText: eventData.title || 'Event Analysis',
+          country: eventData.country || 'EU',
+          dateFrom: eventData.starts_at ? new Date(eventData.starts_at).toISOString().split('T')[0] : null,
+          dateTo: eventData.ends_at ? new Date(eventData.ends_at).toISOString().split('T')[0] : null,
+          locale: 'en',
+          // Add the specific event URL to focus the analysis
+          specificEventUrl: eventData.source_url
         })
       });
       
       if (analysisResponse.ok) {
         const analysisResult = await analysisResponse.json();
         console.log('Analysis pipeline completed for promoted event:', eventId);
+        console.log('Analysis result events count:', analysisResult.events?.length || 0);
         
         // Update the extraction record with analysis results
         await supabase
@@ -131,12 +137,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
               ...extractionData.payload,
               analysis_completed: true,
               analysis_results: analysisResult,
-              analyzed_at: new Date().toISOString()
+              analyzed_at: new Date().toISOString(),
+              events_found: analysisResult.events?.length || 0
             }
           })
           .eq('id', extractionData.id);
       } else {
-        console.warn('Analysis pipeline failed for promoted event:', eventId);
+        const errorText = await analysisResponse.text();
+        console.warn('Analysis pipeline failed for promoted event:', eventId, 'Status:', analysisResponse.status, 'Error:', errorText);
       }
     } catch (analysisError) {
       console.error('Failed to trigger analysis pipeline:', analysisError);
