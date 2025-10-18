@@ -68,47 +68,26 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     };
 
-    // Trigger the analysis pipeline by calling the speaker enhancement API
-    let analysisResult = null;
-    try {
-      const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/speakers/enhance`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': req.headers.get('authorization') || '',
-          'Cookie': req.headers.get('cookie') || ''
-        },
-        body: JSON.stringify({
-          events: [eventForAnalysis],
-          user_id: userRes.user.id
-        })
-      });
-
-      if (analysisResponse.ok) {
-        analysisResult = await analysisResponse.json();
-        console.log('Analysis pipeline triggered successfully for promoted event:', eventId);
-      } else {
-        console.error('Failed to trigger analysis pipeline:', analysisResponse.status, analysisResponse.statusText);
-      }
-    } catch (error) {
-      console.error('Error triggering analysis pipeline:', error);
-      // Don't fail the promotion if analysis fails
-    }
+    // For now, we'll mark the event as promoted and let the user know
+    // The analysis pipeline can be triggered manually or through a separate process
+    console.log('Event promoted from calendar:', eventId, 'by user:', userRes.user.id);
 
     // Create a new event extraction record to track the promotion
     const { data: extractionData, error: extractionError } = await supabase
       .from('event_extractions')
       .insert({
-        user_id: userRes.user.id,
-        event_id: eventId,
-        source_url: eventData.source_url,
-        status: analysisResult ? 'processing' : 'pending',
-        extraction_type: 'promoted_from_calendar',
-        metadata: {
+        url: eventData.source_url,
+        normalized_url: eventData.source_url,
+        event_date: eventData.starts_at ? new Date(eventData.starts_at).toISOString().split('T')[0] : null,
+        country: eventData.country,
+        locality: eventData.city,
+        payload: {
+          promoted_from_calendar: true,
           promoted_at: new Date().toISOString(),
+          promoted_by: userRes.user.id,
           original_event_data: eventData,
-          analysis_triggered: !!analysisResult,
-          analysis_result: analysisResult ? 'success' : 'failed'
+          status: 'promoted',
+          ready_for_analysis: true
         }
       })
       .select()

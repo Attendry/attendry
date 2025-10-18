@@ -27,7 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_saved_speaker_profiles_tags ON saved_speaker_prof
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.last_updated = NOW();
     RETURN NEW;
 END;
 $$ language 'plpgsql';
