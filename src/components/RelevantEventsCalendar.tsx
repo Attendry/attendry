@@ -152,7 +152,8 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       console.log('Setting promotion result:', promotionResult);
       console.log('About to update promotion state for eventId:', eventId);
-      console.log('DEBUG: Reached state update section - Vercel deployment test');
+      console.log('DEBUG: Reached state update section - Vercel deployment test v2');
+      console.log('DEBUG: Current timestamp:', new Date().toISOString());
       
       // Update promotion state atomically
       try {
