@@ -110,24 +110,45 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       console.log('Triggering analysis pipeline for promoted event:', eventId);
       
       // Call the events/run API to process the promoted event (this will extract speakers and enhance them)
+      const requestBody = {
+        userText: eventData.title || 'Event Analysis',
+        country: eventData.country || 'EU',
+        dateFrom: eventData.starts_at ? new Date(eventData.starts_at).toISOString().split('T')[0] : null,
+        dateTo: eventData.ends_at ? new Date(eventData.ends_at).toISOString().split('T')[0] : null,
+        locale: 'en',
+        // Add the specific event URL to focus the analysis
+        specificEventUrl: eventData.source_url
+      };
+      
+      console.log('Calling /api/events/run with request body:', requestBody);
+      console.log('Event data being processed:', {
+        title: eventData.title,
+        source_url: eventData.source_url,
+        country: eventData.country,
+        starts_at: eventData.starts_at
+      });
+      
       const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/events/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userText: eventData.title || 'Event Analysis',
-          country: eventData.country || 'EU',
-          dateFrom: eventData.starts_at ? new Date(eventData.starts_at).toISOString().split('T')[0] : null,
-          dateTo: eventData.ends_at ? new Date(eventData.ends_at).toISOString().split('T')[0] : null,
-          locale: 'en',
-          // Add the specific event URL to focus the analysis
-          specificEventUrl: eventData.source_url
-        })
+        body: JSON.stringify(requestBody)
       });
+      
+      console.log('Analysis response status:', analysisResponse.status, analysisResponse.statusText);
       
       if (analysisResponse.ok) {
         const analysisResult = await analysisResponse.json();
         console.log('Analysis pipeline completed for promoted event:', eventId);
         console.log('Analysis result events count:', analysisResult.events?.length || 0);
+        console.log('Analysis result keys:', Object.keys(analysisResult));
+        console.log('Analysis result provider:', analysisResult.provider);
+        console.log('Analysis result search status:', analysisResult.search);
+        if (analysisResult.events && analysisResult.events.length > 0) {
+          console.log('First event from analysis:', {
+            title: analysisResult.events[0].title,
+            speakers: analysisResult.events[0].speakers?.length || 0
+          });
+        }
         
         // Update the extraction record with analysis results
         await supabase
