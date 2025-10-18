@@ -177,16 +177,29 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       console.log('📊 Analysis results available:', !!data.analysisResults);
       console.log('🎯 Event ID:', eventId);
       
-      // Use pending promotion approach to ensure proper state updates
-      console.log('🔄 Setting pending promotion for eventId:', eventId);
+      // Direct state update approach - bypass useEffect
+      console.log('🔄 Direct state update for eventId:', eventId);
       console.log('🔄 Promotion result:', promotionResult);
-      setPendingPromotion({ eventId, result: promotionResult });
-      console.log('🔄 Pending promotion set, useEffect should handle the rest');
       
-      // Force a re-render to trigger useEffect
-      setTimeout(() => {
-        console.log('🔄 Timeout: Checking if useEffect was triggered');
-      }, 100);
+      // Update promoted events directly
+      setPromotedEvents(prev => {
+        console.log('✅ Direct setPromotedEvents update');
+        const newMap = new Map(prev);
+        newMap.set(eventId, promotionResult);
+        console.log('✅ New promotedEvents size:', newMap.size);
+        return newMap;
+      });
+      
+      // Update show results directly
+      setShowPromotionResults(prev => {
+        console.log('✅ Direct setShowPromotionResults update');
+        const newSet = new Set(prev);
+        newSet.add(eventId);
+        console.log('✅ New showResults size:', newSet.size);
+        return newSet;
+      });
+      
+      console.log('🔄 Direct state updates completed');
       
       // Optionally refresh the calendar
       if (onRefresh) {
@@ -461,7 +474,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v6.3)</span>
+                        <span>🚀 Promote to Analysis (v6.4)</span>
                       </>
                     )}
                   </button>
