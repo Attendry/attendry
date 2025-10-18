@@ -50,6 +50,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
 
   // Handle pending promotion with useEffect to ensure proper state updates
   useEffect(() => {
+    console.log('🔄 useEffect triggered, pendingPromotion:', pendingPromotion);
     if (pendingPromotion) {
       console.log('🔄 Processing pending promotion:', pendingPromotion.eventId);
       
@@ -179,8 +180,14 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       // Use pending promotion approach to ensure proper state updates
       console.log('🔄 Setting pending promotion for eventId:', eventId);
+      console.log('🔄 Promotion result:', promotionResult);
       setPendingPromotion({ eventId, result: promotionResult });
       console.log('🔄 Pending promotion set, useEffect should handle the rest');
+      
+      // Force a re-render to trigger useEffect
+      setTimeout(() => {
+        console.log('🔄 Timeout: Checking if useEffect was triggered');
+      }, 100);
       
       // Optionally refresh the calendar
       if (onRefresh) {
@@ -452,7 +459,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v6.1)</span>
+                        <span>🚀 Promote to Analysis (v6.2)</span>
                       </>
                     )}
                   </button>
