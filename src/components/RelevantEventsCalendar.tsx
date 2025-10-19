@@ -452,7 +452,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v6.8)</span>
+                        <span>🚀 Promote to Analysis (v6.9)</span>
                       </>
                     )}
                   </button>
@@ -556,7 +556,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
 
             {/* Promotion Results */}
             {(() => {
-              const shouldShow = showResults[event.id] && promotedEvents[event.id];
+              const shouldShow = !!(showResults[event.id] && promotedEvents[event.id]);
               const promotedData = promotedEvents[event.id];
               console.log('RENDER: Should show promotion results for event', event.id, ':', shouldShow, {
                 checkingEventId: event.id,
