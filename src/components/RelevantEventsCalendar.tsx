@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import { flushSync } from "react-dom";
 import { Calendar, MapPin, Clock, Star, Users, Building, TrendingUp, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -147,33 +148,34 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       console.log('📊 Analysis results available:', !!data.analysisResults);
       console.log('🎯 Event ID:', eventId);
       
-      // Separate state updates with force re-render
-      console.log('🔄 Separate state updates for eventId:', eventId);
+      // Force synchronous state updates with flushSync
+      console.log('🔄 Using flushSync for immediate state updates for eventId:', eventId);
       console.log('🔄 Promotion result:', promotionResult);
       
-      // Update promoted events
-      setPromotedEvents(prev => {
-        console.log('✅ Inside setPromotedEvents callback');
-        const newState = { ...prev, [eventId]: promotionResult };
-        console.log('✅ New promotedEvents keys:', Object.keys(newState));
-        return newState;
+      flushSync(() => {
+        console.log('✅ Inside flushSync block - forcing immediate state processing');
+        
+        setPromotedEvents(prev => {
+          console.log('✅ Inside setPromotedEvents callback (flushSync)');
+          const newState = { ...prev, [eventId]: promotionResult };
+          console.log('✅ New promotedEvents keys:', Object.keys(newState));
+          return newState;
+        });
+        
+        setShowResults(prev => {
+          console.log('✅ Inside setShowResults callback (flushSync)');
+          const newState = { ...prev, [eventId]: true };
+          console.log('✅ New showResults keys:', Object.keys(newState));
+          return newState;
+        });
+        
+        setForceRender(prev => {
+          console.log('✅ Inside setForceRender callback (flushSync), incrementing from:', prev);
+          return prev + 1;
+        });
       });
       
-      // Update show results
-      setShowResults(prev => {
-        console.log('✅ Inside setShowResults callback');
-        const newState = { ...prev, [eventId]: true };
-        console.log('✅ New showResults keys:', Object.keys(newState));
-        return newState;
-      });
-      
-      // Force a re-render
-      setForceRender(prev => {
-        console.log('✅ Inside setForceRender callback, incrementing from:', prev);
-        return prev + 1;
-      });
-      
-      console.log('🔄 Separate state updates completed');
+      console.log('🔄 flushSync state updates completed - React should have processed them immediately');
       
       // Optionally refresh the calendar
       if (onRefresh) {
@@ -203,21 +205,23 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         }
       }
       
-      setPromotedEvents(prev => ({
-        ...prev,
-        [eventId]: {
-          error: errorMessage,
-          promotedAt: new Date().toISOString(),
-          status: 'error'
-        }
-      }));
-      
-      setShowResults(prev => ({
-        ...prev,
-        [eventId]: true
-      }));
-      
-      setForceRender(prev => prev + 1);
+      flushSync(() => {
+        setPromotedEvents(prev => ({
+          ...prev,
+          [eventId]: {
+            error: errorMessage,
+            promotedAt: new Date().toISOString(),
+            status: 'error'
+          }
+        }));
+        
+        setShowResults(prev => ({
+          ...prev,
+          [eventId]: true
+        }));
+        
+        setForceRender(prev => prev + 1);
+      });
     } finally {
       setPromotingEvents(prev => {
         const newSet = new Set(prev);
@@ -448,7 +452,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v6.7)</span>
+                        <span>🚀 Promote to Analysis (v6.8)</span>
                       </>
                     )}
                   </button>
