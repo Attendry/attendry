@@ -210,6 +210,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
         });
         console.log('Main page crawled, content length:', mainPageData.data.markdown.length);
       }
+    } else {
+      // Log error without consuming response body to avoid stream issues
+      console.warn('Main page crawl failed with status:', mainPageResponse.status);
     }
     
     // Extract potential sub-pages from the main page content
@@ -248,6 +251,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
               metadata: subPageData.data.metadata
             };
           }
+        } else {
+          // Log error without consuming response body to avoid stream issues
+          console.warn('Sub-page crawl failed for', subUrl, 'with status:', subPageResponse.status);
         }
       } catch (subPageError) {
         console.warn('Failed to crawl sub-page:', subUrl, subPageError);
@@ -423,6 +429,9 @@ export async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string):
             });
           }
         }
+      } else {
+        // Log error without consuming response body to avoid stream issues
+        console.warn('Google CSE search failed with status:', response.status);
       }
     }
     

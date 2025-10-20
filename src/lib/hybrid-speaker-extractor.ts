@@ -163,19 +163,25 @@ async function deepCrawlEventForSpeakers(eventUrl: string): Promise<{
     console.log('Starting hybrid deep crawl for:', eventUrl);
     
     // First, crawl the main page
-    const mainPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${firecrawlKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        url: eventUrl,
-        formats: ['markdown'],
-        onlyMainContent: false,
-        timeout: 15000
-      })
-    });
+    let mainPageResponse;
+    try {
+      mainPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${firecrawlKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          url: eventUrl,
+          formats: ['markdown'],
+          onlyMainContent: false,
+          timeout: 15000
+        })
+      });
+    } catch (fetchError) {
+      console.warn('Hybrid: Failed to fetch main page:', fetchError);
+      return { speakers: [], crawl_stats: { pages_crawled: 0, total_content_length: 0, speakers_found: 0, crawl_duration_ms: Date.now() - startTime } };
+    }
     
     if (mainPageResponse.ok) {
       const mainPageData = await mainPageResponse.json();
@@ -189,6 +195,9 @@ async function deepCrawlEventForSpeakers(eventUrl: string): Promise<{
         });
         console.log('Hybrid: Main page crawled, content length:', mainPageData.data.content.length);
       }
+    } else {
+      // Log error without consuming response body to avoid stream issues
+      console.warn('Hybrid: Main page crawl failed with status:', mainPageResponse.status);
     }
     
     // Extract potential sub-pages from the main page content
@@ -206,19 +215,25 @@ async function deepCrawlEventForSpeakers(eventUrl: string): Promise<{
       await new Promise(resolve => setTimeout(resolve, FIRECRAWL_RATE_LIMIT.delayBetweenRequests));
       
       try {
-        const subPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${firecrawlKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            url: subUrl,
-            formats: ['markdown'],
-            onlyMainContent: false,
-            timeout: 10000
-          })
-        });
+        let subPageResponse;
+        try {
+          subPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              url: subUrl,
+              formats: ['markdown'],
+              onlyMainContent: false,
+              timeout: 10000
+            })
+          });
+        } catch (subFetchError) {
+          console.warn('Hybrid: Failed to fetch sub-page:', subUrl, subFetchError);
+          continue; // Skip this sub-page and continue with the next one
+        }
         
         if (subPageResponse.ok) {
           const subPageData = await subPageResponse.json();
@@ -232,6 +247,9 @@ async function deepCrawlEventForSpeakers(eventUrl: string): Promise<{
             });
             console.log('Hybrid: Sub-page crawled:', subUrl, 'content length:', subPageData.data.content.length);
           }
+        } else {
+          // Log error without consuming response body to avoid stream issues
+          console.warn('Hybrid: Sub-page crawl failed for', subUrl, 'with status:', subPageResponse.status);
         }
       } catch (subPageError) {
         console.warn('Failed to crawl sub-page for hybrid extractor:', subUrl, subPageError);
