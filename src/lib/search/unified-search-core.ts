@@ -13,7 +13,7 @@
 
 import { createHash } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
-import { executeWithRetry, executeWithGracefulDegradation, executeWithCircuitBreaker } from "@/lib/error-recovery";
+import { executeWithRetry, executeWithGracefulDegradation, executeWithCircuitBreaker, executeWithAdvancedCircuitBreaker } from "@/lib/error-recovery";
 import { OPTIMIZED_RATE_LIMITS, OPTIMIZED_CACHE } from "@/lib/resource-optimizer";
 import { searchCache, generateSearchCacheKey } from "@/lib/advanced-cache";
 
@@ -310,8 +310,8 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
     console.log('[unified-firecrawl] Making request with body:', JSON.stringify(body, null, 2));
 
-    // Use error recovery for Firecrawl API calls
-    const data = await executeWithRetry(async () => {
+    // Use advanced circuit breaker for Firecrawl API calls
+    const data = await executeWithAdvancedCircuitBreaker(async () => {
       const response = await fetch('https://api.firecrawl.dev/v2/search', {
         method: 'POST',
         headers: {
@@ -409,8 +409,8 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
 
     console.log('[unified-cse] Making request to:', url.toString().replace(/key=[^&]+/, 'key=***'));
 
-    // Use error recovery for CSE API calls
-    const data = await executeWithRetry(async () => {
+    // Use advanced circuit breaker for CSE API calls
+    const data = await executeWithAdvancedCircuitBreaker(async () => {
       const response = await fetch(url.toString());
       console.log('[unified-cse] Response status:', response.status, response.statusText);
 
@@ -464,8 +464,8 @@ async function unifiedDatabaseSearch(params: UnifiedSearchParams): Promise<Unifi
   try {
     console.log('[unified-database] Fallback search with query:', params.q);
     
-    // Use error recovery for any database operations
-    return await executeWithRetry(async () => {
+    // Use advanced circuit breaker for database operations
+    return await executeWithAdvancedCircuitBreaker(async () => {
       // This is a placeholder for database-based search
       // In a real implementation, you would search your own database of events
       // For now, return some sample legal event URLs that are known to be relevant

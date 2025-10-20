@@ -5,6 +5,12 @@
  * graceful degradation, and circuit breaker patterns for the search pipeline.
  */
 
+import { 
+  circuitBreakerManager, 
+  executeWithCircuitBreaker as executeWithAdvancedCircuitBreakerImport, 
+  CircuitState 
+} from "./circuit-breaker";
+
 // Error types for different failure scenarios
 export enum ErrorType {
   NETWORK_ERROR = 'NETWORK_ERROR',
@@ -399,4 +405,73 @@ export function resetAllCircuitBreakers(): void {
     cb['state'] = 'CLOSED';
   });
   console.log('[error-recovery] All circuit breakers reset');
+}
+
+/**
+ * Execute operation with advanced circuit breaker protection and retry logic
+ */
+export async function executeWithAdvancedCircuitBreaker<T>(
+  operation: () => Promise<T>,
+  service: string,
+  fallback?: () => Promise<T>
+): Promise<T> {
+  try {
+    return await executeWithAdvancedCircuitBreakerImport(service, operation, fallback);
+  } catch (error) {
+    // If circuit breaker fails, try with retry logic as fallback
+    if (fallback) {
+      console.warn(`[error-recovery] Circuit breaker failed for ${service}, trying retry with fallback`);
+      try {
+        return await executeWithRetry(fallback, service);
+      } catch (retryError) {
+        console.error(`[error-recovery] Retry with fallback also failed for ${service}:`, retryError);
+        throw retryError;
+      }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Execute operation with circuit breaker, retry, and graceful degradation
+ */
+export async function executeWithFullRecovery<T>(
+  operation: () => Promise<T>,
+  service: string,
+  fallback: () => Promise<T>,
+  finalFallback?: () => Promise<T>
+): Promise<T> {
+  try {
+    return await executeWithAdvancedCircuitBreaker(operation, service, fallback);
+  } catch (error) {
+    console.warn(`[error-recovery] Full recovery failed for ${service}, trying final fallback`);
+    if (finalFallback) {
+      try {
+        return await finalFallback();
+      } catch (finalError) {
+        console.error(`[error-recovery] Final fallback also failed for ${service}:`, finalError);
+        throw finalError;
+      }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get circuit breaker state for monitoring
+ */
+export function getCircuitBreakerState(service: string): CircuitState | undefined {
+  const circuitBreaker = circuitBreakerManager.getCircuitBreaker(service);
+  return circuitBreaker?.getState();
+}
+
+/**
+ * Get circuit breaker metrics for analytics
+ */
+export function getCircuitBreakerMetrics(service?: string): any {
+  if (service) {
+    const circuitBreaker = circuitBreakerManager.getCircuitBreaker(service);
+    return circuitBreaker?.getMetrics();
+  }
+  return circuitBreakerManager.getCircuitBreakerMetrics();
 }
