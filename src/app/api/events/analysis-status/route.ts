@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getAsyncAnalysisStatus } from '@/lib/async-calendar-analysis';
+import { getAsyncEventsStatus } from '@/lib/async-events-analysis';
 
 // GET /api/events/analysis-status?jobId=xxx - Check async analysis status
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -26,30 +28,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       // Check if it's a calendar job or events job
       if (jobId.startsWith('calendar_')) {
         console.log('[analysis-status] Loading calendar analysis status for job:', jobId);
-        try {
-          const { getAsyncAnalysisStatus } = await import('@/lib/async-calendar-analysis');
-          jobStatus = await getAsyncAnalysisStatus(jobId);
-          console.log('[analysis-status] Calendar job status:', jobStatus ? 'found' : 'not found');
-        } catch (importError) {
-          console.error('[analysis-status] Failed to import calendar analysis:', importError);
-          return NextResponse.json({ 
-            success: false,
-            error: "Failed to load calendar analysis module" 
-          }, { status: 500 });
-        }
+        jobStatus = await getAsyncAnalysisStatus(jobId);
+        console.log('[analysis-status] Calendar job status:', jobStatus ? 'found' : 'not found');
       } else if (jobId.startsWith('events_')) {
         console.log('[analysis-status] Loading events analysis status for job:', jobId);
-        try {
-          const { getAsyncEventsStatus } = await import('@/lib/async-events-analysis');
-          jobStatus = await getAsyncEventsStatus(jobId);
-          console.log('[analysis-status] Events job status:', jobStatus ? 'found' : 'not found');
-        } catch (importError) {
-          console.error('[analysis-status] Failed to import events analysis:', importError);
-          return NextResponse.json({ 
-            success: false,
-            error: "Failed to load events analysis module" 
-          }, { status: 500 });
-        }
+        jobStatus = await getAsyncEventsStatus(jobId);
+        console.log('[analysis-status] Events job status:', jobStatus ? 'found' : 'not found');
       } else {
         console.log('[analysis-status] Invalid job ID format:', jobId);
         return NextResponse.json({ 
