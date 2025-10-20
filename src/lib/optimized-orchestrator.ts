@@ -19,6 +19,13 @@ import { executeWithRetry, executeWithGracefulDegradation, executeWithCircuitBre
 import { supabaseServer } from './supabase-server';
 import { getCountryContext } from './utils/country';
 import { loadActiveConfig } from '../common/search/config';
+import { 
+  getParallelProcessor, 
+  processUrlDiscoveryParallel, 
+  processEventExtractionParallel, 
+  processSpeakerEnhancementParallel,
+  createParallelTask 
+} from './parallel-processor';
 
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
@@ -43,8 +50,10 @@ const ORCHESTRATOR_CONFIG = {
     enhancement: 10000,     // Speaker enhancement timeout
   },
   parallel: {
-    maxConcurrentExtractions: 5,  // Max parallel extractions
-    maxConcurrentEnhancements: 3, // Max parallel enhancements
+    maxConcurrentExtractions: 8,  // Max parallel extractions (increased with smart processor)
+    maxConcurrentEnhancements: 5, // Max parallel enhancements (increased with smart processor)
+    enableSmartBatching: true,    // Enable intelligent batching
+    enableEarlyTermination: true, // Enable early termination for high-quality results
   }
 };
 
@@ -245,30 +254,77 @@ async function buildOptimizedQuery(params: OptimizedSearchParams): Promise<strin
 }
 
 /**
- * Discover event candidates from multiple sources
+ * Discover event candidates from multiple sources using parallel processing
  */
 async function discoverEventCandidates(query: string, params: OptimizedSearchParams): Promise<string[]> {
   const startTime = Date.now();
   
-  // Use unified search for multi-source discovery
-  const searchResult = await executeWithRetry(async () => {
-    return await unifiedSearch({
-      q: query,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
-      country: params.country || undefined,
-      limit: ORCHESTRATOR_CONFIG.limits.maxCandidates,
-      useCache: true
-    });
-  }, 'firecrawl');
+  // Create multiple query variations for parallel discovery
+  const queryVariations = [
+    query, // Original query
+    `${query} conference`, // Add conference keyword
+    `${query} summit`, // Add summit keyword
+    `${query} event`, // Add event keyword
+  ];
+  
+  // Use parallel processing for multiple query variations
+  const parallelProcessor = getParallelProcessor();
+  const discoveryTasks = queryVariations.map((variation, index) => 
+    createParallelTask(
+      `discovery_${index}`,
+      variation,
+      0.9, // High priority for discovery
+      'firecrawl'
+    )
+  );
+  
+  const discoveryResults = await parallelProcessor.processParallel(
+    discoveryTasks,
+    async (task) => {
+      return await executeWithRetry(async () => {
+        return await unifiedSearch({
+          q: task.data,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          country: params.country || undefined,
+          limit: Math.ceil(ORCHESTRATOR_CONFIG.limits.maxCandidates / queryVariations.length),
+          useCache: true
+        });
+      }, 'firecrawl');
+    },
+    {
+      maxConcurrency: 4, // Process all query variations in parallel
+      enableEarlyTermination: false, // Don't terminate early for discovery
+      qualityThreshold: 0.5,
+      minResults: 1
+    }
+  );
+
+  // Combine results from all query variations
+  const allUrls: string[] = [];
+  discoveryResults.forEach(result => {
+    if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
+      const searchResult = result.result as { items: string[] };
+      allUrls.push(...searchResult.items);
+    }
+  });
 
   // Filter and deduplicate URLs
-  const urls = searchResult.items
+  const urls = allUrls
     .filter(url => typeof url === 'string' && url.startsWith('http'))
     .filter((url, index, array) => array.indexOf(url) === index) // Remove duplicates
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxCandidates);
 
-  console.log(`[optimized-orchestrator] Discovered ${urls.length} unique URLs in ${Date.now() - startTime}ms`);
+  console.log(`[optimized-orchestrator] Discovered ${urls.length} unique URLs from ${queryVariations.length} query variations in ${Date.now() - startTime}ms`);
+  
+  // Log parallel processing metrics
+  const metrics = parallelProcessor.getMetrics();
+  console.log(`[optimized-orchestrator] Discovery parallel processing metrics:`, {
+    throughput: metrics.throughput.toFixed(2),
+    concurrencyLevel: metrics.concurrencyLevel,
+    averageDuration: metrics.averageDuration.toFixed(0),
+    resourceUtilization: metrics.resourceUtilization
+  });
   
   return urls;
 }
@@ -369,39 +425,56 @@ Include at most 10 items. Only include URLs you see in the list.`;
 }
 
 /**
- * Extract event details in parallel
+ * Extract event details in parallel using Smart Parallel Processor
  */
 async function extractEventDetails(prioritized: Array<{url: string, score: number, reason: string}>, params: OptimizedSearchParams): Promise<EventCandidate[]> {
   if (prioritized.length === 0) return [];
   
   const startTime = Date.now();
-  const results: EventCandidate[] = [];
   
-  // Process in batches to respect concurrency limits
-  const batches = [];
-  for (let i = 0; i < prioritized.length; i += ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions) {
-    batches.push(prioritized.slice(i, i + ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions));
-  }
+  // Create parallel tasks with priority based on score
+  const tasks = prioritized.map((item, index) => 
+    createParallelTask(
+      `extraction_${index}`,
+      item.url,
+      item.score, // Use score as priority
+      'firecrawl',
+      { timeout: ORCHESTRATOR_CONFIG.timeouts.extraction }
+    )
+  );
   
-  for (const batch of batches) {
-    const batchPromises = batch.map(async (item) => {
-      try {
-        return await executeWithRetry(async () => {
-          return await extractSingleEvent(item.url, params);
-        }, 'firecrawl');
-      } catch (error) {
-        console.warn(`[optimized-orchestrator] Failed to extract ${item.url}:`, error);
-        return null;
-      }
-    });
-    
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults.filter(Boolean) as EventCandidate[]);
-  }
+  // Use smart parallel processor
+  const parallelProcessor = getParallelProcessor();
+  const results = await parallelProcessor.processParallel(
+    tasks,
+    async (task) => {
+      return await extractSingleEvent(task.data, params);
+    },
+    {
+      maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions,
+      enableEarlyTermination: ORCHESTRATOR_CONFIG.parallel.enableEarlyTermination,
+      qualityThreshold: 0.8,
+      minResults: 5
+    }
+  );
   
-  console.log(`[optimized-orchestrator] Extracted ${results.length}/${prioritized.length} events in ${Date.now() - startTime}ms`);
+  // Filter successful results
+  const successfulResults = results
+    .filter(result => result.success && result.result)
+    .map(result => result.result as EventCandidate);
   
-  return results;
+  console.log(`[optimized-orchestrator] Extracted ${successfulResults.length}/${prioritized.length} events in ${Date.now() - startTime}ms`);
+  
+  // Log parallel processing metrics
+  const metrics = parallelProcessor.getMetrics();
+  console.log(`[optimized-orchestrator] Parallel processing metrics:`, {
+    throughput: metrics.throughput.toFixed(2),
+    concurrencyLevel: metrics.concurrencyLevel,
+    averageDuration: metrics.averageDuration.toFixed(0),
+    resourceUtilization: metrics.resourceUtilization
+  });
+  
+  return successfulResults;
 }
 
 /**
@@ -549,39 +622,61 @@ function parseEventDetails(content: string, url: string): {
 }
 
 /**
- * Enhance event speakers using Gemini
+ * Enhance event speakers using Smart Parallel Processor
  */
 async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedSearchParams): Promise<EventCandidate[]> {
   if (events.length === 0) return [];
   
   const startTime = Date.now();
-  const results: EventCandidate[] = [];
   
-  // Process in batches to respect concurrency limits
-  const batches = [];
-  for (let i = 0; i < events.length; i += ORCHESTRATOR_CONFIG.parallel.maxConcurrentEnhancements) {
-    batches.push(events.slice(i, i + ORCHESTRATOR_CONFIG.parallel.maxConcurrentEnhancements));
-  }
+  // Create parallel tasks with priority based on confidence
+  const tasks = events.map((event, index) => 
+    createParallelTask(
+      `enhancement_${index}`,
+      event,
+      event.confidence, // Use confidence as priority
+      'gemini',
+      { timeout: ORCHESTRATOR_CONFIG.timeouts.enhancement }
+    )
+  );
   
-  for (const batch of batches) {
-    const batchPromises = batch.map(async (event) => {
-      try {
-        return await executeWithRetry(async () => {
-          return await enhanceSingleEventSpeakers(event, params);
-        }, 'gemini');
-      } catch (error) {
-        console.warn(`[optimized-orchestrator] Failed to enhance speakers for ${event.url}:`, error);
-        return event; // Return original event if enhancement fails
-      }
-    });
-    
-    const batchResults = await Promise.all(batchPromises);
-    results.push(...batchResults);
-  }
+  // Use smart parallel processor
+  const parallelProcessor = getParallelProcessor();
+  const results = await parallelProcessor.processParallel(
+    tasks,
+    async (task) => {
+      return await enhanceSingleEventSpeakers(task.data, params);
+    },
+    {
+      maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentEnhancements,
+      enableEarlyTermination: false, // Don't terminate early for enhancements
+      qualityThreshold: 0.9,
+      minResults: 1
+    }
+  );
   
-  console.log(`[optimized-orchestrator] Enhanced ${results.length} events in ${Date.now() - startTime}ms`);
+  // Filter successful results, fallback to original event if enhancement failed
+  const enhancedResults = results.map((result, index) => {
+    if (result.success && result.result) {
+      return result.result as EventCandidate;
+    } else {
+      console.warn(`[optimized-orchestrator] Enhancement failed for ${events[index].url}, using original event`);
+      return events[index]; // Return original event if enhancement fails
+    }
+  });
   
-  return results;
+  console.log(`[optimized-orchestrator] Enhanced ${enhancedResults.length} events in ${Date.now() - startTime}ms`);
+  
+  // Log parallel processing metrics
+  const metrics = parallelProcessor.getMetrics();
+  console.log(`[optimized-orchestrator] Enhancement parallel processing metrics:`, {
+    throughput: metrics.throughput.toFixed(2),
+    concurrencyLevel: metrics.concurrencyLevel,
+    averageDuration: metrics.averageDuration.toFixed(0),
+    resourceUtilization: metrics.resourceUtilization
+  });
+  
+  return enhancedResults;
 }
 
 /**
