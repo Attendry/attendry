@@ -98,12 +98,18 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       console.log('Making fetch request to /api/events/promote');
       console.log('Request body:', JSON.stringify({ eventId }));
       
-      // Remove AbortController for now to avoid timeout issues
+      // Add timeout to handle 504 errors
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+      
       const response = await fetch('/api/events/promote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId })
+        body: JSON.stringify({ eventId }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       console.log('Fetch completed, response received');
       
@@ -290,16 +296,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         </div>
       </div>
 
-      {/* DEBUG: Direct state test */}
-      <div className="bg-yellow-500 p-4 mb-4 text-black font-bold">
-        🚨 DEBUG STATE TEST 🚨
-        <br />
-        promotedEvents keys: {JSON.stringify(Object.keys(promotedEvents))}
-        <br />
-        showResults keys: {JSON.stringify(Object.keys(showResults))}
-        <br />
-        forceRender: {forceRender}
-      </div>
+      {/* State is now working - debug banner removed */}
 
       {/* Events list */}
       <div className="space-y-4">
@@ -461,7 +458,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v7.3)</span>
+                        <span>🚀 Promote to Analysis (v8.0)</span>
                       </>
                     )}
                   </button>
@@ -575,14 +572,12 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
               });
               
               return (
-                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 bg-red-500 p-4">
-                  <div className="text-white font-bold">🚨 DEBUG: PROMOTION RESULTS SHOULD BE VISIBLE 🚨</div>
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mt-2"
-                  >
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700"
+                >
                 <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <TrendingUp className="w-5 h-5 text-green-600" />
@@ -710,8 +705,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     </div>
                   )}
                 </div>
-                  </motion.div>
-                </div>
+              </motion.div>
               );
             })()}
           </motion.div>
