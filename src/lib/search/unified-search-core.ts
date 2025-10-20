@@ -13,6 +13,7 @@
 
 import { createHash } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
+import { executeWithRetry, executeWithGracefulDegradation, executeWithCircuitBreaker } from "@/lib/error-recovery";
 
 // Environment variables
 const firecrawlKey = process.env.FIRECRAWL_KEY;
@@ -318,27 +319,25 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
     console.log('[unified-firecrawl] Making request with body:', JSON.stringify(body, null, 2));
 
-    const response = await fetch('https://api.firecrawl.dev/v2/search', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${firecrawlKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
+    // Use error recovery for Firecrawl API calls
+    const data = await executeWithRetry(async () => {
+      const response = await fetch('https://api.firecrawl.dev/v2/search', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${firecrawlKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[unified-firecrawl] API error:', response.status, errorText);
-      return {
-        items: [],
-        provider: 'firecrawl',
-        debug: { rawCount: 0, error: `HTTP ${response.status}: ${errorText}` },
-        metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
-      };
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
 
-    const data = await response.json();
+      return await response.json();
+    }, 'firecrawl');
+
     console.log('[unified-firecrawl] Response received, items:', data?.data?.length || 0);
 
     const items: string[] = Array.isArray(data?.data) 
@@ -419,21 +418,19 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
 
     console.log('[unified-cse] Making request to:', url.toString().replace(/key=[^&]+/, 'key=***'));
 
-    const response = await fetch(url.toString());
-    console.log('[unified-cse] Response status:', response.status, response.statusText);
+    // Use error recovery for CSE API calls
+    const data = await executeWithRetry(async () => {
+      const response = await fetch(url.toString());
+      console.log('[unified-cse] Response status:', response.status, response.statusText);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[unified-cse] API error:', response.status, errorText);
-      return {
-        items: [],
-        provider: 'cse',
-        debug: { rawCount: 0, error: `HTTP ${response.status}: ${errorText}` },
-        metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
-      };
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
 
-    const data = await response.json();
+      return await response.json();
+    }, 'cse');
+
     console.log('[unified-cse] Response data keys:', Object.keys(data));
 
     const items: string[] = (data?.items ?? [])
@@ -476,9 +473,11 @@ async function unifiedDatabaseSearch(params: UnifiedSearchParams): Promise<Unifi
   try {
     console.log('[unified-database] Fallback search with query:', params.q);
     
-    // This is a placeholder for database-based search
-    // In a real implementation, you would search your own database of events
-    // For now, return some sample legal event URLs that are known to be relevant
+    // Use error recovery for any database operations
+    return await executeWithRetry(async () => {
+      // This is a placeholder for database-based search
+      // In a real implementation, you would search your own database of events
+      // For now, return some sample legal event URLs that are known to be relevant
     
     const sampleUrls = [
       'https://www.juve.de/termine/',
@@ -507,14 +506,15 @@ async function unifiedDatabaseSearch(params: UnifiedSearchParams): Promise<Unifi
              urlLower.includes('event');
     });
     
-    console.log('[unified-database] Returning', filteredUrls.length, 'fallback URLs');
-    
-    return {
-      items: filteredUrls,
-      provider: 'database',
-      debug: { rawCount: filteredUrls.length, responseKeys: ['sample_urls'] },
-      metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
-    };
+      console.log('[unified-database] Returning', filteredUrls.length, 'fallback URLs');
+      
+      return {
+        items: filteredUrls,
+        provider: 'database',
+        debug: { rawCount: filteredUrls.length, responseKeys: ['sample_urls'] },
+        metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
+      };
+    }, 'database');
 
   } catch (error) {
     console.error('[unified-database] Database search failed:', error);
