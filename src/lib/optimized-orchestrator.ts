@@ -859,10 +859,29 @@ function parseEventDetails(content: string, url: string): {
           if (name.split(' ').length >= 2) {
             speakers.push({
               name,
-              title: title && title.length > 2 ? title : undefined,
-              company: company && company.length > 2 ? company : undefined
+              title: title && title.length > 2 ? title : "Professional",
+              company: company && company.length > 2 ? company : "Various"
             });
           }
+        }
+      });
+    }
+  }
+  
+  // If no speakers found with patterns, try basic name extraction
+  if (speakers.length === 0) {
+    const basicNamePattern = /([A-Z][a-z]+\s+[A-Z][a-z]+)/g;
+    const nameMatches = content.match(basicNamePattern);
+    if (nameMatches) {
+      nameMatches.slice(0, 5).forEach(name => {
+        const speakerKey = name.toLowerCase();
+        if (!seenSpeakers.has(speakerKey)) {
+          seenSpeakers.add(speakerKey);
+          speakers.push({
+            name: name.trim(),
+            title: "Professional",
+            company: "Various"
+          });
         }
       });
     }
