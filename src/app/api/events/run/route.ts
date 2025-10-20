@@ -6,6 +6,7 @@ import { isNewPipelineEnabled } from '@/lib/event-pipeline/config';
 import { loadActiveConfig, type ActiveConfig } from '@/common/search/config';
 import { deriveLocale, getCountryContext, isValidISO2Country, toISO2Country } from '@/lib/utils/country';
 import { supabaseServer } from '@/lib/supabase-server';
+import { enhanceEventsWithSuperiorSpeakers, convertEnhancedSpeakersToLegacy, type EventCandidate } from '@/lib/hybrid-speaker-extractor';
 
 // Helper function to save search results asynchronously
 async function saveSearchResultsAsync(params: {
@@ -663,6 +664,69 @@ export async function GET(req: NextRequest) {
       // Enhanced orchestrator needs processing
       result = await processEnhancedResults(res, normalizedCountry, dateFrom, dateTo, includeDebug);
     }
+
+    // HYBRID ENHANCEMENT: Apply superior speaker extraction to discovered events (GET)
+    if (result.events && result.events.length > 0) {
+      console.log(`[api/events/run] Applying hybrid speaker enhancement to ${result.events.length} events (GET)...`);
+      
+      try {
+        // Convert events to candidates format
+        const candidates: EventCandidate[] = result.events.map((event: any) => ({
+          id: event.id,
+          title: event.title,
+          source_url: event.source_url,
+          description: event.description,
+          starts_at: event.starts_at,
+          ends_at: event.ends_at,
+          city: event.city,
+          country: event.country,
+          venue: event.venue,
+          organizer: event.organizer,
+          confidence: event.confidence,
+          speakers: event.speakers || []
+        }));
+
+        // Enhance with superior speaker extraction (limit to top 3 events for GET performance)
+        const topCandidates = candidates.slice(0, 3);
+        const enhancedCandidates = await enhanceEventsWithSuperiorSpeakers(topCandidates, 1);
+        
+        // Merge enhanced data back into results
+        result.events = result.events.map((event: any) => {
+          const enhanced = enhancedCandidates.find(ec => ec.id === event.id);
+          if (enhanced && enhanced.enhanced_speakers && enhanced.enhanced_speakers.length > 0) {
+            console.log(`[api/events/run] Enhanced ${event.title} with ${enhanced.enhanced_speakers.length} superior speakers (GET)`);
+            return {
+              ...event,
+              speakers: convertEnhancedSpeakersToLegacy(enhanced.enhanced_speakers),
+              enhanced_speakers: enhanced.enhanced_speakers,
+              analysis_completed: enhanced.analysis_completed,
+              speakers_found: enhanced.speakers_found,
+              crawl_stats: enhanced.crawl_stats,
+              confidence: enhanced.enhanced_confidence || event.confidence
+            };
+          }
+          return event;
+        });
+
+        // Add hybrid enhancement metadata
+        result.hybrid_enhancement = {
+          events_enhanced: enhancedCandidates.length,
+          total_speakers_found: enhancedCandidates.reduce((sum, ec) => sum + (ec.speakers_found || 0), 0),
+          enhancement_completed: true
+        };
+
+        console.log(`[api/events/run] Hybrid enhancement completed (GET): ${enhancedCandidates.length} events enhanced`);
+      } catch (enhancementError) {
+        console.warn('[api/events/run] Hybrid enhancement failed (GET):', enhancementError);
+        // Continue with original results if enhancement fails
+        result.hybrid_enhancement = {
+          events_enhanced: 0,
+          total_speakers_found: 0,
+          enhancement_completed: false,
+          error: enhancementError instanceof Error ? enhancementError.message : 'Unknown error'
+        };
+      }
+    }
     
     return NextResponse.json(result);
   } catch (error) {
@@ -791,6 +855,69 @@ export async function POST(req: NextRequest) {
     } else {
       // Enhanced orchestrator needs processing
       result = await processEnhancedResults(res, normalizedCountry, dateFrom, dateTo, includeDebug);
+    }
+
+    // HYBRID ENHANCEMENT: Apply superior speaker extraction to discovered events
+    if (result.events && result.events.length > 0) {
+      console.log(`[api/events/run] Applying hybrid speaker enhancement to ${result.events.length} events...`);
+      
+      try {
+        // Convert events to candidates format
+        const candidates: EventCandidate[] = result.events.map((event: any) => ({
+          id: event.id,
+          title: event.title,
+          source_url: event.source_url,
+          description: event.description,
+          starts_at: event.starts_at,
+          ends_at: event.ends_at,
+          city: event.city,
+          country: event.country,
+          venue: event.venue,
+          organizer: event.organizer,
+          confidence: event.confidence,
+          speakers: event.speakers || []
+        }));
+
+        // Enhance with superior speaker extraction (limit to top 5 events for performance)
+        const topCandidates = candidates.slice(0, 5);
+        const enhancedCandidates = await enhanceEventsWithSuperiorSpeakers(topCandidates, 2);
+        
+        // Merge enhanced data back into results
+        result.events = result.events.map((event: any) => {
+          const enhanced = enhancedCandidates.find(ec => ec.id === event.id);
+          if (enhanced && enhanced.enhanced_speakers && enhanced.enhanced_speakers.length > 0) {
+            console.log(`[api/events/run] Enhanced ${event.title} with ${enhanced.enhanced_speakers.length} superior speakers`);
+            return {
+              ...event,
+              speakers: convertEnhancedSpeakersToLegacy(enhanced.enhanced_speakers),
+              enhanced_speakers: enhanced.enhanced_speakers,
+              analysis_completed: enhanced.analysis_completed,
+              speakers_found: enhanced.speakers_found,
+              crawl_stats: enhanced.crawl_stats,
+              confidence: enhanced.enhanced_confidence || event.confidence
+            };
+          }
+          return event;
+        });
+
+        // Add hybrid enhancement metadata
+        result.hybrid_enhancement = {
+          events_enhanced: enhancedCandidates.length,
+          total_speakers_found: enhancedCandidates.reduce((sum, ec) => sum + (ec.speakers_found || 0), 0),
+          enhancement_completed: true
+        };
+
+        console.log(`[api/events/run] Hybrid enhancement completed: ${enhancedCandidates.length} events enhanced`);
+      } catch (enhancementError) {
+        console.warn('[api/events/run] Hybrid enhancement failed:', enhancementError);
+        // Continue with original results if enhancement fails
+        result.hybrid_enhancement = {
+          events_enhanced: 0,
+          total_speakers_found: 0,
+          enhancement_completed: false,
+          error: enhancementError instanceof Error ? enhancementError.message : 'Unknown error'
+        };
+      }
     }
 
     const partialCandidates = Array.isArray(res?.partialResults?.candidates) ? res.partialResults.candidates : [];
