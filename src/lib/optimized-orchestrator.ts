@@ -42,6 +42,12 @@ import {
   generateSpeakerCacheKey,
   warmPopularSearches 
 } from './advanced-cache';
+import { 
+  cacheOptimizer,
+  invalidateCacheByPattern,
+  getCacheAnalytics,
+  getCacheWarmingStats
+} from './cache-optimizer';
 
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
@@ -152,6 +158,25 @@ export interface OptimizedSearchResult {
         totalCacheHits: number;
         totalCacheSize: number;
         memoryUsage: number;
+        optimizationEnabled: boolean;
+        warmingStats?: {
+          totalWarmed: number;
+          successfulWarms: number;
+          failedWarms: number;
+          lastWarmingTime: number;
+        };
+        optimizationAnalytics?: {
+          timestamp: number;
+          hitRate: number;
+          missRate: number;
+          totalRequests: number;
+          averageResponseTime: number;
+          cacheSize: number;
+          memoryUsage: number;
+          topKeys: Array<{ key: string; hits: number; size: number }>;
+          invalidationCount: number;
+          warmingCount: number;
+        };
       };
     };
   };
@@ -251,6 +276,8 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       analysis: analysisCache.getAnalytics(),
       speaker: speakerCache.getAnalytics()
     };
+    const cacheOptimizationAnalytics = getCacheAnalytics();
+    const cacheWarmingStats = getCacheWarmingStats();
 
     return {
       events: finalEvents,
@@ -287,6 +314,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
             totalCacheHits: cacheAnalytics.search.combined.hits + cacheAnalytics.analysis.combined.hits + cacheAnalytics.speaker.combined.hits,
             totalCacheSize: cacheAnalytics.search.combined.cacheSize + cacheAnalytics.analysis.combined.cacheSize + cacheAnalytics.speaker.combined.cacheSize,
             memoryUsage: cacheAnalytics.search.combined.memoryUsage + cacheAnalytics.analysis.combined.memoryUsage + cacheAnalytics.speaker.combined.memoryUsage,
+            optimizationEnabled: true,
+            warmingStats: cacheWarmingStats,
+            optimizationAnalytics: cacheOptimizationAnalytics || undefined,
           }
         }
       },
