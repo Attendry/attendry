@@ -29,7 +29,6 @@ import {
 import { 
   OPTIMIZED_CONFIG, 
   resourceOptimizer, 
-  performanceMonitor,
   optimizeTimeout,
   getOptimizedConcurrency,
   getOptimizedPerformance
@@ -48,6 +47,16 @@ import {
   getCacheAnalytics,
   getCacheWarmingStats
 } from './cache-optimizer';
+import { 
+  performanceMonitor,
+  recordApiPerformance,
+  recordCachePerformance,
+  recordExternalPerformance,
+  getPerformanceSnapshot,
+  getPerformanceTrends,
+  getPerformanceRecommendations,
+  getPerformanceAlerts
+} from './performance-monitor';
 
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
@@ -179,6 +188,61 @@ export interface OptimizedSearchResult {
         };
       };
     };
+    performanceMonitoring?: {
+      enabled: boolean;
+      snapshot: {
+        timestamp: number;
+        metrics: Array<{
+          id: string;
+          timestamp: number;
+          type: string;
+          name: string;
+          value: number;
+          unit: string;
+          tags: Record<string, string>;
+        }>;
+        summary: {
+          totalRequests: number;
+          averageResponseTime: number;
+          errorRate: number;
+          cacheHitRate: number;
+          memoryUsage: number;
+          cpuUsage: number;
+        };
+      };
+      trends: Array<{
+        metric: string;
+        period: string;
+        trend: 'improving' | 'stable' | 'degrading';
+        change: number;
+        confidence: number;
+        prediction?: number;
+      }>;
+      recommendations: Array<{
+        id: string;
+        type: string;
+        priority: string;
+        title: string;
+        description: string;
+        impact: string;
+        effort: string;
+        metrics: string[];
+        implementation: string[];
+      }>;
+      activeAlerts: Array<{
+        id: string;
+        timestamp: number;
+        severity: string;
+        type: string;
+        metric: string;
+        value: number;
+        threshold: number;
+        message: string;
+        recommendations: string[];
+        resolved: boolean;
+      }>;
+      monitoringEnabled: boolean;
+    };
   };
   logs: Array<{
     stage: string;
@@ -197,7 +261,13 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   
   // Register request with resource optimizer
   resourceOptimizer.registerRequest();
-  performanceMonitor.startTiming('total_search');
+  
+  // Record search start
+  const searchStartTime = Date.now();
+  recordApiPerformance('optimized_search_start', 0, true, { 
+    userText: params.userText?.substring(0, 50) || 'empty',
+    country: params.country || 'unknown'
+  });
   
   // Warm popular searches in background
   warmPopularSearches().catch(error => {
@@ -206,9 +276,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   
   try {
     // Step 1: Build optimized query
-    performanceMonitor.startTiming('query_build');
+    const queryBuildStart = Date.now();
     const query = await buildOptimizedQuery(params);
-    const queryBuildTime = performanceMonitor.endTiming('query_build');
+    const queryBuildTime = Date.now() - queryBuildStart;
     logs.push({
       stage: 'query_build',
       message: 'Built optimized search query',
@@ -217,9 +287,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     });
 
     // Step 2: Multi-source discovery
-    performanceMonitor.startTiming('discovery');
+    const discoveryStart = Date.now();
     const candidates = await discoverEventCandidates(query, params);
-    const discoveryTime = performanceMonitor.endTiming('discovery');
+    const discoveryTime = Date.now() - discoveryStart;
     logs.push({
       stage: 'discovery',
       message: `Discovered ${candidates.length} candidates`,
@@ -228,9 +298,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     });
 
     // Step 3: Intelligent prioritization
-    performanceMonitor.startTiming('prioritization');
+    const prioritizationStart = Date.now();
     const prioritized = await prioritizeCandidates(candidates, params);
-    const prioritizationTime = performanceMonitor.endTiming('prioritization');
+    const prioritizationTime = Date.now() - prioritizationStart;
     logs.push({
       stage: 'prioritization',
       message: `Prioritized ${prioritized.length} candidates`,
@@ -239,9 +309,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     });
 
     // Step 4: Parallel extraction
-    performanceMonitor.startTiming('extraction');
+    const extractionStart = Date.now();
     const extracted = await extractEventDetails(prioritized, params);
-    const extractionTime = performanceMonitor.endTiming('extraction');
+    const extractionTime = Date.now() - extractionStart;
     logs.push({
       stage: 'extraction',
       message: `Extracted ${extracted.length} events`,
@@ -250,9 +320,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     });
 
     // Step 5: Speaker enhancement
-    performanceMonitor.startTiming('enhancement');
+    const enhancementStart = Date.now();
     const enhanced = await enhanceEventSpeakers(extracted, params);
-    const enhancementTime = performanceMonitor.endTiming('enhancement');
+    const enhancementTime = Date.now() - enhancementStart;
     logs.push({
       stage: 'enhancement',
       message: `Enhanced ${enhanced.length} events`,
@@ -263,13 +333,20 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     // Step 6: Final filtering and ranking
     const finalEvents = filterAndRankEvents(enhanced);
 
-    const totalDuration = performanceMonitor.endTiming('total_search');
+    const totalDuration = Date.now() - startTime;
     const averageConfidence = finalEvents.length > 0 
       ? finalEvents.reduce((sum, event) => sum + event.confidence, 0) / finalEvents.length 
       : 0;
 
+    // Record final search performance
+    recordApiPerformance('optimized_search_complete', totalDuration, true, {
+      eventsFound: finalEvents.length.toString(),
+      averageConfidence: averageConfidence.toFixed(2),
+      country: params.country || 'unknown'
+    });
+
     // Get performance metrics
-    const performanceMetrics = performanceMonitor.getAllMetrics();
+    const performanceMetrics = performanceMonitor.getMetrics();
     const resourceMetrics = resourceOptimizer.getResourceMetrics();
     const cacheAnalytics = {
       search: searchCache.getAnalytics(),
@@ -278,6 +355,10 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     };
     const cacheOptimizationAnalytics = getCacheAnalytics();
     const cacheWarmingStats = getCacheWarmingStats();
+    const performanceSnapshot = getPerformanceSnapshot();
+    const performanceTrends = getPerformanceTrends();
+    const performanceRecommendations = getPerformanceRecommendations();
+    const performanceAlerts = getPerformanceAlerts({ resolved: false });
 
     return {
       events: finalEvents,
@@ -293,12 +374,12 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         // Performance optimization data
         performance: {
           stageTimings: {
-            queryBuild: performanceMetrics.query_build?.average || 0,
-            discovery: performanceMetrics.discovery?.average || 0,
-            prioritization: performanceMetrics.prioritization?.average || 0,
-            extraction: performanceMetrics.extraction?.average || 0,
-            enhancement: performanceMetrics.enhancement?.average || 0,
-            total: performanceMetrics.total_search?.average || 0,
+            queryBuild: queryBuildTime,
+            discovery: discoveryTime,
+            prioritization: prioritizationTime,
+            extraction: extractionTime,
+            enhancement: enhancementTime,
+            total: totalDuration,
           },
           resourceUtilization: resourceMetrics,
           optimizationEnabled: true,
@@ -318,13 +399,29 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
             warmingStats: cacheWarmingStats,
             optimizationAnalytics: cacheOptimizationAnalytics || undefined,
           }
+        },
+        // Performance monitoring data
+        performanceMonitoring: {
+          enabled: true,
+          snapshot: performanceSnapshot,
+          trends: performanceTrends,
+          recommendations: performanceRecommendations,
+          activeAlerts: performanceAlerts,
+          monitoringEnabled: true,
         }
       },
       logs
     };
 
   } catch (error) {
-    performanceMonitor.endTiming('total_search');
+    const errorDuration = Date.now() - startTime;
+    
+    // Record error performance
+    recordApiPerformance('optimized_search_error', errorDuration, false, {
+      error: error instanceof Error ? error.message : String(error),
+      country: params.country || 'unknown'
+    });
+    
     logs.push({
       stage: 'error',
       message: 'Search failed',
@@ -352,6 +449,15 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
             maxConcurrency: getOptimizedConcurrency().maxConcurrentRequests,
             adaptiveScaling: getOptimizedConcurrency().enableAdaptiveConcurrency,
           }
+        },
+        // Performance monitoring data
+        performanceMonitoring: {
+          enabled: true,
+          snapshot: getPerformanceSnapshot(),
+          trends: getPerformanceTrends(),
+          recommendations: getPerformanceRecommendations(),
+          activeAlerts: getPerformanceAlerts({ resolved: false }),
+          monitoringEnabled: true,
         }
       },
       logs
