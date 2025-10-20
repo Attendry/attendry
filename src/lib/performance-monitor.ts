@@ -18,6 +18,7 @@
 
 import { createHash } from "crypto";
 import { supabaseServer } from "./supabase-server";
+import { alertingSystem, evaluateAlertMetrics } from "./alerting-system";
 
 // Performance monitoring configuration
 export const PERFORMANCE_CONFIG = {
@@ -547,8 +548,8 @@ class PerformanceAlertManager {
     if (this.isMonitoring) return;
     
     this.isMonitoring = true;
-    setInterval(() => {
-      this.checkThresholds(metricsCollector);
+    setInterval(async () => {
+      await this.checkThresholds(metricsCollector);
     }, PERFORMANCE_CONFIG.metrics.collectionInterval);
     
     console.log('[performance-monitor] Alert monitoring started');
@@ -559,8 +560,21 @@ class PerformanceAlertManager {
     console.log('[performance-monitor] Alert monitoring stopped');
   }
 
-  private checkThresholds(metricsCollector: PerformanceMetricsCollector): void {
+  private async checkThresholds(metricsCollector: PerformanceMetricsCollector): Promise<void> {
     const snapshot = metricsCollector.getLatestSnapshot();
+    
+    // Prepare metrics for alerting system
+    const alertMetrics: Record<string, number> = {
+      api_response_time: snapshot.summary.averageResponseTime,
+      error_rate: snapshot.summary.errorRate,
+      cache_hit_rate: snapshot.summary.cacheHitRate,
+      memory_usage: snapshot.summary.memoryUsage,
+      cpu_usage: snapshot.summary.cpuUsage,
+      total_requests: snapshot.summary.totalRequests
+    };
+
+    // Evaluate alert rules
+    await evaluateAlertMetrics(alertMetrics);
     
     // Check response time threshold
     this.checkThreshold(
