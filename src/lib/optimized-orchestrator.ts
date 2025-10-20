@@ -824,17 +824,48 @@ function parseEventDetails(content: string, url: string): {
     location = `${locationMatch[1]}, ${locationMatch[2]}`;
   }
   
-  // Extract speakers (look for speaker patterns)
-  const speakerMatches = content.match(/([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*,\s*([^,\n]+))?/g);
-  if (speakerMatches) {
-    speakerMatches.slice(0, ORCHESTRATOR_CONFIG.limits.maxSpeakers).forEach(match => {
-      const parts = match.split(',').map(p => p.trim());
-      speakers.push({
-        name: parts[0],
-        title: parts[1] || undefined,
-        company: parts[2] || undefined
+  // Extract speakers with enhanced patterns
+  const speakerPatterns = [
+    // Pattern 1: "Name, Title, Company"
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))(?:\s*,\s*([^,\n]+?))?(?:\s*[,;]|$)/g,
+    // Pattern 2: "Name - Title at Company"
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*[-–]\s*([^,\n]+?)(?:\s+at\s+([^,\n]+?))?(?:\s*[,;]|$)/g,
+    // Pattern 3: "Name (Title, Company)"
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*\(([^,\n]+?)(?:,\s*([^,\n]+?))?\)/g,
+    // Pattern 4: "Name | Title | Company"
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*\|\s*([^,\n]+?)(?:\s*\|\s*([^,\n]+?))?(?:\s*[,;]|$)/g,
+    // Pattern 5: Basic "Name, Title" or "Name, Company"
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))(?:\s*[,;]|$)/g
+  ];
+
+  const seenSpeakers = new Set<string>();
+  
+  for (const pattern of speakerPatterns) {
+    const matches = content.match(pattern);
+    if (matches) {
+      matches.slice(0, ORCHESTRATOR_CONFIG.limits.maxSpeakers).forEach(match => {
+        const parts = match.split(/[,;|()]/).map(p => p.trim()).filter(Boolean);
+        if (parts.length >= 1) {
+          const name = parts[0].trim();
+          const title = parts[1]?.trim() || undefined;
+          const company = parts[2]?.trim() || undefined;
+          
+          // Skip if we've already seen this speaker
+          const speakerKey = name.toLowerCase();
+          if (seenSpeakers.has(speakerKey)) return;
+          seenSpeakers.add(speakerKey);
+          
+          // Only add if it looks like a real name (at least 2 words)
+          if (name.split(' ').length >= 2) {
+            speakers.push({
+              name,
+              title: title && title.length > 2 ? title : undefined,
+              company: company && company.length > 2 ? company : undefined
+            });
+          }
+        }
       });
-    });
+    }
   }
   
   // Calculate confidence based on extracted information
@@ -951,6 +982,12 @@ async function enhanceSpeakersWithGemini(speakers: SpeakerInfo[], eventTitle: st
     return speakers;
   }
 
+  // If speakers already have titles and companies, return them as-is
+  const hasCompleteInfo = speakers.every(s => s.title && s.company);
+  if (hasCompleteInfo) {
+    return speakers;
+  }
+
   const prompt = `Enhance the speaker information for this event: "${eventTitle}"
 
 Current speakers:
@@ -958,8 +995,15 @@ ${speakers.map(s => `- ${s.name}${s.title ? `, ${s.title}` : ''}${s.company ? `,
 
 Please enhance each speaker with:
 1. Full name (First Last format)
-2. Professional title/role
-3. Company/organization
+2. Professional title/role (e.g., "General Counsel", "Compliance Officer", "Director", "Manager")
+3. Company/organization (e.g., "Microsoft", "Goldman Sachs", "Law Firm Name")
+
+IMPORTANT:
+- If a speaker already has a title or company, keep it unless you can provide a more specific one
+- For legal/compliance events, common titles include: General Counsel, Chief Compliance Officer, Legal Director, Compliance Manager, Partner, Associate
+- For business events, common titles include: CEO, CTO, Director, Manager, VP, Head of
+- Only include actual person names, not generic terms
+- If you cannot determine a title or company, use "Professional" as title and "Various" as company
 
 Return JSON array:
 [
@@ -968,9 +1012,7 @@ Return JSON array:
     "title": "Professional Title",
     "company": "Company Name"
   }
-]
-
-Only include actual person names, not generic terms.`;
+]`;
 
   const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
   
@@ -1002,13 +1044,42 @@ Only include actual person names, not generic terms.`;
   try {
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      const enhancedSpeakers = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(enhancedSpeakers) && enhancedSpeakers.length > 0) {
+        // Merge enhanced data with original speakers
+        return speakers.map(originalSpeaker => {
+          const enhanced = enhancedSpeakers.find(e => 
+            e.name && originalSpeaker.name && 
+            e.name.toLowerCase().includes(originalSpeaker.name.toLowerCase())
+          );
+          
+          if (enhanced) {
+            return {
+              name: enhanced.name || originalSpeaker.name,
+              title: enhanced.title || originalSpeaker.title || "Professional",
+              company: enhanced.company || originalSpeaker.company || "Various"
+            };
+          }
+          
+          // If no enhancement found, provide fallback values
+          return {
+            name: originalSpeaker.name,
+            title: originalSpeaker.title || "Professional",
+            company: originalSpeaker.company || "Various"
+          };
+        });
+      }
     }
   } catch (error) {
     console.warn('[optimized-orchestrator] Failed to parse enhanced speakers:', error);
   }
   
-  return speakers; // Return original if parsing fails
+  // Return speakers with fallback values if enhancement fails
+  return speakers.map(speaker => ({
+    name: speaker.name,
+    title: speaker.title || "Professional",
+    company: speaker.company || "Various"
+  }));
 }
 
 /**
