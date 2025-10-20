@@ -79,8 +79,11 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     console.log(`[async-events] Found ${events?.length || 0} events in database`);
     
     if (!events || events.length === 0) {
+      console.error(`[async-events] No events found in database for IDs:`, job.eventIds);
       throw new Error('No events found in database');
     }
+    
+    console.log(`[async-events] Event details:`, events.map(e => ({ id: e.id, title: e.title, source_url: e.source_url })));
     
     job.progress = 30;
     
@@ -103,11 +106,23 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     job.progress = 40;
     
     console.log(`[async-events] Starting hybrid speaker extraction for ${candidates.length} candidates`);
+    console.log(`[async-events] Candidate details:`, candidates.map(c => ({ id: c.id, title: c.title, source_url: c.source_url })));
     
     // Enhance with superior speaker extraction
-    const enhancedCandidates = await enhanceEventsWithSuperiorSpeakers(candidates, 2);
-    
-    console.log(`[async-events] Hybrid extraction completed, enhanced ${enhancedCandidates.length} candidates`);
+    let enhancedCandidates: any[] = [];
+    try {
+      enhancedCandidates = await enhanceEventsWithSuperiorSpeakers(candidates, 2);
+      console.log(`[async-events] Hybrid extraction completed, enhanced ${enhancedCandidates.length} candidates`);
+      console.log(`[async-events] Enhanced candidates:`, enhancedCandidates.map(ec => ({ 
+        id: ec.id, 
+        speakers_found: ec.speakers_found, 
+        enhanced_speakers: ec.enhanced_speakers?.length || 0 
+      })));
+    } catch (extractionError) {
+      console.error(`[async-events] Hybrid extraction failed:`, extractionError);
+      // Continue with empty enhanced candidates
+      enhancedCandidates = [];
+    }
     
     job.progress = 80;
     
@@ -130,6 +145,13 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     
     job.progress = 90;
     
+    console.log(`[async-events] Final results:`, results.map(r => ({ 
+      id: r.id, 
+      title: r.title, 
+      speakers_count: r.speakers?.length || 0,
+      enhanced_speakers_count: r.enhanced_speakers?.length || 0
+    })));
+    
     // Store enhanced results in database
     await storeEnhancedEvents(results);
     
@@ -138,7 +160,7 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     job.results = results;
     job.completedAt = new Date();
     
-    console.log(`Async events analysis completed for job ${jobId}:`, {
+    console.log(`[async-events] Async events analysis completed for job ${jobId}:`, {
       events_enhanced: enhancedCandidates.length,
       total_speakers: enhancedCandidates.reduce((sum, ec) => sum + (ec.enhanced_speakers?.length || 0), 0)
     });

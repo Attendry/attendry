@@ -390,15 +390,19 @@ export async function enhanceEventsWithSuperiorSpeakers(
   maxConcurrent: number = 3
 ): Promise<EnhancedEventCandidate[]> {
   console.log(`Hybrid: Starting enhancement of ${candidates.length} events with max ${maxConcurrent} concurrent crawls`);
+  console.log(`Hybrid: Candidate URLs:`, candidates.map(c => c.source_url));
   
   const enhancedCandidates: EnhancedEventCandidate[] = [];
   
   // Process events in batches to respect rate limits
   for (let i = 0; i < candidates.length; i += maxConcurrent) {
     const batch = candidates.slice(i, i + maxConcurrent);
+    console.log(`Hybrid: Processing batch ${Math.floor(i/maxConcurrent) + 1} with ${batch.length} events`);
     
     const batchPromises = batch.map(async (candidate) => {
       try {
+        console.log(`Hybrid: Processing candidate ${candidate.id}: ${candidate.title}`);
+        
         // Check cache first
         const cachedSpeakers = await getCachedAnalysis(candidate.source_url);
         if (cachedSpeakers) {
