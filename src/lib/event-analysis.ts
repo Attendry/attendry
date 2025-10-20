@@ -445,6 +445,7 @@ export async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string):
 
 export async function extractEventMetadata(crawlResults: CrawlResult[], eventTitle?: string, eventDate?: string, country?: string): Promise<EventMetadata> {
   if (!geminiKey) {
+    console.log('Gemini key not available for metadata extraction, using fallback');
     // Fallback to basic extraction
     return {
       title: eventTitle || crawlResults[0]?.title || 'Unknown Event',
@@ -458,8 +459,10 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
   }
   
   try {
+    console.log('Initializing Gemini for event metadata extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    console.log('Gemini model initialized for metadata extraction');
     
     const combinedContent = crawlResults.map(result => 
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1000)}...`
@@ -482,9 +485,12 @@ Please extract and return the following information in JSON format:
 
 Focus on extracting accurate, factual information. If information is not available, use "Unknown" or null.`;
 
+    console.log('Calling Gemini API for event metadata extraction...');
     const result = await model.generateContent(prompt);
     const response = await result.response;
+    console.log('Gemini API call completed for metadata, processing response...');
     const text = response.text();
+    console.log('Gemini metadata response received, length:', text.length);
     
     // Try to parse JSON
     try {
@@ -522,16 +528,21 @@ Focus on extracting accurate, factual information. If information is not availab
 
 export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Promise<SpeakerData[]> {
   if (!geminiKey) {
+    console.log('Gemini key not available, returning empty speakers array');
     return [];
   }
   
   try {
+    console.log('Initializing Gemini for speaker extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    console.log('Gemini model initialized successfully');
     
     const combinedContent = crawlResults.map(result => 
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`
     ).join('\n\n');
+    
+    console.log('Preparing content for Gemini analysis, total content length:', combinedContent.length);
     
     const prompt = `Analyze the following event content and extract all speakers/presenters with their detailed information. This content may be in German or English.
 
@@ -573,9 +584,12 @@ Important instructions:
 
 Return valid JSON only, no additional text.`;
 
+    console.log('Calling Gemini API for speaker extraction...');
     const result = await model.generateContent(prompt);
     const response = await result.response;
+    console.log('Gemini API call completed, processing response...');
     const text = response.text();
+    console.log('Gemini response received, length:', text.length);
     
     // Try to parse JSON with better error handling
     try {
@@ -730,10 +744,14 @@ export async function analyzeEvent(request: EventAnalysisRequest): Promise<Event
     }
     
     // Extract event metadata
+    console.log('Starting event metadata extraction...');
     const eventMetadata = await extractEventMetadata(crawlResults, eventTitle, eventDate, country);
+    console.log('Event metadata extraction completed:', { title: eventMetadata.title, location: eventMetadata.location });
     
     // Extract and enhance speakers
+    console.log('Starting speaker extraction and enhancement...');
     const speakers = await extractAndEnhanceSpeakers(crawlResults);
+    console.log('Speaker extraction completed, found', speakers.length, 'speakers');
     
     const crawlDuration = Date.now() - startTime;
     const totalContentLength = crawlResults.reduce((sum, result) => sum + result.content.length, 0);
