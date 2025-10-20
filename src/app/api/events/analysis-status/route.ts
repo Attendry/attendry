@@ -3,10 +3,14 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // GET /api/events/analysis-status?jobId=xxx - Check async analysis status
 export async function GET(req: NextRequest): Promise<NextResponse> {
+  console.log('[analysis-status] API endpoint called');
+  
   try {
     const { searchParams } = new URL(req.url);
     const jobId = searchParams.get('jobId');
     const extractionId = searchParams.get('extractionId');
+    
+    console.log('[analysis-status] Request params:', { jobId, extractionId });
     
     if (!jobId && !extractionId) {
       return NextResponse.json({ 
@@ -21,12 +25,33 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       
       // Check if it's a calendar job or events job
       if (jobId.startsWith('calendar_')) {
-        const { getAsyncAnalysisStatus } = await import('@/lib/async-calendar-analysis');
-        jobStatus = await getAsyncAnalysisStatus(jobId);
+        console.log('[analysis-status] Loading calendar analysis status for job:', jobId);
+        try {
+          const { getAsyncAnalysisStatus } = await import('@/lib/async-calendar-analysis');
+          jobStatus = await getAsyncAnalysisStatus(jobId);
+          console.log('[analysis-status] Calendar job status:', jobStatus ? 'found' : 'not found');
+        } catch (importError) {
+          console.error('[analysis-status] Failed to import calendar analysis:', importError);
+          return NextResponse.json({ 
+            success: false,
+            error: "Failed to load calendar analysis module" 
+          }, { status: 500 });
+        }
       } else if (jobId.startsWith('events_')) {
-        const { getAsyncEventsStatus } = await import('@/lib/async-events-analysis');
-        jobStatus = await getAsyncEventsStatus(jobId);
+        console.log('[analysis-status] Loading events analysis status for job:', jobId);
+        try {
+          const { getAsyncEventsStatus } = await import('@/lib/async-events-analysis');
+          jobStatus = await getAsyncEventsStatus(jobId);
+          console.log('[analysis-status] Events job status:', jobStatus ? 'found' : 'not found');
+        } catch (importError) {
+          console.error('[analysis-status] Failed to import events analysis:', importError);
+          return NextResponse.json({ 
+            success: false,
+            error: "Failed to load events analysis module" 
+          }, { status: 500 });
+        }
       } else {
+        console.log('[analysis-status] Invalid job ID format:', jobId);
         return NextResponse.json({ 
           success: false,
           error: "Invalid job ID format" 
@@ -54,7 +79,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     
     // If we have an extractionId, check the database for analysis results
     if (extractionId) {
-      const supabase = supabaseAdmin();
+      console.log('[analysis-status] Checking database for extractionId:', extractionId);
+      let supabase;
+      try {
+        supabase = supabaseAdmin();
+        console.log('[analysis-status] Supabase admin client created successfully');
+      } catch (supabaseError) {
+        console.error('[analysis-status] Failed to create supabase admin client:', supabaseError);
+        return NextResponse.json({ 
+          success: false,
+          error: "Database connection failed" 
+        }, { status: 500 });
+      }
       const { data: extraction, error } = await supabase
         .from('event_extractions')
         .select('payload')
