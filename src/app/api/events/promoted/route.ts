@@ -41,28 +41,63 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
-    // Transform the data to match the expected format
-    const promotedEvents = extractions?.map(extraction => ({
-      id: extraction.id,
-      title: extraction.payload?.original_event_data?.title || 'Promoted Event',
-      source_url: extraction.url,
-      starts_at: extraction.payload?.original_event_data?.starts_at,
-      ends_at: extraction.payload?.original_event_data?.ends_at,
-      city: extraction.locality,
-      country: extraction.country,
-      venue: extraction.payload?.original_event_data?.venue,
-      organizer: extraction.payload?.original_event_data?.organizer,
-      description: extraction.payload?.original_event_data?.description,
-      confidence: extraction.payload?.original_event_data?.confidence,
-      promoted_at: extraction.payload?.promoted_at,
-      extraction_id: extraction.id,
-      status: 'promoted'
-    })) || [];
+    // Transform the data to match the expected format with rich analysis data
+    const promotedEvents = extractions?.map(extraction => {
+      const baseEvent = {
+        id: extraction.id,
+        title: extraction.payload?.original_event_data?.title || 'Promoted Event',
+        source_url: extraction.url,
+        starts_at: extraction.payload?.original_event_data?.starts_at,
+        ends_at: extraction.payload?.original_event_data?.ends_at,
+        city: extraction.locality,
+        country: extraction.country,
+        venue: extraction.payload?.original_event_data?.venue,
+        organizer: extraction.payload?.original_event_data?.organizer,
+        description: extraction.payload?.original_event_data?.description,
+        confidence: extraction.payload?.original_event_data?.confidence,
+        promoted_at: extraction.payload?.promoted_at,
+        extraction_id: extraction.id,
+        status: 'promoted'
+      };
+
+      // Include rich analysis data if available
+      if (extraction.payload?.analysis_results) {
+        const analysis = extraction.payload.analysis_results;
+        return {
+          ...baseEvent,
+          // Enhanced event metadata from analysis
+          title: analysis.event?.title || baseEvent.title,
+          description: analysis.event?.description || baseEvent.description,
+          venue: analysis.event?.location || baseEvent.venue,
+          organizer: analysis.event?.organizer || baseEvent.organizer,
+          // Rich speaker data from analysis
+          speakers: analysis.speakers || [],
+          // Analysis metadata
+          analysis_completed: extraction.payload?.analysis_completed || false,
+          speakers_found: analysis.speakers?.length || 0,
+          crawl_stats: analysis.crawl_stats || null,
+          // Enhanced confidence based on analysis
+          confidence: analysis.speakers?.length > 0 ? Math.min(0.9, (baseEvent.confidence || 0.5) + 0.3) : baseEvent.confidence
+        };
+      }
+
+      return baseEvent;
+    }) || [];
+
+    // Log speaker counts for debugging
+    const totalSpeakers = promotedEvents.reduce((sum, event) => sum + (event.speakers?.length || 0), 0);
+    console.log('Promoted events API response:', {
+      totalEvents: promotedEvents.length,
+      totalSpeakers: totalSpeakers,
+      eventsWithSpeakers: promotedEvents.filter(e => e.speakers?.length > 0).length,
+      analysisCompleted: promotedEvents.filter(e => e.analysis_completed).length
+    });
 
     return NextResponse.json({ 
       success: true,
       events: promotedEvents,
-      count: promotedEvents.length
+      count: promotedEvents.length,
+      totalSpeakers: totalSpeakers
     });
   } catch (e: any) {
     return NextResponse.json({ 
