@@ -54,11 +54,11 @@ This project plan transforms the current search pipeline from **Grade B+** to **
 **Priority**: CRITICAL - Address 60-70% event coverage gap
 
 #### Week 1: Enhanced Query Building
-**Sprint 1.1: Advanced Query Builder (Days 1-3)**
-- [ ] **Task 1.1.1**: Create `src/lib/query-builder.ts` with 20+ event types
-- [ ] **Task 1.1.2**: Implement multi-language query variations
-- [ ] **Task 1.1.3**: Add temporal and industry-specific terms
-- [ ] **Task 1.1.4**: Integrate with `optimized-orchestrator.ts`
+**Sprint 1.1: Enhance Existing Query Builders (Days 1-3)**
+- [ ] **Task 1.1.1**: Enhance `buildEventFocusedQuery()` in `enhanced-orchestrator.ts` with 20+ event types
+- [ ] **Task 1.1.2**: Extend `buildOptimizedQuery()` in `optimized-orchestrator.ts` with multi-language support
+- [ ] **Task 1.1.3**: Add temporal and industry-specific terms to existing query builders
+- [ ] **Task 1.1.4**: Consolidate query building logic across orchestrators
 
 **Sprint 1.2: Localization Engine (Days 4-6)**
 - [ ] **Task 1.2.1**: Create `src/lib/localization-engine.ts`
@@ -192,13 +192,18 @@ Core Services
 └── async-calendar-analysis.ts (Async Processing)
 
 New Components (To Be Built)
-├── query-builder.ts (Enhanced Queries)
 ├── localization-engine.ts (Multi-language)
 ├── fallback-sources.ts (Robust Fallbacks)
 ├── event-intelligence.ts (Business Intelligence)
 ├── speaker-profiler.ts (Advanced Profiling)
 ├── performance-optimizer.ts (Performance)
 └── search-monitor.ts (Monitoring)
+
+Existing Components (To Be Enhanced)
+├── buildEventFocusedQuery() (Enhanced with 20+ event types)
+├── buildOptimizedQuery() (Enhanced with multi-language)
+├── buildSearchQuery() (Enhanced with temporal terms)
+└── query-optimizer.ts (Enhanced with new strategies)
 ```
 
 ### Database Schema Updates
@@ -417,7 +422,7 @@ CREATE TABLE speaker_profiles (
 4. **Risk Assessment**: Detailed risk analysis and mitigation plans
 
 ### Week 1 Actions
-1. **Sprint 1.1 Start**: Begin Advanced Query Builder development
+1. **Sprint 1.1 Start**: Begin enhancing existing query builders
 2. **Database Setup**: Prepare database environment for new tables
 3. **API Planning**: Plan API endpoint updates and integrations
 4. **Testing Setup**: Set up testing environment and frameworks
