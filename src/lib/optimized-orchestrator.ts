@@ -469,31 +469,24 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 }
 
 /**
- * Build optimized search query
+ * Build optimized search query using unified query builder
  */
 async function buildOptimizedQuery(params: OptimizedSearchParams): Promise<string> {
-  let query = params.userText?.trim() || '';
+  // Use unified query builder for enhanced query generation
+  const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
   
-  if (!query) {
-    // Load admin configuration for base query
-    const config = await loadActiveConfig();
-    query = config.baseQuery;
-  }
-
-  // Get country context
-  const countryContext = getCountryContext(params.country);
+  const result = await buildUnifiedQuery({
+    userText: params.userText,
+    country: params.country,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+    location: params.location,
+    timeframe: params.timeframe,
+    locale: params.locale,
+    language: 'en' // Default to English for optimized orchestrator
+  });
   
-  // Build event-focused query
-  const eventTerms = ['conference', 'summit', 'workshop', 'event', 'agenda', 'speakers'];
-  const locationTerms = countryContext.iso2 === 'DE' 
-    ? ['Germany', 'Berlin', 'München', 'Frankfurt'] 
-    : countryContext.countryNames;
-  
-  const yearTerms = ['2025', '2026', 'upcoming', 'register'];
-  
-  // Combine terms for optimal search
-  const terms = [query, eventTerms[0], locationTerms[0], yearTerms[0]].filter(Boolean);
-  return terms.join(' ');
+  return result.query;
 }
 
 /**

@@ -354,35 +354,25 @@ function quoteToken(token: string): string {
   return trimmed;
 }
 
-function buildEventFocusedQuery(
+async function buildEventFocusedQuery(
   baseQuery: string,
   userText: string,
   locationContext: LocationContext,
   timeframeContext: TimeframeContext,
   searchConfig: ActiveConfig
-): string {
-  const eventTerms = Array.isArray(searchConfig.eventTerms) && searchConfig.eventTerms.length
-    ? searchConfig.eventTerms
-    : ['conference', 'event', 'summit', 'workshop', 'seminar', 'meeting', 'symposium', 'forum', 'exhibition', '"trade show"', '"trade fair"', 'convention', 'congress'];
-  const eventQuery = `(${eventTerms.join(' OR ')})`;
-
-  const segments = [baseQuery, eventQuery];
-
-  if (locationContext.tokens.length) {
-    const locTokens = locationContext.tokens.map(quoteToken).filter(Boolean);
-    if (locTokens.length) {
-      segments.push(`(${locTokens.join(' OR ')})`);
-    }
-  }
-
-  if (timeframeContext.tokens.length) {
-    const timeTokens = timeframeContext.tokens.map(quoteToken).filter(Boolean);
-    if (timeTokens.length) {
-      segments.push(`(${timeTokens.join(' OR ')})`);
-    }
-  }
-
-  return segments.join(' ').replace(/\s+/g, ' ').trim();
+): Promise<string> {
+  // Use unified query builder for enhanced query generation
+  const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
+  
+  const result = await buildUnifiedQuery({
+    userText: userText || baseQuery,
+    country: locationContext.primary,
+    location: locationContext.label,
+    timeframe: timeframeContext.label,
+    language: 'en' // Default to English for enhanced orchestrator
+  });
+  
+  return result.query;
 }
 
 type PrioritizedUrl = {
@@ -2195,7 +2185,7 @@ async function performEnhancedSearch(args: ExecArgs) {
   const locationInput = location ?? country ?? null;
   const locationContext = buildLocationContext(locationInput, cfg);
   const timeframeContext = timeframeDates;
-  const q = buildEventFocusedQuery(baseQ, userText, locationContext, timeframeContext, cfg);
+  const q = await buildEventFocusedQuery(baseQ, userText, locationContext, timeframeContext, cfg);
 
   console.log('[enhanced_orchestrator] Search parameters:', {
     userText,
