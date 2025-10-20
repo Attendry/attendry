@@ -417,41 +417,49 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
     }
   };
 
-  // Create new pipeline
+  // Create new pipeline with Unified Search Core
   const newPipeline = new EventPipeline(
     config,
     {
-      search: async ({ q, country, limit, countryContext }: { q: string; country: string | null; limit?: number; countryContext?: ReturnType<typeof getCountryContext> | null }) =>
-        cseSearch({
-          baseQuery: q,
-          userText: q,
-          countryContext: countryContext ?? (country ? getCountryContext(country) : undefined),
-          locale: countryContext?.locale,
-          num: limit,
-        }).then((res) => ({
-          items: res.items.map((item: any) => ({
-            url: item.url,
-            title: item.title,
-            description: item.snippet,
+      // CSE service using Unified Search Core
+      search: async ({ q, country, limit }: { q: string; country: string | null; limit?: number }) => {
+        const { unifiedSearch } = await import('@/lib/search/unified-search-core');
+        const result = await unifiedSearch({
+          q,
+          country: country || undefined,
+          limit: limit || 20,
+          useCache: true
+        });
+        
+        return {
+          items: result.items.map((url: string) => ({
+            url,
+            title: '', // Unified search core returns URLs, titles will be extracted later
+            description: '',
           })),
-        }))
+        };
+      }
     },
     {
-      search: async ({ q, country, limit, countryContext }: { q: string; country: string | null; limit?: number; countryContext?: ReturnType<typeof getCountryContext> | null }) =>
-        firecrawlSearch({
-          baseQuery: q,
-          userText: '', // Don't duplicate the query
-          countryContext: countryContext ?? (country ? getCountryContext(country) : undefined),
-          locale: countryContext?.locale,
-          location: countryContext?.countryNames?.[0],
-          limit,
-        }).then((res) => ({
-          items: res.items.map((item: any) => ({
-            url: item.url,
-            title: item.title,
-            description: item.snippet,
+      // Firecrawl service using Unified Search Core  
+      search: async ({ q, country, limit }: { q: string; country: string | null; limit?: number }) => {
+        const { unifiedSearch } = await import('@/lib/search/unified-search-core');
+        const result = await unifiedSearch({
+          q,
+          country: country || undefined,
+          limit: limit || 20,
+          scrapeContent: true, // Enable content scraping for Firecrawl
+          useCache: true
+        });
+        
+        return {
+          items: result.items.map((url: string) => ({
+            url,
+            title: '', // Unified search core returns URLs, titles will be extracted later
+            description: '',
           })),
-        }))
+        };
+      }
     },
     geminiServiceWrapper
   );

@@ -175,37 +175,29 @@ export class EventDiscoverer {
 
   private async discoverFromFirecrawl(query: string, country: string | null, context?: PipelineContext): Promise<{ candidates: EventCandidate[]; provider: string }> {
     const startTime = Date.now();
-    logger.info({ message: '[discover:firecrawl] Starting Firecrawl discovery', query, country, locale: context?.locale });
+    logger.info({ message: '[discover:firecrawl] Starting Firecrawl discovery using Unified Search Core', query, country, locale: context?.locale });
     
     try {
-      // Use the same approach as enhanced orchestrator - simple query with retry and circuit breaker
-      const { RetryService } = await import('@/lib/services/retry-service');
-      const { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } = await import('@/lib/services/circuit-breaker');
-      const { search: firecrawlSearch } = await import('@/providers/firecrawl');
+      // Use Unified Search Core for better performance and reliability
+      const { unifiedSearch } = await import('@/lib/search/unified-search-core');
       
-          const firecrawlRes = await RetryService.executeWithRetry(
-            'firecrawl',
-            'search',
-            () => executeWithCircuitBreaker(
-              'firecrawl',
-              () => firecrawlSearch({ 
-                q: query, 
-                dateFrom: context?.dateFrom || undefined, 
-                dateTo: context?.dateTo || undefined,
-                country: country || undefined,
-                limit: 15, // Reduced limit since we're scraping content
-                scrapeContent: true // Enable content scraping for better prioritization
-              }),
-              CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
-            )
-          );
+      const unifiedResult = await unifiedSearch({
+        q: query,
+        dateFrom: context?.dateFrom || undefined,
+        dateTo: context?.dateTo || undefined,
+        country: country || undefined,
+        limit: 15, // Reduced limit since we're scraping content
+        scrapeContent: true, // Enable content scraping for better prioritization
+        useCache: true
+      });
       
-      const items = firecrawlRes.data?.items || [];
+      const items = unifiedResult.items;
       
-      logger.info({ message: '[discover:firecrawl] Firecrawl search completed',
+      logger.info({ message: '[discover:firecrawl] Unified search completed',
         itemsFound: items.length,
-        retryAttempts: firecrawlRes.metrics.attempts,
-        totalDelayMs: firecrawlRes.metrics.totalDelayMs,
+        providers: unifiedResult.providers,
+        totalItems: unifiedResult.totalItems,
+        metrics: unifiedResult.metrics,
         duration: Date.now() - startTime
       });
       
