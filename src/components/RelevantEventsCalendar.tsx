@@ -292,6 +292,17 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
         </div>
       </div>
 
+      {/* DEBUG: Direct state test */}
+      <div className="bg-yellow-500 p-4 mb-4 text-black font-bold">
+        🚨 DEBUG STATE TEST 🚨
+        <br />
+        promotedEvents keys: {JSON.stringify(Object.keys(promotedEvents))}
+        <br />
+        showResults keys: {JSON.stringify(Object.keys(showResults))}
+        <br />
+        forceRender: {forceRender}
+      </div>
+
       {/* Events list */}
       <div className="space-y-4">
         {sortedEvents.map((event, index) => (
@@ -452,7 +463,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v7.1)</span>
+                        <span>🚀 Promote to Analysis (v7.2)</span>
                       </>
                     )}
                   </button>
