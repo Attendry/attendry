@@ -36,11 +36,116 @@ const UNIFIED_RATE_LIMITS = {
 // Unified cache configuration
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
-// Rate limiting storage
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+// Memory-safe storage with automatic cleanup
+class MemorySafeStore<T> {
+  private store = new Map<string, { data: T; timestamp: number; ttl: number }>();
+  private maxSize: number;
+  private cleanupInterval: NodeJS.Timeout;
 
-// Cache storage
-const cacheStore = new Map<string, { data: any; timestamp: number }>();
+  constructor(maxSize: number = 1000, cleanupIntervalMs: number = 60000) {
+    this.maxSize = maxSize;
+    // Cleanup expired entries every minute
+    this.cleanupInterval = setInterval(() => this.cleanup(), cleanupIntervalMs);
+  }
+
+  set(key: string, data: T, ttl: number = CACHE_DURATION): void {
+    // Remove oldest entries if we're at capacity
+    if (this.store.size >= this.maxSize) {
+      this.evictOldest();
+    }
+    
+    this.store.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl
+    });
+  }
+
+  get(key: string): T | null {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+
+    // Check if expired
+    if (Date.now() - entry.timestamp > entry.ttl) {
+      this.store.delete(key);
+      return null;
+    }
+
+    return entry.data;
+  }
+
+  has(key: string): boolean {
+    return this.get(key) !== null;
+  }
+
+  delete(key: string): boolean {
+    return this.store.delete(key);
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+
+  size(): number {
+    return this.store.size;
+  }
+
+  entries(): IterableIterator<[string, T]> {
+    const result: [string, T][] = [];
+    for (const [key, entry] of this.store.entries()) {
+      if (Date.now() - entry.timestamp <= entry.ttl) {
+        result.push([key, entry.data]);
+      }
+    }
+    return result[Symbol.iterator]();
+  }
+
+  keys(): IterableIterator<string> {
+    const result: string[] = [];
+    for (const [key, entry] of this.store.entries()) {
+      if (Date.now() - entry.timestamp <= entry.ttl) {
+        result.push(key);
+      }
+    }
+    return result[Symbol.iterator]();
+  }
+
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.store.entries()) {
+      if (now - entry.timestamp > entry.ttl) {
+        this.store.delete(key);
+      }
+    }
+  }
+
+  private evictOldest(): void {
+    let oldestKey = '';
+    let oldestTime = Date.now();
+    
+    for (const [key, entry] of this.store.entries()) {
+      if (entry.timestamp < oldestTime) {
+        oldestTime = entry.timestamp;
+        oldestKey = key;
+      }
+    }
+    
+    if (oldestKey) {
+      this.store.delete(oldestKey);
+    }
+  }
+
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+    this.store.clear();
+  }
+}
+
+// Memory-safe storage instances
+const rateLimitStore = new MemorySafeStore<{ count: number; resetTime: number }>(500, 60000);
+const cacheStore = new MemorySafeStore<any>(1000, 60000);
 
 export interface UnifiedSearchParams {
   q: string;
@@ -97,7 +202,7 @@ function checkRateLimit(provider: 'firecrawl' | 'cse'): boolean {
   const current = rateLimitStore.get(key) || { count: 0, resetTime: now + 60000 };
   
   if (current.resetTime < now) {
-    rateLimitStore.set(key, { count: 1, resetTime: now + 60000 });
+    rateLimitStore.set(key, { count: 1, resetTime: now + 60000 }, 60000); // 1 minute TTL
     return true;
   }
   
@@ -106,7 +211,7 @@ function checkRateLimit(provider: 'firecrawl' | 'cse'): boolean {
   }
   
   current.count++;
-  rateLimitStore.set(key, current);
+  rateLimitStore.set(key, current, 60000); // 1 minute TTL
   return true;
 }
 
@@ -114,21 +219,14 @@ function checkRateLimit(provider: 'firecrawl' | 'cse'): boolean {
  * Get cached search result
  */
 function getCachedResult(cacheKey: string): any | null {
-  const cached = cacheStore.get(cacheKey);
-  if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
-    return cached.data;
-  }
-  return null;
+  return cacheStore.get(cacheKey);
 }
 
 /**
  * Set cached search result
  */
 function setCachedResult(cacheKey: string, data: any): void {
-  cacheStore.set(cacheKey, {
-    data,
-    timestamp: Date.now()
-  });
+  cacheStore.set(cacheKey, data, CACHE_DURATION);
 }
 
 /**
@@ -528,7 +626,7 @@ export function getUnifiedSearchStats(): {
 } {
   return {
     rateLimits: Object.fromEntries(rateLimitStore.entries()),
-    cacheSize: cacheStore.size,
+    cacheSize: cacheStore.size(),
     cacheKeys: Array.from(cacheStore.keys())
   };
 }
