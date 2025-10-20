@@ -458,7 +458,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v8.0)</span>
+                        <span>Promote to Analysis</span>
                       </>
                     )}
                   </button>
