@@ -14,28 +14,18 @@
 import { createHash } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
 import { executeWithRetry, executeWithGracefulDegradation, executeWithCircuitBreaker } from "@/lib/error-recovery";
+import { OPTIMIZED_RATE_LIMITS, OPTIMIZED_CACHE } from "@/lib/resource-optimizer";
 
 // Environment variables
 const firecrawlKey = process.env.FIRECRAWL_KEY;
 const googleCseKey = process.env.GOOGLE_CSE_KEY;
 const googleCseCx = process.env.GOOGLE_CSE_CX;
 
-// Unified rate limiting configuration
-const UNIFIED_RATE_LIMITS = {
-  firecrawl: {
-    maxRequestsPerMinute: 20,
-    maxRequestsPerHour: 200,
-    delayBetweenRequests: 1000 // 1 second
-  },
-  cse: {
-    maxRequestsPerMinute: 100,
-    maxRequestsPerHour: 1000,
-    delayBetweenRequests: 100 // 100ms
-  }
-};
+// Use optimized rate limiting configuration
+const UNIFIED_RATE_LIMITS = OPTIMIZED_RATE_LIMITS;
 
-// Unified cache configuration
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+// Use optimized cache configuration
+const CACHE_DURATION = OPTIMIZED_CACHE.duration;
 
 // Memory-safe storage with automatic cleanup
 class MemorySafeStore<T> {
@@ -43,9 +33,9 @@ class MemorySafeStore<T> {
   private maxSize: number;
   private cleanupInterval: NodeJS.Timeout;
 
-  constructor(maxSize: number = 1000, cleanupIntervalMs: number = 60000) {
+  constructor(maxSize: number = OPTIMIZED_CACHE.maxSize, cleanupIntervalMs: number = OPTIMIZED_CACHE.cleanupInterval) {
     this.maxSize = maxSize;
-    // Cleanup expired entries every minute
+    // Cleanup expired entries with optimized interval
     this.cleanupInterval = setInterval(() => this.cleanup(), cleanupIntervalMs);
   }
 

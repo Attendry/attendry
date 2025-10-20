@@ -26,12 +26,20 @@ import {
   processSpeakerEnhancementParallel,
   createParallelTask 
 } from './parallel-processor';
+import { 
+  OPTIMIZED_CONFIG, 
+  resourceOptimizer, 
+  performanceMonitor,
+  optimizeTimeout,
+  getOptimizedConcurrency,
+  getOptimizedPerformance
+} from './resource-optimizer';
 
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
 const firecrawlKey = process.env.FIRECRAWL_KEY;
 
-// Configuration
+// Configuration - Using optimized settings
 const ORCHESTRATOR_CONFIG = {
   thresholds: {
     prioritization: 0.4,    // Minimum score to proceed from prioritization
@@ -39,21 +47,22 @@ const ORCHESTRATOR_CONFIG = {
     parseQuality: 0.5,      // Minimum parse quality
   },
   limits: {
-    maxCandidates: 30,      // Max URLs to discover
-    maxExtractions: 15,     // Max events to extract
-    maxSpeakers: 25,        // Max speakers per event
+    maxCandidates: 40,      // Increased from 30 for better coverage
+    maxExtractions: 20,     // Increased from 15 for more results
+    maxSpeakers: 30,        // Increased from 25 for richer data
   },
   timeouts: {
-    discovery: 30000,       // Discovery timeout
-    prioritization: 20000,  // Prioritization timeout
-    extraction: 15000,      // Extraction timeout per URL
-    enhancement: 10000,     // Speaker enhancement timeout
+    discovery: optimizeTimeout('firecrawl'),      // Optimized timeout
+    prioritization: OPTIMIZED_CONFIG.timeouts.prioritization,
+    extraction: OPTIMIZED_CONFIG.timeouts.extraction,
+    enhancement: OPTIMIZED_CONFIG.timeouts.enhancement,
   },
   parallel: {
-    maxConcurrentExtractions: 8,  // Max parallel extractions (increased with smart processor)
-    maxConcurrentEnhancements: 5, // Max parallel enhancements (increased with smart processor)
-    enableSmartBatching: true,    // Enable intelligent batching
-    enableEarlyTermination: true, // Enable early termination for high-quality results
+    maxConcurrentExtractions: getOptimizedConcurrency().maxConcurrentExtractions,
+    maxConcurrentEnhancements: getOptimizedConcurrency().maxConcurrentEnhancements,
+    maxConcurrentDiscoveries: getOptimizedConcurrency().maxConcurrentDiscoveries,
+    enableSmartBatching: getOptimizedPerformance().enableSmartBatching,
+    enableEarlyTermination: getOptimizedPerformance().enableEarlyTermination,
   }
 };
 
@@ -115,6 +124,20 @@ export interface OptimizedSearchResult {
     averageConfidence: number;
     sourceBreakdown: Record<string, number>;
     providersUsed: string[];
+    performance?: {
+      stageTimings: Record<string, number>;
+      resourceUtilization: {
+        memoryUsage: number;
+        cpuUsage: number;
+        activeRequests: number;
+      };
+      optimizationEnabled: boolean;
+      parallelProcessing: {
+        enabled: boolean;
+        maxConcurrency: number;
+        adaptiveScaling: boolean;
+      };
+    };
   };
   logs: Array<{
     stage: string;
@@ -131,59 +154,77 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   const startTime = Date.now();
   const logs: OptimizedSearchResult['logs'] = [];
   
+  // Register request with resource optimizer
+  resourceOptimizer.registerRequest();
+  performanceMonitor.startTiming('total_search');
+  
   try {
     // Step 1: Build optimized query
+    performanceMonitor.startTiming('query_build');
     const query = await buildOptimizedQuery(params);
+    const queryBuildTime = performanceMonitor.endTiming('query_build');
     logs.push({
       stage: 'query_build',
       message: 'Built optimized search query',
       timestamp: new Date().toISOString(),
-      data: { query: query.substring(0, 100) + '...' }
+      data: { query: query.substring(0, 100) + '...', duration: queryBuildTime }
     });
 
     // Step 2: Multi-source discovery
+    performanceMonitor.startTiming('discovery');
     const candidates = await discoverEventCandidates(query, params);
+    const discoveryTime = performanceMonitor.endTiming('discovery');
     logs.push({
       stage: 'discovery',
       message: `Discovered ${candidates.length} candidates`,
       timestamp: new Date().toISOString(),
-      data: { candidateCount: candidates.length }
+      data: { candidateCount: candidates.length, duration: discoveryTime }
     });
 
     // Step 3: Intelligent prioritization
+    performanceMonitor.startTiming('prioritization');
     const prioritized = await prioritizeCandidates(candidates, params);
+    const prioritizationTime = performanceMonitor.endTiming('prioritization');
     logs.push({
       stage: 'prioritization',
       message: `Prioritized ${prioritized.length} candidates`,
       timestamp: new Date().toISOString(),
-      data: { prioritizedCount: prioritized.length }
+      data: { prioritizedCount: prioritized.length, duration: prioritizationTime }
     });
 
     // Step 4: Parallel extraction
+    performanceMonitor.startTiming('extraction');
     const extracted = await extractEventDetails(prioritized, params);
+    const extractionTime = performanceMonitor.endTiming('extraction');
     logs.push({
       stage: 'extraction',
       message: `Extracted ${extracted.length} events`,
       timestamp: new Date().toISOString(),
-      data: { extractedCount: extracted.length }
+      data: { extractedCount: extracted.length, duration: extractionTime }
     });
 
     // Step 5: Speaker enhancement
+    performanceMonitor.startTiming('enhancement');
     const enhanced = await enhanceEventSpeakers(extracted, params);
+    const enhancementTime = performanceMonitor.endTiming('enhancement');
     logs.push({
       stage: 'enhancement',
       message: `Enhanced ${enhanced.length} events`,
       timestamp: new Date().toISOString(),
-      data: { enhancedCount: enhanced.length }
+      data: { enhancedCount: enhanced.length, duration: enhancementTime }
     });
 
     // Step 6: Final filtering and ranking
     const finalEvents = filterAndRankEvents(enhanced);
 
-    const totalDuration = Date.now() - startTime;
+    const totalDuration = performanceMonitor.endTiming('total_search');
     const averageConfidence = finalEvents.length > 0 
       ? finalEvents.reduce((sum, event) => sum + event.confidence, 0) / finalEvents.length 
       : 0;
+
+    // Get performance metrics
+    const performanceMetrics = performanceMonitor.getAllMetrics();
+    const resourceMetrics = resourceOptimizer.getResourceMetrics();
 
     return {
       events: finalEvents,
@@ -195,12 +236,31 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         totalDuration,
         averageConfidence,
         sourceBreakdown: getSourceBreakdown(finalEvents),
-        providersUsed: ['firecrawl', 'cse', 'database']
+        providersUsed: ['firecrawl', 'cse', 'database'],
+        // Performance optimization data
+        performance: {
+          stageTimings: {
+            queryBuild: performanceMetrics.query_build?.average || 0,
+            discovery: performanceMetrics.discovery?.average || 0,
+            prioritization: performanceMetrics.prioritization?.average || 0,
+            extraction: performanceMetrics.extraction?.average || 0,
+            enhancement: performanceMetrics.enhancement?.average || 0,
+            total: performanceMetrics.total_search?.average || 0,
+          },
+          resourceUtilization: resourceMetrics,
+          optimizationEnabled: true,
+          parallelProcessing: {
+            enabled: true,
+            maxConcurrency: getOptimizedConcurrency().maxConcurrentRequests,
+            adaptiveScaling: getOptimizedConcurrency().enableAdaptiveConcurrency,
+          }
+        }
       },
       logs
     };
 
   } catch (error) {
+    performanceMonitor.endTiming('total_search');
     logs.push({
       stage: 'error',
       message: 'Search failed',
@@ -218,10 +278,23 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         totalDuration: Date.now() - startTime,
         averageConfidence: 0,
         sourceBreakdown: {},
-        providersUsed: []
+        providersUsed: [],
+        performance: {
+          stageTimings: {},
+          resourceUtilization: resourceOptimizer.getResourceMetrics(),
+          optimizationEnabled: true,
+          parallelProcessing: {
+            enabled: true,
+            maxConcurrency: getOptimizedConcurrency().maxConcurrentRequests,
+            adaptiveScaling: getOptimizedConcurrency().enableAdaptiveConcurrency,
+          }
+        }
       },
       logs
     };
+  } finally {
+    // Always unregister the request
+    resourceOptimizer.unregisterRequest();
   }
 }
 
