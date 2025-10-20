@@ -214,7 +214,8 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
       };
       
       const location = countryMap[params.country] || params.country;
-      body.location = { country: location, languages: ['de', 'en'] };
+      // Firecrawl v2 API expects location as a string, not an object
+      body.location = location;
     }
 
     console.log('[unified-firecrawl] Making request with body:', JSON.stringify(body, null, 2));
