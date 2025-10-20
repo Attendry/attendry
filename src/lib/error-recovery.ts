@@ -10,6 +10,13 @@ import {
   executeWithCircuitBreaker as executeWithAdvancedCircuitBreakerImport, 
   CircuitState 
 } from "./circuit-breaker";
+import { 
+  retryManager, 
+  executeWithRetry as executeWithAdvancedRetryImport,
+  RetryErrorType,
+  RetryStrategy,
+  RetryConfig as RetryConfigType
+} from "./retry-manager";
 
 // Error types for different failure scenarios
 export enum ErrorType {
@@ -474,4 +481,102 @@ export function getCircuitBreakerMetrics(service?: string): any {
     return circuitBreaker?.getMetrics();
   }
   return circuitBreakerManager.getCircuitBreakerMetrics();
+}
+
+/**
+ * Execute operation with advanced retry logic and intelligent backoff
+ */
+export async function executeWithAdvancedRetry<T>(
+  operation: () => Promise<T>,
+  service: string,
+  customConfig?: Partial<RetryConfigType>
+): Promise<T> {
+  return retryManager.executeWithRetry(operation, service, customConfig);
+}
+
+/**
+ * Execute operation with circuit breaker and advanced retry combined
+ */
+export async function executeWithCircuitBreakerAndAdvancedRetry<T>(
+  operation: () => Promise<T>,
+  service: string,
+  fallback?: () => Promise<T>,
+  retryConfig?: Partial<RetryConfigType>
+): Promise<T> {
+  try {
+    // First try with circuit breaker
+    return await executeWithAdvancedCircuitBreakerImport(service, operation, fallback);
+  } catch (error) {
+    // If circuit breaker fails, try with advanced retry
+    console.warn(`[error-recovery] Circuit breaker failed for ${service}, trying advanced retry`);
+    try {
+      return await executeWithAdvancedRetry(operation, service, retryConfig);
+    } catch (retryError) {
+      // If retry also fails, try fallback with retry
+      if (fallback) {
+        console.warn(`[error-recovery] Advanced retry failed for ${service}, trying fallback with retry`);
+        try {
+          return await executeWithAdvancedRetry(fallback, service, retryConfig);
+        } catch (fallbackRetryError) {
+          console.error(`[error-recovery] Fallback with retry also failed for ${service}:`, fallbackRetryError);
+          throw fallbackRetryError;
+        }
+      }
+      throw retryError;
+    }
+  }
+}
+
+/**
+ * Execute operation with full recovery: circuit breaker + retry + graceful degradation
+ */
+export async function executeWithFullAdvancedRecovery<T>(
+  operation: () => Promise<T>,
+  service: string,
+  fallback: () => Promise<T>,
+  finalFallback?: () => Promise<T>,
+  retryConfig?: Partial<RetryConfigType>
+): Promise<T> {
+  try {
+    return await executeWithCircuitBreakerAndAdvancedRetry(operation, service, fallback, retryConfig);
+  } catch (error) {
+    console.warn(`[error-recovery] Full advanced recovery failed for ${service}, trying final fallback`);
+    if (finalFallback) {
+      try {
+        return await executeWithAdvancedRetry(finalFallback, service, retryConfig);
+      } catch (finalError) {
+        console.error(`[error-recovery] Final fallback with retry also failed for ${service}:`, finalError);
+        throw finalError;
+      }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get retry analytics for monitoring
+ */
+export function getRetryAnalytics(): any {
+  return retryManager.getAnalytics();
+}
+
+/**
+ * Get retry budget status
+ */
+export function getRetryBudgetStatus(service?: string): { used: number; remaining: number; resetTime: number } {
+  return retryManager.getBudgetStatus(service);
+}
+
+/**
+ * Reset retry analytics
+ */
+export function resetRetryAnalytics(): void {
+  retryManager.resetAnalytics();
+}
+
+/**
+ * Reset retry budget
+ */
+export function resetRetryBudget(): void {
+  retryManager.resetBudget();
 }
