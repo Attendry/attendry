@@ -8,6 +8,9 @@ import { getServerSession } from '@/lib/auth/server-session';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import { UserActivityTracker } from '@/components/UserActivityTracker';
 
+// Force dynamic rendering since we use server session
+export const dynamic = 'force-dynamic';
+
 export default async function ActivityPage() {
   const { session } = await getServerSession();
 

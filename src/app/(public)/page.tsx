@@ -3,6 +3,9 @@ import { supabaseServer } from "@/lib/supabase-server";
 import Link from "next/link";
 import { Search, Lightbulb, Scale, TrendingUp, BarChart3, Activity } from "lucide-react";
 
+// Force dynamic rendering since we use cookies for auth
+export const dynamic = 'force-dynamic';
+
 export default async function LandingPage() {
   // Check if user is authenticated
   try {

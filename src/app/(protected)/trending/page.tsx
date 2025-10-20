@@ -8,6 +8,9 @@ import { getServerSession } from '@/lib/auth/server-session';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import TrendingEvents from '@/components/TrendingEvents';
 
+// Force dynamic rendering since we use server session
+export const dynamic = 'force-dynamic';
+
 export default async function TrendingPage() {
   const { session } = await getServerSession();
 

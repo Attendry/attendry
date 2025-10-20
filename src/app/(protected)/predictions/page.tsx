@@ -9,6 +9,9 @@ import { getServerSession } from '@/lib/auth/server-session';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import EventPrediction from '@/components/EventPrediction';
 
+// Force dynamic rendering since we use server session
+export const dynamic = 'force-dynamic';
+
 export default async function PredictionsPage() {
   const { session } = await getServerSession();
 

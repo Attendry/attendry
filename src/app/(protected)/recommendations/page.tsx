@@ -9,6 +9,9 @@ import { getServerSession } from '@/lib/auth/server-session';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import { MarketIntelligenceStandalone } from '@/components/MarketIntelligenceStandalone';
 
+// Force dynamic rendering since we use server session
+export const dynamic = 'force-dynamic';
+
 export default async function MarketIntelligencePage() {
   const { session } = await getServerSession();
 

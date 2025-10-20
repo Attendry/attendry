@@ -8,6 +8,9 @@ import { getServerSession } from '@/lib/auth/server-session';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import UserProfile from '@/components/UserProfile';
 
+// Force dynamic rendering since we use server session
+export const dynamic = 'force-dynamic';
+
 export default async function ProfilePage() {
   const { session } = await getServerSession();
 

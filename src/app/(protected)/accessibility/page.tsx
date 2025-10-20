@@ -9,6 +9,9 @@ import { getServerSession } from '@/lib/auth/server-session';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import AccessibilityEnhancements from '@/components/AccessibilityEnhancements';
 
+// Force dynamic rendering since we use server session
+export const dynamic = 'force-dynamic';
+
 export default async function AccessibilityPage() {
   let session: Awaited<ReturnType<typeof getServerSession>>['session'] = null;
   try {

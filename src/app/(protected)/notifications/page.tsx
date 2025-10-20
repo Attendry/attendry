@@ -8,6 +8,9 @@ import { getServerSession } from '@/lib/auth/server-session';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import NotificationSettings from '@/components/NotificationSettings';
 
+// Force dynamic rendering since we use server session
+export const dynamic = 'force-dynamic';
+
 export default async function NotificationsPage() {
   const { session } = await getServerSession();
 
