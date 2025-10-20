@@ -48,8 +48,11 @@ export async function getAsyncEventsStatus(jobId: string): Promise<AsyncEventsJo
 async function processEventsAnalysisAsync(jobId: string): Promise<void> {
   const job = eventsJobStore.get(jobId);
   if (!job) {
+    console.error(`[async-events] Job not found: ${jobId}`);
     throw new Error('Job not found');
   }
+  
+  console.log(`[async-events] Starting async processing for job ${jobId}`);
   
   try {
     job.status = 'processing';
@@ -66,10 +69,15 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     const supabase = supabaseAdmin();
     console.log(`[async-events] Fetching events from database for IDs:`, job.eventIds);
     
+    console.log(`[async-events] Executing database query for ${job.eventIds.length} event IDs...`);
+    
     const { data: events, error } = await supabase
       .from('collected_events')
       .select('*')
       .in('id', job.eventIds);
+    
+    console.log(`[async-events] Database query completed. Error:`, error);
+    console.log(`[async-events] Events returned:`, events?.length || 0);
     
     if (error) {
       console.error(`[async-events] Database error:`, error);
@@ -153,7 +161,14 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     })));
     
     // Store enhanced results in database
-    await storeEnhancedEvents(results);
+    console.log(`[async-events] Storing enhanced results in database...`);
+    try {
+      await storeEnhancedEvents(results);
+      console.log(`[async-events] Successfully stored enhanced results`);
+    } catch (storeError) {
+      console.error(`[async-events] Failed to store enhanced results:`, storeError);
+      // Don't fail the entire job if storage fails
+    }
     
     job.progress = 100;
     job.status = 'completed';
@@ -175,22 +190,41 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
 
 async function storeEnhancedEvents(events: any[]): Promise<void> {
   try {
+    console.log(`[async-events] storeEnhancedEvents: Starting to store ${events.length} events`);
     const supabase = supabaseAdmin();
     
     // Update events with enhanced speaker data
     for (const event of events) {
-      await supabase
+      console.log(`[async-events] storeEnhancedEvents: Updating event ${event.id}`);
+      
+      const updateData = {
+        speakers: event.speakers,
+        enhanced_speakers: event.enhanced_speakers,
+        analysis_completed: event.analysis_completed,
+        speakers_found: event.speakers_found,
+        crawl_stats: event.crawl_stats,
+        confidence: event.confidence,
+        updated_at: new Date().toISOString()
+      };
+      
+      console.log(`[async-events] storeEnhancedEvents: Update data for ${event.id}:`, {
+        speakers_count: event.speakers?.length || 0,
+        enhanced_speakers_count: event.enhanced_speakers?.length || 0,
+        analysis_completed: event.analysis_completed,
+        speakers_found: event.speakers_found
+      });
+      
+      const { error: updateError } = await supabase
         .from('collected_events')
-        .update({
-          speakers: event.speakers,
-          enhanced_speakers: event.enhanced_speakers,
-          analysis_completed: event.analysis_completed,
-          speakers_found: event.speakers_found,
-          crawl_stats: event.crawl_stats,
-          confidence: event.confidence,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', event.id);
+        
+      if (updateError) {
+        console.error(`[async-events] storeEnhancedEvents: Failed to update event ${event.id}:`, updateError);
+        throw updateError;
+      } else {
+        console.log(`[async-events] storeEnhancedEvents: Successfully updated event ${event.id}`);
+      }
     }
     
     console.log('Enhanced events stored in database:', events.length);
