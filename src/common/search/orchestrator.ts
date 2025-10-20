@@ -26,9 +26,30 @@ export async function executeSearch(args: ExecArgs) {
   const baseQuery = cfg.baseQuery;
   const excludeTerms = cfg.excludeTerms || '';
 
-  // Build exactly once
+  // Build exactly once using unified query builder
   const correlationId = ensureCorrelation();
-  const q = buildSearchQuery({ baseQuery, userText, excludeTerms });
+  
+  let q: string;
+  try {
+    // Use unified query builder for enhanced query generation
+    const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
+    
+    const result = await buildUnifiedQuery({
+      userText: userText || baseQuery,
+      country: country,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+      locale: locale,
+      language: 'en' // Default to English for basic orchestrator
+    });
+    
+    q = result.query;
+  } catch (error) {
+    console.warn('[orchestrator] Failed to use unified query builder, using fallback:', error);
+    // Fallback to original query building
+    q = buildSearchQuery({ baseQuery, userText, excludeTerms });
+  }
+  
   console.log(JSON.stringify({ correlationId, at: 'query', query: q }));
 
   // Use Unified Search Core

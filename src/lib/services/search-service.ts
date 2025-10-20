@@ -13,6 +13,7 @@ import { executeWithCircuitBreaker, CIRCUIT_BREAKER_CONFIGS } from "@/lib/servic
 import { executeWithFallback } from "@/lib/services/fallback-strategies";
 import { OptimizedAIService } from "@/lib/services/optimized-ai-service";
 import { buildSearchQuery } from "@/search/query";
+import { buildUnifiedQuery } from "@/lib/unified-query-builder";
 import { cseSearch } from "@/search/providers/cse";
 import { searchCacheKey } from "@/search/cache";
 import { FLAGS } from "@/config/flags";
@@ -75,7 +76,6 @@ const cacheService = getCacheService();
       country,
       from,
       to,
-      timeframe: timeframe ?? undefined
     });
   }
 
@@ -591,11 +591,24 @@ export class SearchService {
       // Build enhanced query using user configuration
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
       
-      // Normalize effectiveQ (single parentheses, no postfix)
-      const effectiveQ = buildSearchQuery({
-        baseQuery: searchConfig.baseQuery,
-        userText: params.q
-      });
+      // Normalize effectiveQ using unified query builder
+      let effectiveQ: string;
+      try {
+        const result = await buildUnifiedQuery({
+          userText: params.q,
+          country: params.country,
+          dateFrom: params.from,
+          dateTo: params.to,
+          language: 'en'
+        });
+        effectiveQ = result.query;
+      } catch (error) {
+        console.warn('[search-service] Failed to use unified query builder, using fallback:', error);
+        effectiveQ = buildSearchQuery({
+          baseQuery: searchConfig.baseQuery,
+          userText: params.q
+        });
+      }
       
       // Sanitize to collapse accidental double parens
       const normalizedQ = effectiveQ.replace(/^\(+/, '(').replace(/\)+$/, ')');
@@ -614,7 +627,21 @@ export class SearchService {
       let urls: string[] = [];
 
       try {
-        const q = buildSearchQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
+        let q: string;
+        try {
+          const result = await buildUnifiedQuery({
+            userText: params.q,
+            country: params.country,
+            dateFrom: params.from,
+            dateTo: params.to,
+            language: 'en'
+          });
+          q = result.query;
+        } catch (error) {
+          console.warn('[search-service] Failed to use unified query builder for Firecrawl, using fallback:', error);
+          q = buildSearchQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
+        }
+        
         const fcResult = await FirecrawlSearchService.searchEvents({
           query: q,
           country: params.country,
@@ -627,7 +654,20 @@ export class SearchService {
         providerUsed = 'firecrawl';
       } catch (err) {
         console.warn('[firecrawl.build] skip -> using CSE', String(err));
-        const q = buildSearchQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
+        let q: string;
+        try {
+          const result = await buildUnifiedQuery({
+            userText: params.q,
+            country: params.country,
+            dateFrom: params.from,
+            dateTo: params.to,
+            language: 'en'
+          });
+          q = result.query;
+        } catch (error) {
+          console.warn('[search-service] Failed to use unified query builder for CSE fallback, using fallback:', error);
+          q = buildSearchQuery({ baseQuery: searchConfig.baseQuery, userText: params.q });
+        }
         urls = await cseSearch(q);
         providerUsed = 'cse';
       }

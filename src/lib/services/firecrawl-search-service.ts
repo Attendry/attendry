@@ -1,5 +1,6 @@
 import { RetryService } from "./retry-service";
 import { buildSearchQuery } from '@/search/query';
+import { buildUnifiedQuery } from '@/lib/unified-query-builder';
 import { getCountryContext, type CountryContext } from '@/lib/utils/country';
 import { parseEventDate } from '@/search/date';
 import { EVENT_KEYWORDS, SOCIAL_DOMAINS, DEFAULT_SHARD_KEYWORDS, detectCountryFromText, detectCityFromText } from '@/config/search-dictionaries';
@@ -109,7 +110,7 @@ export class FirecrawlSearchService {
     const ships: Array<{ query: string; params: Record<string, unknown>; label: string }> = [];
 
     const primaryQuery = this.buildShardQuery(positiveTokens, locationTokenSet, timeframeTokens, country, from, to);
-    const fallbackQuery = this.buildSearchQueryInternal(query, industry, country, from, to);
+    const fallbackQuery = await this.buildSearchQueryInternal(query, industry, country, from, to);
 
     const baseParams = {
       limit: Math.min(maxResults, 20),
@@ -192,7 +193,7 @@ export class FirecrawlSearchService {
             const extractedLocation = this.extractLocationFromContent(result.markdown);
             const extractedOrganizer = this.extractOrganizerFromContent(result.markdown);
 
-            const countryMismatch = targetCountry && !this.matchesCountry(hostname, extractedLocation, targetCountry);
+            const countryMismatch = targetCountry && extractedLocation && !this.matchesCountry(hostname, extractedLocation, targetCountry);
             
             items.push({
               title: result.title || "Event",
@@ -204,7 +205,6 @@ export class FirecrawlSearchService {
                 location: extractedLocation || undefined,
                 organizer: extractedOrganizer || undefined,
                 confidence: this.calculateRelevanceScore(content, parsedDate.startISO, extractedLocation) - (countryMismatch ? 0.2 : 0),
-                geoMismatch: countryMismatch || undefined,
               }
             });
         }
@@ -251,22 +251,35 @@ export class FirecrawlSearchService {
   /**
    * Build search query with event-specific terms
    */
-  private static buildSearchQueryInternal(
+  private static async buildSearchQueryInternal(
     query: string, 
     industry: string, 
     country: string, 
     from?: string, 
     to?: string
-  ): string {
-    let searchQuery = query.trim();
-    
-    if (!searchQuery || searchQuery.length < 5) {
-      const industryTerms = this.getIndustryTerms(industry);
-      searchQuery = `${industryTerms} conference`;
-    }
+  ): Promise<string> {
+    try {
+      const result = await buildUnifiedQuery({
+        userText: query,
+        country: country,
+        dateFrom: from,
+        dateTo: to,
+        language: 'en'
+      });
+      return result.query;
+    } catch (error) {
+      console.warn('[firecrawl-search-service] Failed to use unified query builder, using fallback:', error);
+      
+      let searchQuery = query.trim();
+      
+      if (!searchQuery || searchQuery.length < 5) {
+        const industryTerms = this.getIndustryTerms(industry);
+        searchQuery = `${industryTerms} conference`;
+      }
 
-    const baseQuery = searchQuery || this.getIndustryTerms(industry);
-    return buildSearchQuery({ baseQuery, userText: undefined });
+      const baseQuery = searchQuery || this.getIndustryTerms(industry);
+      return buildSearchQuery({ baseQuery, userText: undefined });
+    }
   }
 
   private static buildShardQuery(

@@ -510,67 +510,39 @@ export async function executeNewPipeline(args: {
     }
   }
 
-  // Build optimized event query for Firecrawl v2 API
-  const temporalTerms = ['2025', '2026', 'upcoming', 'register'];
-  
-  // Get location terms based on country
-  let locationTerms: string[] = [];
-  if (ctx.iso2 === 'DE') {
-    locationTerms = ['Germany', 'Berlin', 'München', 'Frankfurt'];
-  } else if (ctx.iso2 === 'FR') {
-    locationTerms = ['France', 'Paris', 'Lyon'];
-  } else if (ctx.iso2 === 'IT') {
-    locationTerms = ['Italy', 'Rome', 'Milan'];
-  } else if (ctx.iso2 === 'ES') {
-    locationTerms = ['Spain', 'Madrid', 'Barcelona'];
-  } else if (ctx.iso2 === 'NL') {
-    locationTerms = ['Netherlands', 'Amsterdam'];
+  // Use unified query builder for enhanced query generation
+  try {
+    const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
+    
+    const result = await buildUnifiedQuery({
+      userText: query,
+      country: args.country,
+      dateFrom: args.dateFrom,
+      dateTo: args.dateTo,
+      locale: args.locale,
+      language: 'en' // Default to English for fallback pipeline
+    });
+    
+    // Use the natural language variation for Firecrawl
+    query = result.variations.find(v => v.includes(' in ')) || result.query;
+    
+    logger.info({ message: '[executeNewPipeline] Using unified query builder', 
+      originalQuery: args.userText,
+      unifiedQuery: query,
+      variations: result.variations.length
+    });
+  } catch (error) {
+    logger.warn({ message: '[executeNewPipeline] Failed to use unified query builder, using fallback', error: (error as any).message });
+    
+    // Fallback to simple query building
+    const locationTerm = ctx.iso2 === 'DE' ? 'Germany' : 
+                        ctx.iso2 === 'FR' ? 'France' : 
+                        ctx.iso2 === 'IT' ? 'Italy' : 
+                        ctx.iso2 === 'ES' ? 'Spain' : 
+                        ctx.iso2 === 'NL' ? 'Netherlands' : 'Germany';
+    
+    query = `${query} conference ${locationTerm} 2025`;
   }
-  
-      // Build targeted natural language query for Firecrawl using admin-configured terms
-      // Firecrawl works best with natural language queries that describe what we're looking for
-      const locationTerm = locationTerms.length > 0 ? locationTerms[0] : 'Germany';
-      const yearTerm = '2025';
-      
-      // Extract key terms from the baseQuery (admin-configured) and convert to natural language
-      // Remove boolean operators and parentheses to create natural language terms
-      const baseQueryTerms = query
-        .replace(/[()"]/g, '') // Remove parentheses and quotes
-        .split(/\s+(?:OR|AND)\s+/i) // Split on OR/AND operators
-        .map(term => term.trim())
-        .filter(term => term.length > 2 && !['OR', 'AND'].includes(term.toUpperCase()))
-        .slice(0, 3); // Take first 3 meaningful terms
-      
-      // Get event types from admin configuration
-      let eventTypes = ['conference', 'summit', 'workshop', 'event']; // fallback
-      try {
-        const { loadActiveConfig } = await import('@/common/search/config');
-        const cfg = await loadActiveConfig();
-        if (cfg.eventTerms && cfg.eventTerms.length > 0) {
-          eventTypes = cfg.eventTerms;
-        }
-      } catch (error) {
-        logger.warn({ message: '[executeNewPipeline] Failed to load eventTerms from config, using fallback', error: (error as any).message });
-      }
-      
-      // Build a natural language query using admin-configured terms
-      const industryTerms = baseQueryTerms.length > 0 ? baseQueryTerms.join(' ') : 'business';
-      query = `${industryTerms} ${eventTypes[0]} ${locationTerm} ${yearTerm} agenda speakers`;
-      
-      logger.info({ message: '[executeNewPipeline] Using admin-configured natural language query for Firecrawl', 
-        originalQuery: args.userText,
-        baseQueryTerms: baseQueryTerms,
-        targetedQuery: query,
-        industryTerms: industryTerms,
-        eventType: eventTypes[0],
-        location: locationTerm
-      });
-  
-  logger.info({ message: '[executeNewPipeline] Built structured event query', 
-    originalQuery: args.userText,
-    structuredQuery: query,
-    queryType: 'targeted-natural-language'
-  });
   const context: PipelineContext = {
     query: query,
     country: args.country,
