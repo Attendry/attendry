@@ -462,10 +462,22 @@ async function extractCalendarSpeakers(crawlResults: CalendarCrawlResult[]): Pro
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     console.log('Calendar: Gemini model initialized successfully');
     
-    // Limit content length to prevent timeouts - use first 5000 chars per page for better speaker extraction
-    const combinedContent = crawlResults.map(result => 
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 5000)}${result.content.length > 5000 ? '...' : ''}`
-    ).join('\n\n');
+    // Limit content length to prevent timeouts - use first 3000 chars per page for better speaker extraction
+    // Focus on speaker-related content by filtering for relevant keywords
+    const combinedContent = crawlResults.map(result => {
+      let content = result.content;
+      
+      // If this is a speaker page, prioritize speaker-related content
+      if (result.url.includes('referenten') || result.url.includes('speakers') || result.title.toLowerCase().includes('speaker')) {
+        // Look for speaker sections and prioritize them
+        const speakerSections = content.match(/(?:speaker|referent|presenter|moderator)[^.]{0,500}/gi) || [];
+        if (speakerSections.length > 0) {
+          content = speakerSections.join('\n\n');
+        }
+      }
+      
+      return `Page: ${result.title}\nURL: ${result.url}\nContent: ${content.substring(0, 3000)}${content.length > 3000 ? '...' : ''}`;
+    }).join('\n\n');
     
     console.log('Calendar: Preparing content for Gemini analysis, total content length:', combinedContent.length);
     
@@ -514,7 +526,7 @@ Return valid JSON only, no additional text.`;
     
     // Add timeout to prevent hanging
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Calendar Gemini API timeout after 30 seconds')), 30000);
+      setTimeout(() => reject(new Error('Calendar Gemini API timeout after 20 seconds')), 20000);
     });
     
     const geminiPromise = model.generateContent(prompt);

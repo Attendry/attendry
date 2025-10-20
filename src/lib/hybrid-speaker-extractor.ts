@@ -198,6 +198,10 @@ async function deepCrawlEventForSpeakers(eventUrl: string): Promise<{
     } else {
       // Log error without consuming response body to avoid stream issues
       console.warn('Hybrid: Main page crawl failed with status:', mainPageResponse.status);
+      if (mainPageResponse.status === 502) {
+        console.warn('Hybrid: Firecrawl service appears to be down (502), skipping this event');
+        return { speakers: [], crawl_stats: { pages_crawled: 0, total_content_length: 0, speakers_found: 0, crawl_duration_ms: Date.now() - startTime } };
+      }
     }
     
     // Extract potential sub-pages from the main page content
