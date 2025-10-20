@@ -34,6 +34,14 @@ import {
   getOptimizedConcurrency,
   getOptimizedPerformance
 } from './resource-optimizer';
+import { 
+  searchCache,
+  analysisCache, 
+  speakerCache, 
+  generateAnalysisCacheKey, 
+  generateSpeakerCacheKey,
+  warmPopularSearches 
+} from './advanced-cache';
 
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
@@ -137,6 +145,14 @@ export interface OptimizedSearchResult {
         maxConcurrency: number;
         adaptiveScaling: boolean;
       };
+      cacheAnalytics?: {
+        searchHitRate: number;
+        analysisHitRate: number;
+        speakerHitRate: number;
+        totalCacheHits: number;
+        totalCacheSize: number;
+        memoryUsage: number;
+      };
     };
   };
   logs: Array<{
@@ -157,6 +173,11 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   // Register request with resource optimizer
   resourceOptimizer.registerRequest();
   performanceMonitor.startTiming('total_search');
+  
+  // Warm popular searches in background
+  warmPopularSearches().catch(error => {
+    console.warn('[optimized-orchestrator] Cache warming failed:', error);
+  });
   
   try {
     // Step 1: Build optimized query
@@ -225,6 +246,11 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     // Get performance metrics
     const performanceMetrics = performanceMonitor.getAllMetrics();
     const resourceMetrics = resourceOptimizer.getResourceMetrics();
+    const cacheAnalytics = {
+      search: searchCache.getAnalytics(),
+      analysis: analysisCache.getAnalytics(),
+      speaker: speakerCache.getAnalytics()
+    };
 
     return {
       events: finalEvents,
@@ -253,6 +279,14 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
             enabled: true,
             maxConcurrency: getOptimizedConcurrency().maxConcurrentRequests,
             adaptiveScaling: getOptimizedConcurrency().enableAdaptiveConcurrency,
+          },
+          cacheAnalytics: {
+            searchHitRate: cacheAnalytics.search.combined.hitRate,
+            analysisHitRate: cacheAnalytics.analysis.combined.hitRate,
+            speakerHitRate: cacheAnalytics.speaker.combined.hitRate,
+            totalCacheHits: cacheAnalytics.search.combined.hits + cacheAnalytics.analysis.combined.hits + cacheAnalytics.speaker.combined.hits,
+            totalCacheSize: cacheAnalytics.search.combined.cacheSize + cacheAnalytics.analysis.combined.cacheSize + cacheAnalytics.speaker.combined.cacheSize,
+            memoryUsage: cacheAnalytics.search.combined.memoryUsage + cacheAnalytics.analysis.combined.memoryUsage + cacheAnalytics.speaker.combined.memoryUsage,
           }
         }
       },

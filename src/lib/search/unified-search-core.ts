@@ -15,6 +15,7 @@ import { createHash } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
 import { executeWithRetry, executeWithGracefulDegradation, executeWithCircuitBreaker } from "@/lib/error-recovery";
 import { OPTIMIZED_RATE_LIMITS, OPTIMIZED_CACHE } from "@/lib/resource-optimizer";
+import { searchCache, generateSearchCacheKey } from "@/lib/advanced-cache";
 
 // Environment variables
 const firecrawlKey = process.env.FIRECRAWL_KEY;
@@ -251,10 +252,10 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
     };
   }
 
-  // Check cache first
-  const cacheKey = generateCacheKey(params, 'firecrawl');
+  // Check advanced cache first
+  const cacheKey = generateSearchCacheKey(params, 'firecrawl');
   if (params.useCache !== false) {
-    const cached = getCachedResult(cacheKey);
+    const cached = await searchCache.get(cacheKey);
     if (cached) {
       return {
         ...cached,
@@ -343,9 +344,9 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
       metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
     };
 
-    // Cache the result
+    // Cache the result using advanced cache
     if (params.useCache !== false) {
-      setCachedResult(cacheKey, result);
+      await searchCache.set(cacheKey, result, CACHE_DURATION, []);
     }
 
     return result;
@@ -376,10 +377,10 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
     };
   }
 
-  // Check cache first
-  const cacheKey = generateCacheKey(params, 'cse');
+  // Check advanced cache first
+  const cacheKey = generateSearchCacheKey(params, 'cse');
   if (params.useCache !== false) {
-    const cached = getCachedResult(cacheKey);
+    const cached = await searchCache.get(cacheKey);
     if (cached) {
       return {
         ...cached,
@@ -436,9 +437,9 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
       metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
     };
 
-    // Cache the result
+    // Cache the result using advanced cache
     if (params.useCache !== false) {
-      setCachedResult(cacheKey, result);
+      await searchCache.set(cacheKey, result, CACHE_DURATION, []);
     }
 
     return result;
