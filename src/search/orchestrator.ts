@@ -6,12 +6,18 @@
 
 import { buildTierQueries, assertClean, EVENT_DE, CITY_DE, buildDeEventQuery } from './query';
 import { DEFAULT_SHARD_KEYWORDS } from '@/config/search-dictionaries';
-import { runFirecrawlSearch } from './firecrawlClient';
-import { cseSearch } from './providers/cse';
+import { unifiedSearch } from '@/lib/search/unified-search-core';
 import { prefilter } from './url-filters';
 import { ensureCorrelation } from '@/lib/obs/corr';
 import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
-import { chunk } from '@/lib/utils/array';
+// Simple chunk function to replace the missing import
+function chunk<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+}
 
 const MIN_URLS = 8;
 const MAX_CONCURRENT_FC = Number(process.env.FIRECRAWL_MAX_CONCURRENCY ?? 25);
@@ -48,22 +54,23 @@ export async function runSearch(opts: {
 
   async function providerOnce(q: string) {
     try {
-      const results: string[] = [];
-      for (let page = 0; page < FC_MAX_PAGES; page += 1) {
-        const pageQuery = page === 0 ? q : `${q} page:${page + 1}`;
-        const batch = await runFirecrawlSearch(pageQuery, { ...fcParams, limit: FC_PAGE_SIZE });
-        results.push(...batch);
-        if (batch.length < FC_PAGE_SIZE) break;
-      }
-      return results;
-    } catch {
-      return await cseSearch(q);
+      const unifiedResult = await unifiedSearch({
+        q,
+        country: country || undefined,
+        limit: FC_PAGE_SIZE * FC_MAX_PAGES,
+        useCache: true
+      });
+      return unifiedResult.items;
+    } catch (error) {
+      console.warn('[search-orchestrator] Unified search failed for query:', q, error);
+      return [];
     }
   }
 
-  const tierBatches = chunk(tiers.entries(), MAX_CONCURRENT_FC);
+  const tierEntries = Array.from(tiers.entries());
+  const tierBatches = chunk(tierEntries, MAX_CONCURRENT_FC);
   for (const batch of tierBatches) {
-    const promises = batch.map(async ([index, query]) => {
+    const promises = batch.map(async ([index, query]: [number, string]) => {
       assertClean(query);
       const result = await providerOnce(query);
       stageCounter(`tier:${index}`, [], result, [{ key: 'returned', count: result.length, samples: result.slice(0, 3) }]);
@@ -107,19 +114,22 @@ export async function runSearch(opts: {
         // 1) site:.de hard constraint
         const qDe = `(${opts.baseQuery}) site:.de ${w}`;
         assertClean(qDe);
-        urls.push(...await cseSearch(qDe));
+        const deResult = await unifiedSearch({ q: qDe, country: 'DE', useCache: true });
+        urls.push(...deResult.items);
 
-        // 2) allow Firecrawl a try with German token
+        // 2) allow unified search a try with German token
         const qFc = `(${opts.baseQuery}) ${w}`;
         assertClean(qFc);
-        urls.push(...await runFirecrawlSearch(qFc, fcParams));
+        const fcResult = await unifiedSearch({ q: qFc, country: 'DE', useCache: true });
+        urls.push(...fcResult.items);
       }
     } else {
       // For non-German or pan-European searches, use broader search terms
       for (const w of DEFAULT_SHARD_KEYWORDS) {
         const q = `(${opts.baseQuery}) ${w}`;
         assertClean(q);
-        urls.push(...await runFirecrawlSearch(q, fcParams));
+        const result = await unifiedSearch({ q, country: country || undefined, useCache: true });
+        urls.push(...result.items);
       }
     }
 

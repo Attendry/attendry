@@ -227,9 +227,7 @@ function getString(value: unknown): string | null {
 import { loadActiveConfig, type ActiveConfig } from './config';
 import { tryJsonRepair } from '../utils/json';
 import { buildSearchQuery } from './queryBuilder';
-import { search as firecrawlSearch } from '../../providers/firecrawl';
-import { search as cseSearch } from '../../providers/cse';
-import { search as databaseSearch } from '../../providers/database';
+import { unifiedSearch } from '@/lib/search/unified-search-core';
 import { fetchCachedExtraction, upsertCachedExtraction } from './cache';
 import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
 import { RetryService } from '@/lib/services/retry-service';
@@ -2212,98 +2210,31 @@ async function performEnhancedSearch(args: ExecArgs) {
   const providersTried: string[] = [];
   const logs: Array<Record<string, unknown>> = [];
 
-  // Step 1: Search for URLs
-  console.log('[enhanced_orchestrator] Step 1: Searching for URLs');
-  let urls: string[] = [];
+  // Step 1: Search for URLs using Unified Search Core
+  console.log('[enhanced_orchestrator] Step 1: Searching for URLs using Unified Search Core');
   
-  // Try Firecrawl first with retry and circuit breaker
-  try {
-    providersTried.push('firecrawl');
-    const firecrawlRes = await RetryService.executeWithRetry(
-      'firecrawl',
-      'search',
-      () => executeWithCircuitBreaker(
-        'firecrawl',
-        () => firecrawlSearch({ q, dateFrom: effectiveDateFrom || undefined, dateTo: effectiveDateTo || undefined }),
-        CIRCUIT_BREAKER_CONFIGS.FIRECRAWL
-      )
-    );
-    urls = firecrawlRes.data?.items || [];
-    logs.push({ 
-      at: 'search', 
-      provider: 'firecrawl', 
-      count: urls.length, 
-      q, 
-      dateFrom: effectiveDateFrom, 
-      dateTo: effectiveDateTo,
-      retryAttempts: firecrawlRes.metrics.attempts,
-      totalDelayMs: firecrawlRes.metrics.totalDelayMs
-    });
-    console.log('[enhanced_orchestrator] Firecrawl found', urls.length, 'URLs (attempts:', firecrawlRes.metrics.attempts, ')');
-  } catch (error) {
-    console.warn('[enhanced_orchestrator] Firecrawl failed:', error);
-    logs.push({ at: 'search_error', provider: 'firecrawl', error: error instanceof Error ? error.message : String(error) });
-  }
-
-  // Try CSE if Firecrawl didn't return enough
-  if (urls.length < 10) {
-    try {
-      providersTried.push('cse');
-      const cseRes = await RetryService.executeWithRetry(
-        'google_cse',
-        'search',
-        () => executeWithCircuitBreaker(
-          'google_cse',
-          () => cseSearch({ q, country: country || undefined }),
-          CIRCUIT_BREAKER_CONFIGS.GOOGLE_CSE
-        )
-      );
-      const cseUrls = cseRes.data?.items || [];
-      urls = [...new Set([...urls, ...cseUrls])]; // Dedupe
-      logs.push({ 
-        at: 'search', 
-        provider: 'cse', 
-        count: cseUrls.length, 
-        q,
-        retryAttempts: cseRes.metrics.attempts,
-        totalDelayMs: cseRes.metrics.totalDelayMs
-      });
-      console.log('[enhanced_orchestrator] CSE added', cseUrls.length, 'more URLs (attempts:', cseRes.metrics.attempts, ')');
-    } catch (error) {
-      console.warn('[enhanced_orchestrator] CSE failed:', error);
-      logs.push({ at: 'search_error', provider: 'cse', error: error instanceof Error ? error.message : String(error) });
-    }
-  }
-
-  // Database fallback if still not enough
-  if (urls.length < 5) {
-    try {
-      providersTried.push('database');
-      const dbRes = await RetryService.executeWithRetry(
-        'supabase',
-        'search',
-        () => executeWithCircuitBreaker(
-          'supabase',
-          () => databaseSearch({ q, country: country || undefined }),
-          CIRCUIT_BREAKER_CONFIGS.SUPABASE
-        )
-      );
-      const dbUrls = Array.isArray(dbRes.data?.items) ? (dbRes.data.items as string[]) : [];
-      urls = [...new Set([...urls, ...dbUrls])];
-      logs.push({ 
-        at: 'search', 
-        provider: 'database', 
-        count: dbUrls.length, 
-        q,
-        retryAttempts: dbRes.metrics.attempts,
-        totalDelayMs: dbRes.metrics.totalDelayMs
-      });
-      console.log('[enhanced_orchestrator] Database fallback added', dbUrls.length, 'URLs (attempts:', dbRes.metrics.attempts, ')');
-    } catch (error) {
-      console.warn('[enhanced_orchestrator] Database fallback failed:', error);
-      logs.push({ at: 'search_error', provider: 'database', error: error instanceof Error ? error.message : String(error) });
-    }
-  }
+  const unifiedSearchResult = await unifiedSearch({
+    q,
+    dateFrom: effectiveDateFrom || undefined,
+    dateTo: effectiveDateTo || undefined,
+    country: country || undefined,
+    limit: 20,
+    useCache: true
+  });
+  
+  const urls = unifiedSearchResult.items;
+  providersTried.push(...unifiedSearchResult.providers);
+  
+  // Log unified search results
+  logs.push({
+    at: 'unified_search',
+    providers: unifiedSearchResult.providers,
+    totalItems: unifiedSearchResult.totalItems,
+    debug: unifiedSearchResult.debug,
+    metrics: unifiedSearchResult.metrics
+  });
+  
+  console.log('[enhanced_orchestrator] Unified search found', urls.length, 'URLs from providers:', unifiedSearchResult.providers.join(', '));
 
   if (urls.length === 0) {
     console.warn('[enhanced_orchestrator] No URLs found');

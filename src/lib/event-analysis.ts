@@ -486,7 +486,14 @@ Please extract and return the following information in JSON format:
 Focus on extracting accurate, factual information. If information is not available, use "Unknown" or null.`;
 
     console.log('Calling Gemini API for event metadata extraction...');
-    const result = await model.generateContent(prompt);
+    
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Gemini API timeout after 20 seconds')), 20000);
+    });
+    
+    const geminiPromise = model.generateContent(prompt);
+    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
     const response = await result.response;
     console.log('Gemini API call completed for metadata, processing response...');
     const text = response.text();
@@ -512,6 +519,9 @@ Focus on extracting accurate, factual information. If information is not availab
     }
   } catch (error) {
     console.warn('Event metadata extraction error:', error);
+    if (error instanceof Error && error.message.includes('timeout')) {
+      console.warn('Event metadata extraction timed out, using fallback');
+    }
   }
   
   // Fallback
@@ -538,8 +548,9 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     console.log('Gemini model initialized successfully');
     
+    // Limit content length to prevent timeouts - use first 2000 chars per page
     const combinedContent = crawlResults.map(result => 
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`
+      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 2000)}${result.content.length > 2000 ? '...' : ''}`
     ).join('\n\n');
     
     console.log('Preparing content for Gemini analysis, total content length:', combinedContent.length);
@@ -585,7 +596,14 @@ Important instructions:
 Return valid JSON only, no additional text.`;
 
     console.log('Calling Gemini API for speaker extraction...');
-    const result = await model.generateContent(prompt);
+    
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Gemini API timeout after 30 seconds')), 30000);
+    });
+    
+    const geminiPromise = model.generateContent(prompt);
+    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
     const response = await result.response;
     console.log('Gemini API call completed, processing response...');
     const text = response.text();
@@ -680,6 +698,9 @@ Return valid JSON only, no additional text.`;
     }
   } catch (error) {
     console.warn('Speaker extraction error:', error);
+    if (error instanceof Error && error.message.includes('timeout')) {
+      console.warn('Speaker extraction timed out, returning empty array');
+    }
   }
   
   return [];
@@ -688,8 +709,16 @@ Return valid JSON only, no additional text.`;
 export async function analyzeEvent(request: EventAnalysisRequest): Promise<EventAnalysisResponse> {
   const startTime = Date.now();
   
-  try {
-    console.log('Starting event analysis for:', request.eventUrl);
+  // Set overall timeout for the entire analysis (2 minutes)
+  const overallTimeout = new Promise<EventAnalysisResponse>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error('Event analysis timed out after 2 minutes'));
+    }, 120000);
+  });
+  
+  const analysisPromise = (async () => {
+    try {
+      console.log('Starting event analysis for:', request.eventUrl);
     
     const { eventUrl, eventTitle, eventDate, country } = request;
     
@@ -778,23 +807,27 @@ export async function analyzeEvent(request: EventAnalysisRequest): Promise<Event
       duration_ms: crawlDuration
     });
     
-    return analysisResult;
-    
-  } catch (error) {
-    console.error('Event analysis error:', error);
-    
-    return {
-      success: false,
-      cached: false,
-      event: {} as EventMetadata,
-      speakers: [],
-      crawl_stats: {
-        pages_crawled: 0,
-        total_content_length: 0,
-        speakers_found: 0,
-        crawl_duration_ms: Date.now() - startTime
-      },
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
-  }
+      return analysisResult;
+      
+    } catch (error) {
+      console.error('Event analysis error:', error);
+      
+      return {
+        success: false,
+        cached: false,
+        event: {} as EventMetadata,
+        speakers: [],
+        crawl_stats: {
+          pages_crawled: 0,
+          total_content_length: 0,
+          speakers_found: 0,
+          crawl_duration_ms: Date.now() - startTime
+        },
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  })();
+  
+  // Race between analysis and timeout
+  return Promise.race([analysisPromise, overallTimeout]);
 }

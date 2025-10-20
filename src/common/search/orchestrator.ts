@@ -1,10 +1,8 @@
 // common/search/orchestrator.ts
 import { loadActiveConfig } from './config';
 import { buildSearchQuery } from './queryBuilder';
-import { extractUrlsFromFirecrawl, extractUrlsFromCSE, dedupe } from './normalize';
-import { search as firecrawlSearch } from '../../providers/firecrawl';
-import { search as cseSearch } from '../../providers/cse';
-import { search as databaseSearch } from '../../providers/database';
+import { dedupe } from './normalize';
+import { unifiedSearch } from '@/lib/search/unified-search-core';
 import { ensureCorrelation } from '@/lib/obs/corr';
 import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
 
@@ -33,54 +31,41 @@ export async function executeSearch(args: ExecArgs) {
   const q = buildSearchQuery({ baseQuery, userText, excludeTerms });
   console.log(JSON.stringify({ correlationId, at: 'query', query: q }));
 
-  // Provider runners
+  // Use Unified Search Core
   const providersTried: string[] = [];
   const logs: any[] = [];
 
-  const runFirecrawl = async (query: string) => {
-    providersTried.push('firecrawl');
-    console.log(JSON.stringify({ correlationId, at: 'provider_call', provider: 'firecrawl', query }));
-    const res = await firecrawlSearch({ q: query, dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }); // existing helper
-    console.log(JSON.stringify({ correlationId, at: 'provider_response', provider: 'firecrawl', rawCount: res?.items?.length || 0, debug: res?.debug }));
-    // The provider already returns URLs in res.items, no need to extract
-    const urls = res?.items || [];
-    stageCounter('provider:firecrawl', [], urls, [{ key: 'returned', count: urls.length, samples: urls.slice(0, 3) }]);
-    logs.push({ at: 'provider_result', provider: 'firecrawl', count: urls.length, q: query, debug: res?.debug });
-    return urls;
-  };
-
-  const runCSE = async (query: string) => {
-    providersTried.push('cse');
-    console.log(JSON.stringify({ correlationId, at: 'provider_call', provider: 'cse', query }));
-    const res = await cseSearch({ q: query, country: country || 'DE' }).catch(() => ({ items: [], debug: { error: 'CSE search failed' } }));
-    console.log(JSON.stringify({ correlationId, at: 'provider_response', provider: 'cse', rawCount: res?.items?.length || 0, debug: res?.debug }));
-    // The provider already returns URLs in res.items, no need to extract
-    const urls = res?.items || [];
-    stageCounter('provider:cse', [], urls, [{ key: 'returned', count: urls.length, samples: urls.slice(0, 3) }]);
-    logs.push({ at: 'provider_result', provider: 'cse', count: urls.length, q: query, debug: res?.debug });
-    return urls;
-  };
-
-  // Try firecrawl then cse then database fallback
-  let urls = await runFirecrawl(q);
-  let providerUsed: 'firecrawl' | 'cse' | 'database' = 'firecrawl';
+  console.log(JSON.stringify({ correlationId, at: 'unified_search_start', query: q }));
   
-  if (urls.length === 0) {
-    console.log('[orchestrator] Firecrawl returned 0 results, trying CSE...');
-    const cseUrls = await runCSE(q);
-    if (cseUrls.length) {
-      urls = cseUrls; 
-      providerUsed = 'cse';
-    } else {
-      console.log('[orchestrator] CSE also returned 0 results, using database fallback...');
-      const dbResult = await databaseSearch({ q, country: country || 'DE' });
-      if (dbResult.items && dbResult.items.length) {
-        urls = dbResult.items;
-        providerUsed = 'database';
-        logs.push({ at: 'provider_result', provider: 'database', count: urls.length, q, debug: dbResult.debug });
-      }
-    }
-  }
+  const unifiedSearchResult = await unifiedSearch({
+    q,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    country: country || 'DE',
+    limit: 20,
+    useCache: true
+  });
+  
+  const urls = unifiedSearchResult.items;
+  providersTried.push(...unifiedSearchResult.providers);
+  
+  console.log(JSON.stringify({ 
+    correlationId, 
+    at: 'unified_search_result', 
+    providers: unifiedSearchResult.providers,
+    totalItems: unifiedSearchResult.totalItems,
+    metrics: unifiedSearchResult.metrics
+  }));
+  
+  logs.push({
+    at: 'unified_search',
+    providers: unifiedSearchResult.providers,
+    totalItems: unifiedSearchResult.totalItems,
+    debug: unifiedSearchResult.debug,
+    metrics: unifiedSearchResult.metrics
+  });
+  
+  const providerUsed = unifiedSearchResult.providers[0] as 'firecrawl' | 'cse' | 'database';
 
   const duplicates = urls.filter((url, idx, arr) => arr.indexOf(url) !== idx);
   const unique = dedupe(urls);
