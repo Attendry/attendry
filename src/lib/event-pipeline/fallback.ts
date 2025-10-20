@@ -377,7 +377,7 @@ export async function createPipelineWithFallback(): Promise<PipelineFallback> {
         throw new Error("GEMINI_API_KEY not configured");
       }
 
-      const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.0-flash:generateContent';
+      const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
       const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`, {
         method: 'POST',
         headers: { 

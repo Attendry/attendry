@@ -44,6 +44,7 @@ const DEFAULT_BUDGET: LLMBudget = {
  * Model pricing (per 1K tokens, in pence)
  */
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  'gemini-2.5-flash': { input: 0.075, output: 0.30 },
   'gemini-2.0-flash-exp': { input: 0.075, output: 0.30 },
   'gemini-1.5-pro': { input: 0.35, output: 1.05 },
   'gemini-1.5-flash': { input: 0.075, output: 0.30 },
@@ -410,7 +411,7 @@ export class LLMRequestHandler {
     queryId: string,
     candidates: Array<{ url: string; content: string }>,
     task: 'summarize' | 'enrich' | 'prioritize',
-    model: string = 'gemini-2.0-flash-exp'
+    model: string = 'gemini-2.5-flash'
   ): Promise<{
     results: T[];
     budgetStatus: {

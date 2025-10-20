@@ -13,7 +13,7 @@ import { SpeakerData } from "@/lib/types/core";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari";
 const MAX_CANDIDATES = 20;        // increased for better coverage
 const FIRECRAWL_WAIT_MS = 3000;   // increased wait time for dynamic content
-const LLM_MODEL = "gemini-1.5-pro"; // you can swap to flash for cheaper/faster
+const LLM_MODEL = "gemini-2.5-flash"; // Standardized to 2.5 Flash
 const MAX_DEPTH = 2;              // maximum crawl depth for speaker pages
 
 // Enhanced speaker profile interface (extends base SpeakerData)

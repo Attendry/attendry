@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
           `Return strict JSON only.`;
 
         const resp = await ai.models.generateContent({
-          model: "gemini-2.0-flash-001",
+          model: "gemini-2.5-flash",
           contents: [{ role: "system", parts: [{ text: sys }] }, { role: "user", parts: [{ text: user }] }],
         });
 
