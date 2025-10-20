@@ -177,10 +177,8 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       console.log('🔄 flushSync state updates completed - React should have processed them immediately');
       
-      // Optionally refresh the calendar
-      if (onRefresh) {
-        onRefresh();
-      }
+      // REMOVED onRefresh() call - it was resetting the component state!
+      console.log('🚨 onRefresh() call removed to prevent state reset');
     } catch (error) {
       console.error('Failed to promote event:', error);
       console.error('Error details:', {
@@ -463,7 +461,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v7.2)</span>
+                        <span>🚀 Promote to Analysis (v7.3)</span>
                       </>
                     )}
                   </button>
