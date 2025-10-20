@@ -665,64 +665,41 @@ export async function GET(req: NextRequest) {
       result = await processEnhancedResults(res, normalizedCountry, dateFrom, dateTo, includeDebug);
     }
 
-    // HYBRID ENHANCEMENT: Apply superior speaker extraction to discovered events (GET)
+    // HYBRID ENHANCEMENT: Start async speaker extraction for discovered events (GET)
     if (result.events && result.events.length > 0) {
-      console.log(`[api/events/run] Applying hybrid speaker enhancement to ${result.events.length} events (GET)...`);
+      console.log(`[api/events/run] Starting async speaker enhancement for ${result.events.length} events (GET)...`);
       
       try {
-        // Convert events to candidates format
-        const candidates: EventCandidate[] = result.events.map((event: any) => ({
-          id: event.id,
-          title: event.title,
-          source_url: event.source_url,
-          description: event.description,
-          starts_at: event.starts_at,
-          ends_at: event.ends_at,
-          city: event.city,
-          country: event.country,
-          venue: event.venue,
-          organizer: event.organizer,
-          confidence: event.confidence,
-          speakers: event.speakers || []
-        }));
-
-        // Enhance with superior speaker extraction (limit to top 3 events for GET performance)
-        const topCandidates = candidates.slice(0, 3);
-        const enhancedCandidates = await enhanceEventsWithSuperiorSpeakers(topCandidates, 1);
+        // Start async enhancement for top 3 events (GET performance)
+        const topEventIds = result.events.slice(0, 3).map((event: any) => event.id);
         
-        // Merge enhanced data back into results
-        result.events = result.events.map((event: any) => {
-          const enhanced = enhancedCandidates.find(ec => ec.id === event.id);
-          if (enhanced && enhanced.enhanced_speakers && enhanced.enhanced_speakers.length > 0) {
-            console.log(`[api/events/run] Enhanced ${event.title} with ${enhanced.enhanced_speakers.length} superior speakers (GET)`);
-            return {
-              ...event,
-              speakers: convertEnhancedSpeakersToLegacy(enhanced.enhanced_speakers),
-              enhanced_speakers: enhanced.enhanced_speakers,
-              analysis_completed: enhanced.analysis_completed,
-              speakers_found: enhanced.speakers_found,
-              crawl_stats: enhanced.crawl_stats,
-              confidence: enhanced.enhanced_confidence || event.confidence
-            };
-          }
-          return event;
-        });
-
-        // Add hybrid enhancement metadata
-        result.hybrid_enhancement = {
-          events_enhanced: enhancedCandidates.length,
-          total_speakers_found: enhancedCandidates.reduce((sum, ec) => sum + (ec.speakers_found || 0), 0),
-          enhancement_completed: true
+        const { startAsyncEventsAnalysis } = await import('@/lib/async-events-analysis');
+        const analysisJobId = await startAsyncEventsAnalysis(topEventIds);
+        
+        console.log(`[api/events/run] Async speaker enhancement started with job ID: ${analysisJobId} (GET)`);
+        
+        // For immediate response, return events with basic data and job ID
+        result.events = result.events.map((event: any) => ({
+          ...event,
+          async_enhancement_job_id: topEventIds.includes(event.id) ? analysisJobId : null,
+          enhancement_status: topEventIds.includes(event.id) ? 'processing' : 'not_enhanced'
+        }));
+        
+        // Add async enhancement metadata
+        result.async_enhancement = {
+          events_queued: topEventIds.length,
+          analysis_job_id: analysisJobId,
+          enhancement_status: 'processing'
         };
 
-        console.log(`[api/events/run] Hybrid enhancement completed (GET): ${enhancedCandidates.length} events enhanced`);
+        console.log(`[api/events/run] Async enhancement queued (GET): ${topEventIds.length} events`);
       } catch (enhancementError) {
-        console.warn('[api/events/run] Hybrid enhancement failed (GET):', enhancementError);
+        console.warn('[api/events/run] Async enhancement failed to start (GET):', enhancementError);
         // Continue with original results if enhancement fails
-        result.hybrid_enhancement = {
-          events_enhanced: 0,
-          total_speakers_found: 0,
-          enhancement_completed: false,
+        result.async_enhancement = {
+          events_queued: 0,
+          analysis_job_id: null,
+          enhancement_status: 'failed',
           error: enhancementError instanceof Error ? enhancementError.message : 'Unknown error'
         };
       }
@@ -857,64 +834,41 @@ export async function POST(req: NextRequest) {
       result = await processEnhancedResults(res, normalizedCountry, dateFrom, dateTo, includeDebug);
     }
 
-    // HYBRID ENHANCEMENT: Apply superior speaker extraction to discovered events
+    // HYBRID ENHANCEMENT: Start async speaker extraction for discovered events
     if (result.events && result.events.length > 0) {
-      console.log(`[api/events/run] Applying hybrid speaker enhancement to ${result.events.length} events...`);
+      console.log(`[api/events/run] Starting async speaker enhancement for ${result.events.length} events...`);
       
       try {
-        // Convert events to candidates format
-        const candidates: EventCandidate[] = result.events.map((event: any) => ({
-          id: event.id,
-          title: event.title,
-          source_url: event.source_url,
-          description: event.description,
-          starts_at: event.starts_at,
-          ends_at: event.ends_at,
-          city: event.city,
-          country: event.country,
-          venue: event.venue,
-          organizer: event.organizer,
-          confidence: event.confidence,
-          speakers: event.speakers || []
-        }));
-
-        // Enhance with superior speaker extraction (limit to top 5 events for performance)
-        const topCandidates = candidates.slice(0, 5);
-        const enhancedCandidates = await enhanceEventsWithSuperiorSpeakers(topCandidates, 2);
+        // Start async enhancement for top 5 events
+        const topEventIds = result.events.slice(0, 5).map((event: any) => event.id);
         
-        // Merge enhanced data back into results
-        result.events = result.events.map((event: any) => {
-          const enhanced = enhancedCandidates.find(ec => ec.id === event.id);
-          if (enhanced && enhanced.enhanced_speakers && enhanced.enhanced_speakers.length > 0) {
-            console.log(`[api/events/run] Enhanced ${event.title} with ${enhanced.enhanced_speakers.length} superior speakers`);
-            return {
-              ...event,
-              speakers: convertEnhancedSpeakersToLegacy(enhanced.enhanced_speakers),
-              enhanced_speakers: enhanced.enhanced_speakers,
-              analysis_completed: enhanced.analysis_completed,
-              speakers_found: enhanced.speakers_found,
-              crawl_stats: enhanced.crawl_stats,
-              confidence: enhanced.enhanced_confidence || event.confidence
-            };
-          }
-          return event;
-        });
-
-        // Add hybrid enhancement metadata
-        result.hybrid_enhancement = {
-          events_enhanced: enhancedCandidates.length,
-          total_speakers_found: enhancedCandidates.reduce((sum, ec) => sum + (ec.speakers_found || 0), 0),
-          enhancement_completed: true
+        const { startAsyncEventsAnalysis } = await import('@/lib/async-events-analysis');
+        const analysisJobId = await startAsyncEventsAnalysis(topEventIds);
+        
+        console.log(`[api/events/run] Async speaker enhancement started with job ID: ${analysisJobId}`);
+        
+        // For immediate response, return events with basic data and job ID
+        result.events = result.events.map((event: any) => ({
+          ...event,
+          async_enhancement_job_id: topEventIds.includes(event.id) ? analysisJobId : null,
+          enhancement_status: topEventIds.includes(event.id) ? 'processing' : 'not_enhanced'
+        }));
+        
+        // Add async enhancement metadata
+        result.async_enhancement = {
+          events_queued: topEventIds.length,
+          analysis_job_id: analysisJobId,
+          enhancement_status: 'processing'
         };
 
-        console.log(`[api/events/run] Hybrid enhancement completed: ${enhancedCandidates.length} events enhanced`);
+        console.log(`[api/events/run] Async enhancement queued: ${topEventIds.length} events`);
       } catch (enhancementError) {
-        console.warn('[api/events/run] Hybrid enhancement failed:', enhancementError);
+        console.warn('[api/events/run] Async enhancement failed to start:', enhancementError);
         // Continue with original results if enhancement fails
-        result.hybrid_enhancement = {
-          events_enhanced: 0,
-          total_speakers_found: 0,
-          enhancement_completed: false,
+        result.async_enhancement = {
+          events_queued: 0,
+          analysis_job_id: null,
+          enhancement_status: 'failed',
           error: enhancementError instanceof Error ? enhancementError.message : 'Unknown error'
         };
       }

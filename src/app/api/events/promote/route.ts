@@ -105,76 +105,59 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
-    // Now trigger the actual analysis pipeline for the promoted event
-    let analysisResult: any = null;
+    // Start the analysis pipeline asynchronously
+    let analysisJobId: string | null = null;
     try {
-      console.log('Triggering analysis pipeline for promoted event:', eventId);
+      console.log('Starting async analysis pipeline for promoted event:', eventId);
       
-      // Call the event analysis logic directly instead of making HTTP request
-      console.log('Starting direct event analysis for:', eventData.source_url);
+      // Import and start async analysis
+      const { startAsyncCalendarAnalysis } = await import('@/lib/async-calendar-analysis');
       
-      // Import the calendar-specific analysis functions
-      const { analyzeCalendarEvent } = await import('@/lib/calendar-analysis');
-      
-      // Use calendar-specific analysis (separate pipeline, won't block events search)
-      analysisResult = await analyzeCalendarEvent(
+      analysisJobId = await startAsyncCalendarAnalysis(
         eventData.source_url,
         eventData.title,
         eventData.starts_at,
         eventData.country
       );
       
-      console.log('Event analysis completed for promoted event:', eventId);
-      console.log('Analysis result success:', analysisResult.success);
-      console.log('Analysis result cached:', analysisResult.cached);
-      console.log('Event metadata:', analysisResult.event);
-      console.log('Speakers found:', analysisResult.speakers?.length || 0);
-      console.log('Crawl stats:', analysisResult.crawl_stats);
+      console.log('Async analysis started for promoted event:', eventId, 'job ID:', analysisJobId);
       
-      if (analysisResult.speakers && analysisResult.speakers.length > 0) {
-        console.log('First speaker:', {
-          name: analysisResult.speakers[0].name,
-          title: analysisResult.speakers[0].title,
-          company: analysisResult.speakers[0].company
-        });
-      }
+      // Update the extraction record with job ID for tracking
+      const { error: updateError } = await supabase
+        .from('event_extractions')
+        .update({
+          payload: {
+            ...extractionData.payload,
+            async_analysis_job_id: analysisJobId,
+            analysis_status: 'processing',
+            analysis_started_at: new Date().toISOString()
+          }
+        })
+        .eq('id', extractionData.id);
       
-      if (analysisResult && analysisResult.success) {
-        // Update the extraction record with analysis results
-        await supabase
-          .from('event_extractions')
-          .update({
-            payload: {
-              ...extractionData.payload,
-              analysis_completed: true,
-              analysis_results: analysisResult,
-              analyzed_at: new Date().toISOString(),
-              event_metadata: analysisResult.event,
-              speakers_found: analysisResult.speakers?.length || 0,
-              crawl_stats: analysisResult.crawl_stats
-            }
-          })
-          .eq('id', extractionData.id);
-          
-        console.log('Updated extraction record with analysis results');
+      if (updateError) {
+        console.error('Failed to update extraction record with job ID:', updateError);
       } else {
-        console.warn('Event analysis failed for promoted event:', eventId, 'Error:', analysisResult?.error);
+        console.log('Updated extraction record with async job ID:', analysisJobId);
       }
     } catch (analysisError) {
-      console.error('Failed to trigger analysis pipeline:', analysisError);
-      if (analysisError instanceof Error && analysisError.message.includes('timed out')) {
-        console.warn('Analysis timed out, but promotion was successful');
-        // Update the extraction record to indicate timeout
-        await supabase
-          .from('event_extractions')
-          .update({
-            payload: {
-              ...extractionData.payload,
-              analysis_timeout: true,
-              analysis_error: 'Analysis timed out after 90 seconds'
-            }
-          })
-          .eq('id', extractionData.id);
+      console.error('Failed to start async analysis for promoted event:', eventId, analysisError);
+      
+      // Update the extraction record to indicate analysis failed to start
+      const { error: updateError } = await supabase
+        .from('event_extractions')
+        .update({
+          payload: {
+            ...extractionData.payload,
+            analysis_error: analysisError instanceof Error ? analysisError.message : 'Failed to start async analysis',
+            analysis_status: 'failed',
+            analysis_started_at: new Date().toISOString()
+          }
+        })
+        .eq('id', extractionData.id);
+      
+      if (updateError) {
+        console.error('Failed to update extraction record with analysis error:', updateError);
       }
       // Don't fail the promotion if analysis fails
     }
@@ -184,7 +167,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       message: "Event promoted to analysis pipeline and processing started",
       extractionId: extractionData.id,
       eventId: eventId,
-      analysisResults: analysisResult // Include the analysis results in the response
+      analysisJobId: analysisJobId, // Include the async job ID for tracking
+      analysisStatus: 'processing' // Indicate that analysis is running in background
     });
   } catch (e: any) {
     return NextResponse.json({ 
