@@ -151,15 +151,16 @@ async function cacheCalendarAnalysis(eventUrl: string, analysis: CalendarAnalysi
 function extractCalendarSubPageUrls(baseUrl: string, content: string): string[] {
   const urls: string[] = [];
   const baseDomain = new URL(baseUrl).origin;
+  const baseUrlObj = new URL(baseUrl);
   
   // Look for speaker, agenda, about, team related URLs
-  const speakerKeywords = ['speaker', 'agenda', 'about', 'team', 'organizer', 'presenter', 'faculty', 'referenten', 'programm'];
+  const speakerKeywords = ['speaker', 'agenda', 'about', 'team', 'organizer', 'presenter', 'faculty', 'referenten', 'programm', 'speakers', 'presenters'];
   
-  // Simple regex to find URLs in content
+  // 1. Find full URLs in content
   const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
-  const matches = content.match(urlRegex) || [];
+  const fullUrlMatches = content.match(urlRegex) || [];
   
-  for (const match of matches) {
+  for (const match of fullUrlMatches) {
     try {
       const url = new URL(match);
       // Only include URLs from the same domain
@@ -175,6 +176,65 @@ function extractCalendarSubPageUrls(baseUrl: string, content: string): string[] 
     }
   }
   
+  // 2. Find relative URLs and href attributes
+  const hrefRegex = /href\s*=\s*["']([^"']+)["']/gi;
+  const hrefMatches = content.match(hrefRegex) || [];
+  
+  for (const match of hrefMatches) {
+    try {
+      const hrefMatch = match.match(/href\s*=\s*["']([^"']+)["']/i);
+      if (hrefMatch && hrefMatch[1]) {
+        let hrefUrl = hrefMatch[1];
+        
+        // Skip if it's already a full URL (we handled those above)
+        if (hrefUrl.startsWith('http')) {
+          continue;
+        }
+        
+        // Skip if it's a fragment or external link
+        if (hrefUrl.startsWith('#') || hrefUrl.startsWith('mailto:') || hrefUrl.startsWith('tel:')) {
+          continue;
+        }
+        
+        // Convert relative URL to absolute
+        if (hrefUrl.startsWith('/')) {
+          hrefUrl = baseDomain + hrefUrl;
+        } else {
+          hrefUrl = new URL(hrefUrl, baseUrl).href;
+        }
+        
+        // Check if URL contains speaker-related keywords
+        const urlLower = hrefUrl.toLowerCase();
+        if (speakerKeywords.some(keyword => urlLower.includes(keyword))) {
+          urls.push(hrefUrl);
+        }
+      }
+    } catch (e) {
+      // Invalid URL, skip
+    }
+  }
+  
+  // 3. Look for common speaker page patterns in the content
+  const commonPatterns = [
+    '/referenten/',
+    '/speakers/',
+    '/presenters/',
+    '/agenda/',
+    '/programm/',
+    '/team/',
+    '/about/',
+    '/organizer/',
+    '/faculty/'
+  ];
+  
+  for (const pattern of commonPatterns) {
+    const testUrl = baseDomain + pattern;
+    if (content.toLowerCase().includes(pattern.toLowerCase())) {
+      urls.push(testUrl);
+    }
+  }
+  
+  console.log('Calendar: Extracted sub-page URLs:', urls);
   return [...new Set(urls)]; // Remove duplicates
 }
 
@@ -234,7 +294,7 @@ async function calendarDeepCrawl(eventUrl: string): Promise<CalendarCrawlResult[
     
     // Extract potential sub-pages from the main page content
     const subPageUrls = extractCalendarSubPageUrls(eventUrl, results[0]?.content || '');
-    console.log('Calendar: Found potential sub-pages:', subPageUrls.length);
+    console.log('Calendar: Found potential sub-pages:', subPageUrls.length, subPageUrls);
     
     // Crawl sub-pages (limit to 2 for calendar analysis speed)
     for (const subUrl of subPageUrls.slice(0, 2)) {
