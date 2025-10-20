@@ -16,6 +16,7 @@ import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import { useRouter } from "next/navigation";
 import { useSearchResults, EventRec } from "@/context/SearchResultsContext";
 import { ActiveFilters } from "@/components/ActiveFilters";
+import ProcessingStatusBar from "@/components/ProcessingStatusBar";
 
 // EventRec type is now imported from SearchResultsContext
 
@@ -66,10 +67,55 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [watchlistMatches, setWatchlistMatches] = useState<Map<string, any>>(new Map());
   const [userProfile, setUserProfile] = useState<any>(null);
   const [promotionMessage, setPromotionMessage] = useState<string | null>(null);
+  const [processingJobs, setProcessingJobs] = useState<any[]>([]);
   const router = useRouter();
 
   // Get current page events from context
   const currentPageEvents = actions.getCurrentPageEvents();
+
+  // Poll job status for background processing
+  const pollJobStatus = async (jobId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/events/analysis-status?jobId=${jobId}`);
+        const status = await response.json();
+        
+        if (status.success) {
+          setProcessingJobs(prev => prev.map(job => 
+            job.id === jobId 
+              ? { 
+                  ...job, 
+                  status: status.status, 
+                  progress: status.progress || job.progress,
+                  message: status.status === 'completed' ? 'Enhancement completed!' : 
+                          status.status === 'failed' ? 'Enhancement failed' : job.message,
+                  result: status.result,
+                  error: status.error,
+                  completedAt: status.completedAt ? new Date(status.completedAt) : job.completedAt
+                }
+              : job
+          ));
+          
+          if (status.status === 'completed' || status.status === 'failed') {
+            clearInterval(pollInterval);
+            
+            // If completed, trigger a refresh to show enhanced data
+            if (status.status === 'completed') {
+              setTimeout(() => {
+                run(); // Re-run the search to get enhanced data
+              }, 1000);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to poll job status:', error);
+        clearInterval(pollInterval);
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    // Stop polling after 5 minutes
+    setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+  };
 
   // Load user profile data
   useEffect(() => {
@@ -307,6 +353,23 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         ...e,
         source_url: e.source_url || e.link
       }));
+
+      // Check for async enhancement job
+      if (data.async_enhancement?.analysis_job_id) {
+        const newJob = {
+          id: data.async_enhancement.analysis_job_id,
+          type: 'events' as const,
+          status: 'processing' as const,
+          progress: 0,
+          message: 'Enhancing events with speaker data...',
+          startedAt: new Date()
+        };
+        
+        setProcessingJobs(prev => [...prev, newJob]);
+        
+        // Start polling for job status
+        pollJobStatus(data.async_enhancement.analysis_job_id);
+      }
 
       // Store results in context with user profile data
       actions.setSearchResults(events, {
@@ -611,6 +674,19 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           )}
         </div>
       </ContentContainer>
+      
+      {/* Processing Status Bar */}
+      <ProcessingStatusBar 
+        jobs={processingJobs}
+        onJobComplete={(job) => {
+          console.log('Job completed:', job);
+          // Optionally trigger a refresh when enhancement completes
+          if (job.status === 'completed') {
+            setTimeout(() => run(), 1000);
+          }
+        }}
+        onRefresh={run}
+      />
     </>
   );
 }

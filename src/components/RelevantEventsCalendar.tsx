@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { Calendar, MapPin, Clock, Star, Users, Building, TrendingUp, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
+import ProcessingStatusBar from "./ProcessingStatusBar";
 
 interface RelevantEvent {
   id: string;
@@ -48,8 +49,63 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
   const [promotedEvents, setPromotedEvents] = useState<Record<string, any>>({});
   const [showResults, setShowResults] = useState<Record<string, boolean>>({});
   const [forceRender, setForceRender] = useState(0);
+  const [processingJobs, setProcessingJobs] = useState<any[]>([]);
 
   // Unified state management for promotion results
+
+  // Poll job status for background processing
+  const pollJobStatus = async (jobId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/events/analysis-status?jobId=${jobId}`);
+        const status = await response.json();
+        
+        if (status.success) {
+          setProcessingJobs(prev => prev.map(job => 
+            job.id === jobId 
+              ? { 
+                  ...job, 
+                  status: status.status, 
+                  progress: status.progress || job.progress,
+                  message: status.status === 'completed' ? 'Analysis completed!' : 
+                          status.status === 'failed' ? 'Analysis failed' : job.message,
+                  result: status.result,
+                  error: status.error,
+                  completedAt: status.completedAt ? new Date(status.completedAt) : job.completedAt
+                }
+              : job
+          ));
+          
+          if (status.status === 'completed' || status.status === 'failed') {
+            clearInterval(pollInterval);
+            
+            // If completed, update the promoted events with results
+            if (status.status === 'completed' && status.result) {
+              setPromotedEvents(prev => {
+                const updated = { ...prev };
+                Object.keys(updated).forEach(eventId => {
+                  if (updated[eventId].analysisJobId === jobId) {
+                    updated[eventId] = {
+                      ...updated[eventId],
+                      analysisResults: status.result,
+                      analysisCompleted: true
+                    };
+                  }
+                });
+                return updated;
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to poll job status:', error);
+        clearInterval(pollInterval);
+      }
+    }, 2000); // Poll every 2 seconds
+    
+    // Stop polling after 5 minutes
+    setTimeout(() => clearInterval(pollInterval), 5 * 60 * 1000);
+  };
 
   // Sort events based on selected criteria
   const sortedEvents = useMemo(() => {
@@ -136,14 +192,32 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       }
       
       // Store the promotion result and show it inline
-      console.log('Promotion successful, storing result:', { eventId, extractionId: data.extractionId, analysisResults: data.analysisResults });
+      console.log('Promotion successful, storing result:', { eventId, extractionId: data.extractionId, analysisJobId: data.analysisJobId });
+      
+      // Add processing job to track background analysis
+      if (data.analysisJobId) {
+        const newJob = {
+          id: data.analysisJobId,
+          type: 'calendar' as const,
+          status: 'processing' as const,
+          progress: 0,
+          message: 'Analyzing event and extracting speakers...',
+          startedAt: new Date()
+        };
+        
+        setProcessingJobs(prev => [...prev, newJob]);
+        
+        // Start polling for job status
+        pollJobStatus(data.analysisJobId);
+      }
       
       // Update both states together to ensure consistency
       const promotionResult = {
         extractionId: data.extractionId,
         promotedAt: new Date().toISOString(),
         status: 'success',
-        analysisResults: data.analysisResults // Store the analysis results
+        analysisJobId: data.analysisJobId,
+        analysisStatus: data.analysisStatus
       };
       
       console.log('Setting promotion result:', promotionResult);
@@ -747,6 +821,19 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
           </p>
         </div>
       )}
+      
+      {/* Processing Status Bar */}
+      <ProcessingStatusBar 
+        jobs={processingJobs}
+        onJobComplete={(job) => {
+          console.log('Job completed:', job);
+          // Optionally trigger a refresh when analysis completes
+          if (job.status === 'completed' && onRefresh) {
+            setTimeout(() => onRefresh(), 1000);
+          }
+        }}
+        onRefresh={onRefresh}
+      />
     </div>
   );
 }

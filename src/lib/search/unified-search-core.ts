@@ -243,9 +243,11 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
     const data = await response.json();
     console.log('[unified-firecrawl] Response received, items:', data?.data?.length || 0);
 
-    const items: string[] = (data?.data || [])
-      .map((item: any) => item?.url)
-      .filter((url: string) => typeof url === 'string' && url.startsWith('http'));
+    const items: string[] = Array.isArray(data?.data) 
+      ? data.data
+          .map((item: any) => item?.url)
+          .filter((url: string) => typeof url === 'string' && url.startsWith('http'))
+      : [];
 
     const result: UnifiedSearchResult = {
       items,
