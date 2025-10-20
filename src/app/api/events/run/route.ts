@@ -837,12 +837,16 @@ export async function POST(req: NextRequest) {
     // HYBRID ENHANCEMENT: Start async speaker extraction for discovered events
     if (result.events && result.events.length > 0) {
       console.log(`[api/events/run] Starting async speaker enhancement for ${result.events.length} events...`);
+      console.log(`[api/events/run] Event IDs:`, result.events.slice(0, 5).map((event: any) => event.id));
       
       try {
         // Start async enhancement for top 5 events
         const topEventIds = result.events.slice(0, 5).map((event: any) => event.id);
         
+        console.log(`[api/events/run] Importing async events analysis...`);
         const { startAsyncEventsAnalysis } = await import('@/lib/async-events-analysis');
+        console.log(`[api/events/run] Starting async analysis for event IDs:`, topEventIds);
+        
         const analysisJobId = await startAsyncEventsAnalysis(topEventIds);
         
         console.log(`[api/events/run] Async speaker enhancement started with job ID: ${analysisJobId}`);

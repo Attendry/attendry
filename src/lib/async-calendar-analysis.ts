@@ -72,7 +72,7 @@ async function processCalendarAnalysisAsync(jobId: string): Promise<void> {
     
     job.progress = 20;
     
-    // Perform the analysis with longer timeout
+    // Perform the analysis without timeout (let it run as long as needed)
     const result = await analyzeCalendarEvent(
       job.eventUrl,
       job.eventTitle,

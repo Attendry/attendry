@@ -603,14 +603,7 @@ Return valid JSON only, no additional text.`;
 export async function analyzeCalendarEvent(eventUrl: string, eventTitle?: string, eventDate?: string, country?: string): Promise<CalendarAnalysisResponse> {
   const startTime = Date.now();
   
-  // Set overall timeout for the entire calendar analysis (60 seconds)
-  const overallTimeout = new Promise<CalendarAnalysisResponse>((_, reject) => {
-    setTimeout(() => {
-      reject(new Error('Calendar event analysis timed out after 60 seconds'));
-    }, 60000);
-  });
-  
-  const analysisPromise = (async () => {
+  try {
     try {
       console.log('Starting calendar event analysis for:', eventUrl);
       
@@ -712,8 +705,28 @@ export async function analyzeCalendarEvent(eventUrl: string, eventTitle?: string
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
-  })();
-  
-  // Race between analysis and timeout
-  return Promise.race([analysisPromise, overallTimeout]);
+  } catch (error) {
+    console.error('Calendar analysis error:', error);
+    return {
+      success: false,
+      cached: false,
+      event: {
+        title: eventTitle || 'Unknown Event',
+        description: 'Unknown',
+        date: eventDate || 'Unknown',
+        location: country || 'Unknown',
+        organizer: 'Unknown',
+        website: eventUrl,
+        registrationUrl: undefined
+      },
+      speakers: [],
+      crawl_stats: {
+        pages_crawled: 0,
+        total_content_length: 0,
+        speakers_found: 0,
+        crawl_duration_ms: Date.now() - startTime
+      },
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
 }

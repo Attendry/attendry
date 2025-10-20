@@ -55,6 +55,8 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     job.status = 'processing';
     job.progress = 10;
     
+    console.log(`[async-events] Starting analysis for job ${jobId} with ${job.eventIds.length} events`);
+    
     // Import the hybrid speaker extractor
     const { enhanceEventsWithSuperiorSpeakers, convertEnhancedSpeakersToLegacy } = await import('./hybrid-speaker-extractor');
     
@@ -62,17 +64,22 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     
     // Get event data from database
     const supabase = await supabaseServer();
+    console.log(`[async-events] Fetching events from database for IDs:`, job.eventIds);
+    
     const { data: events, error } = await supabase
       .from('collected_events')
       .select('*')
       .in('id', job.eventIds);
     
     if (error) {
+      console.error(`[async-events] Database error:`, error);
       throw new Error(`Failed to fetch events: ${error.message}`);
     }
     
+    console.log(`[async-events] Found ${events?.length || 0} events in database`);
+    
     if (!events || events.length === 0) {
-      throw new Error('No events found');
+      throw new Error('No events found in database');
     }
     
     job.progress = 30;
@@ -95,8 +102,12 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     
     job.progress = 40;
     
+    console.log(`[async-events] Starting hybrid speaker extraction for ${candidates.length} candidates`);
+    
     // Enhance with superior speaker extraction
     const enhancedCandidates = await enhanceEventsWithSuperiorSpeakers(candidates, 2);
+    
+    console.log(`[async-events] Hybrid extraction completed, enhanced ${enhancedCandidates.length} candidates`);
     
     job.progress = 80;
     
