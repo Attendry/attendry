@@ -49,7 +49,7 @@ export class EnhancedFirecrawlService {
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
-    this.baseUrl = 'https://api.firecrawl.dev/v1';
+    this.baseUrl = 'https://api.firecrawl.dev/v2';
   }
 
   /**

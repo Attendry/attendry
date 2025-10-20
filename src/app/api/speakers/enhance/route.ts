@@ -165,7 +165,7 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
     try {
       console.log('Using Firecrawl for speaker research...');
       
-      const firecrawlResponse = await fetch('https://api.firecrawl.dev/v1/search', {
+      const firecrawlResponse = await fetch('https://api.firecrawl.dev/v2/search', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${firecrawlKey}`,

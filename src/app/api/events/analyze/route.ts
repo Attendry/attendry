@@ -181,7 +181,7 @@ async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
     console.log('Starting deep crawl for:', eventUrl);
     
     // First, crawl the main page
-    const mainPageResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    const mainPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${firecrawlKey}`,
@@ -224,7 +224,7 @@ async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
       await new Promise(resolve => setTimeout(resolve, FIRECRAWL_RATE_LIMIT.delayBetweenRequests));
       
       try {
-        const subPageResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        const subPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${firecrawlKey}`,
