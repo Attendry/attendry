@@ -452,7 +452,7 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                     ) : (
                       <>
                         <TrendingUp className="w-4 h-4" />
-                        <span>🚀 Promote to Analysis (v6.9)</span>
+                        <span>🚀 Promote to Analysis (v7.0)</span>
                       </>
                     )}
                   </button>
@@ -555,30 +555,23 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
             )}
 
             {/* Promotion Results */}
-            {(() => {
-              const shouldShow = !!(showResults[event.id] && promotedEvents[event.id]);
+            {showResults[event.id] && promotedEvents[event.id] && (() => {
               const promotedData = promotedEvents[event.id];
-              console.log('RENDER: Should show promotion results for event', event.id, ':', shouldShow, {
-                checkingEventId: event.id,
-                eventIdType: typeof event.id,
-                eventIdLength: event.id.length,
+              console.log('RENDER: Showing promotion results for event', event.id, {
                 showResults: showResults[event.id],
                 promotedEvents: !!promotedEvents[event.id],
                 promotedEventData: promotedData,
                 hasAnalysisResults: !!promotedData?.analysisResults,
-                analysisResultsKeys: promotedData?.analysisResults ? Object.keys(promotedData.analysisResults) : [],
-                allPromotedEvents: Object.keys(promotedEvents),
-                allShowResults: Object.keys(showResults),
                 forceRender: forceRender
               });
-              return shouldShow;
-            })() && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700"
-              >
+              
+              return (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700"
+                >
                 <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <TrendingUp className="w-5 h-5 text-green-600" />
@@ -707,7 +700,8 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                   )}
                 </div>
               </motion.div>
-            )}
+              );
+            })()}
           </motion.div>
         ))}
       </div>
