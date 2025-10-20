@@ -164,7 +164,7 @@ async function runDryRun() {
       'Tier C - Domains 1': { executed: false, results: 0, urls: [] }
     },
     prioritization: {
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       repairUsed: false,
       stats: { total: 15, prioritized: 8, reasons: ['High legal relevance', 'Event confidence'] }
     },
