@@ -459,9 +459,9 @@ async function extractCalendarSpeakers(crawlResults: CalendarCrawlResult[]): Pro
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     console.log('Calendar: Gemini model initialized successfully');
     
-    // Limit content length to prevent timeouts - use first 1200 chars per page (reduced due to sub-pages)
+    // Limit content length to prevent timeouts - use first 8000 chars per page for better speaker extraction
     const combinedContent = crawlResults.map(result => 
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1200)}${result.content.length > 1200 ? '...' : ''}`
+      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 8000)}${result.content.length > 8000 ? '...' : ''}`
     ).join('\n\n');
     
     console.log('Calendar: Preparing content for Gemini analysis, total content length:', combinedContent.length);
@@ -503,7 +503,7 @@ Important instructions:
 - Focus on extracting real, factual information from the content
 - If information is not available, use null or empty arrays
 - Be thorough in finding all speakers mentioned in the content
-- Limit to maximum 10 speakers for calendar analysis
+- Limit to maximum 25 speakers for calendar analysis
 
 Return valid JSON only, no additional text.`;
 
@@ -511,7 +511,7 @@ Return valid JSON only, no additional text.`;
     
     // Add timeout to prevent hanging
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Calendar Gemini API timeout after 20 seconds')), 20000);
+      setTimeout(() => reject(new Error('Calendar Gemini API timeout after 45 seconds')), 45000);
     });
     
     const geminiPromise = model.generateContent(prompt);
