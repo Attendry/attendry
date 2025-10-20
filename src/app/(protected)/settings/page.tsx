@@ -1,2 +1,2 @@
-export { default, dynamic, dynamicParams, fetchCache, revalidate, runtime } from "../admin/page";
+export { default } from "../admin/page";
 
