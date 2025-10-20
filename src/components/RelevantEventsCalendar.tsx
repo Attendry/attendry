@@ -609,28 +609,51 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
                           )}
                           
                           {/* Speakers */}
-                          {promotedEvents[event.id]?.analysisResults?.speakers && 
-                           promotedEvents[event.id]?.analysisResults?.speakers?.length > 0 && (
-                            <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
-                              <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
-                                Speakers Found ({promotedEvents[event.id]?.analysisResults?.speakers?.length})
-                              </h5>
-                              <div className="space-y-2 max-h-40 overflow-y-auto">
-                                {promotedEvents[event.id]?.analysisResults?.speakers?.slice(0, 5).map((speaker: any, index: number) => (
-                                  <div key={index} className="text-xs text-gray-600 dark:text-gray-300 border-l-2 border-blue-200 pl-2">
-                                    <div className="font-medium">{speaker.name}</div>
-                                    {speaker.title && <div className="text-gray-500">{speaker.title}</div>}
-                                    {speaker.company && <div className="text-gray-500">{speaker.company}</div>}
+                          {(() => {
+                            const speakers = promotedEvents[event.id]?.analysisResults?.speakers;
+                            console.log('🔍 DEBUG: Speakers data for event', event.id, ':', {
+                              speakers,
+                              speakersLength: speakers?.length,
+                              speakersType: typeof speakers,
+                              isArray: Array.isArray(speakers),
+                              analysisResults: promotedEvents[event.id]?.analysisResults
+                            });
+                            
+                            if (speakers && Array.isArray(speakers) && speakers.length > 0) {
+                              return (
+                                <div className="bg-white dark:bg-gray-800 rounded-md p-3 border border-gray-200 dark:border-gray-600">
+                                  <h5 className="text-sm font-medium text-gray-900 dark:text-white mb-2">
+                                    Speakers Found ({speakers.length})
+                                  </h5>
+                                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                                    {speakers.slice(0, 5).map((speaker: any, index: number) => (
+                                      <div key={index} className="text-xs text-gray-600 dark:text-gray-300 border-l-2 border-blue-200 pl-2">
+                                        <div className="font-medium">{speaker.name}</div>
+                                        {speaker.title && <div className="text-gray-500">{speaker.title}</div>}
+                                        {speaker.company && <div className="text-gray-500">{speaker.company}</div>}
+                                      </div>
+                                    ))}
+                                    {speakers.length > 5 && (
+                                      <div className="text-xs text-gray-500 italic">
+                                        ... and {speakers.length - 5} more speakers
+                                      </div>
+                                    )}
                                   </div>
-                                ))}
-                                {promotedEvents[event.id]?.analysisResults?.speakers?.length > 5 && (
-                                  <div className="text-xs text-gray-500 italic">
-                                    ... and {promotedEvents[event.id]?.analysisResults?.speakers?.length - 5} more speakers
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-md p-3 border border-yellow-200 dark:border-yellow-600">
+                                  <h5 className="text-sm font-medium text-yellow-800 dark:text-yellow-200 mb-2">
+                                    No Speakers Found
+                                  </h5>
+                                  <div className="text-xs text-yellow-700 dark:text-yellow-300">
+                                    Debug: speakers = {JSON.stringify(speakers)}
                                   </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
+                                </div>
+                              );
+                            }
+                          })()}
                           
                           {/* Crawl Stats */}
                           {promotedEvents[event.id]?.analysisResults?.crawl_stats && (
