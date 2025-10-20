@@ -106,22 +106,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     // Now trigger the actual analysis pipeline for the promoted event
-    let analysisResult = null;
+    let analysisResult: any = null;
     try {
       console.log('Triggering analysis pipeline for promoted event:', eventId);
       
       // Call the event analysis logic directly instead of making HTTP request
       console.log('Starting direct event analysis for:', eventData.source_url);
       
-      // Import the analysis functions directly
-      const { analyzeEvent } = await import('@/lib/event-analysis');
+      // Import the calendar-specific analysis functions
+      const { analyzeCalendarEvent } = await import('@/lib/calendar-analysis');
       
-      analysisResult = await analyzeEvent({
-        eventUrl: eventData.source_url,
-        eventTitle: eventData.title,
-        eventDate: eventData.starts_at,
-        country: eventData.country
-      });
+      // Use calendar-specific analysis (separate pipeline, won't block events search)
+      analysisResult = await analyzeCalendarEvent(
+        eventData.source_url,
+        eventData.title,
+        eventData.starts_at,
+        eventData.country
+      );
       
       console.log('Event analysis completed for promoted event:', eventId);
       console.log('Analysis result success:', analysisResult.success);
@@ -161,6 +162,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     } catch (analysisError) {
       console.error('Failed to trigger analysis pipeline:', analysisError);
+      if (analysisError instanceof Error && analysisError.message.includes('timed out')) {
+        console.warn('Analysis timed out, but promotion was successful');
+        // Update the extraction record to indicate timeout
+        await supabase
+          .from('event_extractions')
+          .update({
+            payload: {
+              ...extractionData.payload,
+              analysis_timeout: true,
+              analysis_error: 'Analysis timed out after 90 seconds'
+            }
+          })
+          .eq('id', extractionData.id);
+      }
       // Don't fail the promotion if analysis fails
     }
 
