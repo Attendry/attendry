@@ -1,4 +1,4 @@
-import { supabaseServer } from '@/lib/supabase-server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 interface AsyncEventsJob {
   id: string;
@@ -62,8 +62,8 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
     
     job.progress = 20;
     
-    // Get event data from database
-    const supabase = await supabaseServer();
+    // Get event data from database using admin client (no auth required)
+    const supabase = supabaseAdmin();
     console.log(`[async-events] Fetching events from database for IDs:`, job.eventIds);
     
     const { data: events, error } = await supabase
@@ -175,7 +175,7 @@ async function processEventsAnalysisAsync(jobId: string): Promise<void> {
 
 async function storeEnhancedEvents(events: any[]): Promise<void> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = supabaseAdmin();
     
     // Update events with enhanced speaker data
     for (const event of events) {

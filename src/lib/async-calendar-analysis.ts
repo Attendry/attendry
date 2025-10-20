@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { supabaseServer } from '@/lib/supabase-server';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 
 interface AsyncAnalysisJob {
   id: string;
@@ -105,7 +105,7 @@ async function processCalendarAnalysisAsync(jobId: string): Promise<void> {
 
 async function storeAnalysisResult(eventUrl: string, result: any): Promise<void> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = supabaseAdmin();
     
     // Store in event_analysis_cache table
     await supabase
