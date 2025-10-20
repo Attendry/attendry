@@ -148,6 +148,36 @@ async function cacheCalendarAnalysis(eventUrl: string, analysis: CalendarAnalysi
   }
 }
 
+function extractCalendarSubPageUrls(baseUrl: string, content: string): string[] {
+  const urls: string[] = [];
+  const baseDomain = new URL(baseUrl).origin;
+  
+  // Look for speaker, agenda, about, team related URLs
+  const speakerKeywords = ['speaker', 'agenda', 'about', 'team', 'organizer', 'presenter', 'faculty', 'referenten', 'programm'];
+  
+  // Simple regex to find URLs in content
+  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
+  const matches = content.match(urlRegex) || [];
+  
+  for (const match of matches) {
+    try {
+      const url = new URL(match);
+      // Only include URLs from the same domain
+      if (url.origin === baseDomain) {
+        // Check if URL contains speaker-related keywords
+        const urlLower = url.pathname.toLowerCase();
+        if (speakerKeywords.some(keyword => urlLower.includes(keyword))) {
+          urls.push(match);
+        }
+      }
+    } catch (e) {
+      // Invalid URL, skip
+    }
+  }
+  
+  return [...new Set(urls)]; // Remove duplicates
+}
+
 async function calendarDeepCrawl(eventUrl: string): Promise<CalendarCrawlResult[]> {
   const results: CalendarCrawlResult[] = [];
   
@@ -165,7 +195,7 @@ async function calendarDeepCrawl(eventUrl: string): Promise<CalendarCrawlResult[
   try {
     console.log('Starting calendar deep crawl for:', eventUrl);
     
-    // Only crawl the main page for calendar analysis (faster)
+    // First, crawl the main page
     let mainPageResponse;
     try {
       mainPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
@@ -177,7 +207,7 @@ async function calendarDeepCrawl(eventUrl: string): Promise<CalendarCrawlResult[
         body: JSON.stringify({
           url: eventUrl,
           formats: ['markdown'],
-          onlyMainContent: true, // Only main content for speed
+          onlyMainContent: false, // Get full content to find sub-pages
           timeout: 10000 // Shorter timeout
         })
       });
@@ -200,6 +230,62 @@ async function calendarDeepCrawl(eventUrl: string): Promise<CalendarCrawlResult[
       }
     } else {
       console.warn('Calendar: Main page crawl failed with status:', mainPageResponse.status);
+    }
+    
+    // Extract potential sub-pages from the main page content
+    const subPageUrls = extractCalendarSubPageUrls(eventUrl, results[0]?.content || '');
+    console.log('Calendar: Found potential sub-pages:', subPageUrls.length);
+    
+    // Crawl sub-pages (limit to 2 for calendar analysis speed)
+    for (const subUrl of subPageUrls.slice(0, 2)) {
+      if (!checkCalendarRateLimit()) {
+        console.warn('Calendar: Rate limit reached, stopping sub-page crawling');
+        break;
+      }
+      
+      // Add delay between requests
+      await new Promise(resolve => setTimeout(resolve, CALENDAR_FIRECRAWL_RATE_LIMIT.delayBetweenRequests));
+      
+      try {
+        let subPageResponse;
+        try {
+          subPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              url: subUrl,
+              formats: ['markdown'],
+              onlyMainContent: false,
+              timeout: 8000 // Even shorter timeout for sub-pages
+            })
+          });
+        } catch (subFetchError) {
+          console.warn('Calendar: Failed to fetch sub-page:', subUrl, subFetchError);
+          continue; // Skip this sub-page and continue with the next one
+        }
+        
+        if (subPageResponse.ok) {
+          const subPageData = await subPageResponse.json();
+          if (subPageData.data?.markdown) {
+            results.push({
+              url: subUrl,
+              title: subPageData.data.metadata?.title || 'Sub Page',
+              content: subPageData.data.markdown,
+              description: subPageData.data.metadata?.description || '',
+              metadata: subPageData.data.metadata
+            });
+            console.log('Calendar: Sub-page crawled:', subUrl, 'content length:', subPageData.data.markdown.length);
+          }
+        } else {
+          // Log error without consuming response body to avoid stream issues
+          console.warn('Calendar: Sub-page crawl failed for', subUrl, 'with status:', subPageResponse.status);
+        }
+      } catch (subPageError) {
+        console.warn('Calendar: Failed to crawl sub-page:', subUrl, subPageError);
+      }
     }
     
   } catch (error) {
@@ -228,9 +314,9 @@ async function extractCalendarEventMetadata(crawlResults: CalendarCrawlResult[],
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     console.log('Calendar: Gemini model initialized for metadata extraction');
     
-    // Use only first 1000 chars for speed
+    // Use only first 800 chars per page for speed (reduced due to sub-pages)
     const combinedContent = crawlResults.map(result => 
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1000)}...`
+      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 800)}${result.content.length > 800 ? '...' : ''}`
     ).join('\n\n');
     
     const prompt = `Extract basic event metadata from the following content:
@@ -313,9 +399,9 @@ async function extractCalendarSpeakers(crawlResults: CalendarCrawlResult[]): Pro
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     console.log('Calendar: Gemini model initialized successfully');
     
-    // Limit content length to prevent timeouts - use first 1500 chars per page
+    // Limit content length to prevent timeouts - use first 1200 chars per page (reduced due to sub-pages)
     const combinedContent = crawlResults.map(result => 
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1500)}${result.content.length > 1500 ? '...' : ''}`
+      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1200)}${result.content.length > 1200 ? '...' : ''}`
     ).join('\n\n');
     
     console.log('Calendar: Preparing content for Gemini analysis, total content length:', combinedContent.length);
