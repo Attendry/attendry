@@ -184,7 +184,7 @@ function extractCalendarSubPageUrls(baseUrl: string, content: string): string[] 
     try {
       const hrefMatch = match.match(/href\s*=\s*["']([^"']+)["']/i);
       if (hrefMatch && hrefMatch[1]) {
-        let hrefUrl = hrefMatch[1];
+        let hrefUrl = hrefMatch[1].trim();
         
         // Skip if it's already a full URL (we handled those above)
         if (hrefUrl.startsWith('http')) {
@@ -195,6 +195,9 @@ function extractCalendarSubPageUrls(baseUrl: string, content: string): string[] 
         if (hrefUrl.startsWith('#') || hrefUrl.startsWith('mailto:') || hrefUrl.startsWith('tel:')) {
           continue;
         }
+        
+        // Clean up malformed URLs (remove extra parentheses, etc.)
+        hrefUrl = hrefUrl.replace(/[)]+$/, '').replace(/[(]+$/, '');
         
         // Convert relative URL to absolute
         if (hrefUrl.startsWith('/')) {
@@ -459,9 +462,9 @@ async function extractCalendarSpeakers(crawlResults: CalendarCrawlResult[]): Pro
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     console.log('Calendar: Gemini model initialized successfully');
     
-    // Limit content length to prevent timeouts - use first 8000 chars per page for better speaker extraction
+    // Limit content length to prevent timeouts - use first 5000 chars per page for better speaker extraction
     const combinedContent = crawlResults.map(result => 
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 8000)}${result.content.length > 8000 ? '...' : ''}`
+      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 5000)}${result.content.length > 5000 ? '...' : ''}`
     ).join('\n\n');
     
     console.log('Calendar: Preparing content for Gemini analysis, total content length:', combinedContent.length);
@@ -511,7 +514,7 @@ Return valid JSON only, no additional text.`;
     
     // Add timeout to prevent hanging
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Calendar Gemini API timeout after 45 seconds')), 45000);
+      setTimeout(() => reject(new Error('Calendar Gemini API timeout after 30 seconds')), 30000);
     });
     
     const geminiPromise = model.generateContent(prompt);
