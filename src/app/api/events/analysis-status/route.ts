@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabase-server";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 // GET /api/events/analysis-status?jobId=xxx - Check async analysis status
 export async function GET(req: NextRequest): Promise<NextResponse> {
@@ -17,8 +17,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     
     // If we have a jobId, check the async job status
     if (jobId) {
-      const { getAsyncAnalysisStatus } = await import('@/lib/async-calendar-analysis');
-      const jobStatus = await getAsyncAnalysisStatus(jobId);
+      let jobStatus;
+      
+      // Check if it's a calendar job or events job
+      if (jobId.startsWith('calendar_')) {
+        const { getAsyncAnalysisStatus } = await import('@/lib/async-calendar-analysis');
+        jobStatus = await getAsyncAnalysisStatus(jobId);
+      } else if (jobId.startsWith('events_')) {
+        const { getAsyncEventsStatus } = await import('@/lib/async-events-analysis');
+        jobStatus = await getAsyncEventsStatus(jobId);
+      } else {
+        return NextResponse.json({ 
+          success: false,
+          error: "Invalid job ID format" 
+        }, { status: 400 });
+      }
       
       if (!jobStatus) {
         return NextResponse.json({ 
@@ -32,7 +45,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         jobId: jobStatus.id,
         status: jobStatus.status,
         progress: jobStatus.progress,
-        result: jobStatus.result,
+        result: (jobStatus as any).result || (jobStatus as any).results,
         error: jobStatus.error,
         startedAt: jobStatus.startedAt,
         completedAt: jobStatus.completedAt
@@ -41,7 +54,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     
     // If we have an extractionId, check the database for analysis results
     if (extractionId) {
-      const supabase = await supabaseServer();
+      const supabase = supabaseAdmin();
       const { data: extraction, error } = await supabase
         .from('event_extractions')
         .select('payload')
