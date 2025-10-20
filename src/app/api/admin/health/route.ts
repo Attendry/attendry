@@ -357,7 +357,7 @@ async function checkFirecrawlHealth(): Promise<HealthCheck> {
     }
 
     // Simple test request
-    const response = await fetch('https://api.firecrawl.dev/v0/scrape', {
+    const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
