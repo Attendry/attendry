@@ -104,15 +104,32 @@ Max ${maxSpeakers} speakers.`;
 }
 
 /**
- * Generate event prioritization prompt
+ * Generate event prioritization prompt with user-specific terms
  */
 export function createEventPrioritizationPrompt(
   urls: string[],
   industryContext: string = "general",
-  locationContext: string = "Europe"
+  locationContext: string = "Europe",
+  userIndustryTerms: string[] = [],
+  userIcpTerms: string[] = [],
+  timeframeContext?: string
 ): EventPrioritizationPrompt {
   // Conservative URL limit to prevent token overflow
   const limitedUrls = urls.slice(0, 5); // Conservative limit
+  
+  // Build user-specific context
+  const userContext = [];
+  if (userIndustryTerms.length > 0) {
+    userContext.push(`Industry focus: ${userIndustryTerms.slice(0, 5).join(", ")}`);
+  }
+  if (userIcpTerms.length > 0) {
+    userContext.push(`Target audience: ${userIcpTerms.slice(0, 5).join(", ")}`);
+  }
+  if (timeframeContext) {
+    userContext.push(`Timeframe: ${timeframeContext}`);
+  }
+  
+  const userContextText = userContext.length > 0 ? `\n\nUser-specific context:\n${userContext.join("\n")}` : "";
   
   const prompt = `Rate these event URLs for business relevance:
 
@@ -120,7 +137,10 @@ ${limitedUrls.join('\n')}
 
 Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief relevance reason"}]
 
-Focus on: conferences, workshops, professional events, business networking, industry events`;
+Focus on: conferences, workshops, professional events, business networking, industry events
+Location: ${locationContext}${userContextText}
+
+Prioritize events that match the user's industry focus and target audience.`;
 
   return {
     content: prompt,
@@ -169,13 +189,26 @@ Extract accurate, factual information. Use "Unknown" for missing info.`;
 }
 
 /**
- * Generate speaker enhancement prompt for detailed speaker profiles
+ * Generate speaker enhancement prompt for detailed speaker profiles with user-specific terms
  */
 export function createSpeakerEnhancementPrompt(
   speakerData: any[],
-  industryContext?: string
+  industryContext?: string,
+  userIndustryTerms: string[] = [],
+  userIcpTerms: string[] = []
 ): SpeakerExtractionPrompt {
   const industryTerms = industryContext ? INDUSTRY_CONTEXT[industryContext as keyof typeof INDUSTRY_CONTEXT] || [] : [];
+  
+  // Build user-specific context
+  const userContext = [];
+  if (userIndustryTerms.length > 0) {
+    userContext.push(`User industry focus: ${userIndustryTerms.slice(0, 5).join(", ")}`);
+  }
+  if (userIcpTerms.length > 0) {
+    userContext.push(`User target audience: ${userIcpTerms.slice(0, 5).join(", ")}`);
+  }
+  
+  const userContextText = userContext.length > 0 ? `\n\nUser-specific context:\n${userContext.join("\n")}` : "";
   
   const prompt = `Enhance these business speaker profiles with additional information:
 
@@ -190,9 +223,10 @@ Return enhanced JSON with same structure, adding:
 - Industry connections and networks
 - Recent professional news mentions
 
-${industryTerms.length > 0 ? `Industry focus: ${industryTerms.join(", ")}` : ""}
+${industryTerms.length > 0 ? `Industry focus: ${industryTerms.join(", ")}` : ""}${userContextText}
 
 Focus on: business professionals, industry experts, keynote speakers, panelists
+Prioritize speakers that match the user's industry focus and target audience.
 Keep original data, only enhance with additional professional information.`;
 
   return {
@@ -241,9 +275,9 @@ Extract only the most relevant sections for business professionals.`;
   return {
     content: prompt,
     config: {
-      maxTokens: 256,
+      maxTokens: 512,
       temperature: 0.1,
-      systemContext: "You are an expert at identifying relevant content sections."
+      systemInstruction: "You are an expert at identifying relevant content sections."
     }
   };
 }

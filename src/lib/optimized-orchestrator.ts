@@ -650,15 +650,43 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   
   const industryContext = searchConfig?.industry || 'general';
   
+  // Extract user-specific terms
+  const userIndustryTerms = userProfile?.industry_terms || [];
+  const userIcpTerms = userProfile?.icp_terms || [];
+  
+  // Build timeframe context from search parameters
+  let timeframeContext = '';
+  if (params.dateFrom && params.dateTo) {
+    const fromDate = new Date(params.dateFrom);
+    const toDate = new Date(params.dateTo);
+    const now = new Date();
+    
+    if (fromDate >= now) {
+      // Future events
+      const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
+      timeframeContext = `next ${daysDiff} days`;
+    } else if (toDate <= now) {
+      // Past events
+      const daysDiff = Math.ceil((fromDate.getTime() - toDate.getTime()) / (1000 * 60 * 60 * 24));
+      timeframeContext = `past ${daysDiff} days`;
+    } else {
+      // Mixed timeframe
+      timeframeContext = `${params.dateFrom} to ${params.dateTo}`;
+    }
+  }
+  
   try {
-    // Use new prompt system
+    // Use new prompt system with user-specific terms
     const { createEventPrioritizationPrompt } = await import('./prompts/gemini-prompts');
     const { promptExecutor } = await import('./prompts/prompt-executor');
     
     const prompt = createEventPrioritizationPrompt(
       urls.slice(0, 15),
       industryContext,
-      locationContext
+      locationContext,
+      userIndustryTerms,
+      userIcpTerms,
+      timeframeContext
     );
     
     const result = await promptExecutor.executeEventPrioritization(prompt);
@@ -1258,11 +1286,16 @@ async function enhanceSpeakersWithGemini(speakers: SpeakerInfo[], eventTitle: st
   }
 
   try {
-    // Use new prompt system
+    // Get user profile for speaker enhancement context
+    const userProfile = await getUserProfile();
+    const userIndustryTerms = userProfile?.industry_terms || [];
+    const userIcpTerms = userProfile?.icp_terms || [];
+    
+    // Use new prompt system with user-specific terms
     const { createSpeakerEnhancementPrompt } = await import('./prompts/gemini-prompts');
     const { promptExecutor } = await import('./prompts/prompt-executor');
     
-    const prompt = createSpeakerEnhancementPrompt(speakers, 'general');
+    const prompt = createSpeakerEnhancementPrompt(speakers, 'general', userIndustryTerms, userIcpTerms);
     
     const result = await promptExecutor.executePrompt(
       prompt.content,
