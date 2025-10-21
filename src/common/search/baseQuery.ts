@@ -6,6 +6,8 @@ export type BaseQuerySource =
   | 'safe.default';
 
 const DEFAULT_BASE_QUERY_BY_INDUSTRY: Record<string, string> = {
+  'general':
+    '(conference OR event OR summit OR workshop OR seminar OR meeting OR symposium OR forum OR exhibition OR trade show)',
   'legal-compliance':
     '(compliance OR investigation OR "e-discovery" OR ediscovery OR "legal tech" OR "legal technology" OR "GDPR" OR "cybersecurity" OR "interne untersuchung" OR "compliance management")',
 };

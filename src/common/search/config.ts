@@ -211,7 +211,7 @@ export async function loadActiveConfig(): Promise<ActiveConfig> {
   }
 
   // Fallback to default template
-  const defaultTemplate = INDUSTRY_TEMPLATES["legal-compliance"];
+  const defaultTemplate = INDUSTRY_TEMPLATES["general"];
   cached = defaultTemplate;
   return cached;
 }

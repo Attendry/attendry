@@ -198,15 +198,45 @@ export class SearchService {
     userProfile: any, 
     country: string
   ): string {
-    // Use only the base query from search config - no augmentation
-    const query = searchConfig?.baseQuery || baseQuery || '(legal)';
+    // Build industry-agnostic query using user profile and search config
+    const industryContext = searchConfig?.industry || 'general';
+    const industryTerms = searchConfig?.industryTerms || [];
+    const icpTerms = searchConfig?.icpTerms || [];
+    const userIndustryTerms = userProfile?.industry_terms || [];
+    const userIcpTerms = userProfile?.icp_terms || [];
+    
+    // Combine all industry and ICP terms
+    const allIndustryTerms = [...new Set([...industryTerms, ...userIndustryTerms])];
+    const allIcpTerms = [...new Set([...icpTerms, ...userIcpTerms])];
+    
+    // Build query based on user's industry focus
+    let query = '';
+    if (allIndustryTerms.length > 0) {
+      query = `(${allIndustryTerms.join(' OR ')})`;
+    } else {
+      query = '(conference OR event OR summit OR workshop OR seminar OR meeting OR symposium OR forum OR exhibition OR trade show)';
+    }
+    
+    // Add event types
+    query += ' (conference OR event OR summit OR workshop OR seminar OR meeting OR symposium OR forum OR exhibition OR trade show)';
+    
+    // Add location terms
+    if (country === 'DE') {
+      query += ' (Germany OR Berlin OR München OR Frankfurt OR Hamburg)';
+    }
+    
+    // Add temporal terms
+    query += ' (2025 OR 2026 OR 2027 OR upcoming OR "next year")';
+    
+    // Add exclude terms
+    query += ' -reddit -Mumsnet -forum';
     
     console.log('buildEnhancedQuery debug:', {
-      searchConfigBaseQuery: searchConfig?.baseQuery,
-      passedBaseQuery: baseQuery,
+      industryContext,
+      allIndustryTerms,
+      allIcpTerms,
       finalQuery: query
     });
-    
     
     return query;
   }
