@@ -1028,7 +1028,7 @@ async function parseEventDetails(content: string, url: string): Promise<{
   sponsors: SponsorInfo[];
   confidence: number;
 }> {
-  // Basic parsing logic - in a real implementation, this would be more sophisticated
+  // Enhanced parsing logic to avoid navigation elements
   const lines = content.split('\n').filter(line => line.trim());
   
   let title = '';
@@ -1039,8 +1039,38 @@ async function parseEventDetails(content: string, url: string): Promise<{
   const speakers: SpeakerInfo[] = [];
   const sponsors: SponsorInfo[] = [];
   
-  // Extract title (usually first meaningful line)
-  if (lines.length > 0) {
+  // Filter out navigation and common non-content elements
+  const navigationTerms = [
+    'navigation', 'nav', 'menu', 'header', 'footer', 'sidebar', 'breadcrumb',
+    'skip to', 'go to', 'jump to', 'back to', 'return to', 'home', 'about',
+    'contact', 'privacy', 'terms', 'cookie', 'sitemap', 'search', 'login',
+    'register', 'sign up', 'sign in', 'logout', 'profile', 'account', 'settings',
+    'help', 'support', 'faq', 'newsletter', 'subscribe', 'follow us', 'social media',
+    'twitter', 'facebook', 'linkedin', 'instagram', 'youtube', 'rss', 'feed',
+    'copyright', 'all rights reserved', 'powered by', 'built with', 'designed by'
+  ];
+  
+  const filteredLines = lines.filter(line => {
+    const lineLower = line.toLowerCase();
+    return !navigationTerms.some(term => lineLower.includes(term)) &&
+           line.length > 10 && // Avoid very short lines
+           line.length < 200 && // Avoid very long lines
+           !line.match(/^[\[\](){}|\\^`~!@#$%&*+=<>?/]+$/) && // Avoid pure symbols
+           !line.match(/^https?:\/\//) && // Avoid pure URLs
+           !line.match(/^[A-Z\s]+$/) && // Avoid pure uppercase (often navigation)
+           !line.match(/^\d+$/) && // Avoid pure numbers
+           !line.match(/^[a-z\s]+$/) && // Avoid pure lowercase (often navigation)
+           !line.includes('To Navigation') && // Specific navigation elements
+           !line.includes('To Search') &&
+           !line.includes('To Main') &&
+           !line.includes('Go To');
+  });
+  
+  // Extract title (first meaningful line from filtered content)
+  if (filteredLines.length > 0) {
+    title = filteredLines[0].trim();
+  } else if (lines.length > 0) {
+    // Fallback to original lines if filtering removed everything
     title = lines[0].trim();
   }
   
@@ -1098,8 +1128,11 @@ async function parseEventDetails(content: string, url: string): Promise<{
   // Combine industry terms with common non-speaker terms
   const nonSpeakerTerms = [...new Set([...allIndustryTerms, ...commonNonSpeakerTerms])];
   
+  // Use filtered content for speaker extraction to avoid navigation elements
+  const filteredContent = filteredLines.join('\n');
+  
   for (const pattern of speakerPatterns) {
-    const matches = content.match(pattern);
+    const matches = filteredContent.match(pattern);
     if (matches) {
       matches.slice(0, ORCHESTRATOR_CONFIG.limits.maxSpeakers).forEach(match => {
         const parts = match.split(/[,;|()]/).map(p => p.trim()).filter(Boolean);
@@ -1138,7 +1171,7 @@ async function parseEventDetails(content: string, url: string): Promise<{
   // If no speakers found with patterns, try basic name extraction (with filtering)
   if (speakers.length === 0) {
     const basicNamePattern = /([A-Z][a-z]+\s+[A-Z][a-z]+)/g;
-    const nameMatches = content.match(basicNamePattern);
+    const nameMatches = filteredContent.match(basicNamePattern);
     if (nameMatches) {
       nameMatches.slice(0, 10).forEach(name => {
         const speakerKey = name.toLowerCase();
