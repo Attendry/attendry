@@ -613,7 +613,7 @@ export class FirecrawlSearchService {
       "general": "business professional development networking"
     };
     
-    return industryMap[industry] || industryMap["legal-compliance"];
+    return industryMap[industry] || industryMap["general"];
   }
 
   /**

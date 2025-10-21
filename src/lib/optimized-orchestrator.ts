@@ -62,6 +62,50 @@ import {
 const geminiKey = process.env.GEMINI_API_KEY;
 const firecrawlKey = process.env.FIRECRAWL_KEY;
 
+/**
+ * Get user profile for industry-specific context
+ */
+async function getUserProfile(): Promise<any> {
+  try {
+    const supabase = await supabaseServer();
+    const { data: userRes } = await supabase.auth.getUser();
+    
+    if (!userRes?.user) {
+      return null;
+    }
+
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userRes.user.id)
+      .single();
+
+    return data;
+  } catch (error) {
+    console.warn('Failed to get user profile:', error);
+    return null;
+  }
+}
+
+/**
+ * Get search configuration for industry-specific context
+ */
+async function getSearchConfig(): Promise<any> {
+  try {
+    const supabase = await supabaseServer();
+    const { data } = await supabase
+      .from('search_configurations')
+      .select('*')
+      .eq('is_active', true)
+      .single();
+
+    return data;
+  } catch (error) {
+    console.warn('Failed to get search config:', error);
+    return null;
+  }
+}
+
 // Configuration - Using optimized settings
 const ORCHESTRATOR_CONFIG = {
   thresholds: {
@@ -600,33 +644,49 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const countryContext = getCountryContext(params.country);
   const locationContext = countryContext.countryNames[0] || 'Europe';
   
-  const prompt = `You are an expert in compliance, legal technology, and regulatory events.
+  // Get user profile and search configuration for industry-specific context
+  const userProfile = await getUserProfile();
+  const searchConfig = await getSearchConfig();
+  
+  const industryContext = searchConfig?.industry || 'general';
+  const industryTerms = searchConfig?.industryTerms || [];
+  const icpTerms = searchConfig?.icpTerms || [];
+  const userIndustryTerms = userProfile?.industry_terms || [];
+  const userIcpTerms = userProfile?.icp_terms || [];
+  
+  // Combine all industry and ICP terms
+  const allIndustryTerms = [...new Set([...industryTerms, ...userIndustryTerms])];
+  const allIcpTerms = [...new Set([...icpTerms, ...userIcpTerms])];
+  
+  const industryFocus = allIndustryTerms.length > 0 ? allIndustryTerms.join(', ') : 'business and professional events';
+  const targetAudience = allIcpTerms.length > 0 ? allIcpTerms.join(', ') : 'professionals';
+  
+  const prompt = `You are an expert in ${industryContext} events and conferences.
 
 SEARCH CONTEXT:
-- Industry: Compliance, Legal Technology, Regulatory Affairs
-- Focus: GDPR, e-discovery, legal tech, cybersecurity, investigation, compliance management
+- Industry: ${industryContext}
+- Focus: ${industryFocus}
+- Target Audience: ${targetAudience}
 - Location: ${locationContext}
-- Query: ${params.userText || 'compliance and legal technology events'}
+- Query: ${params.userText || `${industryContext} events`}
 
-TASK: From the URLs below, return the top 10 most relevant for COMPLIANCE AND LEGAL TECHNOLOGY events that are:
+TASK: From the URLs below, return the top 10 most relevant for ${industryContext.toUpperCase()} events that are:
 1. Actually taking place in ${locationContext} or relevant to ${locationContext} professionals
-2. Real events focused on: compliance, legal tech, GDPR, e-discovery, cybersecurity, investigation, regulatory affairs
-3. NOT general business events, trade shows, or unrelated industries (fruit logistics, IT general, etc.)
+2. Real events focused on: ${industryFocus}
+3. Relevant to: ${targetAudience}
 4. Are not general websites, documentation, or non-event pages
 
 PRIORITIZE:
-- Compliance conferences and workshops
-- Legal technology summits
-- GDPR and data protection events
-- E-discovery and investigation seminars
-- Cybersecurity compliance events
-- Regulatory affairs meetings
+- ${industryContext} conferences and workshops
+- Industry-specific summits and meetings
+- Professional development events
+- Networking and business events relevant to the industry
 
 AVOID:
-- General business events
+- General business events not related to the industry
 - Trade shows for unrelated industries
-- IT events not focused on compliance/legal
 - General corporate websites
+- Non-event pages
 
 URLs: ${urls.slice(0, 20).join('\n')}
 
@@ -634,7 +694,7 @@ Return a JSON array of objects, each with:
 {
   "url": "https://...",
   "score": number between 0 and 1 (higher = more relevant),
-  "reason": "short explanation focusing on compliance/legal relevance"
+  "reason": "short explanation focusing on industry relevance"
 }
 
 Include at most 10 items. Only include URLs you see in the list.`;
@@ -740,7 +800,7 @@ async function extractSingleEvent(url: string, params: OptimizedSearchParams): P
   const content = await extractWithFirecrawl(url);
   
   // Parse event details from content
-  const eventDetails = parseEventDetails(content, url);
+  const eventDetails = await parseEventDetails(content, url);
   
   return {
     url,
@@ -958,7 +1018,7 @@ function extractSpeakerSubPages(baseUrl: string, content: string): string[] {
 /**
  * Parse event details from content
  */
-function parseEventDetails(content: string, url: string): {
+async function parseEventDetails(content: string, url: string): Promise<{
   title?: string;
   description?: string;
   date?: string;
@@ -967,7 +1027,7 @@ function parseEventDetails(content: string, url: string): {
   speakers: SpeakerInfo[];
   sponsors: SponsorInfo[];
   confidence: number;
-} {
+}> {
   // Basic parsing logic - in a real implementation, this would be more sophisticated
   const lines = content.split('\n').filter(line => line.trim());
   
@@ -1020,14 +1080,23 @@ function parseEventDetails(content: string, url: string): {
 
   const seenSpeakers = new Set<string>();
   
-  // Filter out common non-speaker terms
-  const nonSpeakerTerms = [
-    'compliance', 'gdpr', 'cybersecurity', 'legal', 'technology', 'data', 'privacy',
-    'regulation', 'governance', 'risk', 'audit', 'investigation', 'e-discovery',
-    'management', 'strategy', 'business', 'digital', 'transformation', 'innovation',
+  // Get industry-specific non-speaker terms from user profile and search config
+  const userProfile = await getUserProfile();
+  const searchConfig = await getSearchConfig();
+  
+  const industryTerms = searchConfig?.industry_terms || [];
+  const userIndustryTerms = userProfile?.industry_terms || [];
+  const allIndustryTerms = [...new Set([...industryTerms, ...userIndustryTerms])];
+  
+  // Common non-speaker terms that apply to all industries
+  const commonNonSpeakerTerms = [
     'agenda', 'program', 'schedule', 'session', 'workshop', 'seminar', 'conference',
-    'event', 'meeting', 'summit', 'forum', 'exhibition', 'trade show'
+    'event', 'meeting', 'summit', 'forum', 'exhibition', 'trade show', 'management',
+    'strategy', 'business', 'digital', 'transformation', 'innovation', 'technology'
   ];
+  
+  // Combine industry terms with common non-speaker terms
+  const nonSpeakerTerms = [...new Set([...allIndustryTerms, ...commonNonSpeakerTerms])];
   
   for (const pattern of speakerPatterns) {
     const matches = content.match(pattern);

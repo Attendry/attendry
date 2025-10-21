@@ -128,11 +128,11 @@ export class SearchService {
     return {
       id: "default",
       name: "Default Configuration",
-      industry: "legal-compliance",
-      baseQuery: "compliance veranstaltung OR compliance konferenz OR compliance kongress OR compliance panel OR compliance workshop OR datenschutz veranstaltung OR dsgvo konferenz OR compliance summit deutschland",
+      industry: "general",
+      baseQuery: "conference OR event OR summit OR workshop OR seminar OR meeting OR symposium OR forum OR exhibition OR trade show",
       excludeTerms: "reddit forum personal blog international global usa america instagram facebook twitter linkedin social media reel post",
-      industryTerms: ["compliance", "legal", "investigation", "datenschutz", "dsgvo", "recht", "regulierung", "audit", "risk management", "governance"],
-      icpTerms: ["legal counsel", "compliance officer", "datenschutzbeauftragter", "compliance manager"],
+      industryTerms: ["business", "professional", "networking", "development", "technology", "innovation"],
+      icpTerms: ["professionals", "business leaders", "industry experts", "decision makers"],
       is_active: true
     };
   }
