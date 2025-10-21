@@ -310,7 +310,7 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
     console.log('[unified-firecrawl] Making request with body:', JSON.stringify(body, null, 2));
 
-    // Use advanced circuit breaker for Firecrawl API calls
+    // Use advanced circuit breaker for Firecrawl API calls with better error handling
     const data = await executeWithAdvancedCircuitBreaker(async () => {
       const response = await fetch('https://api.firecrawl.dev/v2/search', {
         method: 'POST',
@@ -318,12 +318,15 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
           'Authorization': `Bearer ${firecrawlKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        // Add timeout to prevent hanging requests
+        signal: AbortSignal.timeout(20000) // 20 second timeout
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.warn(`[unified-firecrawl] API error ${response.status}:`, errorText);
+        throw new Error(`Firecrawl error: ${response.status}`);
       }
 
       return await response.json();

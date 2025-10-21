@@ -23,11 +23,11 @@ const firecrawlKey = process.env.FIRECRAWL_KEY;
 const googleKey = process.env.GOOGLE_CSE_KEY;
 const googleCx = process.env.GOOGLE_CSE_CX;
 
-// Rate limiting configuration - OPTIMIZED FOR SPEED
+// Rate limiting configuration - CONSERVATIVE FOR STABILITY
 const FIRECRAWL_RATE_LIMIT = {
-  maxRequestsPerMinute: 20, // Increased from 10
-  maxRequestsPerHour: 200,  // Increased from 100
-  delayBetweenRequests: 1000 // Reduced from 6000ms to 1000ms (1 second)
+  maxRequestsPerMinute: 10, // Conservative for stability
+  maxRequestsPerHour: 100,  // Conservative for stability
+  delayBetweenRequests: 3000 // 3 second delay for stability
 };
 
 // Cache configuration
@@ -194,7 +194,7 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
         url: eventUrl,
         formats: ['markdown'],
         onlyMainContent: false, // Get more content, not just main content
-        timeout: 15000 // Reduced from 30s to 15s for faster response
+        timeout: 25000 // Increased to 25s for stability
       })
     });
     

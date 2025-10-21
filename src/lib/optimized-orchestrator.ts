@@ -637,7 +637,9 @@ Include at most 10 items. Only include URLs you see in the list.`;
         topP: 0.8,
         topK: 40
       }
-    })
+    }),
+    // Add timeout to prevent hanging requests
+    signal: AbortSignal.timeout(15000) // 15 second timeout
   });
 
   if (!response.ok) {
@@ -1046,7 +1048,9 @@ Return JSON array:
         topP: 0.8,
         topK: 40
       }
-    })
+    }),
+    // Add timeout to prevent hanging requests
+    signal: AbortSignal.timeout(15000) // 15 second timeout
   });
 
   if (!response.ok) {

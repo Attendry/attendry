@@ -15,25 +15,25 @@
 
 // Optimized configuration for maximum performance
 export const OPTIMIZED_CONFIG = {
-  // Timeout optimizations - reduced for faster processing
+  // Timeout optimizations - increased for stability
   timeouts: {
-    discovery: 15000,        // Reduced from 30s to 15s
-    prioritization: 10000,   // Reduced from 20s to 10s
-    extraction: 8000,        // Reduced from 15s to 8s
-    enhancement: 5000,       // Reduced from 10s to 5s
-    api: 30000,              // Overall API timeout
-    firecrawl: 10000,        // Firecrawl specific timeout
-    gemini: 8000,            // Gemini specific timeout
-    cse: 5000,               // CSE specific timeout
+    discovery: 30000,        // Increased for stability
+    prioritization: 20000,   // Increased for stability
+    extraction: 15000,       // Increased for stability
+    enhancement: 10000,      // Increased for stability
+    api: 45000,              // Overall API timeout
+    firecrawl: 20000,        // Firecrawl specific timeout
+    gemini: 15000,           // Gemini specific timeout
+    cse: 10000,              // CSE specific timeout
   },
 
-  // Rate limiting optimizations - increased for better throughput
+  // Rate limiting optimizations - conservative for stability
   rateLimits: {
     firecrawl: {
-      maxRequestsPerMinute: 30,    // Increased from 20
-      maxRequestsPerHour: 300,     // Increased from 200
-      delayBetweenRequests: 0,     // Removed artificial delay
-      burstLimit: 5,               // Allow burst requests
+      maxRequestsPerMinute: 15,    // Reduced for stability
+      maxRequestsPerHour: 150,     // Reduced for stability
+      delayBetweenRequests: 2000,  // 2 second delay for stability
+      burstLimit: 2,               // Conservative burst limit
     },
     cse: {
       maxRequestsPerMinute: 150,   // Increased from 100
