@@ -634,7 +634,7 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
 }
 
 /**
- * Prioritize URLs using Gemini 2.5-flash
+ * Prioritize URLs using Gemini 2.5-flash with new prompt system
  */
 async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParams): Promise<Array<{url: string, score: number, reason: string}>> {
   if (!geminiKey) {
@@ -649,38 +649,25 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const searchConfig = await getSearchConfig();
   
   const industryContext = searchConfig?.industry || 'general';
-  const industryTerms = searchConfig?.industryTerms || [];
-  const icpTerms = searchConfig?.icpTerms || [];
-  const userIndustryTerms = userProfile?.industry_terms || [];
-  const userIcpTerms = userProfile?.icp_terms || [];
   
-  // Combine all industry and ICP terms
-  const allIndustryTerms = [...new Set([...industryTerms, ...userIndustryTerms])];
-  const allIcpTerms = [...new Set([...icpTerms, ...userIcpTerms])];
-  
-  const industryFocus = allIndustryTerms.length > 0 ? allIndustryTerms.join(', ') : 'business and professional events';
-  const targetAudience = allIcpTerms.length > 0 ? allIcpTerms.join(', ') : 'professionals';
-  
-  const prompt = `Rate these URLs for ${industryContext} events in ${locationContext}:
-
-${urls.slice(0, 15).join('\n')}
-
-Return JSON array with top 10 most relevant:
-[{"url": "https://...", "score": 0.9, "reason": "brief reason"}]
-
-Focus on: ${industryFocus}
-Target: ${targetAudience}`;
-
   try {
-    const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
+    // Use new prompt system
+    const { createEventPrioritizationPrompt } = await import('./prompts/gemini-prompts');
+    const { promptExecutor } = await import('./prompts/prompt-executor');
     
-    const response = await generateContentWithRetry({
-      prompt,
-      maxOutputTokens: 1024,
-      temperature: 0.1
-    });
-
-    return parseJsonResponse(response.text);
+    const prompt = createEventPrioritizationPrompt(
+      urls.slice(0, 15),
+      industryContext,
+      locationContext
+    );
+    
+    const result = await promptExecutor.executeEventPrioritization(prompt);
+    
+    if (result.success && result.data) {
+      return result.data;
+    } else {
+      throw new Error(result.error || 'Prioritization failed');
+    }
   } catch (error) {
     console.warn('[optimized-orchestrator] Gemini prioritization failed, using fallback:', error);
     
@@ -1257,7 +1244,7 @@ async function enhanceSingleEventSpeakers(event: EventCandidate, params: Optimiz
 }
 
 /**
- * Enhance speakers using Gemini
+ * Enhance speakers using Gemini with new prompt system
  */
 async function enhanceSpeakersWithGemini(speakers: SpeakerInfo[], eventTitle: string): Promise<SpeakerInfo[]> {
   if (!geminiKey || speakers.length === 0) {
@@ -1270,49 +1257,23 @@ async function enhanceSpeakersWithGemini(speakers: SpeakerInfo[], eventTitle: st
     return speakers;
   }
 
-  const prompt = `Enhance the speaker information for this event: "${eventTitle}"
-
-Current speakers:
-${speakers.map(s => `- ${s.name}${s.title ? `, ${s.title}` : ''}${s.company ? `, ${s.company}` : ''}`).join('\n')}
-
-Please enhance each speaker with:
-1. Full name (First Last format)
-2. Professional title/role (e.g., "General Counsel", "Compliance Officer", "Director", "Manager")
-3. Company/organization (e.g., "Microsoft", "Goldman Sachs", "Law Firm Name")
-
-IMPORTANT:
-- If a speaker already has a title or company, keep it unless you can provide a more specific one
-- For legal/compliance events, common titles include: General Counsel, Chief Compliance Officer, Legal Director, Compliance Manager, Partner, Associate
-- For business events, common titles include: CEO, CTO, Director, Manager, VP, Head of
-- Only include actual person names, not generic terms
-- If you cannot determine a title or company, use "Professional" as title and "Various" as company
-
-Return JSON array:
-[
-  {
-    "name": "Full Name",
-    "title": "Professional Title",
-    "company": "Company Name"
-  }
-]`;
-
-  const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
-  
   try {
-    const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
+    // Use new prompt system
+    const { createSpeakerEnhancementPrompt } = await import('./prompts/gemini-prompts');
+    const { promptExecutor } = await import('./prompts/prompt-executor');
     
-    const response = await generateContentWithRetry({
-      prompt,
-      maxOutputTokens: 1024,
-      temperature: 0.1
-    });
-
-    const enhancedSpeakers = parseJsonResponse(response.text);
+    const prompt = createSpeakerEnhancementPrompt(speakers, 'general');
     
-    if (Array.isArray(enhancedSpeakers) && enhancedSpeakers.length > 0) {
+    const result = await promptExecutor.executePrompt(
+      prompt.content,
+      prompt.config,
+      speakers // Fallback data
+    );
+    
+    if (result.success && result.data && Array.isArray(result.data)) {
       // Merge enhanced data with original speakers
       return speakers.map(originalSpeaker => {
-        const enhanced = enhancedSpeakers.find(e => 
+        const enhanced = result.data!.find((e: any) => 
           e.name && originalSpeaker.name && 
           e.name.toLowerCase().includes(originalSpeaker.name.toLowerCase())
         );

@@ -377,61 +377,34 @@ async function extractCalendarEventMetadata(crawlResults: CalendarCrawlResult[],
   }
   
   try {
-    console.log('Initializing Gemini for calendar event metadata extraction...');
-    const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    console.log('Calendar: Gemini model initialized for metadata extraction');
+    console.log('Calendar: Using new prompt system for metadata extraction...');
     
     // Use only first 800 chars per page for speed (reduced due to sub-pages)
     const combinedContent = crawlResults.map(result => 
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 800)}${result.content.length > 800 ? '...' : ''}`
     ).join('\n\n');
     
-    const prompt = `Extract basic event metadata from the following content:
-
-${combinedContent}
-
-Return JSON format:
-{
-  "title": "Event title",
-  "description": "Event description",
-  "date": "Event date",
-  "location": "Event location/city",
-  "organizer": "Event organizer name",
-  "website": "Event website URL",
-  "registrationUrl": "Registration URL if found"
-}
-
-Focus on extracting accurate, factual information. If information is not available, use "Unknown" or null.`;
-
-    console.log('Calling Gemini API for calendar event metadata extraction...');
+    // Use new prompt system
+    const { createEventMetadataPrompt } = await import('./prompts/gemini-prompts');
+    const { promptExecutor } = await import('./prompts/prompt-executor');
     
-    const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
+    const prompt = createEventMetadataPrompt(combinedContent, eventTitle, eventDate, country);
     
-    const response = await generateContentWithRetry({
-      prompt,
-      maxOutputTokens: 512,
-      temperature: 0.1
-    });
+    const result = await promptExecutor.executeEventMetadata(prompt);
     
-    console.log('Calendar: Gemini API call completed for metadata, processing response...');
-    console.log('Calendar: Gemini metadata response received, length:', response.text.length);
-    
-    // Try to parse JSON
-    try {
-      const data = parseJsonResponse(response.text);
-      console.log('Calendar: Successfully extracted event metadata');
+    if (result.success && result.data) {
+      console.log('Calendar: Successfully extracted event metadata using new prompt system');
       return {
-        title: data.title || eventTitle || 'Unknown Event',
-        description: data.description || '',
-        date: data.date || eventDate || 'Unknown Date',
-        location: data.location || country || 'Unknown Location',
-        organizer: data.organizer || 'Unknown Organizer',
-        website: data.website || crawlResults[0]?.url || '',
-        registrationUrl: data.registrationUrl
+        title: result.data.title || eventTitle || 'Unknown Event',
+        description: result.data.description || '',
+        date: result.data.date || eventDate || 'Unknown Date',
+        location: result.data.location || country || 'Unknown Location',
+        organizer: result.data.organizer || 'Unknown Organizer',
+        website: result.data.website || crawlResults[0]?.url || '',
+        registrationUrl: result.data.registrationUrl
       };
-    } catch (parseError) {
-      console.warn('Failed to parse calendar event metadata JSON:', parseError);
+    } else {
+      console.warn('Calendar: Metadata extraction failed:', result.error);
     }
   } catch (error) {
     console.warn('Calendar event metadata extraction error:', error);
@@ -458,13 +431,9 @@ async function extractCalendarSpeakers(crawlResults: CalendarCrawlResult[]): Pro
   }
   
   try {
-    console.log('Initializing Gemini for calendar speaker extraction...');
-    const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    console.log('Calendar: Gemini model initialized successfully');
+    console.log('Calendar: Using new prompt system for speaker extraction...');
     
-    // Limit content length to prevent MAX_TOKENS errors - use first 1500 chars per page
-    // Focus on speaker-related content by filtering for relevant keywords
+    // Prepare content for analysis
     const combinedContent = crawlResults.map(result => {
       let content = result.content;
       
@@ -480,73 +449,24 @@ async function extractCalendarSpeakers(crawlResults: CalendarCrawlResult[]): Pro
       return `Page: ${result.title}\nURL: ${result.url}\nContent: ${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}`;
     }).join('\n\n');
     
-    console.log('Calendar: Preparing content for Gemini analysis, total content length:', combinedContent.length);
+    console.log('Calendar: Preparing content for analysis, total content length:', combinedContent.length);
     
-    const prompt = `Extract speakers from this event content (German/English):
-
-${combinedContent}
-
-Return JSON:
-{
-  "speakers": [
-    {
-      "name": "Full name",
-      "title": "Job title",
-      "company": "Company",
-      "bio": "Brief bio",
-      "expertise_areas": ["area1", "area2"],
-      "social_links": {
-        "linkedin": "URL if found",
-        "twitter": "URL if found",
-        "website": "URL if found"
-      },
-      "speaking_history": ["engagements"],
-      "education": ["background"],
-      "achievements": ["achievements"],
-      "industry_connections": ["connections"],
-      "recent_news": ["news"],
-      "contact": "Email if found"
+    // Use new prompt system
+    const { createSpeakerExtractionPrompt } = await import('./prompts/gemini-prompts');
+    const { promptExecutor } = await import('./prompts/prompt-executor');
+    
+    const prompt = createSpeakerExtractionPrompt(combinedContent, 15, 'general');
+    
+    const result = await promptExecutor.executeSpeakerExtraction(prompt, combinedContent);
+    
+    if (result.success && result.data && result.data.speakers) {
+      console.log('Calendar: Extracted', result.data.speakers.length, 'speakers using new prompt system');
+      return result.data.speakers;
+    } else {
+      console.warn('Calendar: Speaker extraction failed:', result.error);
+      return [];
     }
-  ]
-}
-
-Instructions:
-- Look for German terms: "Referent", "Referentin", "Sprecher", "Sprecherin", "Moderator"
-- Extract ALL speakers mentioned, even with limited info
-- Use null/empty arrays for missing info
-- Max 15 speakers
-- Return valid JSON only.`;
-
-    console.log('Calling Gemini API for calendar speaker extraction...');
     
-    const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
-    
-    const response = await generateContentWithRetry({
-      prompt,
-      maxOutputTokens: 512, // Reduced to prevent MAX_TOKENS errors
-      temperature: 0.1
-    });
-    
-    console.log('Calendar: Gemini API call completed, processing response...');
-    console.log('Calendar: Gemini response received, length:', response.text.length);
-    
-    // Try to parse JSON with better error handling
-    try {
-      console.log('Calendar: Raw Gemini response for speakers:', response.text.substring(0, 500) + '...');
-      
-      const parsedData = parseJsonResponse(response.text);
-      console.log('Calendar: Successfully parsed JSON response');
-      
-      // parsedData should be available from parseJsonResponse
-      
-      if (parsedData && parsedData.speakers && Array.isArray(parsedData.speakers)) {
-        console.log('Calendar: Extracted', parsedData.speakers.length, 'speakers');
-        return parsedData.speakers;
-      }
-      
-    } catch (parseError) {
-      console.warn('Calendar: Failed to parse speakers JSON:', parseError);
-    }
   } catch (error) {
     console.warn('Calendar: Speaker extraction error:', error);
     if (error instanceof Error && error.message.includes('timeout')) {
