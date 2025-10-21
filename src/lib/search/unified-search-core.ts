@@ -275,9 +275,31 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
   }
 
   try {
+    // Use narrative query for Firecrawl if available, otherwise fallback to regular query
+    let firecrawlQuery = params.q;
+    
+    // Try to get narrative query from unified query builder
+    try {
+      const { buildUnifiedQuery } = await import('../unified-query-builder');
+      const queryResult = await buildUnifiedQuery({
+        userText: params.q,
+        country: params.country,
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+        language: 'en'
+      });
+      
+      if (queryResult.narrativeQuery) {
+        firecrawlQuery = queryResult.narrativeQuery;
+        console.log('[unified-firecrawl] Using narrative query:', firecrawlQuery);
+      }
+    } catch (error) {
+      console.warn('[unified-firecrawl] Failed to get narrative query, using original:', error);
+    }
+    
     // Build optimized search body based on Firecrawl v2 API
     const body: any = {
-      query: params.q,
+      query: firecrawlQuery,
       limit: params.limit || 20,
       sources: ['web'],
       timeout: 60000

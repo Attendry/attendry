@@ -91,6 +91,7 @@ ${sanitizedContent}
 Return JSON: {"speakers": [{"name": "Full Name", "title": "Job Title", "company": "Company Name"}]}
 
 Look for: ${SPEAKER_TERMS.german.slice(0, 5).join(", ")} or ${SPEAKER_TERMS.english.slice(0, 5).join(", ")}
+Focus on: business professionals, industry experts, keynote speakers, panelists
 Max ${maxSpeakers} speakers.`;
 
   return {
@@ -119,7 +120,7 @@ ${limitedUrls.join('\n')}
 
 Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief relevance reason"}]
 
-Focus on: conferences, workshops, professional events, business networking`;
+Focus on: conferences, workshops, professional events, business networking, industry events`;
 
   return {
     content: prompt,

@@ -96,6 +96,7 @@ export interface QueryBuilderParams {
 
 export interface QueryBuilderResult {
   query: string;
+  narrativeQuery?: string; // New narrative query for Firecrawl
   variations: string[];
   metadata: {
     eventTypes: string[];
@@ -172,6 +173,20 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     temporalTerms
   });
   
+  // Build narrative query for Firecrawl
+  const narrativeQuery = buildNarrativeQuery({
+    baseQuery,
+    eventTypes,
+    locationTerms,
+    temporalTerms,
+    country,
+    dateFrom,
+    dateTo,
+    timeframe,
+    excludeTerms: config.excludeTerms || '',
+    language: termLanguage
+  });
+  
   // Generate query variations
   const variations = generateQueryVariations({
     baseQuery,
@@ -184,6 +199,7 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
   
   return {
     query: enhancedQuery,
+    narrativeQuery, // New narrative query for Firecrawl
     variations: [enhancedQuery, simpleQuery, ...variations],
     metadata: {
       eventTypes,
@@ -266,6 +282,60 @@ function buildSimpleQuery(params: {
   ].filter(Boolean);
   
   return terms.join(' ');
+}
+
+/**
+ * Build narrative query for Firecrawl (natural language)
+ */
+function buildNarrativeQuery(params: {
+  baseQuery: string;
+  eventTypes: string[];
+  locationTerms: string[];
+  temporalTerms: string[];
+  country: string | null;
+  dateFrom?: string;
+  dateTo?: string;
+  timeframe?: string | null;
+  excludeTerms: string;
+  language: string;
+}): string {
+  const { baseQuery, eventTypes, locationTerms, temporalTerms, country, dateFrom, dateTo, timeframe, language } = params;
+  
+  // Get country name
+  const countryMap: Record<string, string> = {
+    'DE': 'Germany', 'FR': 'France', 'IT': 'Italy', 'ES': 'Spain', 'NL': 'Netherlands',
+    'GB': 'United Kingdom', 'US': 'United States', 'AT': 'Austria', 'CH': 'Switzerland'
+  };
+  const countryName = country ? countryMap[country] || country : 'Europe';
+  
+  // Build event type description
+  const eventTypeDescription = eventTypes.slice(0, 8).join(', ');
+  
+  // Build location description
+  const locationDescription = locationTerms.length > 0 
+    ? locationTerms.slice(0, 4).join(', ')
+    : countryName;
+  
+  // Build temporal description
+  let temporalDescription = '';
+  if (dateFrom && dateTo) {
+    const fromYear = new Date(dateFrom).getFullYear();
+    const toYear = new Date(dateTo).getFullYear();
+    temporalDescription = `for ${fromYear}-${toYear}`;
+  } else if (timeframe) {
+    temporalDescription = `for ${timeframe}`;
+  } else {
+    temporalDescription = 'for 2025-2027';
+  }
+  
+  // Build narrative query based on language
+  if (language === 'de') {
+    return `Finde Geschäftsveranstaltungen und professionelle Events in ${countryName} ${temporalDescription}, einschließlich ${eventTypeDescription} in ${locationDescription}. Fokus auf Business und professionelle Entwicklung.`;
+  } else if (language === 'fr') {
+    return `Trouvez des événements d'affaires et professionnels en ${countryName} ${temporalDescription}, y compris ${eventTypeDescription} à ${locationDescription}. Focus sur les affaires et le développement professionnel.`;
+  } else {
+    return `Find business events and professional conferences in ${countryName} ${temporalDescription}, including ${eventTypeDescription} in ${locationDescription}. Focus on business and professional development.`;
+  }
 }
 
 /**
