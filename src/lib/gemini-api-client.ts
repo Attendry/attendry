@@ -120,6 +120,13 @@ export class GeminiAPIClient {
 
       if (!text) {
         console.warn('[gemini-api] No text content in response:', data);
+        
+        // Check if it's a MAX_TOKENS error
+        const finishReason = data.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') {
+          throw new GeminiAPIError('Response truncated due to token limit - prompt too long', undefined, undefined, data);
+        }
+        
         throw new GeminiAPIError('No text content in Gemini response', undefined, undefined, data);
       }
 

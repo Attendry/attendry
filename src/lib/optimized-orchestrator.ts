@@ -661,53 +661,36 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const industryFocus = allIndustryTerms.length > 0 ? allIndustryTerms.join(', ') : 'business and professional events';
   const targetAudience = allIcpTerms.length > 0 ? allIcpTerms.join(', ') : 'professionals';
   
-  const prompt = `You are an expert in ${industryContext} events and conferences.
+  const prompt = `Rate these URLs for ${industryContext} events in ${locationContext}:
 
-SEARCH CONTEXT:
-- Industry: ${industryContext}
-- Focus: ${industryFocus}
-- Target Audience: ${targetAudience}
-- Location: ${locationContext}
-- Query: ${params.userText || `${industryContext} events`}
+${urls.slice(0, 15).join('\n')}
 
-TASK: From the URLs below, return the top 10 most relevant for ${industryContext.toUpperCase()} events that are:
-1. Actually taking place in ${locationContext} or relevant to ${locationContext} professionals
-2. Real events focused on: ${industryFocus}
-3. Relevant to: ${targetAudience}
-4. Are not general websites, documentation, or non-event pages
+Return JSON array with top 10 most relevant:
+[{"url": "https://...", "score": 0.9, "reason": "brief reason"}]
 
-PRIORITIZE:
-- ${industryContext} conferences and workshops
-- Industry-specific summits and meetings
-- Professional development events
-- Networking and business events relevant to the industry
+Focus on: ${industryFocus}
+Target: ${targetAudience}`;
 
-AVOID:
-- General business events not related to the industry
-- Trade shows for unrelated industries
-- General corporate websites
-- Non-event pages
+  try {
+    const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
+    
+    const response = await generateContentWithRetry({
+      prompt,
+      maxOutputTokens: 1024,
+      temperature: 0.1
+    });
 
-URLs: ${urls.slice(0, 20).join('\n')}
-
-Return a JSON array of objects, each with:
-{
-  "url": "https://...",
-  "score": number between 0 and 1 (higher = more relevant),
-  "reason": "short explanation focusing on industry relevance"
-}
-
-Include at most 10 items. Only include URLs you see in the list.`;
-
-  const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
-  
-  const response = await generateContentWithRetry({
-    prompt,
-    maxOutputTokens: 2048,
-    temperature: 0.1
-  });
-
-  return parseJsonResponse(response.text);
+    return parseJsonResponse(response.text);
+  } catch (error) {
+    console.warn('[optimized-orchestrator] Gemini prioritization failed, using fallback:', error);
+    
+    // Fallback: return URLs with basic scoring
+    return urls.slice(0, 10).map((url, index) => ({
+      url,
+      score: Math.max(0.1, 1.0 - (index * 0.1)), // Decreasing scores
+      reason: 'Fallback scoring due to Gemini API failure'
+    }));
+  }
 }
 
 /**
