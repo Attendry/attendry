@@ -600,18 +600,33 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const countryContext = getCountryContext(params.country);
   const locationContext = countryContext.countryNames[0] || 'Europe';
   
-  const prompt = `You are an expert in business events and conferences.
+  const prompt = `You are an expert in compliance, legal technology, and regulatory events.
 
 SEARCH CONTEXT:
-- Industry: business
+- Industry: Compliance, Legal Technology, Regulatory Affairs
+- Focus: GDPR, e-discovery, legal tech, cybersecurity, investigation, compliance management
 - Location: ${locationContext}
-- Query: ${params.userText || 'general business events'}
+- Query: ${params.userText || 'compliance and legal technology events'}
 
-TASK: From the URLs below, return the top 10 most relevant for business events that are:
+TASK: From the URLs below, return the top 10 most relevant for COMPLIANCE AND LEGAL TECHNOLOGY events that are:
 1. Actually taking place in ${locationContext} or relevant to ${locationContext} professionals
-2. Real events (conferences, workshops, seminars, exhibitions, trade shows, etc.)
-3. Match the search context
+2. Real events focused on: compliance, legal tech, GDPR, e-discovery, cybersecurity, investigation, regulatory affairs
+3. NOT general business events, trade shows, or unrelated industries (fruit logistics, IT general, etc.)
 4. Are not general websites, documentation, or non-event pages
+
+PRIORITIZE:
+- Compliance conferences and workshops
+- Legal technology summits
+- GDPR and data protection events
+- E-discovery and investigation seminars
+- Cybersecurity compliance events
+- Regulatory affairs meetings
+
+AVOID:
+- General business events
+- Trade shows for unrelated industries
+- IT events not focused on compliance/legal
+- General corporate websites
 
 URLs: ${urls.slice(0, 20).join('\n')}
 
@@ -619,7 +634,7 @@ Return a JSON array of objects, each with:
 {
   "url": "https://...",
   "score": number between 0 and 1 (higher = more relevant),
-  "reason": "short explanation"
+  "reason": "short explanation focusing on compliance/legal relevance"
 }
 
 Include at most 10 items. Only include URLs you see in the list.`;
@@ -840,18 +855,30 @@ async function extractWithFirecrawl(url: string): Promise<string> {
  * Extract speaker-related sub-page URLs from content
  */
 function extractSpeakerSubPages(baseUrl: string, content: string): string[] {
-  const urls: string[] = [];
+  const urls: Array<{ url: string; priority: 'high' | 'medium' | 'low' }> = [];
   const baseDomain = new URL(baseUrl).origin;
   
-  // Comprehensive speaker page keywords (English and German)
-  const speakerKeywords = [
+  // High-priority speaker page keywords (English and German)
+  const highPriorityKeywords = [
+    // English terms - actual speaker pages
+    'speaker', 'speakers', 'presenter', 'presenters', 'faculty',
+    // German terms - actual speaker pages
+    'referenten', 'referentin', 'sprecher', 'sprecherin'
+  ];
+  
+  // Medium-priority agenda/program keywords
+  const mediumPriorityKeywords = [
     // English terms
-    'speaker', 'speakers', 'agenda', 'program', 'programme', 'presenter', 'presenters', 
-    'faculty', 'team', 'organizer', 'organiser', 'about', 'participants', 'attendees',
+    'agenda', 'program', 'programme', 'schedule',
     // German terms
-    'referenten', 'referentin', 'sprecher', 'sprecherin', 'programm', 'agenda',
+    'programm', 'agenda', 'zeitplan'
+  ];
+  
+  // Low-priority keywords (avoid unless no better options)
+  const lowPriorityKeywords = [
+    'team', 'organizer', 'organiser', 'about', 'participants', 'attendees',
     'teilnehmer', 'teilnehmerin', 'moderatoren', 'moderatorin', 'organisatoren',
-    'veranstalter', 'team', 'über', 'about'
+    'veranstalter', 'über'
   ];
   
   // Enhanced regex patterns to find URLs
@@ -877,10 +904,19 @@ function extractSpeakerSubPages(baseUrl: string, content: string): string[] {
         const url = new URL(urlString);
         // Only include URLs from the same domain
         if (url.origin === baseDomain) {
-          // Check if URL contains speaker-related keywords
           const urlLower = url.pathname.toLowerCase();
-          if (speakerKeywords.some(keyword => urlLower.includes(keyword))) {
-            urls.push(urlString);
+          
+          // Prioritize high-priority speaker pages
+          if (highPriorityKeywords.some(keyword => urlLower.includes(keyword))) {
+            urls.push({ url: urlString, priority: 'high' as const });
+          }
+          // Include medium-priority agenda pages
+          else if (mediumPriorityKeywords.some(keyword => urlLower.includes(keyword))) {
+            urls.push({ url: urlString, priority: 'medium' as const });
+          }
+          // Only include low-priority pages if we don't have enough high/medium priority ones
+          else if (lowPriorityKeywords.some(keyword => urlLower.includes(keyword))) {
+            urls.push({ url: urlString, priority: 'low' as const });
           }
         }
       } catch (e) {
@@ -890,21 +926,33 @@ function extractSpeakerSubPages(baseUrl: string, content: string): string[] {
   }
   
   // Also add common speaker page patterns if not found
-  const commonSpeakerPaths = [
-    '/referenten/', '/referenten', '/speakers/', '/speakers', '/agenda/', '/agenda',
-    '/programm/', '/programm', '/presenters/', '/presenters', '/faculty/', '/faculty',
-    '/team/', '/team', '/about/', '/about', '/organizer/', '/organizer'
+  const commonSpeakerPaths: Array<{ path: string; priority: 'high' | 'medium' | 'low' }> = [
+    { path: '/referenten/', priority: 'high' },
+    { path: '/speakers/', priority: 'high' },
+    { path: '/presenters/', priority: 'high' },
+    { path: '/faculty/', priority: 'high' },
+    { path: '/agenda/', priority: 'medium' },
+    { path: '/programm/', priority: 'medium' },
+    { path: '/program/', priority: 'medium' }
   ];
   
-  for (const path of commonSpeakerPaths) {
+  for (const { path, priority } of commonSpeakerPaths) {
     const fullUrl = baseDomain + path;
-    if (!urls.includes(fullUrl)) {
-      urls.push(fullUrl);
+    if (!urls.some(u => u.url === fullUrl)) {
+      urls.push({ url: fullUrl, priority });
     }
   }
   
-  // Remove duplicates and return
-  return [...new Set(urls)];
+  // Sort by priority and return top URLs
+  const sortedUrls = urls
+    .sort((a, b) => {
+      const priorityOrder: Record<string, number> = { high: 3, medium: 2, low: 1 };
+      return priorityOrder[b.priority] - priorityOrder[a.priority];
+    })
+    .slice(0, 5) // Limit to top 5 most relevant pages
+    .map(item => item.url);
+  
+  return [...new Set(sortedUrls)]; // Remove duplicates
 }
 
 /**
@@ -954,7 +1002,7 @@ function parseEventDetails(content: string, url: string): {
     location = `${locationMatch[1]}, ${locationMatch[2]}`;
   }
   
-  // Extract speakers with enhanced patterns (more flexible)
+  // Extract speakers with enhanced patterns (more selective)
   const speakerPatterns = [
     // Pattern 1: "Name, Title, Company" (more flexible)
     /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))(?:\s*,\s*([^,\n]+?))?(?:\s*[,;]|$)/g,
@@ -964,15 +1012,22 @@ function parseEventDetails(content: string, url: string): {
     /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*\(([^,\n]+?)(?:,\s*([^,\n]+?))?\)/g,
     // Pattern 4: "Name | Title | Company"
     /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*\|\s*([^,\n]+?)(?:\s*\|\s*([^,\n]+?))?(?:\s*[,;]|$)/g,
-    // Pattern 5: Basic "Name, Title" or "Name, Company"
-    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))(?:\s*[,;]|$)/g,
-    // Pattern 6: German patterns "Referent:", "Sprecher:", "Moderator:"
+    // Pattern 5: German patterns "Referent:", "Sprecher:", "Moderator:"
     /(?:Referent|Sprecher|Moderator|Speaker|Presenter):\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))?(?:\s*,\s*([^,\n]+?))?(?:\s*[,;]|$)/gi,
-    // Pattern 7: Simple name extraction (fallback)
-    /([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*[,;]|$)/g
+    // Pattern 6: Keynote speaker patterns
+    /(?:Keynote|Opening|Closing)\s+(?:Speaker|Presenter):\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))?(?:\s*[,;]|$)/gi
   ];
 
   const seenSpeakers = new Set<string>();
+  
+  // Filter out common non-speaker terms
+  const nonSpeakerTerms = [
+    'compliance', 'gdpr', 'cybersecurity', 'legal', 'technology', 'data', 'privacy',
+    'regulation', 'governance', 'risk', 'audit', 'investigation', 'e-discovery',
+    'management', 'strategy', 'business', 'digital', 'transformation', 'innovation',
+    'agenda', 'program', 'schedule', 'session', 'workshop', 'seminar', 'conference',
+    'event', 'meeting', 'summit', 'forum', 'exhibition', 'trade show'
+  ];
   
   for (const pattern of speakerPatterns) {
     const matches = content.match(pattern);
@@ -989,6 +1044,15 @@ function parseEventDetails(content: string, url: string): {
           if (seenSpeakers.has(speakerKey)) return;
           seenSpeakers.add(speakerKey);
           
+          
+          const nameLower = name.toLowerCase();
+          const titleLower = title?.toLowerCase() || '';
+          
+          // Skip if name or title contains non-speaker terms
+          if (nonSpeakerTerms.some(term => nameLower.includes(term) || titleLower.includes(term))) {
+            return;
+          }
+          
           // Only add if it looks like a real name (at least 2 words) and not too long
           if (name.split(' ').length >= 2 && name.length < 50) {
             speakers.push({
@@ -1002,13 +1066,20 @@ function parseEventDetails(content: string, url: string): {
     }
   }
   
-  // If no speakers found with patterns, try basic name extraction
+  // If no speakers found with patterns, try basic name extraction (with filtering)
   if (speakers.length === 0) {
     const basicNamePattern = /([A-Z][a-z]+\s+[A-Z][a-z]+)/g;
     const nameMatches = content.match(basicNamePattern);
     if (nameMatches) {
       nameMatches.slice(0, 10).forEach(name => {
         const speakerKey = name.toLowerCase();
+        const nameLower = name.toLowerCase();
+        
+        // Skip if it's a common non-speaker term
+        if (nonSpeakerTerms.some(term => nameLower.includes(term))) {
+          return;
+        }
+        
         if (!seenSpeakers.has(speakerKey) && name.length < 50) {
           seenSpeakers.add(speakerKey);
           speakers.push({
