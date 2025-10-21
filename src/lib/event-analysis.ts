@@ -555,158 +555,20 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
     
     console.log('Preparing content for Gemini analysis, total content length:', combinedContent.length);
     
-    const prompt = `Analyze the following event content and extract all speakers/presenters with their detailed information. This content may be in German or English.
-
-${combinedContent}
-
-For each speaker found, extract and return the following information in JSON format:
-{
-  "speakers": [
-    {
-      "name": "Full name (including titles like Dr., Prof., etc.)",
-      "title": "Job title/position",
-      "company": "Company/organization",
-      "bio": "Professional biography or description",
-      "expertise_areas": ["area1", "area2"],
-      "social_links": {
-        "linkedin": "LinkedIn URL if found",
-        "twitter": "Twitter URL if found",
-        "website": "Personal website if found"
-      },
-      "speaking_history": ["recent speaking engagements"],
-      "education": ["educational background"],
-      "achievements": ["notable achievements"],
-      "industry_connections": ["industry connections"],
-      "recent_news": ["recent news mentions"],
-      "contact": "Email or contact info if found"
-    }
-  ]
-}
-
-Important instructions:
-- Look for German titles like "Prof. Dr.", "Dr.", "Mag.", "MBA", "LL.M."
-- Look for German job titles like "Director", "Manager", "Head of", "Chief", "VP", "Senior"
-- Look for German terms like "Referent", "Referentin", "Sprecher", "Sprecherin", "Moderator", "Moderatorin"
-- Extract ALL speakers mentioned, even if information is limited
-- If a speaker only has a name and title, still include them with available information
-- Focus on extracting real, factual information from the content
-- If information is not available, use null or empty arrays
-- Be thorough in finding all speakers mentioned in the content
-
-Return valid JSON only, no additional text.`;
-
-    console.log('Calling Gemini API for speaker extraction...');
+    // Use the new prompt management system
+    const { createSpeakerExtractionPrompt } = await import('./prompts/gemini-prompts');
+    const { promptExecutor } = await import('./prompts/prompt-executor');
     
-    // Add timeout to prevent hanging
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Gemini API timeout after 30 seconds')), 30000);
-    });
+    const prompt = createSpeakerExtractionPrompt(combinedContent, 15, 'general');
     
-    const geminiPromise = model.generateContent(prompt);
-    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
-    const response = await result.response;
-    console.log('Gemini API call completed, processing response...');
-    const text = response.text();
-    console.log('Gemini response received, length:', text.length);
+    const result = await promptExecutor.executeSpeakerExtraction(prompt, combinedContent);
     
-    // Try to parse JSON with better error handling
-    try {
-      console.log('Raw Gemini response for speakers:', text.substring(0, 1000) + '...');
-      
-      // Try to extract JSON more carefully
-      let parsedData = null;
-      
-      // First, try to find the JSON block between ```json and ```
-      const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonBlockMatch) {
-        try {
-          parsedData = JSON.parse(jsonBlockMatch[1]);
-          console.log('Successfully parsed JSON from code block');
-        } catch (e) {
-          console.warn('Failed to parse JSON from code block:', e);
-        }
-      }
-      
-      // If that didn't work, try to find the first complete JSON object
-      if (!parsedData) {
-        const jsonStart = text.indexOf('{');
-        if (jsonStart !== -1) {
-          let braceCount = 0;
-          let jsonEnd = jsonStart;
-          
-          for (let i = jsonStart; i < text.length; i++) {
-            if (text[i] === '{') braceCount++;
-            if (text[i] === '}') braceCount--;
-            if (braceCount === 0) {
-              jsonEnd = i;
-              break;
-            }
-          }
-          
-          if (braceCount === 0) {
-            try {
-              const jsonStr = text.substring(jsonStart, jsonEnd + 1);
-              parsedData = JSON.parse(jsonStr);
-              console.log('Successfully parsed JSON by counting braces');
-            } catch (e) {
-              console.warn('Failed to parse JSON by counting braces:', e);
-            }
-          }
-        }
-      }
-      
-      if (parsedData) {
-        // Handle different response formats
-        let speakers = [];
-        if (parsedData.speakers && Array.isArray(parsedData.speakers)) {
-          speakers = parsedData.speakers;
-        } else if (Array.isArray(parsedData)) {
-          speakers = parsedData;
-        } else if (parsedData && typeof parsedData === 'object') {
-          // Single speaker object
-          speakers = [parsedData];
-        }
-        
-        if (speakers.length > 0) {
-          console.log('Extracted', speakers.length, 'speakers');
-          return speakers;
-        }
-      }
-      
-      // If JSON parsing failed, try to extract speaker names manually
-      console.warn('JSON parsing failed, attempting manual extraction');
-      const speakerNames = extractSpeakerNamesManually(text);
-      if (speakerNames.length > 0) {
-        console.log('Manually extracted', speakerNames.length, 'speaker names');
-        return speakerNames.map(name => ({
-          name: name,
-          title: "Speaker",
-          company: "Unknown",
-          bio: `Speaker at the event`,
-          expertise_areas: [],
-          social_links: {},
-          speaking_history: [],
-          education: [],
-          achievements: [],
-          industry_connections: [],
-          recent_news: []
-        }));
-      }
-      
-    } catch (parseError) {
-      console.warn('Failed to parse speakers JSON:', parseError);
+    if (result.success && result.data?.speakers) {
+      return result.data.speakers;
+    } else {
+      console.warn('Speaker extraction failed:', result.error);
+      return [];
     }
-  } catch (error) {
-    console.warn('Speaker extraction error:', error);
-    if (error instanceof Error && error.message.includes('timeout')) {
-      console.warn('Speaker extraction timed out, returning empty array');
-    }
-  }
-  
-  return [];
-}
-
-export async function analyzeEvent(request: EventAnalysisRequest): Promise<EventAnalysisResponse> {
   const startTime = Date.now();
   
   // Set overall timeout for the entire analysis (2 minutes)

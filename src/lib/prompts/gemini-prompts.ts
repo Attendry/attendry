@@ -140,7 +140,7 @@ export function createEventMetadataPrompt(
   eventDate?: string,
   country?: string
 ): EventMetadataPrompt {
-  const prompt = `Extract event metadata from this content:
+  const prompt = `Extract business event metadata from this content:
 
 ${content}
 
@@ -159,7 +159,8 @@ ${eventTitle ? `Known title: ${eventTitle}` : ""}
 ${eventDate ? `Known date: ${eventDate}` : ""}
 ${country ? `Known country: ${country}` : ""}
 
-Focus on extracting accurate, factual information. Use "Unknown" for missing info.`;
+Focus on: business events, professional conferences, workshops, industry events
+Extract accurate, factual information. Use "Unknown" for missing info.`;
 
   return {
     content: prompt,
@@ -176,22 +177,23 @@ export function createSpeakerEnhancementPrompt(
 ): SpeakerExtractionPrompt {
   const industryTerms = industryContext ? INDUSTRY_CONTEXT[industryContext as keyof typeof INDUSTRY_CONTEXT] || [] : [];
   
-  const prompt = `Enhance these speaker profiles with additional information:
+  const prompt = `Enhance these business speaker profiles with additional information:
 
 ${JSON.stringify(speakerData, null, 2)}
 
 Return enhanced JSON with same structure, adding:
-- More detailed bios where possible
-- Additional expertise areas
-- Speaking history
-- Education background
-- Notable achievements
-- Industry connections
-- Recent news mentions
+- More detailed professional bios
+- Business and industry expertise areas
+- Professional speaking history
+- Education and certification background
+- Notable business achievements
+- Industry connections and networks
+- Recent professional news mentions
 
 ${industryTerms.length > 0 ? `Industry focus: ${industryTerms.join(", ")}` : ""}
 
-Keep original data, only enhance with additional information.`;
+Focus on: business professionals, industry experts, keynote speakers, panelists
+Keep original data, only enhance with additional professional information.`;
 
   return {
     content: prompt,
@@ -216,7 +218,7 @@ export function createContentFilterPrompt(
     general: ["event", "conference", "summit", "workshop", "veranstaltung", "kongress"]
   };
 
-  const prompt = `Identify sections relevant to ${targetType} in this content:
+  const prompt = `Identify sections relevant to ${targetType} in this business event content:
 
 ${content}
 
@@ -233,7 +235,8 @@ Return JSON:
   ]
 }
 
-Extract only the most relevant sections.`;
+Focus on: business events, professional conferences, industry events, business speakers
+Extract only the most relevant sections for business professionals.`;
 
   return {
     content: prompt,

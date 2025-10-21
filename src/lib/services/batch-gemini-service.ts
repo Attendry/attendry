@@ -268,40 +268,41 @@ export class BatchGeminiService {
       location: event.location || event.city
     }));
 
-    return `Extract comprehensive event information from these event pages. Look for:
+    return `Extract comprehensive business event information from these event pages. Look for:
 
 SPEAKERS:
-- Speaker names (people presenting, moderating, or speaking)
+- Business speaker names (people presenting, moderating, or speaking)
 - Their organizations/companies
-- Job titles/roles
-- Session titles or topics they're speaking about
-- Panelists, moderators, keynote speakers, workshop leaders
+- Professional job titles/roles
+- Business session titles or topics they're speaking about
+- Business panelists, moderators, keynote speakers, workshop leaders
+- Industry experts and business professionals
 
 SPONSORS:
-- Event sponsors (companies/organizations funding or supporting the event)
+- Business event sponsors (companies/organizations funding or supporting the event)
 - Gold, Silver, Bronze sponsors
-- Partner organizations
+- Business partner organizations
 - Supporting companies
 
 PARTICIPATING ORGANIZATIONS:
-- Companies/organizations participating in the event
-- Exhibitors
+- Business companies/organizations participating in the event
+- Business exhibitors
 - Companies with booths or stands
-- Organizations mentioned as attendees or participants
+- Business organizations mentioned as attendees or participants
 
-IMPORTANT: Look for information in various formats:
-- "Speaker: John Doe, Acme Inc" (explicit speaker designation)
-- "John Doe, Acme Inc" (session owner/presenter, likely a speaker)
-- "Sponsored by: Microsoft, Google, Amazon" (sponsors)
-- "Exhibitors: IBM, Oracle, SAP" (participating organizations)
-- Attendee lists where people are clearly presenting or leading sessions
-- Participant directories where roles indicate speaking/presenting
+IMPORTANT: Look for business information in various formats:
+- "Speaker: John Doe, Acme Inc" (explicit business speaker designation)
+- "John Doe, Acme Inc" (business session owner/presenter, likely a speaker)
+- "Sponsored by: Microsoft, Google, Amazon" (business sponsors)
+- "Exhibitors: IBM, Oracle, SAP" (business participating organizations)
+- Business attendee lists where people are clearly presenting or leading sessions
+- Business participant directories where roles indicate speaking/presenting
 
-CRITICAL: For each speaker, you MUST extract:
+CRITICAL: For each business speaker, you MUST extract:
 1. name: The person's full name
-2. org: The organization/company they work for (even if not explicitly stated, try to infer from context)
-3. title: Their job title/role (e.g., "CEO", "Director", "Manager", "Senior Consultant", etc.)
-4. session_title: The title of their session/presentation (if available)
+2. org: The business organization/company they work for (even if not explicitly stated, try to infer from context)
+3. title: Their professional job title/role (e.g., "CEO", "Director", "Manager", "Senior Consultant", etc.)
+4. session_title: The title of their business session/presentation (if available)
 5. confidence: Your confidence in this extraction (0.0-1.0)
 
 EVENTS:

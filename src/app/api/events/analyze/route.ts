@@ -429,52 +429,19 @@ async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Promise<S
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`
     ).join('\n\n');
     
-    const prompt = `Analyze the following event content and extract all speakers/presenters with their detailed information:
-
-${combinedContent}
-
-For each speaker found, extract and return the following information in JSON format:
-{
-  "speakers": [
-    {
-      "name": "Full name",
-      "title": "Job title/position",
-      "company": "Company/organization",
-      "bio": "Professional biography",
-      "expertise_areas": ["area1", "area2"],
-      "social_links": {
-        "linkedin": "LinkedIn URL if found",
-        "twitter": "Twitter URL if found",
-        "website": "Personal website if found"
-      },
-      "speaking_history": ["recent speaking engagements"],
-      "education": ["educational background"],
-      "achievements": ["notable achievements"],
-      "industry_connections": ["industry connections"],
-      "recent_news": ["recent news mentions"],
-      "contact": "Email or contact info if found"
-    }
-  ]
-}
-
-Focus on extracting real, factual information from the content. If information is not available, use null or empty arrays. Be thorough in finding all speakers mentioned in the content.`;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
+    // Use the new prompt management system
+    const { createSpeakerExtractionPrompt } = await import('../../../../lib/prompts/gemini-prompts');
+    const { promptExecutor } = await import('../../../../lib/prompts/prompt-executor');
     
-    // Try to parse JSON
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*?\}/);
-      if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[0]);
-        if (data.speakers && Array.isArray(data.speakers)) {
-          console.log('Extracted', data.speakers.length, 'speakers');
-          return data.speakers;
-        }
-      }
-    } catch (parseError) {
-      console.warn('Failed to parse speakers JSON:', parseError);
+    const prompt = createSpeakerExtractionPrompt(combinedContent, 15, 'general');
+    
+    const result = await promptExecutor.executeSpeakerExtraction(prompt, combinedContent);
+    
+    if (result.success && result.data?.speakers) {
+      return result.data.speakers;
+    } else {
+      console.warn('Speaker extraction failed:', result.error);
+      return [];
     }
   } catch (error) {
     console.warn('Speaker extraction error:', error);
