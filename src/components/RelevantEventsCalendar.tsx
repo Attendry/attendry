@@ -257,8 +257,14 @@ export default function RelevantEventsCalendar({ events, onRefresh }: RelevantEv
       
       console.log('🔄 flushSync state updates completed - React should have processed them immediately');
       
-      // REMOVED onRefresh() call - it was resetting the component state!
+      // Don't call onRefresh() immediately to prevent state reset
+      // Instead, we'll let the user manually refresh if needed
       console.log('🚨 onRefresh() call removed to prevent state reset');
+      
+      // Force a re-render to ensure state is visible
+      setTimeout(() => {
+        setForceRender(prev => prev + 1);
+      }, 100);
     } catch (error) {
       console.error('Failed to promote event:', error);
       console.error('Error details:', {

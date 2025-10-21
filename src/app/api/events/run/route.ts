@@ -15,31 +15,59 @@ async function processOptimizedResults(
   const events = optimizedResult.events || [];
   
   // Convert Optimized Orchestrator events to legacy format
-  const legacyEvents = events.map((event: any, index: number) => ({
-    id: `optimized_${Date.now()}_${index}`,
-    title: event.title || 'Untitled Event',
-    source_url: event.url,
-    starts_at: event.date || new Date().toISOString().split('T')[0],
-    country: country || 'EU',
-    city: extractCityFromLocation(event.location),
-    location: event.location || 'Location TBD',
-    venue: event.venue || 'Venue TBD',
-    organizer: 'Event Organizer',
-    description: event.description || 'Event description not available',
-    confidence: event.confidence || 0.5,
-    topics: extractTopicsFromDescription(event.description),
-    sessions: [],
-    speakers: event.speakers || [],
-    sponsors: event.sponsors || [],
-    participating_organizations: [],
-    partners: [],
-    competitors: [],
-    metadata: {
-      ...event.metadata,
-      source: 'optimized_orchestrator',
-      processingTime: event.metadata?.processingTime || 0
+  const legacyEvents = events.map((event: any, index: number) => {
+    // Extract proper title from URL if title is missing or is a URL
+    let eventTitle = event.title;
+    if (!eventTitle || eventTitle.startsWith('http') || eventTitle === event.url) {
+      // Try to extract title from URL or use a default
+      try {
+        const url = new URL(event.url);
+        const hostname = url.hostname.replace('www.', '');
+        const pathParts = url.pathname.split('/').filter(part => part.length > 0);
+        
+        if (pathParts.length > 0) {
+          // Use the last meaningful path segment as title
+          const lastPart = pathParts[pathParts.length - 1];
+          eventTitle = lastPart.replace(/[-_]/g, ' ').replace(/\.[^.]*$/, ''); // Remove file extensions
+        } else {
+          eventTitle = hostname.replace(/\./g, ' '); // Use hostname as fallback
+        }
+        
+        // Capitalize first letter of each word
+        eventTitle = eventTitle.split(' ').map((word: string) => 
+          word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        ).join(' ');
+      } catch (e) {
+        eventTitle = 'Event';
+      }
     }
-  }));
+    
+    return {
+      id: `optimized_${Date.now()}_${index}`,
+      title: eventTitle,
+      source_url: event.url,
+      starts_at: event.date || new Date().toISOString().split('T')[0],
+      country: country || 'EU',
+      city: extractCityFromLocation(event.location),
+      location: event.location || 'Location TBD',
+      venue: event.venue || 'Venue TBD',
+      organizer: event.organizer || 'Event Organizer',
+      description: event.description || 'Event description not available',
+      confidence: event.confidence || 0.5,
+      topics: extractTopicsFromDescription(event.description),
+      sessions: [],
+      speakers: event.speakers || [],
+      sponsors: event.sponsors || [],
+      participating_organizations: [],
+      partners: [],
+      competitors: [],
+      metadata: {
+        ...event.metadata,
+        source: 'optimized_orchestrator',
+        processingTime: event.metadata?.processingTime || 0
+      }
+    };
+  });
 
   return {
     events: legacyEvents,

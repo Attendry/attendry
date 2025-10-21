@@ -463,7 +463,7 @@ async function extractCalendarSpeakers(crawlResults: CalendarCrawlResult[]): Pro
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     console.log('Calendar: Gemini model initialized successfully');
     
-    // Limit content length to prevent timeouts - use first 3000 chars per page for better speaker extraction
+    // Limit content length to prevent MAX_TOKENS errors - use first 1500 chars per page
     // Focus on speaker-related content by filtering for relevant keywords
     const combinedContent = crawlResults.map(result => {
       let content = result.content;
@@ -471,57 +471,51 @@ async function extractCalendarSpeakers(crawlResults: CalendarCrawlResult[]): Pro
       // If this is a speaker page, prioritize speaker-related content
       if (result.url.includes('referenten') || result.url.includes('speakers') || result.title.toLowerCase().includes('speaker')) {
         // Look for speaker sections and prioritize them
-        const speakerSections = content.match(/(?:speaker|referent|presenter|moderator)[^.]{0,500}/gi) || [];
+        const speakerSections = content.match(/(?:speaker|referent|presenter|moderator)[^.]{0,300}/gi) || [];
         if (speakerSections.length > 0) {
           content = speakerSections.join('\n\n');
         }
       }
       
-      return `Page: ${result.title}\nURL: ${result.url}\nContent: ${content.substring(0, 3000)}${content.length > 3000 ? '...' : ''}`;
+      return `Page: ${result.title}\nURL: ${result.url}\nContent: ${content.substring(0, 1500)}${content.length > 1500 ? '...' : ''}`;
     }).join('\n\n');
     
     console.log('Calendar: Preparing content for Gemini analysis, total content length:', combinedContent.length);
     
-    const prompt = `Analyze the following event content and extract speakers/presenters. This content may be in German or English.
+    const prompt = `Extract speakers from this event content (German/English):
 
 ${combinedContent}
 
-For each speaker found, extract and return the following information in JSON format:
+Return JSON:
 {
   "speakers": [
     {
-      "name": "Full name (including titles like Dr., Prof., etc.)",
-      "title": "Job title/position",
-      "company": "Company/organization",
-      "bio": "Professional biography or description",
+      "name": "Full name",
+      "title": "Job title",
+      "company": "Company",
+      "bio": "Brief bio",
       "expertise_areas": ["area1", "area2"],
       "social_links": {
-        "linkedin": "LinkedIn URL if found",
-        "twitter": "Twitter URL if found",
-        "website": "Personal website if found"
+        "linkedin": "URL if found",
+        "twitter": "URL if found",
+        "website": "URL if found"
       },
-      "speaking_history": ["recent speaking engagements"],
-      "education": ["educational background"],
-      "achievements": ["notable achievements"],
-      "industry_connections": ["industry connections"],
-      "recent_news": ["recent news mentions"],
-      "contact": "Email or contact info if found"
+      "speaking_history": ["engagements"],
+      "education": ["background"],
+      "achievements": ["achievements"],
+      "industry_connections": ["connections"],
+      "recent_news": ["news"],
+      "contact": "Email if found"
     }
   ]
 }
 
-Important instructions:
-- Look for German titles like "Prof. Dr.", "Dr.", "Mag.", "MBA", "LL.M."
-- Look for German job titles like "Director", "Manager", "Head of", "Chief", "VP", "Senior"
-- Look for German terms like "Referent", "Referentin", "Sprecher", "Sprecherin", "Moderator", "Moderatorin"
-- Extract ALL speakers mentioned, even if information is limited
-- If a speaker only has a name and title, still include them with available information
-- Focus on extracting real, factual information from the content
-- If information is not available, use null or empty arrays
-- Be thorough in finding all speakers mentioned in the content
-- Limit to maximum 25 speakers for calendar analysis
-
-Return valid JSON only, no additional text.`;
+Instructions:
+- Look for German terms: "Referent", "Referentin", "Sprecher", "Sprecherin", "Moderator"
+- Extract ALL speakers mentioned, even with limited info
+- Use null/empty arrays for missing info
+- Max 15 speakers
+- Return valid JSON only.`;
 
     console.log('Calling Gemini API for calendar speaker extraction...');
     
@@ -529,7 +523,7 @@ Return valid JSON only, no additional text.`;
     
     const response = await generateContentWithRetry({
       prompt,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 512, // Reduced to prevent MAX_TOKENS errors
       temperature: 0.1
     });
     
