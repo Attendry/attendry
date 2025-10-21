@@ -44,8 +44,8 @@ export class PromptExecutor {
     content: string
   ): Promise<PromptExecutionResult<{ speakers: any[] }>> {
     try {
-      // Much more aggressive content sanitization
-      const sanitizedContent = sanitizePromptContent(content, 500); // Reduced from 2000 to 500
+      // Reasonable content sanitization - not artificially low
+      const sanitizedContent = sanitizePromptContent(content, 8000); // Back to reasonable limit
       
       // Import Gemini client
       const { generateContentWithRetry, parseJsonResponse } = await import('../gemini-api-client');
@@ -53,7 +53,7 @@ export class PromptExecutor {
       // Execute with retry logic
       const response = await generateContentWithRetry({
         prompt: prompt.content.replace('${content}', sanitizedContent),
-        maxOutputTokens: Math.min(prompt.config.maxTokens, 64), // Cap at 64 tokens
+        maxOutputTokens: prompt.config.maxTokens, // Use the configured limit
         temperature: prompt.config.temperature
       });
       
@@ -73,14 +73,14 @@ export class PromptExecutor {
     } catch (error) {
       console.warn('Speaker extraction prompt failed, trying fallback:', error);
       
-      // Try fallback with even more aggressive content reduction
+      // Try fallback with reasonable content reduction
       try {
         const { generateContentWithRetry, parseJsonResponse } = await import('../gemini-api-client');
         
         const fallbackPrompt = getFallbackPrompt('SPEAKER_EXTRACTION');
         const response = await generateContentWithRetry({
-          prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 200)}`, // Reduced to 200
-          maxOutputTokens: 32, // Reduced to 32
+          prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 2000)}`, // Back to reasonable limit
+          maxOutputTokens: 1024, // Back to reasonable limit
           temperature: 0.1
         });
         
@@ -114,14 +114,14 @@ export class PromptExecutor {
     prompt: EventPrioritizationPrompt
   ): Promise<PromptExecutionResult<Array<{ url: string; score: number; reason: string }>>> {
     try {
-      // Much more aggressive sanitization
-      const sanitizedPrompt = sanitizePromptContent(prompt.content, 500); // Reduced from 2000 to 500
+      // Reasonable sanitization - not artificially low
+      const sanitizedPrompt = sanitizePromptContent(prompt.content, 4000); // Back to reasonable limit
       
       const { generateContentWithRetry, parseJsonResponse } = await import('../gemini-api-client');
       
       const response = await generateContentWithRetry({
         prompt: sanitizedPrompt,
-        maxOutputTokens: Math.min(prompt.config.maxTokens, 64), // Cap at 64 tokens
+        maxOutputTokens: prompt.config.maxTokens, // Use the configured limit
         temperature: prompt.config.temperature
       });
       

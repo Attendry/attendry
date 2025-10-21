@@ -14,7 +14,7 @@ const GEMINI_CONFIG = {
   timeout: 30000, // 30 seconds
   maxRetries: 3,
   retryDelay: 1000, // 1 second
-  maxOutputTokens: 2048,
+  maxOutputTokens: 8192, // Increased to reasonable limit (8k tokens)
   temperature: 0.1,
   topP: 0.8,
   topK: 40
