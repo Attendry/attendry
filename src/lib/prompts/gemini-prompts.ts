@@ -31,17 +31,17 @@ export interface EventMetadataPrompt {
 // Base configurations for different task types
 const BASE_CONFIGS = {
   SPEAKER_EXTRACTION: {
-    maxTokens: 2048, // Increased to reasonable limit
+    maxTokens: 512, // Conservative limit to account for Gemini's internal thoughts
     temperature: 0.1,
     systemContext: "You are an expert at extracting speaker information from event content in German and English."
   },
   EVENT_PRIORITIZATION: {
-    maxTokens: 1024, // Increased to reasonable limit
+    maxTokens: 256, // Conservative limit to account for Gemini's internal thoughts
     temperature: 0.1,
     systemContext: "You are an expert at rating event relevance for business professionals."
   },
   EVENT_METADATA: {
-    maxTokens: 1024, // Increased to reasonable limit
+    maxTokens: 256, // Conservative limit to account for Gemini's internal thoughts
     temperature: 0.1,
     systemContext: "You are an expert at extracting event metadata from web content."
   }
@@ -81,39 +81,15 @@ export function createSpeakerExtractionPrompt(
   maxSpeakers: number = 15,
   industryContext?: string
 ): SpeakerExtractionPrompt {
-  // Reasonable content limit - not artificially low
-  const sanitizedContent = sanitizePromptContent(content, 8000); // Back to reasonable limit
+  // Conservative content limit to prevent token overflow
+  const sanitizedContent = sanitizePromptContent(content, 2000); // Conservative limit
   
-  const prompt = `Extract speakers from this event content (German/English):
+  const prompt = `Extract speakers from this content:
 
 ${sanitizedContent}
 
-Return JSON:
-{
-  "speakers": [
-    {
-      "name": "Full name",
-      "title": "Job title", 
-      "company": "Company",
-      "bio": "Brief bio",
-      "expertise_areas": ["area1", "area2"],
-      "social_links": {
-        "linkedin": "URL if found",
-        "twitter": "URL if found", 
-        "website": "URL if found"
-      },
-      "speaking_history": ["engagements"],
-      "education": ["background"],
-      "achievements": ["achievements"],
-      "industry_connections": ["connections"],
-      "recent_news": ["news"],
-      "contact": "Email if found"
-    }
-  ]
-}
-
-Look for: Speaker, Referent, Presenter, Moderator, Keynote
-Max ${maxSpeakers} speakers. Return valid JSON only.`;
+Return JSON: {"speakers": [{"name": "Name", "title": "Title", "company": "Company"}]}
+Max ${maxSpeakers} speakers.`;
 
   return {
     content: prompt,
@@ -132,17 +108,13 @@ export function createEventPrioritizationPrompt(
   industryContext: string = "general",
   locationContext: string = "Europe"
 ): EventPrioritizationPrompt {
-  // Reasonable URL limit - not artificially low
-  const limitedUrls = urls.slice(0, 10); // Back to reasonable limit
+  // Conservative URL limit to prevent token overflow
+  const limitedUrls = urls.slice(0, 5); // Conservative limit
   
-  const prompt = `Rate these URLs for ${industryContext} events in ${locationContext}:
+  const prompt = `Rate these URLs for business events:
 ${limitedUrls.join('\n')}
 
-Return JSON array with top 10 most relevant:
-[{"url": "https://...", "score": 0.9, "reason": "brief reason"}]
-
-Focus on: business and professional events
-Target: professionals, business leaders, industry experts`;
+Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief"}]`;
 
   return {
     content: prompt,

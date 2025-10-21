@@ -44,8 +44,8 @@ export class PromptExecutor {
     content: string
   ): Promise<PromptExecutionResult<{ speakers: any[] }>> {
     try {
-      // Reasonable content sanitization - not artificially low
-      const sanitizedContent = sanitizePromptContent(content, 8000); // Back to reasonable limit
+      // Conservative content sanitization to prevent token overflow
+      const sanitizedContent = sanitizePromptContent(content, 2000); // Conservative limit
       
       // Import Gemini client
       const { generateContentWithRetry, parseJsonResponse } = await import('../gemini-api-client');
@@ -79,8 +79,8 @@ export class PromptExecutor {
         
         const fallbackPrompt = getFallbackPrompt('SPEAKER_EXTRACTION');
         const response = await generateContentWithRetry({
-          prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 2000)}`, // Back to reasonable limit
-          maxOutputTokens: 1024, // Back to reasonable limit
+          prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 1000)}`, // Conservative limit
+          maxOutputTokens: 256, // Conservative limit
           temperature: 0.1
         });
         
@@ -114,8 +114,8 @@ export class PromptExecutor {
     prompt: EventPrioritizationPrompt
   ): Promise<PromptExecutionResult<Array<{ url: string; score: number; reason: string }>>> {
     try {
-      // Reasonable sanitization - not artificially low
-      const sanitizedPrompt = sanitizePromptContent(prompt.content, 4000); // Back to reasonable limit
+      // Conservative sanitization to prevent token overflow
+      const sanitizedPrompt = sanitizePromptContent(prompt.content, 1000); // Conservative limit
       
       const { generateContentWithRetry, parseJsonResponse } = await import('../gemini-api-client');
       
