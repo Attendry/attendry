@@ -81,11 +81,12 @@ export function createSpeakerExtractionPrompt(
   maxSpeakers: number = 15,
   industryContext?: string
 ): SpeakerExtractionPrompt {
-  const industryTerms = industryContext ? INDUSTRY_CONTEXT[industryContext as keyof typeof INDUSTRY_CONTEXT] || [] : [];
+  // Sanitize content to prevent token overflow
+  const sanitizedContent = sanitizePromptContent(content, 3000); // Reduced from 6000 to 3000
   
-  const prompt = `Extract speakers from this event content:
+  const prompt = `Extract speakers from event content:
 
-${content}
+${sanitizedContent}
 
 Return JSON:
 {
@@ -93,39 +94,19 @@ Return JSON:
     {
       "name": "Full name",
       "title": "Job title", 
-      "company": "Company",
-      "bio": "Brief bio",
-      "expertise_areas": ["area1", "area2"],
-      "social_links": {
-        "linkedin": "URL if found",
-        "twitter": "URL if found", 
-        "website": "URL if found"
-      },
-      "speaking_history": ["engagements"],
-      "education": ["background"],
-      "achievements": ["achievements"],
-      "industry_connections": ["connections"],
-      "recent_news": ["news"],
-      "contact": "Email if found"
+      "company": "Company"
     }
   ]
 }
 
-Look for: ${[...SPEAKER_TERMS.german, ...SPEAKER_TERMS.english].join(", ")}
-${industryTerms.length > 0 ? `Industry focus: ${industryTerms.join(", ")}` : ""}
-Titles: ${SPEAKER_TERMS.titles.join(", ")}
-
-Rules:
-- Extract ALL speakers mentioned, even with limited info
-- Use null/empty arrays for missing info  
-- Max ${maxSpeakers} speakers
-- Return valid JSON only`;
+Look for: Speaker, Referent, Presenter, Moderator
+Max ${maxSpeakers} speakers. Return valid JSON only.`;
 
   return {
     content: prompt,
     config: {
       ...BASE_CONFIGS.SPEAKER_EXTRACTION,
-      maxTokens: Math.min(512, 200 + (maxSpeakers * 20)) // Dynamic token allocation
+      maxTokens: 256 // Reduced from dynamic calculation to fixed 256
     }
   };
 }
@@ -138,20 +119,21 @@ export function createEventPrioritizationPrompt(
   industryContext: string = "general",
   locationContext: string = "Europe"
 ): EventPrioritizationPrompt {
-  const industryTerms = INDUSTRY_CONTEXT[industryContext as keyof typeof INDUSTRY_CONTEXT] || [];
+  // Limit URLs to prevent token overflow
+  const limitedUrls = urls.slice(0, 8); // Reduced from 15 to 8
   
-  const prompt = `Rate these URLs for ${industryContext} events in ${locationContext}:
-${urls.slice(0, 15).join('\n')}
+  const prompt = `Rate URLs for ${industryContext} events in ${locationContext}:
+${limitedUrls.join('\n')}
 
-Return JSON array with top 10 most relevant:
-[{"url": "https://...", "score": 0.9, "reason": "brief reason"}]
-
-Focus on: ${industryTerms.length > 0 ? industryTerms.join(', ') : 'business and professional events'}
-Target: professionals, business leaders, industry experts`;
+Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief"}]
+Focus: business events`;
 
   return {
     content: prompt,
-    config: BASE_CONFIGS.EVENT_PRIORITIZATION
+    config: {
+      ...BASE_CONFIGS.EVENT_PRIORITIZATION,
+      maxTokens: 128 // Reduced from 256 to 128
+    }
   };
 }
 
