@@ -22,6 +22,7 @@ const GEMINI_CONFIG = {
 
 export interface GeminiRequest {
   prompt: string;
+  systemInstruction?: string;
   maxOutputTokens?: number;
   temperature?: number;
   topP?: number;
@@ -84,6 +85,9 @@ export class GeminiAPIClient {
     
     const requestBody = {
       contents: [{ parts: [{ text: request.prompt }] }],
+      systemInstruction: request.systemInstruction ? {
+        parts: [{ text: request.systemInstruction }]
+      } : undefined,
       generationConfig: {
         temperature: request.temperature ?? GEMINI_CONFIG.temperature,
         maxOutputTokens: request.maxOutputTokens ?? GEMINI_CONFIG.maxOutputTokens,

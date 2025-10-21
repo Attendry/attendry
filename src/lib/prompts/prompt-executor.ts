@@ -53,7 +53,8 @@ export class PromptExecutor {
       // Execute with retry logic
       const response = await generateContentWithRetry({
         prompt: prompt.content.replace('${content}', sanitizedContent),
-        maxOutputTokens: prompt.config.maxTokens, // Use the configured limit
+        systemInstruction: prompt.config.systemInstruction,
+        maxOutputTokens: prompt.config.maxTokens,
         temperature: prompt.config.temperature
       });
       
@@ -79,8 +80,9 @@ export class PromptExecutor {
         
         const fallbackPrompt = getFallbackPrompt('SPEAKER_EXTRACTION');
         const response = await generateContentWithRetry({
-          prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 1000)}`, // Conservative limit
-          maxOutputTokens: 256, // Conservative limit
+          prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 1000)}`,
+          systemInstruction: "You are a professional event analyst extracting speaker information.",
+          maxOutputTokens: 512,
           temperature: 0.1
         });
         
@@ -121,7 +123,8 @@ export class PromptExecutor {
       
       const response = await generateContentWithRetry({
         prompt: sanitizedPrompt,
-        maxOutputTokens: prompt.config.maxTokens, // Use the configured limit
+        systemInstruction: prompt.config.systemInstruction,
+        maxOutputTokens: prompt.config.maxTokens,
         temperature: prompt.config.temperature
       });
       

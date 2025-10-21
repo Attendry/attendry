@@ -8,7 +8,7 @@
 export interface PromptConfig {
   maxTokens: number;
   temperature: number;
-  systemContext?: string;
+  systemInstruction?: string;
   examples?: string[];
   constraints?: string[];
 }
@@ -31,19 +31,19 @@ export interface EventMetadataPrompt {
 // Base configurations for different task types
 const BASE_CONFIGS = {
   SPEAKER_EXTRACTION: {
-    maxTokens: 512, // Conservative limit to account for Gemini's internal thoughts
+    maxTokens: 1024, // Increased with system instructions
     temperature: 0.1,
-    systemContext: "You are an expert at extracting speaker information from event content in German and English."
+    systemInstruction: `You are a professional event analyst specializing in extracting speaker information from German and English event content. You identify speakers by their roles (Referent, Speaker, Moderator, etc.) and extract their professional details accurately.`
   },
   EVENT_PRIORITIZATION: {
-    maxTokens: 256, // Conservative limit to account for Gemini's internal thoughts
+    maxTokens: 512, // Increased with system instructions
     temperature: 0.1,
-    systemContext: "You are an expert at rating event relevance for business professionals."
+    systemInstruction: `You are a business event curator who evaluates event URLs for relevance to business professionals. You focus on conferences, workshops, and professional networking events that provide value to industry experts.`
   },
   EVENT_METADATA: {
-    maxTokens: 256, // Conservative limit to account for Gemini's internal thoughts
+    maxTokens: 512, // Increased with system instructions
     temperature: 0.1,
-    systemContext: "You are an expert at extracting event metadata from web content."
+    systemInstruction: `You are an event information specialist who extracts structured metadata from event content. You identify key details like dates, locations, organizers, and registration information with high accuracy.`
   }
 } as const;
 
@@ -84,11 +84,13 @@ export function createSpeakerExtractionPrompt(
   // Conservative content limit to prevent token overflow
   const sanitizedContent = sanitizePromptContent(content, 2000); // Conservative limit
   
-  const prompt = `Extract speakers from this content:
+  const prompt = `Extract speakers from this event content:
 
 ${sanitizedContent}
 
-Return JSON: {"speakers": [{"name": "Name", "title": "Title", "company": "Company"}]}
+Return JSON: {"speakers": [{"name": "Full Name", "title": "Job Title", "company": "Company Name"}]}
+
+Look for: ${SPEAKER_TERMS.german.slice(0, 5).join(", ")} or ${SPEAKER_TERMS.english.slice(0, 5).join(", ")}
 Max ${maxSpeakers} speakers.`;
 
   return {
@@ -111,10 +113,13 @@ export function createEventPrioritizationPrompt(
   // Conservative URL limit to prevent token overflow
   const limitedUrls = urls.slice(0, 5); // Conservative limit
   
-  const prompt = `Rate these URLs for business events:
+  const prompt = `Rate these event URLs for business relevance:
+
 ${limitedUrls.join('\n')}
 
-Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief"}]`;
+Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief relevance reason"}]
+
+Focus on: conferences, workshops, professional events, business networking`;
 
   return {
     content: prompt,
