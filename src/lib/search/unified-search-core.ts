@@ -332,10 +332,12 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
       return await response.json();
     }, 'firecrawl');
 
-    console.log('[unified-firecrawl] Response received, items:', data?.data?.length || 0);
+    console.log('[unified-firecrawl] Response received, items:', data?.data?.web?.length || 0);
 
-    const items: string[] = Array.isArray(data?.data) 
-      ? data.data
+    // Parse Firecrawl v2 API response structure: data.data.web[]
+    const webResults = data?.data?.web || [];
+    const items: string[] = Array.isArray(webResults) 
+      ? webResults
           .map((item: any) => item?.url)
           .filter((url: string) => typeof url === 'string' && url.startsWith('http'))
       : [];
