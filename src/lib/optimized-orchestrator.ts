@@ -699,42 +699,15 @@ Return a JSON array of objects, each with:
 
 Include at most 10 items. Only include URLs you see in the list.`;
 
-  const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
+  const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
   
-  const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${geminiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 2048,
-        topP: 0.8,
-        topK: 40
-      }
-    }),
-    // Add timeout to prevent hanging requests
-    signal: AbortSignal.timeout(15000) // 15 second timeout
+  const response = await generateContentWithRetry({
+    prompt,
+    maxOutputTokens: 2048,
+    temperature: 0.1
   });
 
-  if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  
-  if (!text) {
-    throw new Error('No response from Gemini');
-  }
-
-  // Extract JSON from response
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    throw new Error('No JSON found in Gemini response');
-  }
-
-  return JSON.parse(jsonMatch[0]);
+  return parseJsonResponse(response.text);
 }
 
 /**
@@ -1343,73 +1316,48 @@ Return JSON array:
   const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
   
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${geminiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 1024,
-          topP: 0.8,
-          topK: 40
-        }
-      }),
-      // Add timeout to prevent hanging requests
-      signal: AbortSignal.timeout(20000) // 20 second timeout
+    const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
+    
+    const response = await generateContentWithRetry({
+      prompt,
+      maxOutputTokens: 1024,
+      temperature: 0.1
     });
 
-  if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  
-  if (!text) {
-    return speakers; // Return original if no response
-  }
-
-  try {
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const enhancedSpeakers = JSON.parse(jsonMatch[0]);
-      if (Array.isArray(enhancedSpeakers) && enhancedSpeakers.length > 0) {
-        // Merge enhanced data with original speakers
-        return speakers.map(originalSpeaker => {
-          const enhanced = enhancedSpeakers.find(e => 
-            e.name && originalSpeaker.name && 
-            e.name.toLowerCase().includes(originalSpeaker.name.toLowerCase())
-          );
-          
-          if (enhanced) {
-            return {
-              name: enhanced.name || originalSpeaker.name,
-              title: enhanced.title || originalSpeaker.title || "Professional",
-              company: enhanced.company || originalSpeaker.company || "Various"
-            };
-          }
-          
-          // If no enhancement found, provide fallback values
+    const enhancedSpeakers = parseJsonResponse(response.text);
+    
+    if (Array.isArray(enhancedSpeakers) && enhancedSpeakers.length > 0) {
+      // Merge enhanced data with original speakers
+      return speakers.map(originalSpeaker => {
+        const enhanced = enhancedSpeakers.find(e => 
+          e.name && originalSpeaker.name && 
+          e.name.toLowerCase().includes(originalSpeaker.name.toLowerCase())
+        );
+        
+        if (enhanced) {
           return {
-            name: originalSpeaker.name,
-            title: originalSpeaker.title || "Professional",
-            company: originalSpeaker.company || "Various"
+            name: enhanced.name || originalSpeaker.name,
+            title: enhanced.title || originalSpeaker.title || "Professional",
+            company: enhanced.company || originalSpeaker.company || "Various"
           };
-        });
-      }
+        }
+        
+        // If no enhancement found, provide fallback values
+        return {
+          name: originalSpeaker.name,
+          title: originalSpeaker.title || "Professional",
+          company: originalSpeaker.company || "Various"
+        };
+      });
     }
-  } catch (error) {
-    console.warn('[optimized-orchestrator] Failed to parse enhanced speakers:', error);
-  }
-  
-  // Return speakers with fallback values if enhancement fails
-  return speakers.map(speaker => ({
-    name: speaker.name,
-    title: speaker.title || "Professional",
-    company: speaker.company || "Various"
-  }));
-  
+    
+    // Return speakers with fallback values if enhancement fails
+    return speakers.map(speaker => ({
+      name: speaker.name,
+      title: speaker.title || "Professional",
+      company: speaker.company || "Various"
+    }));
+    
   } catch (error) {
     console.warn('[optimized-orchestrator] Gemini enhancement failed:', error);
     // Return speakers with fallback values if enhancement fails

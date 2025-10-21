@@ -406,34 +406,30 @@ Focus on extracting accurate, factual information. If information is not availab
 
     console.log('Calling Gemini API for calendar event metadata extraction...');
     
-    // Add timeout to prevent hanging
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Calendar Gemini API timeout after 15 seconds')), 15000);
+    const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
+    
+    const response = await generateContentWithRetry({
+      prompt,
+      maxOutputTokens: 512,
+      temperature: 0.1
     });
     
-    const geminiPromise = model.generateContent(prompt);
-    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
-    const response = await result.response;
     console.log('Calendar: Gemini API call completed for metadata, processing response...');
-    const text = response.text();
-    console.log('Calendar: Gemini metadata response received, length:', text.length);
+    console.log('Calendar: Gemini metadata response received, length:', response.text.length);
     
     // Try to parse JSON
     try {
-      const jsonMatch = text.match(/\{[\s\S]*?\}/);
-      if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[0]);
-        console.log('Calendar: Successfully extracted event metadata');
-        return {
-          title: data.title || eventTitle || 'Unknown Event',
-          description: data.description || '',
-          date: data.date || eventDate || 'Unknown Date',
-          location: data.location || country || 'Unknown Location',
-          organizer: data.organizer || 'Unknown Organizer',
-          website: data.website || crawlResults[0]?.url || '',
-          registrationUrl: data.registrationUrl
-        };
-      }
+      const data = parseJsonResponse(response.text);
+      console.log('Calendar: Successfully extracted event metadata');
+      return {
+        title: data.title || eventTitle || 'Unknown Event',
+        description: data.description || '',
+        date: data.date || eventDate || 'Unknown Date',
+        location: data.location || country || 'Unknown Location',
+        organizer: data.organizer || 'Unknown Organizer',
+        website: data.website || crawlResults[0]?.url || '',
+        registrationUrl: data.registrationUrl
+      };
     } catch (parseError) {
       console.warn('Failed to parse calendar event metadata JSON:', parseError);
     }
@@ -529,63 +525,25 @@ Return valid JSON only, no additional text.`;
 
     console.log('Calling Gemini API for calendar speaker extraction...');
     
-    // Add timeout to prevent hanging
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Calendar Gemini API timeout after 20 seconds')), 20000);
+    const { generateContentWithRetry, parseJsonResponse } = await import('./gemini-api-client');
+    
+    const response = await generateContentWithRetry({
+      prompt,
+      maxOutputTokens: 1024,
+      temperature: 0.1
     });
     
-    const geminiPromise = model.generateContent(prompt);
-    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
-    const response = await result.response;
     console.log('Calendar: Gemini API call completed, processing response...');
-    const text = response.text();
-    console.log('Calendar: Gemini response received, length:', text.length);
+    console.log('Calendar: Gemini response received, length:', response.text.length);
     
     // Try to parse JSON with better error handling
     try {
-      console.log('Calendar: Raw Gemini response for speakers:', text.substring(0, 500) + '...');
+      console.log('Calendar: Raw Gemini response for speakers:', response.text.substring(0, 500) + '...');
       
-      // Try to extract JSON more carefully
-      let parsedData = null;
+      const parsedData = parseJsonResponse(response.text);
+      console.log('Calendar: Successfully parsed JSON response');
       
-      // First, try to find the JSON block between ```json and ```
-      const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonBlockMatch) {
-        try {
-          parsedData = JSON.parse(jsonBlockMatch[1]);
-          console.log('Calendar: Successfully parsed JSON from code block');
-        } catch (e) {
-          console.warn('Calendar: Failed to parse JSON from code block:', e);
-        }
-      }
-      
-      // If that didn't work, try to find the first complete JSON object
-      if (!parsedData) {
-        const jsonStart = text.indexOf('{');
-        if (jsonStart !== -1) {
-          let braceCount = 0;
-          let jsonEnd = jsonStart;
-          
-          for (let i = jsonStart; i < text.length; i++) {
-            if (text[i] === '{') braceCount++;
-            if (text[i] === '}') braceCount--;
-            if (braceCount === 0) {
-              jsonEnd = i;
-              break;
-            }
-          }
-          
-          if (braceCount === 0) {
-            try {
-              const jsonStr = text.substring(jsonStart, jsonEnd + 1);
-              parsedData = JSON.parse(jsonStr);
-              console.log('Calendar: Successfully parsed JSON by counting braces');
-            } catch (e) {
-              console.warn('Calendar: Failed to parse JSON by counting braces:', e);
-            }
-          }
-        }
-      }
+      // parsedData should be available from parseJsonResponse
       
       if (parsedData && parsedData.speakers && Array.isArray(parsedData.speakers)) {
         console.log('Calendar: Extracted', parsedData.speakers.length, 'speakers');
