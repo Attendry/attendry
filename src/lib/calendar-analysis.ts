@@ -271,11 +271,16 @@ async function calendarDeepCrawl(eventUrl: string): Promise<CalendarCrawlResult[
           url: eventUrl,
           formats: ['markdown'],
           onlyMainContent: false, // Get full content to find sub-pages
-          timeout: 10000 // Shorter timeout
-        })
+          timeout: 30000 // Increased timeout for stability
+        }),
+        // Add request timeout to prevent hanging
+        signal: AbortSignal.timeout(35000) // 35 second timeout
       });
     } catch (fetchError) {
       console.warn('Calendar: Failed to fetch main page:', fetchError);
+      if (fetchError instanceof Error && fetchError.name === 'TimeoutError') {
+        console.warn('Calendar: Request timed out after 35 seconds');
+      }
       return results;
     }
     
@@ -299,8 +304,8 @@ async function calendarDeepCrawl(eventUrl: string): Promise<CalendarCrawlResult[
     const subPageUrls = extractCalendarSubPageUrls(eventUrl, results[0]?.content || '');
     console.log('Calendar: Found potential sub-pages:', subPageUrls.length, subPageUrls);
     
-    // Crawl sub-pages (limit to 2 for calendar analysis speed)
-    for (const subUrl of subPageUrls.slice(0, 2)) {
+    // Crawl sub-pages (increased to 5 for better speaker discovery)
+    for (const subUrl of subPageUrls.slice(0, 5)) {
       if (!checkCalendarRateLimit()) {
         console.warn('Calendar: Rate limit reached, stopping sub-page crawling');
         break;
@@ -340,7 +345,7 @@ async function calendarDeepCrawl(eventUrl: string): Promise<CalendarCrawlResult[
               description: subPageData.data.metadata?.description || '',
               metadata: subPageData.data.metadata
             });
-            console.log('Calendar: Sub-page crawled:', subUrl, 'content length:', subPageData.data.markdown.length);
+            console.log(`Calendar: Successfully crawled sub-page: ${subUrl} (${subPageData.data.markdown.length} chars)`);
           }
         } else {
           // Log error without consuming response body to avoid stream issues

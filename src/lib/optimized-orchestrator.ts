@@ -750,33 +750,161 @@ async function extractSingleEvent(url: string, params: OptimizedSearchParams): P
 }
 
 /**
- * Extract content using Firecrawl
+ * Extract content using Firecrawl with deep crawling for speaker pages
  */
 async function extractWithFirecrawl(url: string): Promise<string> {
   if (!firecrawlKey) {
     throw new Error('Firecrawl API key not available');
   }
 
-  const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${firecrawlKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      url,
-      formats: ['markdown'],
-      onlyMainContent: true,
-      timeout: ORCHESTRATOR_CONFIG.timeouts.extraction
-    })
-  });
+  try {
+    // First, scrape the main page to get content and discover sub-pages
+    const mainResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${firecrawlKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['markdown'],
+        onlyMainContent: false, // Get full content to find sub-pages
+        timeout: ORCHESTRATOR_CONFIG.timeouts.extraction
+      }),
+      signal: AbortSignal.timeout(ORCHESTRATOR_CONFIG.timeouts.extraction + 5000) // Add 5s buffer
+    });
 
-  if (!response.ok) {
-    throw new Error(`Firecrawl error: ${response.status}`);
+    if (!mainResponse.ok) {
+      throw new Error(`Firecrawl error: ${mainResponse.status}`);
+    }
+
+    const mainData = await mainResponse.json();
+    let combinedContent = mainData.data?.markdown || '';
+    
+    // Discover speaker-related sub-pages
+    const subPageUrls = extractSpeakerSubPages(url, combinedContent);
+    console.log(`[optimized-orchestrator] Found ${subPageUrls.length} speaker sub-pages for ${url}`);
+    
+    // Crawl up to 3 most relevant speaker sub-pages
+    const relevantSubPages = subPageUrls.slice(0, 3);
+    const subPageContents: string[] = [];
+    
+    for (const subPageUrl of relevantSubPages) {
+      try {
+        console.log(`[optimized-orchestrator] Crawling speaker sub-page: ${subPageUrl}`);
+        const subResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${firecrawlKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            url: subPageUrl,
+            formats: ['markdown'],
+            onlyMainContent: true,
+            timeout: ORCHESTRATOR_CONFIG.timeouts.extraction
+          }),
+          signal: AbortSignal.timeout(ORCHESTRATOR_CONFIG.timeouts.extraction)
+        });
+
+        if (subResponse.ok) {
+          const subData = await subResponse.json();
+          const subContent = subData.data?.markdown || '';
+          if (subContent.length > 100) { // Only include substantial content
+            subPageContents.push(subContent);
+            console.log(`[optimized-orchestrator] Successfully crawled sub-page: ${subPageUrl} (${subContent.length} chars)`);
+          }
+        } else {
+          console.warn(`[optimized-orchestrator] Failed to crawl sub-page ${subPageUrl}: ${subResponse.status}`);
+        }
+      } catch (error) {
+        console.warn(`[optimized-orchestrator] Error crawling sub-page ${subPageUrl}:`, error);
+      }
+    }
+    
+    // Combine main page content with sub-page content
+    if (subPageContents.length > 0) {
+      combinedContent += '\n\n--- SPEAKER PAGES ---\n\n' + subPageContents.join('\n\n---\n\n');
+      console.log(`[optimized-orchestrator] Combined content: ${combinedContent.length} chars (main: ${mainData.data?.markdown?.length || 0}, sub-pages: ${subPageContents.length})`);
+    }
+    
+    return combinedContent;
+    
+  } catch (error) {
+    console.error(`[optimized-orchestrator] Firecrawl extraction failed for ${url}:`, error);
+    throw error;
   }
+}
 
-  const data = await response.json();
-  return data.data?.markdown || '';
+/**
+ * Extract speaker-related sub-page URLs from content
+ */
+function extractSpeakerSubPages(baseUrl: string, content: string): string[] {
+  const urls: string[] = [];
+  const baseDomain = new URL(baseUrl).origin;
+  
+  // Comprehensive speaker page keywords (English and German)
+  const speakerKeywords = [
+    // English terms
+    'speaker', 'speakers', 'agenda', 'program', 'programme', 'presenter', 'presenters', 
+    'faculty', 'team', 'organizer', 'organiser', 'about', 'participants', 'attendees',
+    // German terms
+    'referenten', 'referentin', 'sprecher', 'sprecherin', 'programm', 'agenda',
+    'teilnehmer', 'teilnehmerin', 'moderatoren', 'moderatorin', 'organisatoren',
+    'veranstalter', 'team', 'über', 'about'
+  ];
+  
+  // Enhanced regex patterns to find URLs
+  const urlPatterns = [
+    /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g,  // Absolute URLs
+    /href=["']([^"']+)["']/g,            // href attributes
+    /src=["']([^"']+)["']/g              // src attributes
+  ];
+  
+  for (const pattern of urlPatterns) {
+    let match;
+    while ((match = pattern.exec(content)) !== null) {
+      let urlString = match[1] || match[0];
+      
+      // Handle relative URLs
+      if (urlString.startsWith('/')) {
+        urlString = baseDomain + urlString;
+      } else if (!urlString.startsWith('http')) {
+        continue; // Skip non-URL matches
+      }
+      
+      try {
+        const url = new URL(urlString);
+        // Only include URLs from the same domain
+        if (url.origin === baseDomain) {
+          // Check if URL contains speaker-related keywords
+          const urlLower = url.pathname.toLowerCase();
+          if (speakerKeywords.some(keyword => urlLower.includes(keyword))) {
+            urls.push(urlString);
+          }
+        }
+      } catch (e) {
+        // Invalid URL, skip
+      }
+    }
+  }
+  
+  // Also add common speaker page patterns if not found
+  const commonSpeakerPaths = [
+    '/referenten/', '/referenten', '/speakers/', '/speakers', '/agenda/', '/agenda',
+    '/programm/', '/programm', '/presenters/', '/presenters', '/faculty/', '/faculty',
+    '/team/', '/team', '/about/', '/about', '/organizer/', '/organizer'
+  ];
+  
+  for (const path of commonSpeakerPaths) {
+    const fullUrl = baseDomain + path;
+    if (!urls.includes(fullUrl)) {
+      urls.push(fullUrl);
+    }
+  }
+  
+  // Remove duplicates and return
+  return [...new Set(urls)];
 }
 
 /**
@@ -826,9 +954,9 @@ function parseEventDetails(content: string, url: string): {
     location = `${locationMatch[1]}, ${locationMatch[2]}`;
   }
   
-  // Extract speakers with enhanced patterns
+  // Extract speakers with enhanced patterns (more flexible)
   const speakerPatterns = [
-    // Pattern 1: "Name, Title, Company"
+    // Pattern 1: "Name, Title, Company" (more flexible)
     /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))(?:\s*,\s*([^,\n]+?))?(?:\s*[,;]|$)/g,
     // Pattern 2: "Name - Title at Company"
     /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*[-–]\s*([^,\n]+?)(?:\s+at\s+([^,\n]+?))?(?:\s*[,;]|$)/g,
@@ -837,7 +965,11 @@ function parseEventDetails(content: string, url: string): {
     // Pattern 4: "Name | Title | Company"
     /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s*\|\s*([^,\n]+?)(?:\s*\|\s*([^,\n]+?))?(?:\s*[,;]|$)/g,
     // Pattern 5: Basic "Name, Title" or "Name, Company"
-    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))(?:\s*[,;]|$)/g
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))(?:\s*[,;]|$)/g,
+    // Pattern 6: German patterns "Referent:", "Sprecher:", "Moderator:"
+    /(?:Referent|Sprecher|Moderator|Speaker|Presenter):\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*,\s*([^,\n]+?))?(?:\s*,\s*([^,\n]+?))?(?:\s*[,;]|$)/gi,
+    // Pattern 7: Simple name extraction (fallback)
+    /([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*[,;]|$)/g
   ];
 
   const seenSpeakers = new Set<string>();
@@ -857,8 +989,8 @@ function parseEventDetails(content: string, url: string): {
           if (seenSpeakers.has(speakerKey)) return;
           seenSpeakers.add(speakerKey);
           
-          // Only add if it looks like a real name (at least 2 words)
-          if (name.split(' ').length >= 2) {
+          // Only add if it looks like a real name (at least 2 words) and not too long
+          if (name.split(' ').length >= 2 && name.length < 50) {
             speakers.push({
               name,
               title: title && title.length > 2 ? title : "Professional",
@@ -875,9 +1007,9 @@ function parseEventDetails(content: string, url: string): {
     const basicNamePattern = /([A-Z][a-z]+\s+[A-Z][a-z]+)/g;
     const nameMatches = content.match(basicNamePattern);
     if (nameMatches) {
-      nameMatches.slice(0, 5).forEach(name => {
+      nameMatches.slice(0, 10).forEach(name => {
         const speakerKey = name.toLowerCase();
-        if (!seenSpeakers.has(speakerKey)) {
+        if (!seenSpeakers.has(speakerKey) && name.length < 50) {
           seenSpeakers.add(speakerKey);
           speakers.push({
             name: name.trim(),
@@ -1037,21 +1169,22 @@ Return JSON array:
 
   const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
   
-  const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${geminiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 1024,
-        topP: 0.8,
-        topK: 40
-      }
-    }),
-    // Add timeout to prevent hanging requests
-    signal: AbortSignal.timeout(15000) // 15 second timeout
-  });
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${geminiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 1024,
+          topP: 0.8,
+          topK: 40
+        }
+      }),
+      // Add timeout to prevent hanging requests
+      signal: AbortSignal.timeout(20000) // 20 second timeout
+    });
 
   if (!response.ok) {
     throw new Error(`Gemini API error: ${response.status}`);
@@ -1103,6 +1236,16 @@ Return JSON array:
     title: speaker.title || "Professional",
     company: speaker.company || "Various"
   }));
+  
+  } catch (error) {
+    console.warn('[optimized-orchestrator] Gemini enhancement failed:', error);
+    // Return speakers with fallback values if enhancement fails
+    return speakers.map(speaker => ({
+      name: speaker.name,
+      title: speaker.title || "Professional",
+      company: speaker.company || "Various"
+    }));
+  }
 }
 
 /**
