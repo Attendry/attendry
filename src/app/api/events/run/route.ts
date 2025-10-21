@@ -173,15 +173,14 @@ async function saveSearchResultsAsync(params: {
     }));
 
     const { error } = await supabase
-      .from('search_history')
+      .from('user_search_results')
       .insert({
         user_id: userRes.user.id,
         search_params: searchParams,
         results: serializableResults,
         result_count: serializableResults.length,
-        search_duration: params.searchDuration,
-        api_endpoint: params.apiEndpoint,
-        created_at: new Date().toISOString()
+        search_duration_ms: params.searchDuration,
+        api_endpoint: params.apiEndpoint
       });
 
     if (error) {

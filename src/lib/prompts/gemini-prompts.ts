@@ -81,32 +81,21 @@ export function createSpeakerExtractionPrompt(
   maxSpeakers: number = 15,
   industryContext?: string
 ): SpeakerExtractionPrompt {
-  // Sanitize content to prevent token overflow
-  const sanitizedContent = sanitizePromptContent(content, 3000); // Reduced from 6000 to 3000
+  // Sanitize content to prevent token overflow - much more aggressive
+  const sanitizedContent = sanitizePromptContent(content, 1000); // Reduced from 3000 to 1000
   
-  const prompt = `Extract speakers from event content:
+  const prompt = `Extract speakers:
 
 ${sanitizedContent}
 
-Return JSON:
-{
-  "speakers": [
-    {
-      "name": "Full name",
-      "title": "Job title", 
-      "company": "Company"
-    }
-  ]
-}
-
-Look for: Speaker, Referent, Presenter, Moderator
-Max ${maxSpeakers} speakers. Return valid JSON only.`;
+Return JSON: {"speakers": [{"name": "Name", "title": "Title", "company": "Company"}]}
+Max ${maxSpeakers} speakers.`;
 
   return {
     content: prompt,
     config: {
       ...BASE_CONFIGS.SPEAKER_EXTRACTION,
-      maxTokens: 256 // Reduced from dynamic calculation to fixed 256
+      maxTokens: 128 // Reduced from 256 to 128
     }
   };
 }
@@ -119,20 +108,19 @@ export function createEventPrioritizationPrompt(
   industryContext: string = "general",
   locationContext: string = "Europe"
 ): EventPrioritizationPrompt {
-  // Limit URLs to prevent token overflow
-  const limitedUrls = urls.slice(0, 8); // Reduced from 15 to 8
+  // Limit URLs to prevent token overflow - much more aggressive
+  const limitedUrls = urls.slice(0, 5); // Reduced from 8 to 5
   
-  const prompt = `Rate URLs for ${industryContext} events in ${locationContext}:
+  const prompt = `Rate URLs for events:
 ${limitedUrls.join('\n')}
 
-Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief"}]
-Focus: business events`;
+Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief"}]`;
 
   return {
     content: prompt,
     config: {
       ...BASE_CONFIGS.EVENT_PRIORITIZATION,
-      maxTokens: 128 // Reduced from 256 to 128
+      maxTokens: 64 // Reduced from 128 to 64
     }
   };
 }

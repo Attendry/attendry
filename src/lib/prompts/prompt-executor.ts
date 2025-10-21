@@ -44,8 +44,8 @@ export class PromptExecutor {
     content: string
   ): Promise<PromptExecutionResult<{ speakers: any[] }>> {
     try {
-      // Sanitize content to prevent token issues - more aggressive
-      const sanitizedContent = sanitizePromptContent(content, 2000); // Reduced from 6000 to 2000
+      // Much more aggressive content sanitization
+      const sanitizedContent = sanitizePromptContent(content, 500); // Reduced from 2000 to 500
       
       // Import Gemini client
       const { generateContentWithRetry, parseJsonResponse } = await import('../gemini-api-client');
@@ -53,7 +53,7 @@ export class PromptExecutor {
       // Execute with retry logic
       const response = await generateContentWithRetry({
         prompt: prompt.content.replace('${content}', sanitizedContent),
-        maxOutputTokens: Math.min(prompt.config.maxTokens, 256), // Cap at 256 tokens
+        maxOutputTokens: Math.min(prompt.config.maxTokens, 64), // Cap at 64 tokens
         temperature: prompt.config.temperature
       });
       
@@ -79,8 +79,8 @@ export class PromptExecutor {
         
         const fallbackPrompt = getFallbackPrompt('SPEAKER_EXTRACTION');
         const response = await generateContentWithRetry({
-          prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 1000)}`, // Reduced to 1000
-          maxOutputTokens: 128, // Reduced to 128
+          prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 200)}`, // Reduced to 200
+          maxOutputTokens: 32, // Reduced to 32
           temperature: 0.1
         });
         
@@ -114,14 +114,14 @@ export class PromptExecutor {
     prompt: EventPrioritizationPrompt
   ): Promise<PromptExecutionResult<Array<{ url: string; score: number; reason: string }>>> {
     try {
-      // Further sanitize the prompt to prevent MAX_TOKENS
-      const sanitizedPrompt = sanitizePromptContent(prompt.content, 2000);
+      // Much more aggressive sanitization
+      const sanitizedPrompt = sanitizePromptContent(prompt.content, 500); // Reduced from 2000 to 500
       
       const { generateContentWithRetry, parseJsonResponse } = await import('../gemini-api-client');
       
       const response = await generateContentWithRetry({
         prompt: sanitizedPrompt,
-        maxOutputTokens: Math.min(prompt.config.maxTokens, 128), // Cap at 128 tokens
+        maxOutputTokens: Math.min(prompt.config.maxTokens, 64), // Cap at 64 tokens
         temperature: prompt.config.temperature
       });
       
