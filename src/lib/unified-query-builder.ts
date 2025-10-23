@@ -92,6 +92,7 @@ export interface QueryBuilderParams {
   timeframe?: string | null;
   locale?: string;
   language?: string;
+  userProfile?: any; // Add user profile support
 }
 
 export interface QueryBuilderResult {
@@ -120,7 +121,8 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     location,
     timeframe,
     locale = 'de',
-    language = 'en'
+    language = 'en',
+    userProfile
   } = params;
 
   // Load admin configuration
@@ -146,8 +148,31 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
   // Get temporal terms
   const temporalTerms = TEMPORAL_TERMS[termLanguage as keyof typeof TEMPORAL_TERMS] || TEMPORAL_TERMS.en;
   
-  // Build base query
+  // Build base query with user profile integration
   let baseQuery = userText.trim();
+  if (!baseQuery && userProfile) {
+    // If no user text provided, build query from user profile
+    const industryTerms = userProfile.industry_terms || [];
+    const icpTerms = userProfile.icp_terms || [];
+    const competitors = userProfile.competitors || [];
+    
+    if (industryTerms.length > 0 || icpTerms.length > 0) {
+      const userContext = [];
+      if (industryTerms.length > 0) {
+        userContext.push(industryTerms.slice(0, 3).join(', '));
+      }
+      if (icpTerms.length > 0) {
+        userContext.push(`targeting ${icpTerms.slice(0, 2).join(', ')}`);
+      }
+      if (competitors.length > 0) {
+        userContext.push(`competitors: ${competitors.slice(0, 2).join(', ')}`);
+      }
+      
+      baseQuery = userContext.join(' ');
+      console.log('[unified-query-builder] Built user-specific query from profile:', baseQuery);
+    }
+  }
+  
   if (!baseQuery) {
     baseQuery = config.baseQuery;
   }
@@ -173,7 +198,7 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     temporalTerms
   });
   
-  // Build narrative query for Firecrawl
+  // Build narrative query for Firecrawl with user profile context
   const narrativeQuery = buildNarrativeQuery({
     baseQuery,
     eventTypes,
@@ -184,7 +209,8 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     dateTo,
     timeframe,
     excludeTerms: config.excludeTerms || '',
-    language: termLanguage
+    language: termLanguage,
+    userProfile
   });
   
   // Generate query variations
@@ -298,8 +324,9 @@ function buildNarrativeQuery(params: {
   timeframe?: string | null;
   excludeTerms: string;
   language: string;
+  userProfile?: any;
 }): string {
-  const { baseQuery, eventTypes, locationTerms, temporalTerms, country, dateFrom, dateTo, timeframe, language } = params;
+  const { baseQuery, eventTypes, locationTerms, temporalTerms, country, dateFrom, dateTo, timeframe, language, userProfile } = params;
   
   // Get country name
   const countryMap: Record<string, string> = {
@@ -328,13 +355,36 @@ function buildNarrativeQuery(params: {
     temporalDescription = 'for 2025-2027';
   }
   
-  // Build narrative query based on language
+  // Build user-specific context for narrative query
+  let userContext = '';
+  if (userProfile) {
+    const industryTerms = userProfile.industry_terms || [];
+    const icpTerms = userProfile.icp_terms || [];
+    const competitors = userProfile.competitors || [];
+    
+    const userContextParts = [];
+    if (industryTerms.length > 0) {
+      userContextParts.push(`focusing on ${industryTerms.slice(0, 2).join(', ')}`);
+    }
+    if (icpTerms.length > 0) {
+      userContextParts.push(`targeting ${icpTerms.slice(0, 2).join(', ')}`);
+    }
+    if (competitors.length > 0) {
+      userContextParts.push(`involving competitors like ${competitors.slice(0, 1).join(', ')}`);
+    }
+    
+    if (userContextParts.length > 0) {
+      userContext = `, ${userContextParts.join(', ')}`;
+    }
+  }
+
+  // Build narrative query based on language with user context
   if (language === 'de') {
-    return `Finde Geschäftsveranstaltungen und professionelle Events in ${countryName} ${temporalDescription}, einschließlich ${eventTypeDescription} in ${locationDescription}. Fokus auf Business und professionelle Entwicklung.`;
+    return `Finde Geschäftsveranstaltungen und professionelle Events in ${countryName} ${temporalDescription}, einschließlich ${eventTypeDescription} in ${locationDescription}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
   } else if (language === 'fr') {
-    return `Trouvez des événements d'affaires et professionnels en ${countryName} ${temporalDescription}, y compris ${eventTypeDescription} à ${locationDescription}. Focus sur les affaires et le développement professionnel.`;
+    return `Trouvez des événements d'affaires et professionnels en ${countryName} ${temporalDescription}, y compris ${eventTypeDescription} à ${locationDescription}. Focus sur les affaires et le développement professionnel${userContext}.`;
   } else {
-    return `Find business events and professional conferences in ${countryName} ${temporalDescription}, including ${eventTypeDescription} in ${locationDescription}. Focus on business and professional development.`;
+    return `Find business events and professional conferences in ${countryName} ${temporalDescription}, including ${eventTypeDescription} in ${locationDescription}. Focus on business and professional development${userContext}.`;
   }
 }
 

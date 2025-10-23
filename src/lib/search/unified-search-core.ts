@@ -147,6 +147,7 @@ export interface UnifiedSearchParams {
   limit?: number;
   scrapeContent?: boolean;
   useCache?: boolean;
+  userProfile?: any; // Add user profile support
 }
 
 export interface UnifiedSearchResult {
@@ -278,7 +279,7 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
     // Use narrative query for Firecrawl if available, otherwise fallback to regular query
     let firecrawlQuery = params.q;
     
-    // Try to get narrative query from unified query builder
+    // Try to get narrative query from unified query builder with user profile
     try {
       const { buildUnifiedQuery } = await import('../unified-query-builder');
       const queryResult = await buildUnifiedQuery({
@@ -286,12 +287,13 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
         country: params.country,
         dateFrom: params.dateFrom,
         dateTo: params.dateTo,
-        language: 'en'
+        language: 'en',
+        userProfile: params.userProfile // Pass user profile to query builder
       });
       
       if (queryResult.narrativeQuery) {
         firecrawlQuery = queryResult.narrativeQuery;
-        console.log('[unified-firecrawl] Using narrative query:', firecrawlQuery);
+        console.log('[unified-firecrawl] Using narrative query with user profile:', firecrawlQuery);
       }
     } catch (error) {
       console.warn('[unified-firecrawl] Failed to get narrative query, using original:', error);

@@ -350,7 +350,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     // Step 3: Multi-source discovery
     const discoveryStart = Date.now();
-    const candidates = await discoverEventCandidates(query, params);
+    const candidates = await discoverEventCandidates(query, params, userProfile);
     const discoveryTime = Date.now() - discoveryStart;
     logs.push({
       stage: 'discovery',
@@ -579,7 +579,7 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
 /**
  * Discover event candidates from multiple sources using parallel processing
  */
-async function discoverEventCandidates(query: string, params: OptimizedSearchParams): Promise<string[]> {
+async function discoverEventCandidates(query: string, params: OptimizedSearchParams, userProfile?: any): Promise<string[]> {
   const startTime = Date.now();
   
   // Create multiple query variations for parallel discovery
@@ -605,14 +605,22 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
     discoveryTasks,
     async (task) => {
       return await executeWithRetry(async () => {
-        return await unifiedSearch({
+        console.log('[optimized-orchestrator] Executing discovery with query:', task.data.substring(0, 100) + '...');
+        const result = await unifiedSearch({
           q: task.data,
           dateFrom: params.dateFrom,
           dateTo: params.dateTo,
           country: params.country || undefined,
           limit: Math.ceil(ORCHESTRATOR_CONFIG.limits.maxCandidates / queryVariations.length),
-          useCache: true
+          useCache: true,
+          userProfile: userProfile // Pass user profile to unified search
         });
+        console.log('[optimized-orchestrator] Discovery result:', { 
+          query: task.data.substring(0, 50) + '...', 
+          itemsFound: result.items?.length || 0,
+          userProfileUsed: !!userProfile 
+        });
+        return result;
       }, 'firecrawl');
     },
     {
@@ -721,18 +729,18 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     }
   }
   
-  // Build user-specific context for the prompt
+  // Build optimized user-specific context for the prompt (reduced for better performance)
   const userContextParts = [];
   if (userIndustryTerms.length > 0) {
-    userContextParts.push(`User's Industry Focus: ${userIndustryTerms.slice(0, 3).join(', ')}`);
+    userContextParts.push(`Industry: ${userIndustryTerms.slice(0, 2).join(', ')}`);
   }
   if (userIcpTerms.length > 0) {
-    userContextParts.push(`User's Target Audience: ${userIcpTerms.slice(0, 3).join(', ')}`);
+    userContextParts.push(`Target: ${userIcpTerms.slice(0, 2).join(', ')}`);
   }
   if (userCompetitors.length > 0) {
-    userContextParts.push(`User's Competitors: ${userCompetitors.slice(0, 2).join(', ')}`);
+    userContextParts.push(`Competitors: ${userCompetitors.slice(0, 1).join(', ')}`);
   }
-  const userContextText = userContextParts.length > 0 ? `\n\nUSER-SPECIFIC CONTEXT:\n${userContextParts.join('\n')}` : '';
+  const userContextText = userContextParts.length > 0 ? `\n\nUSER CONTEXT: ${userContextParts.join('; ')}` : '';
 
   // Use the proven Enhanced Orchestrator prompt approach with user context
   const prompt = `You are an expert in ${industry} events and conferences. 
@@ -757,9 +765,9 @@ IMPORTANT FILTERING RULES:
 - EXCLUDE events that are clearly from other countries (US, UK, etc.) unless they explicitly mention ${locationContext}
 - Focus on actual event pages, not documentation, news, or general information pages
 - Look for event-specific indicators: dates, venues, registration, speakers, agenda
-- For Germany search: prioritize events in German cities, German venues, or events explicitly mentioning Germany${userIndustryTerms.length > 0 ? `\n- PRIORITIZE events related to: ${userIndustryTerms.slice(0, 3).join(', ')}` : ''}${userIcpTerms.length > 0 ? `\n- PRIORITIZE events targeting: ${userIcpTerms.slice(0, 3).join(', ')}` : ''}${userCompetitors.length > 0 ? `\n- PRIORITIZE events involving competitors: ${userCompetitors.slice(0, 2).join(', ')}` : ''}
+- For Germany search: prioritize events in German cities, German venues, or events explicitly mentioning Germany${userIndustryTerms.length > 0 ? `\n- PRIORITIZE events related to: ${userIndustryTerms.slice(0, 2).join(', ')}` : ''}${userIcpTerms.length > 0 ? `\n- PRIORITIZE events targeting: ${userIcpTerms.slice(0, 2).join(', ')}` : ''}${userCompetitors.length > 0 ? `\n- PRIORITIZE events involving competitors: ${userCompetitors.slice(0, 1).join(', ')}` : ''}
 
-URLs: ${urls.slice(0, 20).join('\n')}
+URLs: ${urls.slice(0, 10).join('\n')}
 
 Return a JSON array of objects, each with:
 {
@@ -773,9 +781,9 @@ Include at most 10 items. Only include URLs you see in the list.`;
   const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
   
   try {
-    // Create AbortController for timeout
+    // Create AbortController for progressive timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout (reduced from 30)
     
     const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${geminiKey}`, {
       method: 'POST',
