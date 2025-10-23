@@ -117,7 +117,7 @@ export class PromptExecutor {
   ): Promise<PromptExecutionResult<Array<{ url: string; score: number; reason: string }>>> {
     try {
       // Conservative sanitization to prevent token overflow
-      const sanitizedPrompt = sanitizePromptContent(prompt.content, 1000); // Conservative limit
+      const sanitizedPrompt = sanitizePromptContent(prompt.content, 2000); // Increased limit for better results
       
       const { generateContentWithRetry, parseJsonResponse } = await import('../gemini-api-client');
       

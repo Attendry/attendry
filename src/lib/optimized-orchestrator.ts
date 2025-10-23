@@ -676,35 +676,113 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   }
   
   try {
-    // Use new prompt system with user-specific terms
+    // Use new prompt system with user-specific terms and batching
     const { createEventPrioritizationPrompt } = await import('./prompts/gemini-prompts');
     const { promptExecutor } = await import('./prompts/prompt-executor');
     
-    const prompt = createEventPrioritizationPrompt(
-      urls.slice(0, 15),
-      industryContext,
-      locationContext,
-      userIndustryTerms,
-      userIcpTerms,
-      timeframeContext
-    );
-    
-    const result = await promptExecutor.executeEventPrioritization(prompt);
-    
-    if (result.success && result.data) {
-      return result.data;
-    } else {
-      throw new Error(result.error || 'Prioritization failed');
+    // Process URLs in batches of 3 to prevent token overflow
+    const batchSize = 3;
+    const batches = [];
+    for (let i = 0; i < urls.length; i += batchSize) {
+      batches.push(urls.slice(i, i + batchSize));
     }
-  } catch (error) {
-    console.warn('[optimized-orchestrator] Gemini prioritization failed, using fallback:', error);
     
-    // Fallback: return URLs with basic scoring
-    return urls.slice(0, 10).map((url, index) => ({
-      url,
-      score: Math.max(0.1, 1.0 - (index * 0.1)), // Decreasing scores
-      reason: 'Fallback scoring due to Gemini API failure'
-    }));
+    const allResults: Array<{url: string, score: number, reason: string}> = [];
+    
+    // Process each batch sequentially to avoid rate limits
+    for (const batch of batches) {
+      try {
+        const prompt = createEventPrioritizationPrompt(
+          batch,
+          industryContext,
+          locationContext,
+          userIndustryTerms,
+          userIcpTerms,
+          timeframeContext
+        );
+        
+        const result = await promptExecutor.executeEventPrioritization(prompt);
+        
+        if (result.success && result.data) {
+          allResults.push(...result.data);
+        } else {
+          // Enhanced fallback scoring for this batch
+          const fallbackBatch = batch.map((url, index) => {
+            let score = 0.5;
+            let reason = 'Fallback scoring due to batch processing failure';
+            
+            // Intelligent scoring based on URL patterns
+            if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+              score = 0.8;
+              reason = 'High relevance: conference/summit/event URL pattern';
+            } else if (url.includes('workshop') || url.includes('seminar') || url.includes('meeting')) {
+              score = 0.7;
+              reason = 'Good relevance: workshop/seminar/meeting URL pattern';
+            } else if (url.includes('business') || url.includes('professional') || url.includes('industry')) {
+              score = 0.6;
+              reason = 'Moderate relevance: business/professional URL pattern';
+            }
+            
+            score = Math.max(0.1, score - (index * 0.05));
+            return { url, score, reason };
+          });
+          allResults.push(...fallbackBatch);
+        }
+      } catch (batchError) {
+        console.warn('[optimized-orchestrator] Batch processing failed, using fallback for batch:', batchError);
+        // Enhanced fallback scoring for this batch
+        const fallbackBatch = batch.map((url, index) => {
+          let score = 0.5;
+          let reason = 'Fallback scoring due to batch processing error';
+          
+          // Intelligent scoring based on URL patterns
+          if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+            score = 0.8;
+            reason = 'High relevance: conference/summit/event URL pattern';
+          } else if (url.includes('workshop') || url.includes('seminar') || url.includes('meeting')) {
+            score = 0.7;
+            reason = 'Good relevance: workshop/seminar/meeting URL pattern';
+          } else if (url.includes('business') || url.includes('professional') || url.includes('industry')) {
+            score = 0.6;
+            reason = 'Moderate relevance: business/professional URL pattern';
+          }
+          
+          score = Math.max(0.1, score - (index * 0.05));
+          return { url, score, reason };
+        });
+        allResults.push(...fallbackBatch);
+      }
+    }
+    
+    return allResults;
+  } catch (error) {
+    console.warn('[optimized-orchestrator] Gemini prioritization failed completely, using fallback:', error);
+    
+    // Enhanced fallback: return URLs with intelligent scoring based on URL patterns
+    return urls.slice(0, 10).map((url, index) => {
+      let score = 0.5; // Base score
+      let reason = 'Fallback scoring due to Gemini API failure';
+      
+      // Intelligent scoring based on URL patterns
+      if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+        score = 0.8;
+        reason = 'High relevance: conference/summit/event URL pattern';
+      } else if (url.includes('workshop') || url.includes('seminar') || url.includes('meeting')) {
+        score = 0.7;
+        reason = 'Good relevance: workshop/seminar/meeting URL pattern';
+      } else if (url.includes('business') || url.includes('professional') || url.includes('industry')) {
+        score = 0.6;
+        reason = 'Moderate relevance: business/professional URL pattern';
+      } else if (url.includes('germany') || url.includes('berlin') || url.includes('munich') || url.includes('frankfurt')) {
+        score = Math.max(score, 0.4); // Boost for German locations
+        reason = 'Location relevance: German location detected';
+      }
+      
+      // Apply position-based degradation
+      score = Math.max(0.1, score - (index * 0.05));
+      
+      return { url, score, reason };
+    });
   }
 }
 

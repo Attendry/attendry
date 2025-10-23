@@ -114,39 +114,40 @@ export function createEventPrioritizationPrompt(
   userIcpTerms: string[] = [],
   timeframeContext?: string
 ): EventPrioritizationPrompt {
-  // Conservative URL limit to prevent token overflow
-  const limitedUrls = urls.slice(0, 5); // Conservative limit
+  // Very conservative URL limit to prevent token overflow
+  const limitedUrls = urls.slice(0, 3); // Reduced from 5 to 3
   
-  // Build user-specific context
+  // Build minimal user-specific context to reduce tokens
   const userContext = [];
   if (userIndustryTerms.length > 0) {
-    userContext.push(`Industry focus: ${userIndustryTerms.slice(0, 5).join(", ")}`);
+    userContext.push(`Industry: ${userIndustryTerms.slice(0, 3).join(", ")}`); // Reduced from 5 to 3
   }
   if (userIcpTerms.length > 0) {
-    userContext.push(`Target audience: ${userIcpTerms.slice(0, 5).join(", ")}`);
+    userContext.push(`Audience: ${userIcpTerms.slice(0, 3).join(", ")}`); // Reduced from 5 to 3
   }
   if (timeframeContext) {
-    userContext.push(`Timeframe: ${timeframeContext}`);
+    userContext.push(`Time: ${timeframeContext}`);
   }
   
-  const userContextText = userContext.length > 0 ? `\n\nUser-specific context:\n${userContext.join("\n")}` : "";
+  const userContextText = userContext.length > 0 ? `\nContext: ${userContext.join("; ")}` : "";
   
-  const prompt = `Rate these event URLs for business relevance:
+  // Optimized prompt with minimal text to reduce token usage
+  const prompt = `Rate these URLs for business relevance:
 
 ${limitedUrls.join('\n')}
 
-Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief relevance reason"}]
+Return JSON: [{"url": "https://...", "score": 0.9, "reason": "brief reason"}]
 
-Focus on: conferences, workshops, professional events, business networking, industry events
+Focus: conferences, workshops, professional events, business networking
 Location: ${locationContext}${userContextText}
 
-Prioritize events that match the user's industry focus and target audience.`;
+Prioritize events matching user's industry and audience.`;
 
   return {
     content: prompt,
     config: {
       ...BASE_CONFIGS.EVENT_PRIORITIZATION,
-      maxTokens: 1024 // Back to reasonable limit
+      maxTokens: 512 // Reduced from 1024 to 512 to prevent token overflow
     }
   };
 }
@@ -289,11 +290,11 @@ export function getOptimalPromptConfig(contentLength: number, taskType: keyof ty
   const baseConfig = BASE_CONFIGS[taskType];
   
   // Adjust tokens based on content length
-  let maxTokens = baseConfig.maxTokens;
+  let maxTokens: number = baseConfig.maxTokens;
   if (contentLength > 10000) {
-    maxTokens = Math.min(maxTokens, 256) as 256; // Shorter responses for long content
+    maxTokens = 256; // Shorter responses for long content
   } else if (contentLength < 1000) {
-    maxTokens = Math.min(maxTokens * 1.5, 768) as 512; // More detailed responses for short content
+    maxTokens = 512; // More detailed responses for short content
   }
   
   return {
