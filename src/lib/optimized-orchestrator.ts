@@ -319,18 +319,36 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   });
   
   try {
-    // Step 1: Build optimized query
+    // Step 1: Load user profile for personalized search
+    const userProfileStart = Date.now();
+    const userProfile = await getUserProfile();
+    const userProfileTime = Date.now() - userProfileStart;
+    
+    if (userProfile) {
+      console.log('[optimized-orchestrator] User profile loaded:', {
+        industryTerms: userProfile.industry_terms?.length || 0,
+        icpTerms: userProfile.icp_terms?.length || 0,
+        competitors: userProfile.competitors?.length || 0
+      });
+    }
+    
+    // Step 2: Build optimized query with user profile
     const queryBuildStart = Date.now();
-    const query = await buildOptimizedQuery(params);
+    const query = await buildOptimizedQuery(params, userProfile);
     const queryBuildTime = Date.now() - queryBuildStart;
     logs.push({
       stage: 'query_build',
-      message: 'Built optimized search query',
+      message: 'Built optimized search query with user profile',
       timestamp: new Date().toISOString(),
-      data: { query: query.substring(0, 100) + '...', duration: queryBuildTime }
+      data: { 
+        query: query.substring(0, 100) + '...', 
+        duration: queryBuildTime,
+        userProfileLoaded: !!userProfile,
+        userProfileDuration: userProfileTime
+      }
     });
 
-    // Step 2: Multi-source discovery
+    // Step 3: Multi-source discovery
     const discoveryStart = Date.now();
     const candidates = await discoverEventCandidates(query, params);
     const discoveryTime = Date.now() - discoveryStart;
@@ -341,7 +359,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       data: { candidateCount: candidates.length, duration: discoveryTime }
     });
 
-    // Step 3: Intelligent prioritization
+    // Step 4: Intelligent prioritization
     const prioritizationStart = Date.now();
     const prioritized = await prioritizeCandidates(candidates, params);
     const prioritizationTime = Date.now() - prioritizationStart;
@@ -352,7 +370,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       data: { prioritizedCount: prioritized.length, duration: prioritizationTime }
     });
 
-    // Step 4: Parallel extraction
+    // Step 5: Parallel extraction
     const extractionStart = Date.now();
     const extracted = await extractEventDetails(prioritized, params);
     const extractionTime = Date.now() - extractionStart;
@@ -363,7 +381,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       data: { extractedCount: extracted.length, duration: extractionTime }
     });
 
-    // Step 5: Speaker enhancement
+    // Step 6: Speaker enhancement
     const enhancementStart = Date.now();
     const enhanced = await enhanceEventSpeakers(extracted, params);
     const enhancementTime = Date.now() - enhancementStart;
@@ -374,7 +392,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       data: { enhancedCount: enhanced.length, duration: enhancementTime }
     });
 
-    // Step 6: Final filtering and ranking
+    // Step 7: Final filtering and ranking
     const finalEvents = filterAndRankEvents(enhanced);
 
     const totalDuration = Date.now() - startTime;
@@ -513,14 +531,39 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 }
 
 /**
- * Build optimized search query using unified query builder
+ * Build optimized search query using unified query builder with user profile integration
  */
-async function buildOptimizedQuery(params: OptimizedSearchParams): Promise<string> {
+async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: any): Promise<string> {
   // Use unified query builder for enhanced query generation
   const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
   
+  // Build user-specific query if profile is available
+  let userText = params.userText;
+  if (userProfile && !userText) {
+    // If no user text provided, build query from user profile
+    const industryTerms = userProfile.industry_terms || [];
+    const icpTerms = userProfile.icp_terms || [];
+    const competitors = userProfile.competitors || [];
+    
+    if (industryTerms.length > 0 || icpTerms.length > 0) {
+      const userContext = [];
+      if (industryTerms.length > 0) {
+        userContext.push(industryTerms.slice(0, 3).join(', '));
+      }
+      if (icpTerms.length > 0) {
+        userContext.push(`targeting ${icpTerms.slice(0, 2).join(', ')}`);
+      }
+      if (competitors.length > 0) {
+        userContext.push(`competitors: ${competitors.slice(0, 2).join(', ')}`);
+      }
+      
+      userText = userContext.join(' ');
+      console.log('[optimized-orchestrator] Built user-specific query from profile:', userText);
+    }
+  }
+  
   const result = await buildUnifiedQuery({
-    userText: params.userText,
+    userText: userText,
     country: params.country,
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
@@ -643,11 +686,18 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     return urls.map((url, idx) => ({ url, score: 0.4 - idx * 0.01, reason: 'api_key_missing' }));
   }
 
-  // Get search configuration for context
+  // Get search configuration and user profile for context
   const searchConfig = await getSearchConfig();
+  const userProfile = await getUserProfile();
+  
   const industry = searchConfig?.industry || 'general';
   const baseQuery = searchConfig?.baseQuery || '';
   const excludeTerms = searchConfig?.excludeTerms || '';
+  
+  // Build user-specific context
+  const userIndustryTerms = userProfile?.industry_terms || [];
+  const userIcpTerms = userProfile?.icp_terms || [];
+  const userCompetitors = userProfile?.competitors || [];
   
   // Build location context
   const countryContext = getCountryContext(params.country);
@@ -671,7 +721,20 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     }
   }
   
-  // Use the proven Enhanced Orchestrator prompt approach
+  // Build user-specific context for the prompt
+  const userContextParts = [];
+  if (userIndustryTerms.length > 0) {
+    userContextParts.push(`User's Industry Focus: ${userIndustryTerms.slice(0, 3).join(', ')}`);
+  }
+  if (userIcpTerms.length > 0) {
+    userContextParts.push(`User's Target Audience: ${userIcpTerms.slice(0, 3).join(', ')}`);
+  }
+  if (userCompetitors.length > 0) {
+    userContextParts.push(`User's Competitors: ${userCompetitors.slice(0, 2).join(', ')}`);
+  }
+  const userContextText = userContextParts.length > 0 ? `\n\nUSER-SPECIFIC CONTEXT:\n${userContextParts.join('\n')}` : '';
+
+  // Use the proven Enhanced Orchestrator prompt approach with user context
   const prompt = `You are an expert in ${industry} events and conferences. 
 
 SEARCH CONTEXT:
@@ -679,7 +742,7 @@ SEARCH CONTEXT:
 - Base Query: ${baseQuery}
 - Exclude Terms: ${excludeTerms}
 - Location: ${locationContext}
-- Timeframe: ${timeframeLabel}
+- Timeframe: ${timeframeLabel}${userContextText}
 
 TASK: From the URLs below, return the top 10 most relevant for ${industry} events that are:
 1. Actually taking place ${locationContext} (events mentioning ${locationContext} or taking place there)
@@ -694,7 +757,7 @@ IMPORTANT FILTERING RULES:
 - EXCLUDE events that are clearly from other countries (US, UK, etc.) unless they explicitly mention ${locationContext}
 - Focus on actual event pages, not documentation, news, or general information pages
 - Look for event-specific indicators: dates, venues, registration, speakers, agenda
-- For Germany search: prioritize events in German cities, German venues, or events explicitly mentioning Germany
+- For Germany search: prioritize events in German cities, German venues, or events explicitly mentioning Germany${userIndustryTerms.length > 0 ? `\n- PRIORITIZE events related to: ${userIndustryTerms.slice(0, 3).join(', ')}` : ''}${userIcpTerms.length > 0 ? `\n- PRIORITIZE events targeting: ${userIcpTerms.slice(0, 3).join(', ')}` : ''}${userCompetitors.length > 0 ? `\n- PRIORITIZE events involving competitors: ${userCompetitors.slice(0, 2).join(', ')}` : ''}
 
 URLs: ${urls.slice(0, 20).join('\n')}
 
@@ -781,7 +844,13 @@ Include at most 10 items. Only include URLs you see in the list.`;
       .filter(item => urls.includes(item.url));
 
     if (normalized.length > 0) {
-      console.log('[optimized-orchestrator] Successfully prioritized', normalized.length, 'URLs via Gemini');
+      console.log('[optimized-orchestrator] Successfully prioritized', normalized.length, 'URLs via Gemini with user context:', {
+        userIndustryTerms: userIndustryTerms.length,
+        userIcpTerms: userIcpTerms.length,
+        userCompetitors: userCompetitors.length,
+        locationContext,
+        timeframeLabel
+      });
       return normalized;
     }
 
