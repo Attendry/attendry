@@ -771,8 +771,29 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
     
     return filtered;
   } catch (error) {
-    console.warn('[optimized-orchestrator] Prioritization failed, using fallback scoring:', error);
-    return urls.map(url => ({ url, score: 0.5, reason: 'fallback' }));
+    console.warn('[optimized-orchestrator] Prioritization failed, using enhanced fallback scoring:', error);
+    
+    // Enhanced fallback scoring with URL pattern recognition
+    return urls.map((url, idx) => {
+      let score = 0.4 - idx * 0.02; // Base score with slight degradation
+      
+      // Boost scores for high-quality domains
+      if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+        score += 0.2;
+      }
+      if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
+        score += 0.3;
+      }
+      if (url.includes('de') || url.includes('germany')) {
+        score += 0.1;
+      }
+      
+      return { 
+        url, 
+        score: Math.min(score, 0.9), 
+        reason: 'enhanced_fallback' 
+      };
+    });
   }
 }
 
@@ -787,8 +808,8 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     // Apply rate limiting before making API call
     await geminiRateLimiter.waitIfNeeded();
     
-    // Implement progressive timeout strategy (15s -> 10s -> 5s)
-    const timeouts = [15000, 10000, 5000];
+    // Implement aggressive timeout strategy (8s -> 5s -> 3s)
+    const timeouts = [8000, 5000, 3000];
     let lastError: any = null;
     
     for (let i = 0; i < timeouts.length; i++) {
@@ -808,9 +829,9 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 1024,
-              topP: 0.8,
-              topK: 40,
+              maxOutputTokens: 256, // Reduced from 1024 to 256
+              topP: 0.9,
+              topK: 20,
               candidateCount: 1,
               stopSequences: []
             },
@@ -1016,12 +1037,12 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
       contextLength: weightedContext.length
     });
     
-    // Use weighted context for Gemini prompt
-    const prompt = `Rate URLs for ${template.name} events. ${weightedContext}
+    // Use ultra-concise prompt to avoid MAX_TOKENS
+    const prompt = `Rate ${template.name} URLs (0-1 score):
 
-URLs: ${urls.slice(0, 5).join('\n')}
+${urls.slice(0, 3).join('\n')}
 
-Return JSON: [{"url": "https://...", "score": 0.0-1.0, "reason": "brief"}]`;
+JSON: [{"url":"...","score":0.0,"reason":"..."}]`;
     
     // Continue with existing Gemini API call logic using weighted context
     return await executeGeminiCall(prompt, urls);
@@ -1070,12 +1091,12 @@ Return JSON: [{"url": "https://...", "score": 0.0-1.0, "reason": "brief"}]`;
     }
     const userContextText = userContextParts.length > 0 ? `\n\nUSER CONTEXT: ${userContextParts.join('; ')}` : '';
 
-    // Token-efficient prompt design (60% reduction in size)
-    const prompt = `Rate URLs for ${industry} events in ${locationContext} ${timeframeLabel}${userContextText}.
+    // Ultra-concise prompt to avoid MAX_TOKENS
+    const prompt = `Rate ${industry} URLs (0-1):
 
-URLs: ${urls.slice(0, 5).join('\n')}
+${urls.slice(0, 3).join('\n')}
 
-Return JSON: [{"url": "https://...", "score": 0.0-1.0, "reason": "brief"}]`;
+JSON: [{"url":"...","score":0.0,"reason":"..."}]`;
     
     // Use fallback Gemini call
     return await executeGeminiCall(prompt, urls);
