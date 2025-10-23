@@ -3,6 +3,9 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AuthHelper } from "@/components/AuthHelper";
+import { WeightedTemplateSelector } from "@/components/WeightedTemplateSelector";
+import { WeightedTemplate } from "@/lib/types/weighted-templates";
+import { WEIGHTED_INDUSTRY_TEMPLATES } from "@/lib/data/weighted-templates";
 
 type ChipProps = { text: string; onRemove?: () => void };
 function Chip({ text, onRemove }: ChipProps) {
@@ -63,6 +66,8 @@ function AdminContent() {
     icpTerms: []
   });
   const [industryTemplates, setIndustryTemplates] = useState<Record<string, IndustryTemplate>>({});
+  const [weightedTemplates, setWeightedTemplates] = useState<Record<string, WeightedTemplate>>(WEIGHTED_INDUSTRY_TEMPLATES);
+  const [selectedWeightedTemplate, setSelectedWeightedTemplate] = useState<string | null>(null);
   const [newTerm, setNewTerm] = useState("");
   const [newIcpTerm, setNewIcpTerm] = useState("");
   
@@ -250,6 +255,34 @@ function AdminContent() {
       setMsg(`Applied ${template.name} template`);
       setSaveStatus("idle"); // Reset save status when making changes
     }
+  }
+
+  // Weighted Template Functions
+  function applyWeightedTemplate(templateKey: string) {
+    const template = weightedTemplates[templateKey];
+    if (template) {
+      setSearchConfig({
+        ...searchConfig,
+        name: template.name,
+        industry: templateKey,
+        baseQuery: template.baseQuery,
+        excludeTerms: template.excludeTerms,
+        industryTerms: [...template.industryTerms],
+        icpTerms: [...template.icpTerms]
+      });
+      setSelectedWeightedTemplate(templateKey);
+      setMsg(`Applied ${template.name} weighted template`);
+      setSaveStatus("idle");
+    }
+  }
+
+  function updateWeightedTemplate(template: WeightedTemplate) {
+    setWeightedTemplates(prev => ({
+      ...prev,
+      [template.id]: template
+    }));
+    setMsg(`Updated ${template.name} template weights`);
+    setSaveStatus("idle");
   }
 
   function addIndustryTerm() {
@@ -799,9 +832,19 @@ function AdminContent() {
           <div role="tabpanel" id="search-panel" aria-labelledby="search-tab" className="space-y-6">
             <h2 className="text-2xl font-semibold text-slate-900">Search Configuration Management</h2>
             
-            {/* Industry Templates */}
+            {/* Enhanced Weighted Templates */}
             <div className="bg-white border rounded-2xl p-6">
-              <h3 className="text-lg font-semibold mb-4 text-slate-900">Industry Templates</h3>
+              <WeightedTemplateSelector
+                templates={weightedTemplates}
+                selectedTemplate={selectedWeightedTemplate}
+                onSelectTemplate={applyWeightedTemplate}
+                onUpdateTemplate={updateWeightedTemplate}
+              />
+            </div>
+
+            {/* Legacy Industry Templates */}
+            <div className="bg-white border rounded-2xl p-6">
+              <h3 className="text-lg font-semibold mb-4 text-slate-900">Legacy Industry Templates</h3>
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {Object.entries(industryTemplates).map(([key, template]) => (
                   <button
