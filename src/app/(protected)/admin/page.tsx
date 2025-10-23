@@ -6,6 +6,8 @@ import { AuthHelper } from "@/components/AuthHelper";
 import { WeightedTemplateSelector } from "@/components/WeightedTemplateSelector";
 import { WeightedTemplate } from "@/lib/types/weighted-templates";
 import { WEIGHTED_INDUSTRY_TEMPLATES } from "@/lib/data/weighted-templates";
+import { ProfileManager } from "@/components/ProfileManager";
+import { CustomProfileCreator } from "@/components/CustomProfileCreator";
 
 type ChipProps = { text: string; onRemove?: () => void };
 function Chip({ text, onRemove }: ChipProps) {
@@ -68,6 +70,12 @@ function AdminContent() {
   const [industryTemplates, setIndustryTemplates] = useState<Record<string, IndustryTemplate>>({});
   const [weightedTemplates, setWeightedTemplates] = useState<Record<string, WeightedTemplate>>(WEIGHTED_INDUSTRY_TEMPLATES);
   const [selectedWeightedTemplate, setSelectedWeightedTemplate] = useState<string | null>(null);
+  
+  // Profile Management State
+  const [showProfileManager, setShowProfileManager] = useState(false);
+  const [showCustomProfileCreator, setShowCustomProfileCreator] = useState(false);
+  const [primaryProfile, setPrimaryProfile] = useState<any>(null);
+  const [selectedCountry, setSelectedCountry] = useState('DE');
   const [newTerm, setNewTerm] = useState("");
   const [newIcpTerm, setNewIcpTerm] = useState("");
   
@@ -283,6 +291,31 @@ function AdminContent() {
     }));
     setMsg(`Updated ${template.name} template weights`);
     setSaveStatus("idle");
+  }
+
+  // Profile Management Functions
+  function handleProfileSelect(profile: any) {
+    setPrimaryProfile(profile);
+    setShowProfileManager(false);
+    setMsg(`Primary profile set to: ${profile.name}`);
+    setSaveStatus("idle");
+  }
+
+  function handleCustomProfileCreate() {
+    setShowCustomProfileCreator(true);
+    setShowProfileManager(false);
+  }
+
+  function handleCustomProfileCreated(profile: any) {
+    setPrimaryProfile(profile);
+    setShowCustomProfileCreator(false);
+    setMsg(`Custom profile created and set as primary: ${profile.name}`);
+    setSaveStatus("idle");
+  }
+
+  function handleCancelCustomProfile() {
+    setShowCustomProfileCreator(false);
+    setShowProfileManager(true);
   }
 
   function addIndustryTerm() {
@@ -520,13 +553,39 @@ function AdminContent() {
                 <h2 className="text-2xl font-semibold text-slate-900">User Profile Management</h2>
                 <p className="text-sm text-slate-600 mt-1">Configure your profile to personalize search results and recommendations</p>
               </div>
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-                <span>Profile data helps improve search relevance</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowProfileManager(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  Manage Profiles
+                </button>
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <span>Profile data helps improve search relevance</span>
+                </div>
               </div>
             </div>
+
+            {/* Profile Manager */}
+            {showProfileManager && (
+              <ProfileManager
+                onProfileSelect={handleProfileSelect}
+                onCustomProfileCreate={handleCustomProfileCreate}
+                currentProfile={primaryProfile}
+              />
+            )}
+
+            {/* Custom Profile Creator */}
+            {showCustomProfileCreator && (
+              <CustomProfileCreator
+                onProfileCreate={handleCustomProfileCreated}
+                onCancel={handleCancelCustomProfile}
+                selectedCountry={selectedCountry}
+              />
+            )}
         
             <div className="bg-white border rounded-2xl p-6 space-y-6">
               {/* Basic Information Section */}

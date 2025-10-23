@@ -850,14 +850,27 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         }
 
         const rawText = await response.text();
-        console.debug('[optimized-orchestrator] Gemini raw response prefix', rawText.slice(0, 80));
+        console.debug('[optimized-orchestrator] Gemini raw response prefix', rawText.slice(0, 200));
         
         // Parse the response
         const responseData = JSON.parse(rawText);
-        const content = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        // Handle different response formats
+        let content = null;
+        if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
+          content = responseData.candidates[0].content.parts[0].text;
+        } else if (responseData.candidates?.[0]?.content?.text) {
+          content = responseData.candidates[0].content.text;
+        } else if (responseData.text) {
+          content = responseData.text;
+        } else if (responseData.candidates?.[0]?.text) {
+          content = responseData.candidates[0].text;
+        }
+        
+        console.debug('[optimized-orchestrator] Extracted content:', content ? content.substring(0, 100) + '...' : 'null');
         
         if (!content) {
-          console.warn('[optimized-orchestrator] No content in Gemini response');
+          console.warn('[optimized-orchestrator] No content in Gemini response, full response:', JSON.stringify(responseData, null, 2));
           throw new Error('No content in Gemini response');
         }
 
