@@ -634,155 +634,176 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
 }
 
 /**
- * Prioritize URLs using Gemini 2.5-flash with new prompt system
+ * Prioritize URLs using Gemini 2.5-flash with Enhanced Orchestrator approach
+ * This replaces the broken batching system with the proven single-call approach
  */
 async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParams): Promise<Array<{url: string, score: number, reason: string}>> {
   if (!geminiKey) {
-    throw new Error('Gemini API key not available');
+    console.warn('[optimized-orchestrator] No GEMINI_API_KEY, returning fallback scoring');
+    return urls.map((url, idx) => ({ url, score: 0.4 - idx * 0.01, reason: 'api_key_missing' }));
   }
 
+  // Get search configuration for context
+  const searchConfig = await getSearchConfig();
+  const industry = searchConfig?.industry || 'general';
+  const baseQuery = searchConfig?.baseQuery || '';
+  const excludeTerms = searchConfig?.excludeTerms || '';
+  
+  // Build location context
   const countryContext = getCountryContext(params.country);
   const locationContext = countryContext.countryNames[0] || 'Europe';
   
-  // Get user profile and search configuration for industry-specific context
-  const userProfile = await getUserProfile();
-  const searchConfig = await getSearchConfig();
-  
-  const industryContext = searchConfig?.industry || 'general';
-  
-  // Extract user-specific terms
-  const userIndustryTerms = userProfile?.industry_terms || [];
-  const userIcpTerms = userProfile?.icp_terms || [];
-  
-  // Build timeframe context from search parameters
-  let timeframeContext = '';
+  // Build timeframe context
+  let timeframeLabel = 'within the specified timeframe';
   if (params.dateFrom && params.dateTo) {
     const fromDate = new Date(params.dateFrom);
     const toDate = new Date(params.dateTo);
     const now = new Date();
     
     if (fromDate >= now) {
-      // Future events
       const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
-      timeframeContext = `next ${daysDiff} days`;
+      timeframeLabel = `within the next ${daysDiff} days`;
     } else if (toDate <= now) {
-      // Past events
       const daysDiff = Math.ceil((fromDate.getTime() - toDate.getTime()) / (1000 * 60 * 60 * 24));
-      timeframeContext = `past ${daysDiff} days`;
+      timeframeLabel = `within the past ${daysDiff} days`;
     } else {
-      // Mixed timeframe
-      timeframeContext = `${params.dateFrom} to ${params.dateTo}`;
+      timeframeLabel = `from ${params.dateFrom} to ${params.dateTo}`;
     }
   }
   
+  // Use the proven Enhanced Orchestrator prompt approach
+  const prompt = `You are an expert in ${industry} events and conferences. 
+
+SEARCH CONTEXT:
+- Industry: ${industry}
+- Base Query: ${baseQuery}
+- Exclude Terms: ${excludeTerms}
+- Location: ${locationContext}
+- Timeframe: ${timeframeLabel}
+
+TASK: From the URLs below, return the top 10 most relevant for ${industry} events that are:
+1. Actually taking place ${locationContext} (events mentioning ${locationContext} or taking place there)
+2. ${timeframeLabel}
+3. Match the search context: ${baseQuery}
+4. Are real events (conferences, workshops, seminars, exhibitions, trade shows, etc.) - not general websites, documentation, or non-event pages
+5. Exclude events that are clearly from other countries unless they're international events relevant to ${locationContext}
+
+IMPORTANT FILTERING RULES:
+- STRICTLY prioritize events that are physically located ${locationContext}
+- ONLY include international events if they explicitly mention ${locationContext} or are clearly relevant to ${locationContext} professionals
+- EXCLUDE events that are clearly from other countries (US, UK, etc.) unless they explicitly mention ${locationContext}
+- Focus on actual event pages, not documentation, news, or general information pages
+- Look for event-specific indicators: dates, venues, registration, speakers, agenda
+- For Germany search: prioritize events in German cities, German venues, or events explicitly mentioning Germany
+
+URLs: ${urls.slice(0, 20).join('\n')}
+
+Return a JSON array of objects, each with:
+{
+  "url": "https://...",
+  "score": number between 0 and 1 (higher = more relevant),
+  "reason": "short explanation"
+}
+
+Include at most 10 items. Only include URLs you see in the list.`;
+
+  const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
+  
   try {
-    // Use new prompt system with user-specific terms and batching
-    const { createEventPrioritizationPrompt } = await import('./prompts/gemini-prompts');
-    const { promptExecutor } = await import('./prompts/prompt-executor');
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
     
-    // Process URLs in batches of 3 to prevent token overflow
-    const batchSize = 3;
-    const batches = [];
-    for (let i = 0; i < urls.length; i += batchSize) {
-      batches.push(urls.slice(i, i + batchSize));
-    }
-    
-    const allResults: Array<{url: string, score: number, reason: string}> = [];
-    
-    // Process each batch sequentially to avoid rate limits
-    for (const batch of batches) {
-      try {
-        const prompt = createEventPrioritizationPrompt(
-          batch,
-          industryContext,
-          locationContext,
-          userIndustryTerms,
-          userIcpTerms,
-          timeframeContext
-        );
-        
-        const result = await promptExecutor.executeEventPrioritization(prompt);
-        
-        if (result.success && result.data) {
-          allResults.push(...result.data);
-        } else {
-          // Enhanced fallback scoring for this batch
-          const fallbackBatch = batch.map((url, index) => {
-            let score = 0.5;
-            let reason = 'Fallback scoring due to batch processing failure';
-            
-            // Intelligent scoring based on URL patterns
-            if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-              score = 0.8;
-              reason = 'High relevance: conference/summit/event URL pattern';
-            } else if (url.includes('workshop') || url.includes('seminar') || url.includes('meeting')) {
-              score = 0.7;
-              reason = 'Good relevance: workshop/seminar/meeting URL pattern';
-            } else if (url.includes('business') || url.includes('professional') || url.includes('industry')) {
-              score = 0.6;
-              reason = 'Moderate relevance: business/professional URL pattern';
-            }
-            
-            score = Math.max(0.1, score - (index * 0.05));
-            return { url, score, reason };
-          });
-          allResults.push(...fallbackBatch);
+    const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${geminiKey}`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1
         }
-      } catch (batchError) {
-        console.warn('[optimized-orchestrator] Batch processing failed, using fallback for batch:', batchError);
-        // Enhanced fallback scoring for this batch
-        const fallbackBatch = batch.map((url, index) => {
-          let score = 0.5;
-          let reason = 'Fallback scoring due to batch processing error';
-          
-          // Intelligent scoring based on URL patterns
-          if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-            score = 0.8;
-            reason = 'High relevance: conference/summit/event URL pattern';
-          } else if (url.includes('workshop') || url.includes('seminar') || url.includes('meeting')) {
-            score = 0.7;
-            reason = 'Good relevance: workshop/seminar/meeting URL pattern';
-          } else if (url.includes('business') || url.includes('professional') || url.includes('industry')) {
-            score = 0.6;
-            reason = 'Moderate relevance: business/professional URL pattern';
-          }
-          
-          score = Math.max(0.1, score - (index * 0.05));
-          return { url, score, reason };
-        });
-        allResults.push(...fallbackBatch);
-      }
-    }
-    
-    return allResults;
-  } catch (error) {
-    console.warn('[optimized-orchestrator] Gemini prioritization failed completely, using fallback:', error);
-    
-    // Enhanced fallback: return URLs with intelligent scoring based on URL patterns
-    return urls.slice(0, 10).map((url, index) => {
-      let score = 0.5; // Base score
-      let reason = 'Fallback scoring due to Gemini API failure';
-      
-      // Intelligent scoring based on URL patterns
-      if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-        score = 0.8;
-        reason = 'High relevance: conference/summit/event URL pattern';
-      } else if (url.includes('workshop') || url.includes('seminar') || url.includes('meeting')) {
-        score = 0.7;
-        reason = 'Good relevance: workshop/seminar/meeting URL pattern';
-      } else if (url.includes('business') || url.includes('professional') || url.includes('industry')) {
-        score = 0.6;
-        reason = 'Moderate relevance: business/professional URL pattern';
-      } else if (url.includes('germany') || url.includes('berlin') || url.includes('munich') || url.includes('frankfurt')) {
-        score = Math.max(score, 0.4); // Boost for German locations
-        reason = 'Location relevance: German location detected';
-      }
-      
-      // Apply position-based degradation
-      score = Math.max(0.1, score - (index * 0.05));
-      
-      return { url, score, reason };
+      }),
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn('[optimized-orchestrator] Gemini API failed', {
+        status: response.status,
+        statusText: response.statusText,
+        modelPath,
+      });
+      throw new Error(`Gemini API failed: ${response.status} ${response.statusText}`);
+    }
+
+    const rawText = await response.text();
+    console.debug('[optimized-orchestrator] Gemini raw response prefix', rawText.slice(0, 80));
+    
+    // Parse the response
+    const responseData = JSON.parse(rawText);
+    const content = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!content) {
+      console.warn('[optimized-orchestrator] No content in Gemini response');
+      throw new Error('No content in Gemini response');
+    }
+
+    // Extract JSON from the response
+    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.warn('[optimized-orchestrator] No JSON array found in response');
+      throw new Error('No JSON array found in response');
+    }
+
+    const prioritized = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(prioritized)) {
+      throw new Error('Response is not an array');
+    }
+
+    // Normalize and validate results
+    const normalized = prioritized
+      .map((item: any, idx: number) => {
+        if (typeof item === 'string') {
+          return { url: item, score: 0.5 - idx * 0.02, reason: 'string_result' };
+        }
+        if (!item || typeof item.url !== 'string') return null;
+        const score = typeof item.score === 'number' ? item.score : 0.5 - idx * 0.02;
+        return {
+          url: item.url,
+          score: Math.min(Math.max(score, 0), 1),
+          reason: typeof item.reason === 'string' ? item.reason : 'gemini'
+        };
+      })
+      .filter((item: any): item is {url: string, score: number, reason: string} => !!item)
+      .filter(item => urls.includes(item.url));
+
+    if (normalized.length > 0) {
+      console.log('[optimized-orchestrator] Successfully prioritized', normalized.length, 'URLs via Gemini');
+      return normalized;
+    }
+
+    throw new Error('No valid prioritized URLs found');
+
+  } catch (error) {
+    console.warn('[optimized-orchestrator] Gemini prioritization failed, using fallback:', error);
+    
+    // Enhanced fallback scoring based on URL patterns (from Enhanced Orchestrator)
+    const prioritized = urls
+      .map((url, idx) => {
+        const urlLower = url.toLowerCase();
+        let score = 0.2 - idx * 0.01;
+        if (urlLower.includes('.de')) score += 0.4;
+        if (urlLower.includes('germany') || urlLower.includes('deutschland')) score += 0.3;
+        if (urlLower.includes('event') || urlLower.includes('conference') || urlLower.includes('summit')) score += 0.2;
+        return { url, score: Math.min(Math.max(score, 0), 1), reason: 'fallback_heuristic' };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 10);
+    
+    return prioritized;
   }
 }
 
