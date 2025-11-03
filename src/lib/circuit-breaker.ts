@@ -38,7 +38,7 @@ export const CIRCUIT_BREAKER_CONFIG = {
       timeout: 30000,
       volumeThreshold: 5,
       errorThreshold: 0.3,
-      slowCallThreshold: 15000,
+      slowCallThreshold: 25000, // Increased to exceed API timeout (20s)
       slowCallRatioThreshold: 0.4,
     },
     cse: {
