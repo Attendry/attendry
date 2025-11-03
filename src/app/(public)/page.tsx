@@ -13,8 +13,8 @@ export default async function LandingPage() {
     const { data: { session } } = await supabase.auth.getSession();
     
     if (session?.user) {
-      // Redirect authenticated users to the main dashboard
-      redirect("/events");
+      // Redirect authenticated users to the dashboard
+      redirect("/");
     }
   } catch (error) {
     // If there's an error checking auth, continue to show landing page

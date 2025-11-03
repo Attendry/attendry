@@ -55,12 +55,8 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
     { href: '/search', label: 'Search', icon: Search },
     { 
       href: '/recommendations', 
-      label: 'Intelligence', 
-      icon: Brain,
-      children: [
-        { href: '/recommendations', label: 'AI Recommendations', icon: Brain },
-        { href: '/intelligence', label: 'Account Monitoring', icon: TrendingUp }
-      ]
+      label: 'Market Intelligence', 
+      icon: TrendingUp
     },
     { href: '/activity', label: 'Insights', icon: BarChart3 },
     { href: '/notifications', label: 'Notifications', icon: Bell, badge: 3 },

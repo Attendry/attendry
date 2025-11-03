@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import { SavedSpeakerProfile } from "@/lib/types/database";
-import { EnhancedSavedProfileCard } from "@/components/EnhancedSavedProfileCard";
 
 type WatchItem = { 
   id: string; 
@@ -16,12 +14,10 @@ type WatchItem = {
   metadata?: any;
 };
 
-type TabType = "watchlist" | "saved-profiles";
-
 export default function Watchlist() {
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>("watchlist");
+  const [showMigrationBanner, setShowMigrationBanner] = useState(true);
   
   // Watchlist state
   const [items, setItems] = useState<WatchItem[]>([]);
@@ -29,11 +25,6 @@ export default function Watchlist() {
   const [status, setStatus] = useState("");
   const [newItemKind, setNewItemKind] = useState<"attendee" | "company">("attendee");
   const [newCompanyType, setNewCompanyType] = useState<string>("general");
-  
-  // Saved profiles state
-  const [savedProfiles, setSavedProfiles] = useState<SavedSpeakerProfile[]>([]);
-  const [profilesLoading, setProfilesLoading] = useState(false);
-  const [profilesError, setProfilesError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -64,98 +55,14 @@ export default function Watchlist() {
     if (error) setStatus(`Error: ${error.message}`); else setItems((data ?? []) as WatchItem[]);
   }
 
-  async function loadSavedProfiles() {
-    if (!userId) return;
-    setProfilesLoading(true);
-    setProfilesError("");
-    try {
-      const response = await fetch("/api/profiles/saved");
-      if (!response.ok) {
-        throw new Error("Failed to load saved profiles");
-      }
-      const data = await response.json();
-      setSavedProfiles(data.profiles || []);
-    } catch (error) {
-      setProfilesError(error instanceof Error ? error.message : "Failed to load saved profiles");
-    } finally {
-      setProfilesLoading(false);
-    }
-  }
-
-  async function updateProfileStatus(profileId: string, status: string) {
-    try {
-      const response = await fetch(`/api/profiles/saved/${profileId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outreach_status: status })
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to update status");
-      }
-      
-      await loadSavedProfiles();
-    } catch (e: any) {
-      alert(e.message || "Failed to update status");
-    }
-  }
-
-  async function updateProfileNotes(profileId: string, notes: string) {
-    try {
-      const response = await fetch(`/api/profiles/saved/${profileId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes })
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to update notes");
-      }
-      
-      await loadSavedProfiles();
-    } catch (e: any) {
-      alert(e.message || "Failed to update notes");
-    }
-  }
-
-  async function deleteProfile(profileId: string) {
-    if (!confirm("Are you sure you want to delete this profile?")) return;
-    
-    try {
-      const response = await fetch(`/api/profiles/saved/${profileId}`, {
-        method: "DELETE"
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to delete profile");
-      }
-      
-      await loadSavedProfiles();
-    } catch (e: any) {
-      alert(e.message || "Failed to delete profile");
-    }
-  }
-
-  function openEditModal(profile: SavedSpeakerProfile) {
-    // For now, we'll use a simple alert. In a full implementation,
-    // this would open a modal with detailed editing capabilities
-    alert(`Edit profile for ${profile.speaker_data.name}. This feature will be enhanced in a future update.`);
-  }
-
   useEffect(() => {
     setItems([]);
     setStatus("");
     if (userId) {
       load();
-      if (activeTab === "saved-profiles") {
-        loadSavedProfiles();
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, activeTab]);
+  }, [userId]);
 
   async function add() {
     if (!userId) { setStatus("Please sign in first."); return; }
@@ -210,51 +117,66 @@ export default function Watchlist() {
             fontSize: "1.125rem",
             color: "var(--muted-foreground)"
           }}>
-            Keep track of events and people you're interested in
+            Keep track of companies and people you're interested in
           </p>
         </div>
 
-        {/* Tabs */}
-        <div style={{ 
-          display: "flex", 
-          gap: "0.5rem", 
-          marginBottom: "2rem",
-          borderBottom: "1px solid var(--border)"
-        }}>
-          <button
-            onClick={() => setActiveTab("watchlist")}
-            style={{
-              padding: "0.75rem 1.5rem",
-              border: "none",
-              background: "none",
-              color: activeTab === "watchlist" ? "var(--primary)" : "var(--muted-foreground)",
-              borderBottom: activeTab === "watchlist" ? "2px solid var(--primary)" : "2px solid transparent",
-              cursor: "pointer",
-              fontWeight: "500",
-              transition: "all 0.2s ease"
-            }}
-          >
-            Watchlist ({items.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("saved-profiles")}
-            style={{
-              padding: "0.75rem 1.5rem",
-              border: "none",
-              background: "none",
-              color: activeTab === "saved-profiles" ? "var(--primary)" : "var(--muted-foreground)",
-              borderBottom: activeTab === "saved-profiles" ? "2px solid var(--primary)" : "2px solid transparent",
-              cursor: "pointer",
-              fontWeight: "500",
-              transition: "all 0.2s ease"
-            }}
-          >
-            Saved Profiles ({savedProfiles.length})
-          </button>
-        </div>
+        {/* Migration Banner */}
+        {showMigrationBanner && (
+          <div className="card" style={{ 
+            marginBottom: "2rem", 
+            borderLeft: "4px solid #3b82f6",
+            backgroundColor: "#eff6ff"
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "start", gap: "1rem", flex: 1 }}>
+                <span style={{ fontSize: "1.5rem" }}>🎯</span>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{
+                    fontSize: "1rem",
+                    fontWeight: "600",
+                    color: "#1e40af",
+                    marginBottom: "0.5rem"
+                  }}>
+                    Looking for your Saved Speaker Profiles?
+                  </h3>
+                  <p style={{
+                    fontSize: "0.875rem",
+                    color: "#1e40af",
+                    marginBottom: "0.75rem"
+                  }}>
+                    Saved profiles have moved to your new <Link href="/" className="font-semibold underline">Dashboard</Link> - 
+                    your central command centre for managing speaker intelligence, outreach pipeline, and account monitoring.
+                  </p>
+                  <Link
+                    href="/"
+                    className="btn btn-primary"
+                    style={{ fontSize: "0.875rem", padding: "0.5rem 1rem" }}
+                  >
+                    Go to Dashboard →
+                  </Link>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowMigrationBanner(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#6b7280",
+                  cursor: "pointer",
+                  padding: "0.25rem",
+                  marginLeft: "1rem"
+                }}
+                aria-label="Close banner"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
-        {/* Tab Content */}
-        {activeTab === "watchlist" && (
+        {/* Watchlist Content */}
+        <div>
           <>
             {/* Add Item Form */}
             <div className="card" style={{ marginBottom: "2rem" }}>
@@ -459,69 +381,7 @@ export default function Watchlist() {
               )}
             </div>
           </>
-        )}
-
-        {activeTab === "saved-profiles" && (
-          <div>
-            <h2 style={{
-              fontSize: "1.5rem",
-              fontWeight: "600",
-              marginBottom: "1rem",
-              color: "var(--foreground)"
-            }}>
-              Saved Speaker Profiles ({savedProfiles.length})
-            </h2>
-            
-            {profilesLoading ? (
-              <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-                <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>⏳</div>
-                <p style={{ color: "var(--muted-foreground)" }}>Loading saved profiles...</p>
-              </div>
-            ) : profilesError ? (
-              <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-                <div style={{ fontSize: "2rem", marginBottom: "1rem" }}>⚠️</div>
-                <p style={{ color: "#dc2626" }}>Error: {profilesError}</p>
-                <button 
-                  onClick={loadSavedProfiles}
-                  className="btn btn-primary"
-                  style={{ marginTop: "1rem" }}
-                >
-                  Try Again
-                </button>
-              </div>
-            ) : savedProfiles.length === 0 ? (
-              <div className="card" style={{ textAlign: "center", padding: "3rem" }}>
-                <div style={{ fontSize: "3rem", marginBottom: "1rem" }}>👤</div>
-                <h3 style={{
-                  fontSize: "1.25rem",
-                  fontWeight: "600",
-                  marginBottom: "0.5rem",
-                  color: "var(--foreground)"
-                }}>
-                  No saved profiles yet
-                </h3>
-                <p style={{ color: "var(--muted-foreground)" }}>
-                  Save speaker profiles from event pages to see them here
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {savedProfiles.map((profile) => (
-                  <EnhancedSavedProfileCard
-                    key={profile.id}
-                    profile={profile}
-                    onEdit={openEditModal}
-                    onDelete={deleteProfile}
-                    onStatusChange={updateProfileStatus}
-                    onNotesChange={updateProfileNotes}
-                    showActions={true}
-                    compact={false}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
