@@ -696,14 +696,24 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
   const discoveryResults = await parallelProcessor.processParallel(
     discoveryTasks,
     async (task) => {
-        console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
-        const originalEvent = eventMap.get(task.data);
-        if (!originalEvent) {
-          console.error(`[optimized-orchestrator] Event not found for URL: ${task.data}, available URLs:`, Array.from(eventMap.keys()));
-          throw new Error(`Event not found for URL: ${task.data}`);
-        }
-        console.log(`[optimized-orchestrator] Found event for ${task.data}, title: ${originalEvent.title}`);
-        return originalEvent;
+      return await executeWithRetry(async () => {
+        console.log('[optimized-orchestrator] Executing discovery with query:', task.data.substring(0, 100) + '...');
+        const result = await unifiedSearch({
+          q: task.data,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          country: params.country || undefined,
+          limit: Math.ceil(ORCHESTRATOR_CONFIG.limits.maxCandidates / queryVariations.length),
+          useCache: true,
+          userProfile: userProfile // Pass user profile to unified search
+        });
+        console.log('[optimized-orchestrator] Discovery result:', { 
+          query: task.data.substring(0, 50) + '...', 
+          itemsFound: result.items?.length || 0,
+          userProfileUsed: !!userProfile 
+        });
+        return result;
+      }, 'firecrawl');
     },
     {
       maxConcurrency: 4, // Process all query variations in parallel
@@ -1146,14 +1156,51 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   const extractionResults = await parallelProcessor.processParallel(
     extractionTasks,
     async (task) => {
-        console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
-        const originalEvent = eventMap.get(task.data);
-        if (!originalEvent) {
-          console.error(`[optimized-orchestrator] Event not found for URL: ${task.data}, available URLs:`, Array.from(eventMap.keys()));
-          throw new Error(`Event not found for URL: ${task.data}`);
+      return await executeWithRetry(async () => {
+        console.log('[optimized-orchestrator] Extracting event details from:', task.data);
+        
+        // Use Firecrawl v2 scrape API to extract event details
+        const scrapeResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${firecrawlKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            url: task.data,
+            formats: ['markdown', 'html'],
+            onlyMainContent: false,
+            timeout: 20000
+          })
+        });
+
+        if (!scrapeResponse.ok) {
+          throw new Error(`Firecrawl scrape failed: ${scrapeResponse.status}`);
         }
-        console.log(`[optimized-orchestrator] Found event for ${task.data}, title: ${originalEvent.title}`);
-        return originalEvent;
+
+        const scrapeData = await scrapeResponse.json();
+        
+        // Extract basic event information from scraped content
+        const metadata = scrapeData.data?.metadata || {};
+        const markdown = scrapeData.data?.markdown || scrapeData.data?.content || '';
+        
+        // Basic parsing - extract title, description, and other metadata
+        const title = metadata.title || extractTitleFromMarkdown(markdown) || 'Event';
+        const description = metadata.description || extractDescriptionFromMarkdown(markdown) || '';
+        
+        return {
+          success: true,
+          result: {
+            url: task.data,
+            title,
+            description,
+            date: extractDateFromMarkdown(markdown),
+            location: extractLocationFromMarkdown(markdown),
+            venue: extractVenueFromMarkdown(markdown),
+            metadata
+          }
+        };
+      }, 'firecrawl');
     },
     {
       maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions,
@@ -1306,14 +1353,17 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   const enhancementResults = await parallelProcessor.processParallel(
     enhancementTasks,
     async (task) => {
+      return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
+        // Use URL to map back to the original event
         const originalEvent = eventMap.get(task.data);
         if (!originalEvent) {
-          console.error(`[optimized-orchestrator] Event not found for URL: ${task.data}, available URLs:`, Array.from(eventMap.keys()));
           throw new Error(`Event not found for URL: ${task.data}`);
         }
-        console.log(`[optimized-orchestrator] Found event for ${task.data}, title: ${originalEvent.title}`);
-        return originalEvent;
+        // This would typically call a speaker enhancement service
+        // For now, we'll just return the original event
+        return { success: true, result: { event: originalEvent } };
+      }, 'firecrawl');
     },
     {
       maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentEnhancements,
@@ -1326,7 +1376,10 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   // Process enhancement results
   const enhancedEvents: EventCandidate[] = [];
   enhancementResults.forEach((result, index) => {
-    console.log(`[optimized-orchestrator] Enhancement result ${index}: success=${result.success}, hasResult=${!!result.result}, error=${result.error?.message || 'none'}`); if (result.success && result.result) { const enhancedEvent = result.result as EventCandidate; console.log(`[optimized-orchestrator] Adding enhanced event: ${enhancedEvent.title || enhancedEvent.url}`); enhancedEvents.push(enhancedEvent); } else { console.warn('[optimized-orchestrator] Enhancement failed for task:', result.id, result.error?.message); }
+    if (result.success && result.result && typeof result.result === 'object' && 'event' in result.result) {
+      const enhancedEvent = result.result.event as EventCandidate;
+      enhancedEvents.push(enhancedEvent);
+    }
   });
 
   console.log(`[optimized-orchestrator] Enhanced ${enhancedEvents.length} events in ${Date.now() - startTime}ms`);
