@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ChangeEvent, FormEvent, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   Users,
@@ -26,6 +26,7 @@ import {
   AccountSummary,
 } from '@/lib/hooks/useAccountIntelligenceData';
 import { useTrendingInsights } from '@/lib/hooks/useTrendingInsights';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',
@@ -49,7 +50,31 @@ const STATUS_COLORS: Record<SavedSpeakerProfile['outreach_status'], string> = {
 };
 
 export function CommandCentre() {
-  const savedProfiles = useSavedProfiles({ statusFilter: 'not_started' });
+  const [authReady, setAuthReady] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = supabaseBrowser();
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) {
+        setUserId(data.session?.user?.id ?? null);
+        setAuthReady(true);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) setUserId(session?.user?.id ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const savedProfiles = useSavedProfiles({ statusFilter: 'not_started', enabled: authReady && !!userId });
   const {
     profiles,
     loading: profilesLoading,
