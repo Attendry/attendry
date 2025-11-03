@@ -89,28 +89,6 @@ export function CommandCentre() {
   const accountData = useAccountIntelligenceData({ enabled: authReady && !!userId });
   const trendingData = useTrendingInsights();
 
-  if (!authReady) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-6 py-4 text-sm text-gray-600 shadow-sm">
-          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-          Checking your session...
-        </div>
-      </div>
-    );
-  }
-
-  if (!userId) {
-    return (
-      <div className="mx-auto max-w-4xl py-12">
-        <UnauthenticatedNotice
-          feature="Command Centre"
-          description="Log in to activate targeted speaker outreach, monitored accounts, and trend insights."
-        />
-      </div>
-    );
-  }
-
   const metrics = useMemo(() => {
     const readyForOutreach = profiles.filter((profile) => profile.outreach_status === 'not_started').length;
     const activeConversations = profiles.filter((profile) => profile.outreach_status === 'contacted' || profile.outreach_status === 'responded').length;
@@ -159,6 +137,28 @@ export function CommandCentre() {
       .sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime())
       .slice(0, 5);
   }, [profiles]);
+
+  if (!authReady) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-6 py-4 text-sm text-gray-600 shadow-sm">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+          Checking your session...
+        </div>
+      </div>
+    );
+  }
+
+  if (!userId) {
+    return (
+      <div className="mx-auto max-w-4xl py-12">
+        <UnauthenticatedNotice
+          feature="Command Centre"
+          description="Log in to activate targeted speaker outreach, monitored accounts, and trend insights."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
