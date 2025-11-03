@@ -775,22 +775,27 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
     
     // Enhanced fallback scoring with URL pattern recognition
     return urls.map((url, idx) => {
-      let score = 0.4 - idx * 0.02; // Base score with slight degradation
+      let score = 0.5 - idx * 0.01; // Base score with slight degradation
       
       // Boost scores for high-quality domains
       if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-        score += 0.2;
+        score += 0.25;
       }
       if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
-        score += 0.3;
+        score += 0.25;
       }
       if (url.includes('de') || url.includes('germany')) {
         score += 0.1;
       }
       
+      // Boost for known event platforms
+      if (url.includes('iqpc.com') || url.includes('legal500.com') || url.includes('eventbrite')) {
+        score += 0.15;
+      }
+      
       return { 
         url, 
-        score: Math.min(score, 0.9), 
+        score: Math.min(score, 0.95), 
         reason: 'enhanced_fallback' 
       };
     });
@@ -808,8 +813,8 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     // Apply rate limiting before making API call
     await geminiRateLimiter.waitIfNeeded();
     
-    // Implement aggressive timeout strategy (8s -> 5s -> 3s)
-    const timeouts = [8000, 5000, 3000];
+    // Implement progressive timeout strategy with retries (15s -> 10s -> 8s)
+    const timeouts = [15000, 10000, 8000]; // More generous timeouts for network reliability
     let lastError: any = null;
     
     for (let i = 0; i < timeouts.length; i++) {
