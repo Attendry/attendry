@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import { usePathname } from 'next/navigation';
@@ -115,7 +115,7 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
 
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
           <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-            v2.0 • Premium
+            v2.0 â€¢ Premium
           </div>
         </div>
       </div>
