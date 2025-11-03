@@ -775,27 +775,22 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
     
     // Enhanced fallback scoring with URL pattern recognition
     return urls.map((url, idx) => {
-      let score = 0.5 - idx * 0.01; // Base score with slight degradation
+      let score = 0.4 - idx * 0.02; // Base score with slight degradation
       
       // Boost scores for high-quality domains
       if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-        score += 0.25;
+        score += 0.2;
       }
       if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
-        score += 0.25;
+        score += 0.3;
       }
       if (url.includes('de') || url.includes('germany')) {
         score += 0.1;
       }
       
-      // Boost for known event platforms
-      if (url.includes('iqpc.com') || url.includes('legal500.com') || url.includes('eventbrite')) {
-        score += 0.15;
-      }
-      
       return { 
         url, 
-        score: Math.min(score, 0.95), 
+        score: Math.min(score, 0.9), 
         reason: 'enhanced_fallback' 
       };
     });
@@ -813,8 +808,8 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     // Apply rate limiting before making API call
     await geminiRateLimiter.waitIfNeeded();
     
-    // Implement progressive timeout strategy with retries (15s -> 10s -> 8s)
-    const timeouts = [15000, 10000, 8000]; // More generous timeouts for network reliability
+    // Implement aggressive timeout strategy (8s -> 5s -> 3s)
+    const timeouts = [8000, 5000, 3000];
     let lastError: any = null;
     
     for (let i = 0; i < timeouts.length; i++) {
@@ -1132,16 +1127,15 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     async (task) => {
       return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Extracting event details from:', task.data);
-        // Use Firecrawl scrape API
-        if (!firecrawlKey) throw new Error('No Firecrawl key');
-        const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
-          method: 'POST', headers: { Authorization: `Bearer ${firecrawlKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: task.data, formats: ['markdown'], onlyMainContent: false, timeout: 25000 }),
-          signal: AbortSignal.timeout(30000)
+        const result = await unifiedSearch({
+          q: task.data,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          country: params.country || undefined,
+          limit: 1,
+          useCache: true
         });
-        if (!response.ok) throw new Error(`Firecrawl scrape failed: ${response.status}`);
-        const data = await response.json();
-        return { url: task.data, content: data.data?.markdown || '', title: data.data?.metadata?.title || '', description: data.data?.metadata?.description || '', metadata: data.data?.metadata || {} };
+        return result;
       }, 'firecrawl');
     },
     {
@@ -1163,13 +1157,13 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         
         events.push({
           url: prioritizedItem.url,
-          title: scraped.title || 'Untitled Event',
-        description: scraped.description || '',
-        date: params.dateFrom || '',
-        location: params.country || '',
-        venue: '',
-        speakers: [],
-        sponsors: [],
+          title: item.title || 'Untitled Event',
+          description: item.description || '',
+          date: item.date || '',
+          location: item.location || '',
+          venue: item.venue || '',
+          speakers: item.speakers || [],
+          sponsors: item.sponsors || [],
           confidence: prioritizedItem.score,
           source: 'firecrawl',
           metadata: {
