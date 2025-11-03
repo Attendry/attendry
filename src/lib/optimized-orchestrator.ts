@@ -1499,19 +1499,20 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
  * Filter and rank final events
  */
 function filterAndRankEvents(events: EventCandidate[]): EventCandidate[] {
-  const hasSpeakerData = (event: EventCandidate) => {
-    return Array.isArray(event.speakers) && event.speakers.filter(speaker => speaker && typeof speaker.name === 'string' && speaker.name.trim().length > 0).length >= 1;
-  };
+  const hasSpeakerData = (event: EventCandidate) =>
+    Array.isArray(event.speakers) && event.speakers.some(speaker => speaker && typeof speaker.name === 'string' && speaker.name.trim().length > 0);
 
-  const hasValidDate = (event: EventCandidate) => {
-    return typeof event.date === 'string' && event.date.trim().length > 0;
-  };
+  const hasMeaningfulDescription = (event: EventCandidate) =>
+    typeof event.description === 'string' && event.description.trim().length >= 80;
+
+  const hasMeaningfulDetails = (event: EventCandidate) =>
+    hasSpeakerData(event) || hasMeaningfulDescription(event);
 
   return events
     .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.confidence)
     .filter(event => !event.metadata?.stub)
-    .filter(event => !event.metadata?.directorySource)
-    .filter(event => hasSpeakerData(event) && hasValidDate(event))
+    .filter(event => !event.metadata?.directorySource || hasSpeakerData(event))
+    .filter(event => hasMeaningfulDetails(event))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
 }
