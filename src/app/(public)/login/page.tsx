@@ -29,7 +29,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/events`,
+          redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/dashboard`,
         },
       });
       if (error) throw error;
@@ -53,7 +53,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: { 
-          emailRedirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/events` 
+          emailRedirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback?next=/dashboard` 
         },
       });
       if (error) throw error;
@@ -97,7 +97,7 @@ export default function LoginPage() {
       }
 
       setMessage("Signed in successfully. Redirecting...");
-      router.push("/events");
+      router.push("/dashboard");
       router.refresh();
     } catch (error: any) {
       console.error("Unexpected sign-in error:", error);

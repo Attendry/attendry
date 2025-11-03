@@ -36,6 +36,10 @@ interface CreateAccountPayload {
   description?: string;
 }
 
+interface UseAccountIntelligenceDataOptions {
+  enabled?: boolean;
+}
+
 interface UseAccountIntelligenceDataReturn {
   accounts: Account[];
   summaries: AccountSummary[];
@@ -46,7 +50,8 @@ interface UseAccountIntelligenceDataReturn {
   addAccount: (payload: CreateAccountPayload) => Promise<void>;
 }
 
-export function useAccountIntelligenceData(): UseAccountIntelligenceDataReturn {
+export function useAccountIntelligenceData(options: UseAccountIntelligenceDataOptions = {}): UseAccountIntelligenceDataReturn {
+  const { enabled = true } = options;
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [summaries, setSummaries] = useState<AccountSummary[]>([]);
   const [stats, setStats] = useState<IntelligenceStats>({
@@ -59,6 +64,11 @@ export function useAccountIntelligenceData(): UseAccountIntelligenceDataReturn {
   const [error, setError] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const enabledRef = useRef<boolean>(enabled);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   const fetchData = useCallback(async () => {
     if (abortControllerRef.current) {
@@ -72,6 +82,18 @@ export function useAccountIntelligenceData(): UseAccountIntelligenceDataReturn {
     setError(null);
 
     try {
+      if (!enabledRef.current) {
+        setAccounts([]);
+        setSummaries([]);
+        setStats({
+          totalAccounts: 0,
+          totalSpeakers: 0,
+          totalEvents: 0,
+          recentActivity: 0,
+        });
+        return;
+      }
+
       const accountsResponse = await fetch('/api/intelligence/accounts', {
         signal: controller.signal,
       });
@@ -136,11 +158,17 @@ export function useAccountIntelligenceData(): UseAccountIntelligenceDataReturn {
   }, [fetchData]);
 
   const refresh = useCallback(() => {
+    if (!enabledRef.current) {
+      return;
+    }
     void fetchData();
   }, [fetchData]);
 
   const addAccount = useCallback(
     async (payload: CreateAccountPayload) => {
+      if (!enabledRef.current) {
+        throw new Error('Cannot add account while unauthenticated.');
+      }
       const response = await fetch('/api/intelligence/accounts', {
         method: 'POST',
         headers: {

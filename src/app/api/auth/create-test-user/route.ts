@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
       email,
       password,
       options: {
-        emailRedirectTo: `${req.nextUrl.origin}/auth/callback?next=/events`,
+        emailRedirectTo: `${req.nextUrl.origin}/auth/callback?next=/dashboard`,
         data: {
           // Add any additional user data here if needed
         }
