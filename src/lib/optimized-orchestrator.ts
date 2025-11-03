@@ -21,7 +21,6 @@ import { getCountryContext } from './utils/country';
 import { loadActiveConfig } from '../common/search/config';
 import { buildWeightedQuery, buildWeightedGeminiContext } from './services/weighted-query-builder';
 import { WEIGHTED_INDUSTRY_TEMPLATES } from './data/weighted-templates';
-import { SearchService } from './services/search-service';
 import { 
   getParallelProcessor, 
   processUrlDiscoveryParallel, 
@@ -199,47 +198,6 @@ const ORCHESTRATOR_CONFIG = {
   }
 };
 
-const DIRECTORY_DOMAINS = [
-  'conferencealerts.com',
-  'conferencealerts.co.in',
-  'internationalconferencealerts.com',
-  'allevents.in',
-  'eventbrite.com',
-  '10times.com',
-  'vendelux.com',
-  'complexdiscovery.com',
-  'conferenceineurope.net',
-  'allconferencealert.com',
-];
-
-function isLowValueDirectory(url: string): boolean {
-  try {
-    const hostname = new URL(url).hostname.replace(/^www\./, '');
-    return DIRECTORY_DOMAINS.some(domain => hostname.endsWith(domain));
-  } catch {
-    return false;
-  }
-}
-
-function normalizeConfidenceValue(value: unknown, floor: number): number {
-  let numeric: number | null = null;
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    numeric = value;
-  } else if (typeof value === 'string') {
-    const parsed = parseFloat(value);
-    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
-      numeric = parsed;
-    }
-  }
-
-  if (numeric === null) {
-    return floor;
-  }
-
-  return Math.max(numeric, floor);
-}
-
 // Types
 export interface OptimizedSearchParams {
   userText: string;
@@ -272,8 +230,6 @@ export interface EventCandidate {
       extraction?: number;
       enhancement?: number;
     };
-    stub?: boolean;
-    directorySource?: boolean;
   };
 }
 
@@ -717,7 +673,7 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
  */
 async function discoverEventCandidates(query: string, params: OptimizedSearchParams, userProfile?: any): Promise<string[]> {
   const startTime = Date.now();
-
+  
   // Create multiple query variations for parallel discovery
   const queryVariations = [
     query, // Original query
@@ -870,10 +826,10 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 256, // Reduced from 1024 to 256
+              maxOutputTokens: 512,
               topP: 0.9,
               topK: 20,
               candidateCount: 1,
@@ -1032,37 +988,12 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
       geminiMetrics.recordCall(false, responseTime, 'unknown');
     }
     
-    // Return enhanced fallback scoring that keeps high-quality URLs above the publish threshold
-    const minConfidence = Math.max(ORCHESTRATOR_CONFIG.thresholds.confidence + 0.05, ORCHESTRATOR_CONFIG.thresholds.prioritization);
-    return urls.map((url, idx) => {
-      const baseScore = Math.max(ORCHESTRATOR_CONFIG.thresholds.confidence + 0.15, 0.7);
-      let score = baseScore - idx * 0.05;
-
-      // Heuristic boosts for relevant keywords/domains
-      if (/conference|summit|event|forum|seminar|workshop/.test(url)) {
-        score += 0.05;
-      }
-      if (/legal|compliance|regulatory|governance|ediscovery/.test(url)) {
-        score += 0.05;
-      }
-      if (/\bde\b|germany|berlin|munich|muenchen|frankfurt/.test(url)) {
-        score += 0.02;
-      }
-
-      let reason = `fallback_${errorType}`;
-
-      if (isLowValueDirectory(url)) {
-        score -= 0.3;
-        reason = `${reason}_directory`;
-      }
-
-      const normalizedScore = Number.isFinite(score) ? score : minConfidence;
-      return {
-        url,
-        score: Math.min(Math.max(normalizedScore, minConfidence), 0.95),
-        reason
-      };
-    });
+    // Return fallback scoring
+    return urls.map((url, idx) => ({ 
+      url, 
+      score: Math.max(0.45 - idx * 0.02, 0.05), 
+      reason: `fallback_${errorType}` 
+    }));
   }
 }
 
@@ -1179,259 +1110,74 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   if (prioritized.length === 0) return [];
   
   const startTime = Date.now();
-  const MAX_DETAILED_EXTRACTIONS = Math.min(3, ORCHESTRATOR_CONFIG.limits.maxExtractions);
-  const fallbackConfidenceFloor = Math.max(
-    ORCHESTRATOR_CONFIG.thresholds.confidence + 0.05,
-    ORCHESTRATOR_CONFIG.thresholds.prioritization
-  );
-
-  const prioritizedWithMeta = prioritized.map((item, index) => ({
-    ...item,
-    index,
-    isDirectory: isLowValueDirectory(item.url)
-  }));
-
-  const canonicalizeUrl = (url: string | undefined) => {
-    if (!url) return '';
-    return url.replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
-  };
-
-  const deriveTitleFromUrl = (url: string) => {
-    try {
-      const parsed = new URL(url);
-      const segments = parsed.pathname.split('/').filter(Boolean);
-      if (segments.length === 0) {
-        return parsed.hostname.replace('www.', '').replace(/\./g, ' ');
-      }
-      const slug = segments[segments.length - 1].replace(/[-_]/g, ' ');
-      return slug
-        .split(' ')
-        .filter(Boolean)
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-    } catch (error) {
-      return url;
-    }
-  };
-
-  // Use parallel processing for event extraction with Firecrawl extract
+  
+  // Use parallel processing for event extraction
   const parallelProcessor = getParallelProcessor();
-  const nonDirectoryTargets = prioritizedWithMeta.filter(item => !item.isDirectory);
-  let detailedPlan = nonDirectoryTargets.slice(0, MAX_DETAILED_EXTRACTIONS);
-
-  if (detailedPlan.length < Math.min(MAX_DETAILED_EXTRACTIONS, prioritizedWithMeta.length)) {
-    const remainingSlots = MAX_DETAILED_EXTRACTIONS - detailedPlan.length;
-    if (remainingSlots > 0) {
-      const directoryFallback = prioritizedWithMeta
-        .filter(item => item.isDirectory && !detailedPlan.some(plan => plan.index === item.index))
-        .slice(0, remainingSlots);
-      detailedPlan = detailedPlan.concat(directoryFallback);
-    }
-  }
-
-  const detailedIndices = new Set(detailedPlan.map(item => item.index));
-
-  const extractionTasks = detailedPlan.map(item =>
+  const extractionTasks = prioritized.map((item, index) => 
     createParallelTask(
-      `extraction_${item.index}`,
+      `extraction_${index}`,
       item.url,
       item.score,
       'firecrawl'
     )
   );
-
-  const extractionResults = extractionTasks.length > 0
-    ? await parallelProcessor.processParallel(
-        extractionTasks,
-        async (task) => {
-          return await executeWithRetry(async () => {
-            const url = task.data;
-            console.log('[optimized-orchestrator] Extracting event details from:', url);
-            const extractionStart = Date.now();
-            const extractResult = await SearchService.extractEvents([url]);
-            return {
-              ...extractResult,
-              duration: Date.now() - extractionStart
-            };
-          }, 'firecrawl');
-        },
-        {
-          maxConcurrency: 1,
-          enableEarlyTermination: false,
-          qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.parseQuality,
-          minResults: 1
-        }
-      )
-    : [];
+  
+  const extractionResults = await parallelProcessor.processParallel(
+    extractionTasks,
+    async (task) => {
+      return await executeWithRetry(async () => {
+        console.log('[optimized-orchestrator] Extracting event details from:', task.data);
+        const result = await unifiedSearch({
+          q: task.data,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          country: params.country || undefined,
+          limit: 1,
+          useCache: true
+        });
+        return result;
+      }, 'firecrawl');
+    },
+    {
+      maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions,
+      enableEarlyTermination: ORCHESTRATOR_CONFIG.parallel.enableEarlyTermination,
+      qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.parseQuality,
+      minResults: 1
+    }
+  );
 
   // Process extraction results
   const events: EventCandidate[] = [];
-  const processedIndexes = new Set<number>();
-  extractionResults.forEach((result) => {
-    if (!result.success || !result.result) {
-      return;
-    }
-
-    const taskIndex = parseInt(result.id.split('_')[1], 10);
-    const prioritizedItem = prioritizedWithMeta.find(item => item.index === taskIndex);
-    if (!prioritizedItem) {
-      return;
-    }
-
-    const extractedPayload = result.result.events?.find((event: any) => {
-      return canonicalizeUrl(event?.source_url) === canonicalizeUrl(prioritizedItem.url);
-    }) || result.result.events?.[0];
-
-    if (!extractedPayload) {
-      return;
-    }
-
-    const joinLocation = () => {
-      if (extractedPayload.location) return extractedPayload.location;
-      const parts = [extractedPayload.city, extractedPayload.country]
-        .filter((value: string | null | undefined) => !!value && typeof value === 'string')
-        .map((value: string) => value.trim());
-      return parts.join(', ');
-    };
-
-    const speakers: SpeakerInfo[] = Array.isArray(extractedPayload.speakers)
-      ? extractedPayload.speakers
-          .filter((speaker: any) => speaker && typeof speaker.name === 'string' && speaker.name.trim().length > 0)
-          .map((speaker: any) => ({
-            name: speaker.name,
-            title: speaker.title || speaker.session_title || undefined,
-            company: speaker.org || speaker.company || undefined
-          }))
-      : [];
-
-    const sponsors: SponsorInfo[] = Array.isArray(extractedPayload.sponsors)
-      ? extractedPayload.sponsors
-          .filter((sponsor: any) => typeof sponsor === 'string' && sponsor.trim().length > 0)
-          .map((sponsor: string) => ({ name: sponsor.trim() }))
-      : [];
-
-    const confidenceFromExtraction = normalizeConfidenceValue(extractedPayload.confidence, fallbackConfidenceFloor);
-
-    events.push({
-      url: prioritizedItem.url,
-      title: extractedPayload.title || 'Untitled Event',
-      description: extractedPayload.description || '',
-      date: extractedPayload.starts_at || '',
-      location: joinLocation(),
-      venue: extractedPayload.venue || '',
-      speakers,
-      sponsors,
-      confidence: Math.min(
-        1,
-        Math.max(
-          normalizeConfidenceValue(prioritizedItem.score, fallbackConfidenceFloor),
-          confidenceFromExtraction
-        )
-      ),
-      source: 'firecrawl',
-      metadata: {
-        originalQuery: prioritizedItem.url,
-        country: params.country,
-        processingTime: Date.now() - startTime,
-        stageTimings: {
-          extraction: result.result.duration || Date.now() - startTime
-        },
-        directorySource: prioritizedItem.isDirectory,
-        stub: false
+  extractionResults.forEach((result, index) => {
+    if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
+      const searchResult = result.result as { items: any[] };
+      if (searchResult.items && searchResult.items.length > 0) {
+        const item = searchResult.items[0];
+        const prioritizedItem = prioritized[index];
+        
+        events.push({
+          url: prioritizedItem.url,
+          title: item.title || 'Untitled Event',
+          description: item.description || '',
+          date: item.date || '',
+          location: item.location || '',
+          venue: item.venue || '',
+          speakers: item.speakers || [],
+          sponsors: item.sponsors || [],
+          confidence: prioritizedItem.score,
+          source: 'firecrawl',
+          metadata: {
+            originalQuery: prioritizedItem.url,
+            country: params.country,
+            processingTime: Date.now() - startTime,
+            stageTimings: {
+              extraction: Date.now() - startTime
+            }
+          }
+        });
       }
-    });
-
-    processedIndexes.add(taskIndex);
-  });
-
-  // Fallback for detailed targets without successful extraction
-  detailedPlan.forEach((item) => {
-    if (!processedIndexes.has(item.index)) {
-      events.push({
-        url: item.url,
-        title: deriveTitleFromUrl(item.url),
-        description: '',
-        date: '',
-        location: '',
-        venue: '',
-        speakers: [],
-        sponsors: [],
-        confidence: normalizeConfidenceValue(item.score, fallbackConfidenceFloor),
-        source: 'firecrawl',
-        metadata: {
-          originalQuery: item.url,
-          country: params.country,
-          processingTime: Date.now() - startTime,
-          stageTimings: {
-            extraction: Date.now() - startTime
-          },
-          skipSpeakerEnhancement: true,
-          stub: true,
-          directorySource: item.isDirectory
-        }
-      });
     }
   });
-
-  // Provide minimal events for remaining prioritized URLs beyond detailed extraction
-  prioritizedWithMeta.forEach(item => {
-    if (processedIndexes.has(item.index) || detailedIndices.has(item.index)) {
-      return;
-    }
-
-    events.push({
-      url: item.url,
-      title: deriveTitleFromUrl(item.url),
-      description: '',
-      date: '',
-      location: '',
-      venue: '',
-      speakers: [],
-      sponsors: [],
-      confidence: normalizeConfidenceValue(item.score, fallbackConfidenceFloor),
-      source: 'firecrawl',
-      metadata: {
-        originalQuery: item.url,
-        country: params.country,
-        processingTime: Date.now() - startTime,
-        stageTimings: {
-          extraction: Date.now() - startTime
-        },
-        skipSpeakerEnhancement: true,
-        stub: true,
-        directorySource: item.isDirectory
-      }
-    });
-  });
-
-  // If extraction failed for every URL (no detailed targets), ensure minimal results
-  if (events.length === 0) {
-    prioritizedWithMeta.forEach((item) => {
-      events.push({
-        url: item.url,
-        title: deriveTitleFromUrl(item.url),
-        description: '',
-        date: '',
-        location: '',
-        venue: '',
-        speakers: [],
-        sponsors: [],
-        confidence: normalizeConfidenceValue(item.score, fallbackConfidenceFloor),
-        source: 'firecrawl',
-        metadata: {
-          originalQuery: item.url,
-          country: params.country,
-          processingTime: Date.now() - startTime,
-          stageTimings: {
-            extraction: Date.now() - startTime
-          },
-          skipSpeakerEnhancement: true,
-          stub: true,
-          directorySource: item.isDirectory
-        }
-      });
-    });
-  }
 
   console.log(`[optimized-orchestrator] Extracted ${events.length} events from ${prioritized.length} prioritized URLs in ${Date.now() - startTime}ms`);
   
@@ -1445,15 +1191,10 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   if (events.length === 0) return [];
   
   const startTime = Date.now();
-  const enhanceableEvents = events.filter(event => !event.metadata?.skipSpeakerEnhancement);
-
-  if (enhanceableEvents.length === 0) {
-    return events;
-  }
   
   // Use parallel processing for speaker enhancement
   const parallelProcessor = getParallelProcessor();
-  const enhancementTasks = enhanceableEvents.map((event, index) => 
+  const enhancementTasks = events.map((event, index) => 
     createParallelTask(
       `enhancement_${index}`,
       event.url,
@@ -1467,16 +1208,9 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
     async (task) => {
       return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
-        const eventIndex = parseInt(task.id.split('_')[1], 10);
-        const originalEvent = enhanceableEvents[eventIndex];
-
-        if (!originalEvent) {
-          throw new Error(`No event found for enhancement task ${task.id}`);
-        }
-
         // This would typically call a speaker enhancement service
         // For now, we'll just return the original event
-        return originalEvent;
+        return { success: true, result: { event: events[parseInt(task.id.split('_')[1])] } };
       }, 'firecrawl');
     },
     {
@@ -1488,69 +1222,27 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   );
 
   // Process enhancement results
-  const enhancedMap = new Map<string, EventCandidate>();
-  enhancementResults.forEach((result) => {
-    const eventIndex = parseInt(result.id.split('_')[1], 10);
-    const originalEvent = enhanceableEvents[eventIndex];
-
-    if (!originalEvent) {
-      return;
-    }
-
-    if (result.success && result.result) {
-      enhancedMap.set(originalEvent.url, result.result as EventCandidate);
-    } else {
-      enhancedMap.set(originalEvent.url, originalEvent);
+  const enhancedEvents: EventCandidate[] = [];
+  enhancementResults.forEach((result, index) => {
+    if (result.success && result.result && typeof result.result === 'object' && 'event' in result.result) {
+      const enhancedEvent = result.result.event as EventCandidate;
+      enhancedEvents.push(enhancedEvent);
     }
   });
 
-  console.log(`[optimized-orchestrator] Enhanced ${enhancedMap.size} events in ${Date.now() - startTime}ms`);
-
-  return events.map(event => {
-    if (event.metadata?.skipSpeakerEnhancement) {
-      return event;
-    }
-
-    return enhancedMap.get(event.url) || event;
-  });
+  console.log(`[optimized-orchestrator] Enhanced ${enhancedEvents.length} events in ${Date.now() - startTime}ms`);
+  
+  return enhancedEvents;
 }
 
 /**
  * Filter and rank final events
  */
 function filterAndRankEvents(events: EventCandidate[]): EventCandidate[] {
-  const hasSpeakerData = (event: EventCandidate) =>
-    Array.isArray(event.speakers) && event.speakers.some(speaker => speaker && typeof speaker.name === 'string' && speaker.name.trim().length > 0);
-
-  const hasMeaningfulDescription = (event: EventCandidate) =>
-    typeof event.description === 'string' && event.description.trim().length >= 80;
-
-  const hasMeaningfulDetails = (event: EventCandidate) =>
-    hasSpeakerData(event) || hasMeaningfulDescription(event);
-
-  let filtered = events
+  return events
     .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.confidence)
-    .filter(event => !event.metadata?.stub)
-    .filter(event => !event.metadata?.directorySource || hasSpeakerData(event))
-    .filter(event => hasMeaningfulDetails(event))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
-
-  if (filtered.length === 0) {
-    filtered = events
-      .filter(event => !event.metadata?.stub)
-      .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.prioritization)
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
-  }
-
-  if (filtered.length === 0) {
-    filtered = events
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, Math.min(ORCHESTRATOR_CONFIG.limits.maxExtractions, events.length));
-  }
-
-  return filtered;
 }
 
 /**
