@@ -1208,8 +1208,7 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
     async (task) => {
       return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
-        // This would typically call a speaker enhancement service
-        // For now, we'll just return the original event
+        // Return the event directly (speaker enhancement is a TODO for future implementation)
         return events[parseInt(task.id.split('_')[1])];
       }, 'firecrawl');
     },
@@ -1225,7 +1224,7 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   const enhancedEvents: EventCandidate[] = [];
   enhancementResults.forEach((result, index) => {
     if (result.success && result.result) {
-           const enhancedEvent = result.result as EventCandidate;
+      const enhancedEvent = result.result as EventCandidate;
       enhancedEvents.push(enhancedEvent);
     }
   });
