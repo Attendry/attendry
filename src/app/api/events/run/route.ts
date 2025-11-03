@@ -281,6 +281,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Check if external search providers are configured
+    const hasFirecrawl = !!process.env.FIRECRAWL_KEY;
+    const hasGoogleCSE = !!(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX);
+    
+    // Use mock data if no search providers are configured
+    if (!hasFirecrawl && !hasGoogleCSE) {
+      console.log('[api/events/run] No search providers configured, using mock data');
+      const { getMockEvents } = await import('./test-data');
+      const mockEvents = getMockEvents({ userText, country: normalizedCountry || undefined });
+      
+      return NextResponse.json({
+        count: mockEvents.length,
+        events: mockEvents,
+        country: normalizedCountry,
+        provider: 'mock',
+        effectiveQ: userText,
+        searchRetriedWithBase: false,
+        _dev_mode: true,
+        _message: 'Using mock data. Configure FIRECRAWL_KEY or GOOGLE_CSE_KEY for real results.'
+      });
+    }
+
     // Use Optimized Orchestrator
     console.log('[api/events/run] Using Optimized Orchestrator');
     const res = await executeOptimizedSearch({
@@ -408,6 +430,28 @@ export async function GET(req: NextRequest) {
         effectiveDateFrom = null;
         effectiveDateTo = null;
       }
+    }
+
+    // Check if external search providers are configured
+    const hasFirecrawl = !!process.env.FIRECRAWL_KEY;
+    const hasGoogleCSE = !!(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX);
+    
+    // Use mock data if no search providers are configured
+    if (!hasFirecrawl && !hasGoogleCSE) {
+      console.log('[api/events/run] No search providers configured, using mock data');
+      const { getMockEvents } = await import('./test-data');
+      const mockEvents = getMockEvents({ userText, country: normalizedCountry || undefined });
+      
+      return NextResponse.json({
+        count: mockEvents.length,
+        events: mockEvents,
+        country: normalizedCountry,
+        provider: 'mock',
+        effectiveQ: userText,
+        searchRetriedWithBase: false,
+        _dev_mode: true,
+        _message: 'Using mock data. Configure FIRECRAWL_KEY or GOOGLE_CSE_KEY for real results.'
+      });
     }
 
     // Use Optimized Orchestrator
