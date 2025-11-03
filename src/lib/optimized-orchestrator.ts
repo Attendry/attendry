@@ -1383,10 +1383,32 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
     console.log(`[optimized-orchestrator] Enhancement result ${index}:`, { id: result.id, success: result.success, hasResult: !!result.result, resultType: typeof result.result, error: result.error?.message || null });
     
     if (result.success && result.result) {
-      const enhancedEvent = result.result as EventCandidate;
+      // Handle wrapped results: result.result might be { success: true, result: { event: EventCandidate } }
+      let enhancedEvent: EventCandidate;
+      const unwrapped = result.result as any;
+      
+      if (unwrapped && typeof unwrapped === 'object' && 'result' in unwrapped && unwrapped.result && 'event' in unwrapped.result) {
+        // Double-wrapped: { success: true, result: { event: EventCandidate } }
+        enhancedEvent = unwrapped.result.event as EventCandidate;
+        console.log(`[optimized-orchestrator] Unwrapped double-wrapped result for ${index}`);
+      } else if (unwrapped && typeof unwrapped === 'object' && 'event' in unwrapped) {
+        // Single-wrapped: { event: EventCandidate }
+        enhancedEvent = unwrapped.event as EventCandidate;
+        console.log(`[optimized-orchestrator] Unwrapped single-wrapped result for ${index}`);
+      } else {
+        // Direct EventCandidate
+        enhancedEvent = unwrapped as EventCandidate;
+      }
+      
       console.log(`[optimized-orchestrator] Adding enhanced event: ${enhancedEvent.title || enhancedEvent.url || 'unknown'}`);
       enhancedEvents.push(enhancedEvent);
-      console.warn(`[optimized-orchestrator] Enhancement failed for task ${index} (${result.id}):`, { success: result.success, hasResult: !!result.result, error: result.error?.message || 'No error message', result: result.result });
+    } else {
+      console.warn(`[optimized-orchestrator] Enhancement failed for task ${index} (${result.id}):`, {
+        success: result.success,
+        hasResult: !!result.result,
+        error: result.error?.message || 'No error message',
+        result: result.result
+      });
     }
   });
 
