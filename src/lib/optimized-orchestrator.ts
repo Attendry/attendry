@@ -1132,15 +1132,16 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     async (task) => {
       return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Extracting event details from:', task.data);
-        const result = await unifiedSearch({
-          q: task.data,
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          country: params.country || undefined,
-          limit: 1,
-          useCache: true
+        // Use Firecrawl scrape API
+        if (!firecrawlKey) throw new Error('No Firecrawl key');
+        const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
+          method: 'POST', headers: { Authorization: `Bearer ${firecrawlKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: task.data, formats: ['markdown'], onlyMainContent: false, timeout: 25000 }),
+          signal: AbortSignal.timeout(30000)
         });
-        return result;
+        if (!response.ok) throw new Error(`Firecrawl scrape failed: ${response.status}`);
+        const data = await response.json();
+        return { url: task.data, content: data.data?.markdown || '', title: data.data?.metadata?.title || '', description: data.data?.metadata?.description || '', metadata: data.data?.metadata || {} };
       }, 'firecrawl');
     },
     {
@@ -1162,13 +1163,13 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         
         events.push({
           url: prioritizedItem.url,
-          title: item.title || 'Untitled Event',
-          description: item.description || '',
-          date: item.date || '',
-          location: item.location || '',
-          venue: item.venue || '',
-          speakers: item.speakers || [],
-          sponsors: item.sponsors || [],
+          title: scraped.title || 'Untitled Event',
+        description: scraped.description || '',
+        date: params.dateFrom || '',
+        location: params.country || '',
+        venue: '',
+        speakers: [],
+        sponsors: [],
           confidence: prioritizedItem.score,
           source: 'firecrawl',
           metadata: {
