@@ -199,6 +199,47 @@ const ORCHESTRATOR_CONFIG = {
   }
 };
 
+const DIRECTORY_DOMAINS = [
+  'conferencealerts.com',
+  'conferencealerts.co.in',
+  'internationalconferencealerts.com',
+  'allevents.in',
+  'eventbrite.com',
+  '10times.com',
+  'vendelux.com',
+  'complexdiscovery.com',
+  'conferenceineurope.net',
+  'allconferencealert.com',
+];
+
+function isLowValueDirectory(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '');
+    return DIRECTORY_DOMAINS.some(domain => hostname.endsWith(domain));
+  } catch {
+    return false;
+  }
+}
+
+function normalizeConfidenceValue(value: unknown, floor: number): number {
+  let numeric: number | null = null;
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    numeric = value;
+  } else if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+      numeric = parsed;
+    }
+  }
+
+  if (numeric === null) {
+    return floor;
+  }
+
+  return Math.max(numeric, floor);
+}
+
 // Types
 export interface OptimizedSearchParams {
   userText: string;
@@ -231,6 +272,8 @@ export interface EventCandidate {
       extraction?: number;
       enhancement?: number;
     };
+    stub?: boolean;
+    directorySource?: boolean;
   };
 }
 
@@ -1006,11 +1049,18 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         score += 0.02;
       }
 
+      let reason = `fallback_${errorType}`;
+
+      if (isLowValueDirectory(url)) {
+        score -= 0.3;
+        reason = `${reason}_directory`;
+      }
+
       const normalizedScore = Number.isFinite(score) ? score : minConfidence;
       return {
         url,
         score: Math.min(Math.max(normalizedScore, minConfidence), 0.95),
-        reason: `fallback_${errorType}`
+        reason
       };
     });
   }
@@ -1135,25 +1185,6 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     ORCHESTRATOR_CONFIG.thresholds.prioritization
   );
 
-  const normalizeConfidence = (value: unknown, floor: number) => {
-    let numeric: number | null = null;
-
-    if (typeof value === 'number') {
-      numeric = value;
-    } else if (typeof value === 'string') {
-      const parsed = parseFloat(value);
-      if (!Number.isNaN(parsed)) {
-        numeric = parsed;
-      }
-    }
-
-    if (numeric === null || !Number.isFinite(numeric)) {
-      return floor;
-    }
-
-    return Math.max(numeric, floor);
-  };
-  
   const canonicalizeUrl = (url: string | undefined) => {
     if (!url) return '';
     return url.replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
@@ -1259,7 +1290,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
           .map((sponsor: string) => ({ name: sponsor.trim() }))
       : [];
 
-    const confidenceFromExtraction = normalizeConfidence(extractedPayload.confidence, fallbackConfidenceFloor);
+    const confidenceFromExtraction = normalizeConfidenceValue(extractedPayload.confidence, fallbackConfidenceFloor);
 
     events.push({
       url: prioritizedItem.url,
@@ -1273,7 +1304,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       confidence: Math.min(
         1,
         Math.max(
-          normalizeConfidence(prioritizedItem.score, fallbackConfidenceFloor),
+          normalizeConfidenceValue(prioritizedItem.score, fallbackConfidenceFloor),
           confidenceFromExtraction
         )
       ),
@@ -1284,7 +1315,9 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         processingTime: Date.now() - startTime,
         stageTimings: {
           extraction: result.result.duration || Date.now() - startTime
-        }
+        },
+        directorySource,
+        stub: false
       }
     });
 
@@ -1294,6 +1327,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   // Fallback for detailed targets without successful extraction
   detailedTargets.forEach((item, index) => {
     if (!processedIndexes.has(index)) {
+      const directorySource = isLowValueDirectory(item.url);
       events.push({
         url: item.url,
         title: deriveTitleFromUrl(item.url),
@@ -1303,7 +1337,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         venue: '',
         speakers: [],
         sponsors: [],
-        confidence: normalizeConfidence(item.score, fallbackConfidenceFloor),
+        confidence: normalizeConfidenceValue(item.score, fallbackConfidenceFloor),
         source: 'firecrawl',
         metadata: {
           originalQuery: item.url,
@@ -1312,7 +1346,9 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
           stageTimings: {
             extraction: Date.now() - startTime
           },
-          skipSpeakerEnhancement: true
+          skipSpeakerEnhancement: true,
+          stub: true,
+          directorySource
         }
       });
     }
@@ -1321,6 +1357,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   // Provide minimal events for remaining prioritized URLs beyond detailed extraction
   const fallbackTargets = prioritized.slice(detailedTargets.length);
   fallbackTargets.forEach(item => {
+    const directorySource = isLowValueDirectory(item.url);
     events.push({
       url: item.url,
       title: deriveTitleFromUrl(item.url),
@@ -1330,7 +1367,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       venue: '',
       speakers: [],
       sponsors: [],
-      confidence: normalizeConfidence(item.score, fallbackConfidenceFloor),
+      confidence: normalizeConfidenceValue(item.score, fallbackConfidenceFloor),
       source: 'firecrawl',
       metadata: {
         originalQuery: item.url,
@@ -1339,7 +1376,9 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         stageTimings: {
           extraction: Date.now() - startTime
         },
-        skipSpeakerEnhancement: true
+        skipSpeakerEnhancement: true,
+        stub: true,
+        directorySource
       }
     });
   });
@@ -1347,6 +1386,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   // If extraction failed for every URL (no detailed targets), ensure minimal results
   if (events.length === 0) {
     prioritized.forEach((item) => {
+      const directorySource = isLowValueDirectory(item.url);
       events.push({
         url: item.url,
         title: deriveTitleFromUrl(item.url),
@@ -1356,7 +1396,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         venue: '',
         speakers: [],
         sponsors: [],
-        confidence: normalizeConfidence(item.score, fallbackConfidenceFloor),
+        confidence: normalizeConfidenceValue(item.score, fallbackConfidenceFloor),
         source: 'firecrawl',
         metadata: {
           originalQuery: item.url,
@@ -1365,7 +1405,9 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
           stageTimings: {
             extraction: Date.now() - startTime
           },
-          skipSpeakerEnhancement: true
+          skipSpeakerEnhancement: true,
+          stub: true,
+          directorySource
         }
       });
     });
@@ -1457,8 +1499,19 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
  * Filter and rank final events
  */
 function filterAndRankEvents(events: EventCandidate[]): EventCandidate[] {
+  const hasSpeakerData = (event: EventCandidate) => {
+    return Array.isArray(event.speakers) && event.speakers.filter(speaker => speaker && typeof speaker.name === 'string' && speaker.name.trim().length > 0).length >= 1;
+  };
+
+  const hasValidDate = (event: EventCandidate) => {
+    return typeof event.date === 'string' && event.date.trim().length > 0;
+  };
+
   return events
     .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.confidence)
+    .filter(event => !event.metadata?.stub)
+    .filter(event => !event.metadata?.directorySource)
+    .filter(event => hasSpeakerData(event) && hasValidDate(event))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
 }

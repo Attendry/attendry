@@ -414,6 +414,18 @@ IMPORTANT RULES:
         .replace(/\n\s*/g, ' ') // Normalize whitespace
         .replace(/\s+/g, ' ') // Normalize multiple spaces
         .trim();
+
+      const openBraces = (jsonString.match(/\{/g) || []).length;
+      const closeBraces = (jsonString.match(/\}/g) || []).length;
+      if (closeBraces < openBraces) {
+        jsonString += '}'.repeat(openBraces - closeBraces);
+      }
+
+      const openBrackets = (jsonString.match(/\[/g) || []).length;
+      const closeBrackets = (jsonString.match(/\]/g) || []).length;
+      if (closeBrackets < openBrackets) {
+        jsonString += ']'.repeat(openBrackets - closeBrackets);
+      }
       
       let parsed;
       try {
