@@ -1132,16 +1132,15 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     async (task) => {
       return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Extracting event details from:', task.data);
-        // Use Firecrawl scrape API
-        if (!firecrawlKey) throw new Error('No Firecrawl key');
-        const res = await fetch('https://api.firecrawl.dev/v2/scrape', {
-          method: 'POST', headers: { Authorization: `Bearer ``, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: task.data, formats: ['markdown'], onlyMainContent: false, timeout: 25000 }),
-          signal: AbortSignal.timeout(30000)
+        const result = await unifiedSearch({
+          q: task.data,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          country: params.country || undefined,
+          limit: 1,
+          useCache: true
         });
-        if (!res.ok) throw new Error(`Scrape failed: ``);
-        const data = await res.json();
-        return { url: task.data, content: data.data?.markdown || '', title: data.data?.metadata?.title || '', description: data.data?.metadata?.description || '', metadata: data.data?.metadata || {} };
+        return result;
       }, 'firecrawl');
     },
     {
@@ -1163,13 +1162,13 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         
         events.push({
           url: prioritizedItem.url,
-          title: scraped.title || 'Untitled Event',
-        description: scraped.description || '',
-        date: params.dateFrom || '',
-        location: params.country || '',
-        venue: '',
-        speakers: [],
-        sponsors: [],
+          title: item.title || 'Untitled Event',
+          description: item.description || '',
+          date: item.date || '',
+          location: item.location || '',
+          venue: item.venue || '',
+          speakers: item.speakers || [],
+          sponsors: item.sponsors || [],
           confidence: prioritizedItem.score,
           source: 'firecrawl',
           metadata: {
