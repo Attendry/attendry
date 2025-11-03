@@ -1,31 +1,11 @@
-/**
- * Market Intelligence Page
- * 
- * This page displays the unified Market Intelligence experience with both
- * Event Recommendations and Account Intelligence features.
- */
+"use client";
 
-import { getServerSession } from '@/lib/auth/server-session';
-import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import { MarketIntelligenceStandalone } from '@/components/MarketIntelligenceStandalone';
 
-// Force dynamic rendering since we use server session
-export const dynamic = 'force-dynamic';
-
-export default async function MarketIntelligencePage() {
-  const { session } = await getServerSession();
-
+export default function MarketIntelligencePage() {
   return (
     <div className="min-h-screen bg-gray-50">
-      {!session && (
-        <div className="mx-auto max-w-3xl px-4 pt-10">
-          <UnauthenticatedNotice
-            feature="Market Intelligence"
-            description="Log in to access AI-powered event recommendations and live trend tracking. You can continue exploring the demo results without signing in."
-          />
-        </div>
-      )}
-      <div className="max-w-6xl mx-auto p-6">
+      <div className="mx-auto max-w-6xl p-6">
         <MarketIntelligenceStandalone />
       </div>
     </div>
