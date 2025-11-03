@@ -829,7 +829,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 256, // Reduced from 1024 to 256
+              maxOutputTokens: 2048, // Increased to accommodate thinking mode and response
               topP: 0.9,
               topK: 20,
               candidateCount: 1,
@@ -1210,7 +1210,7 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
         console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
         // This would typically call a speaker enhancement service
         // For now, we'll just return the original event
-        return { success: true, result: { event: events[parseInt(task.id.split('_')[1])] } };
+        return events[parseInt(task.id.split('_')[1])];
       }, 'firecrawl');
     },
     {
@@ -1224,8 +1224,8 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   // Process enhancement results
   const enhancedEvents: EventCandidate[] = [];
   enhancementResults.forEach((result, index) => {
-    if (result.success && result.result && typeof result.result === 'object' && 'event' in result.result) {
-      const enhancedEvent = result.result.event as EventCandidate;
+    if (result.success && result.result) {
+           const enhancedEvent = result.result as EventCandidate;
       enhancedEvents.push(enhancedEvent);
     }
   });
