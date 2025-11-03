@@ -28,7 +28,6 @@ import {
 import { useTrendingInsights } from '@/lib/hooks/useTrendingInsights';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
-import { supabaseBrowser } from '@/lib/supabase-browser';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',
