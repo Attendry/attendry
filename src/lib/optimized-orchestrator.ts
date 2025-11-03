@@ -1374,11 +1374,21 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   );
 
   // Process enhancement results
+  // The parallel processor wraps the result, so result.result is the EventCandidate we returned
+  console.log([optimized-orchestrator] Received ${enhancementResults?.length || 0} enhancement results from parallel processor);
+  
+    // Process enhancement results
   const enhancedEvents: EventCandidate[] = [];
   enhancementResults.forEach((result, index) => {
-    if (result.success && result.result && typeof result.result === 'object' && 'event' in result.result) {
-      const enhancedEvent = result.result.event as EventCandidate;
-      enhancedEvents.push(enhancedEvent);
+    console.log([optimized-orchestrator] Enhancement result ${index}:, { id: result.id, success: result.success, hasResult: !!result.result, resultType: typeof result.result, error: result.error?.message || null });
+    
+    if (result.success && result.result) {
+      const enhancedEvent = result.result as EventCandidate;
+      console.log([optimized-orchestrator] Adding enhanced event: ${enhancedEvent.title || enhancedEvent.url || 'unknown'});
+            enhancedEvents.push(enhancedEvent);
+    }
+    } else {
+      console.warn([optimized-orchestrator] Enhancement failed for task ${index} (${result.id}):, { success: result.success, hasResult: !!result.result, error: result.error?.message || 'No error message', result: result.result });
     }
   });
 
