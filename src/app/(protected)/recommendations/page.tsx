@@ -21,7 +21,7 @@ export default async function MarketIntelligencePage() {
         <div className="mx-auto max-w-3xl px-4 pt-10">
           <UnauthenticatedNotice
             feature="Market Intelligence"
-            description="Log in to access AI-powered event recommendations and strategic account monitoring. You can continue exploring the demo results without signing in."
+            description="Log in to access AI-powered event recommendations and live trend tracking. You can continue exploring the demo results without signing in."
           />
         </div>
       )}

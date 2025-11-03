@@ -41,7 +41,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null);
 
   const navigationItems: NavigationItem[] = [
-    { href: '/', label: 'Dashboard', icon: Home },
+    { href: '/dashboard', label: 'Command Centre', icon: Home },
     { 
       href: '/events', 
       label: 'Events', 
@@ -55,11 +55,11 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
     { href: '/search', label: 'Search', icon: Search },
     { 
       href: '/recommendations', 
-      label: 'Intelligence', 
+      label: 'Market Intelligence', 
       icon: Brain,
       children: [
-        { href: '/recommendations', label: 'AI Recommendations', icon: Brain },
-        { href: '/intelligence', label: 'Account Monitoring', icon: TrendingUp }
+        { href: '/recommendations', label: 'Event Recommendations', icon: Brain },
+        { href: '/trending', label: 'Trend Insights', icon: TrendingUp }
       ]
     },
     { href: '/activity', label: 'Insights', icon: BarChart3 },

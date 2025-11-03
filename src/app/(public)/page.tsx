@@ -14,7 +14,7 @@ export default async function LandingPage() {
     
     if (session?.user) {
       // Redirect authenticated users to the main dashboard
-      redirect("/events");
+      redirect("/dashboard");
     }
   } catch (error) {
     // If there's an error checking auth, continue to show landing page

@@ -70,6 +70,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {
         label: "Hero Hub",
         items: [
+          { href: "/dashboard", label: "Command Centre", icon: House },
           { href: "/events", label: "Event Hub", icon: Calendar },
           { href: "/watchlist", label: "Watchlist", icon: Bookmark },
           { href: "/activity", label: "Event Insights", icon: BarChart3 },
@@ -84,7 +85,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       {
         label: "Discover Pipeline",
         items: [
-          { href: "/", label: "Home", icon: House },
           { href: "/search", label: "Smart Search", icon: Search },
           { href: "/calendar", label: "Relevant Events", icon: CalendarDays },
         ],

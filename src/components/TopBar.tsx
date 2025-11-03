@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
+import { usePathname } from "next/navigation";
 
 type UserLite = { id: string; email?: string | null };
 
@@ -16,6 +17,23 @@ export function TopBar({ onMenuClick, mobileMenuButton }: TopBarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+
+  const pageTitle = useMemo(() => {
+    const mapping = [
+      { path: "/dashboard", label: "Command Centre" },
+      { path: "/recommendations", label: "Market Intelligence" },
+      { path: "/events", label: "Event Hub" },
+      { path: "/watchlist", label: "Watchlist" },
+      { path: "/search", label: "Smart Search" },
+      { path: "/activity", label: "Activity Insights" },
+      { path: "/notifications", label: "Alerts" },
+      { path: "/admin", label: "Admin" },
+    ];
+
+    const match = mapping.find((entry) => pathname.startsWith(entry.path));
+    return match?.label ?? "Dashboard";
+  }, [pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,7 +109,7 @@ export function TopBar({ onMenuClick, mobileMenuButton }: TopBarProps) {
 
         {/* Desktop title - hidden on mobile */}
         <div className="hidden lg:block">
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">Dashboard</h1>
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{pageTitle}</h1>
         </div>
 
         {/* Right side - Profile and Sign out */}

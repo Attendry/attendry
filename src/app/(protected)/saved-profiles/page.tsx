@@ -4,19 +4,11 @@ import { useState, useEffect } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import { EnhancedSavedProfileCard } from "@/components/EnhancedSavedProfileCard";
+import { useSavedProfiles } from "@/lib/hooks/useSavedProfiles";
 
 export default function SavedProfilesPage() {
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
-  const [profiles, setProfiles] = useState<SavedSpeakerProfile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Filter states
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [tagFilter, setTagFilter] = useState<string>("all");
-  const [selectedProfiles, setSelectedProfiles] = useState<string[]>([]);
   
   // Modal states
   const [selectedProfile, setSelectedProfile] = useState<SavedSpeakerProfile | null>(null);
@@ -24,6 +16,24 @@ export default function SavedProfilesPage() {
   const [editingNotes, setEditingNotes] = useState("");
   const [editingTags, setEditingTags] = useState<string[]>([]);
   const [editingStatus, setEditingStatus] = useState<string>("not_started");
+
+  const {
+    profiles,
+    loading,
+    error,
+    searchTerm,
+    setSearchTerm,
+    statusFilter,
+    setStatusFilter,
+    tagFilter,
+    setTagFilter,
+    allTags,
+    updateProfile: updateSavedProfile,
+    updateStatus,
+    updateNotes,
+    deleteProfile: removeProfile,
+    refresh,
+  } = useSavedProfiles({ enabled: authReady && !!userId });
 
   useEffect(() => {
     let cancelled = false;
@@ -43,82 +53,16 @@ export default function SavedProfilesPage() {
     return () => { cancelled = true; subscription.unsubscribe(); };
   }, []);
 
-  useEffect(() => {
-    if (userId) {
-      loadProfiles();
-    } else {
-      setProfiles([]);
-      setLoading(false);
-    }
-  }, [userId, statusFilter, tagFilter, searchTerm]);
-
-  async function loadProfiles() {
-    if (!userId) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const params = new URLSearchParams();
-      if (statusFilter !== "all") params.append("status", statusFilter);
-      if (tagFilter !== "all") params.append("tag", tagFilter);
-      if (searchTerm) params.append("search", searchTerm);
-      
-      const response = await fetch(`/api/profiles/saved?${params.toString()}`);
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to load profiles");
-      }
-      
-      setProfiles(data.profiles || []);
-    } catch (e: any) {
-      setError(e.message || "Failed to load profiles");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function deleteProfile(id: string) {
-    if (!confirm("Are you sure you want to delete this profile?")) return;
-    
-    try {
-      const response = await fetch(`/api/profiles/saved/${id}`, {
-        method: "DELETE"
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to delete profile");
-      }
-      
-      await loadProfiles();
-    } catch (e: any) {
-      alert(e.message || "Failed to delete profile");
-    }
-  }
-
-  async function updateProfile() {
+  async function handleUpdateProfile() {
     if (!selectedProfile) return;
     
     try {
-      const response = await fetch(`/api/profiles/saved/${selectedProfile.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          notes: editingNotes,
-          tags: editingTags,
-          outreach_status: editingStatus
-        })
+      await updateSavedProfile(selectedProfile.id, {
+        notes: editingNotes,
+        tags: editingTags,
+        outreach_status: editingStatus as SavedSpeakerProfile['outreach_status'],
       });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to update profile");
-      }
-      
       setShowModal(false);
-      await loadProfiles();
     } catch (e: any) {
       alert(e.message || "Failed to update profile");
     }
@@ -142,20 +86,19 @@ export default function SavedProfilesPage() {
     setEditingTags(editingTags.filter(t => t !== tag));
   }
 
+  async function handleDeleteProfile(id: string) {
+    if (!confirm("Are you sure you want to delete this profile?")) return;
+
+    try {
+      await removeProfile(id);
+    } catch (e: any) {
+      alert(e.message || "Failed to delete profile");
+    }
+  }
+
   async function updateProfileStatus(profileId: string, status: string) {
     try {
-      const response = await fetch(`/api/profiles/saved/${profileId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outreach_status: status })
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to update status");
-      }
-      
-      await loadProfiles();
+      await updateStatus(profileId, status as SavedSpeakerProfile["outreach_status"]);
     } catch (e: any) {
       alert(e.message || "Failed to update status");
     }
@@ -163,18 +106,7 @@ export default function SavedProfilesPage() {
 
   async function updateProfileNotes(profileId: string, notes: string) {
     try {
-      const response = await fetch(`/api/profiles/saved/${profileId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes })
-      });
-      
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to update notes");
-      }
-      
-      await loadProfiles();
+      await updateNotes(profileId, notes);
     } catch (e: any) {
       alert(e.message || "Failed to update notes");
     }
@@ -219,8 +151,6 @@ export default function SavedProfilesPage() {
       </div>
     );
   }
-
-  const allTags = Array.from(new Set(profiles.flatMap(p => p.tags || [])));
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -282,7 +212,7 @@ export default function SavedProfilesPage() {
           </div>
           <div className="flex items-end">
             <button
-              onClick={loadProfiles}
+              onClick={refresh}
               className="w-full px-4 py-2 bg-slate-600 text-white rounded-md hover:bg-slate-700"
             >
               Refresh
@@ -300,7 +230,7 @@ export default function SavedProfilesPage() {
         <div className="text-center py-12">
           <p className="text-red-600">Error: {error}</p>
           <button
-            onClick={loadProfiles}
+            onClick={refresh}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Try Again
@@ -318,7 +248,7 @@ export default function SavedProfilesPage() {
               key={profile.id}
               profile={profile}
               onEdit={openEditModal}
-              onDelete={deleteProfile}
+              onDelete={handleDeleteProfile}
               onStatusChange={updateProfileStatus}
               onNotesChange={updateProfileNotes}
               showActions={true}
@@ -411,7 +341,7 @@ export default function SavedProfilesPage() {
 
               <div className="flex gap-3 mt-8">
                 <button
-                  onClick={updateProfile}
+                  onClick={handleUpdateProfile}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   Save Changes
