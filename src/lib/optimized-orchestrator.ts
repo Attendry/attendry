@@ -21,6 +21,7 @@ import { getCountryContext } from './utils/country';
 import { loadActiveConfig } from '../common/search/config';
 import { buildWeightedQuery, buildWeightedGeminiContext } from './services/weighted-query-builder';
 import { WEIGHTED_INDUSTRY_TEMPLATES } from './data/weighted-templates';
+import { SearchService } from './services/search-service';
 import { 
   getParallelProcessor, 
   processUrlDiscoveryParallel, 
@@ -1127,36 +1128,57 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   
   const startTime = Date.now();
   
-  // Use parallel processing for event extraction
+  const canonicalizeUrl = (url: string | undefined) => {
+    if (!url) return '';
+    return url.replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
+  };
+
+  const deriveTitleFromUrl = (url: string) => {
+    try {
+      const parsed = new URL(url);
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      if (segments.length === 0) {
+        return parsed.hostname.replace('www.', '').replace(/\./g, ' ');
+      }
+      const slug = segments[segments.length - 1].replace(/[-_]/g, ' ');
+      return slug
+        .split(' ')
+        .filter(Boolean)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    } catch (error) {
+      return url;
+    }
+  };
+
+  // Use parallel processing for event extraction with Firecrawl extract
   const parallelProcessor = getParallelProcessor();
-  const extractionTasks = prioritized.map((item, index) => 
-    createParallelTask(
+  const extractionTasks = prioritized.map((item, index) => {
+    return createParallelTask(
       `extraction_${index}`,
       item.url,
       item.score,
       'firecrawl'
-    )
-  );
-  
+    );
+  });
+
   const extractionResults = await parallelProcessor.processParallel(
     extractionTasks,
     async (task) => {
       return await executeWithRetry(async () => {
-        console.log('[optimized-orchestrator] Extracting event details from:', task.data);
-        const result = await unifiedSearch({
-          q: task.data,
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          country: params.country || undefined,
-          limit: 1,
-          useCache: true
-        });
-        return result;
+        const url = task.data;
+        console.log('[optimized-orchestrator] Extracting event details from:', url);
+        const extractionStart = Date.now();
+        const extractResult = await SearchService.extractEvents([url]);
+        return {
+          ...extractResult,
+          duration: Date.now() - extractionStart
+        };
       }, 'firecrawl');
     },
     {
       maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions,
-      enableEarlyTermination: ORCHESTRATOR_CONFIG.parallel.enableEarlyTermination,
+      enableEarlyTermination: false, // ensure we attempt extraction for all prioritized URLs
       qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.parseQuality,
       minResults: 1
     }
@@ -1164,36 +1186,103 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
 
   // Process extraction results
   const events: EventCandidate[] = [];
-  extractionResults.forEach((result, index) => {
-    if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
-      const searchResult = result.result as { items: any[] };
-      if (searchResult.items && searchResult.items.length > 0) {
-        const item = searchResult.items[0];
-        const prioritizedItem = prioritized[index];
-        
-        events.push({
-          url: prioritizedItem.url,
-          title: item.title || 'Untitled Event',
-          description: item.description || '',
-          date: item.date || '',
-          location: item.location || '',
-          venue: item.venue || '',
-          speakers: item.speakers || [],
-          sponsors: item.sponsors || [],
-          confidence: prioritizedItem.score,
-          source: 'firecrawl',
-          metadata: {
-            originalQuery: prioritizedItem.url,
-            country: params.country,
-            processingTime: Date.now() - startTime,
-            stageTimings: {
-              extraction: Date.now() - startTime
-            }
-          }
-        });
-      }
+  const processedIndexes = new Set<number>();
+  extractionResults.forEach((result) => {
+    if (!result.success || !result.result) {
+      return;
     }
+
+    const taskIndex = parseInt(result.id.split('_')[1], 10);
+    const prioritizedItem = prioritized[taskIndex];
+    if (!prioritizedItem) {
+      return;
+    }
+
+    const extractedPayload = result.result.events?.find((event: any) => {
+      return canonicalizeUrl(event?.source_url) === canonicalizeUrl(prioritizedItem.url);
+    }) || result.result.events?.[0];
+
+    if (!extractedPayload) {
+      return;
+    }
+
+    const joinLocation = () => {
+      if (extractedPayload.location) return extractedPayload.location;
+      const parts = [extractedPayload.city, extractedPayload.country]
+        .filter((value: string | null | undefined) => !!value && typeof value === 'string')
+        .map((value: string) => value.trim());
+      return parts.join(', ');
+    };
+
+    const speakers: SpeakerInfo[] = Array.isArray(extractedPayload.speakers)
+      ? extractedPayload.speakers
+          .filter((speaker: any) => speaker && typeof speaker.name === 'string' && speaker.name.trim().length > 0)
+          .map((speaker: any) => ({
+            name: speaker.name,
+            title: speaker.title || speaker.session_title || undefined,
+            company: speaker.org || speaker.company || undefined
+          }))
+      : [];
+
+    const sponsors: SponsorInfo[] = Array.isArray(extractedPayload.sponsors)
+      ? extractedPayload.sponsors
+          .filter((sponsor: any) => typeof sponsor === 'string' && sponsor.trim().length > 0)
+          .map((sponsor: string) => ({ name: sponsor.trim() }))
+      : [];
+
+    const confidenceFromExtraction = typeof extractedPayload.confidence === 'number'
+      ? extractedPayload.confidence
+      : 0;
+
+    events.push({
+      url: prioritizedItem.url,
+      title: extractedPayload.title || 'Untitled Event',
+      description: extractedPayload.description || '',
+      date: extractedPayload.starts_at || '',
+      location: joinLocation(),
+      venue: extractedPayload.venue || '',
+      speakers,
+      sponsors,
+      confidence: Math.min(1, Math.max(prioritizedItem.score, confidenceFromExtraction)),
+      source: 'firecrawl',
+      metadata: {
+        originalQuery: prioritizedItem.url,
+        country: params.country,
+        processingTime: Date.now() - startTime,
+        stageTimings: {
+          extraction: result.result.duration || Date.now() - startTime
+        }
+      }
+    });
+
+    processedIndexes.add(taskIndex);
   });
+
+  // If extraction failed for every URL, fall back to derived metadata to avoid empty responses
+  if (events.length === 0) {
+    prioritized.forEach((item) => {
+      events.push({
+        url: item.url,
+        title: deriveTitleFromUrl(item.url),
+        description: '',
+        date: '',
+        location: '',
+        venue: '',
+        speakers: [],
+        sponsors: [],
+        confidence: item.score,
+        source: 'firecrawl',
+        metadata: {
+          originalQuery: item.url,
+          country: params.country,
+          processingTime: Date.now() - startTime,
+          stageTimings: {
+            extraction: Date.now() - startTime
+          }
+        }
+      });
+    });
+  }
 
   console.log(`[optimized-orchestrator] Extracted ${events.length} events from ${prioritized.length} prioritized URLs in ${Date.now() - startTime}ms`);
   
