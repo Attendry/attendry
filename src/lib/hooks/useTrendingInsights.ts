@@ -8,6 +8,10 @@ export interface TrendingCategory {
   events: EventData[];
 }
 
+interface UseTrendingInsightsOptions {
+  enabled?: boolean;
+}
+
 interface UseTrendingInsightsReturn {
   categories: TrendingCategory[];
   events: EventData[];
@@ -16,13 +20,19 @@ interface UseTrendingInsightsReturn {
   refresh: () => void;
 }
 
-export function useTrendingInsights(): UseTrendingInsightsReturn {
+export function useTrendingInsights(options: UseTrendingInsightsOptions = {}): UseTrendingInsightsReturn {
+  const { enabled = true } = options;
   const [categories, setCategories] = useState<TrendingCategory[]>([]);
   const [events, setEvents] = useState<EventData[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const enabledRef = useRef<boolean>(enabled);
+
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   const fetchData = useCallback(async () => {
     if (abortControllerRef.current) {
@@ -36,6 +46,12 @@ export function useTrendingInsights(): UseTrendingInsightsReturn {
     setError(null);
 
     try {
+      if (!enabledRef.current) {
+        setCategories([]);
+        setEvents([]);
+        return;
+      }
+
       const response = await fetch('/api/events/trending', {
         signal: controller.signal,
       });
@@ -66,6 +82,9 @@ export function useTrendingInsights(): UseTrendingInsightsReturn {
   }, [fetchData]);
 
   const refresh = useCallback(() => {
+    if (!enabledRef.current) {
+      return;
+    }
     void fetchData();
   }, [fetchData]);
 
@@ -77,5 +96,4 @@ export function useTrendingInsights(): UseTrendingInsightsReturn {
     refresh,
   };
 }
-
 

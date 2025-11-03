@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import {
   ArrowUpRight,
   BarChart3,
@@ -13,9 +13,35 @@ import {
 
 import RecommendationEngine from '@/components/RecommendationEngine';
 import { useTrendingInsights } from '@/lib/hooks/useTrendingInsights';
+import { supabaseBrowser } from '@/lib/supabase-browser';
+import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 
 export const MarketIntelligenceStandalone = memo(() => {
-  const { categories, events, loading, error, refresh } = useTrendingInsights();
+  const [authReady, setAuthReady] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = supabaseBrowser();
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) {
+        setUserId(data.session?.user?.id ?? null);
+        setAuthReady(true);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) setUserId(session?.user?.id ?? null);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const { categories, events, loading, error, refresh } = useTrendingInsights({ enabled: authReady && !!userId });
 
   const primaryCategory = categories[0];
   const secondaryCategory = categories[1];
@@ -31,8 +57,28 @@ export const MarketIntelligenceStandalone = memo(() => {
     return `${primaryCategory.name} is ${direction} ${growthValue} week-over-week with ${primaryCategory.count} active events.`;
   }, [primaryCategory]);
 
+  if (!authReady) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-white px-6 py-4 text-sm text-blue-800 shadow">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> Checking your session...
+        </div>
+      </div>
+    );
+  }
+
+  const showAuthNotice = !userId;
+
   return (
     <div className="space-y-8">
+      {showAuthNotice ? (
+        <UnauthenticatedNotice
+          feature="Market Intelligence"
+          description="Log in to unlock live trend tracking and personalized event recommendations. You can continue exploring demo data without signing in."
+          className="bg-white"
+        />
+      ) : null}
+
       <header className="rounded-2xl border border-blue-100 bg-blue-50/70 p-6 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
