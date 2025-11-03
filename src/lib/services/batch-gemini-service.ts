@@ -355,7 +355,30 @@ IMPORTANT RULES:
     }>
   ): SpeakerExtractionResult[] {
     try {
-      const text = response.candidates[0].content.parts[0].text;
+      const candidate = response?.candidates?.[0];
+      const parts = candidate?.content?.parts;
+      let text = '';
+
+      if (Array.isArray(parts) && parts[0]?.text) {
+        text = parts[0].text as string;
+      } else if (typeof candidate?.content?.text === 'string') {
+        text = candidate.content.text;
+      } else if (typeof response?.text === 'string') {
+        text = response.text;
+      }
+
+      if (!text || typeof text !== 'string') {
+        console.warn('No candidate text in Gemini response, returning empty results');
+        return originalEvents.map(event => ({
+          eventId: event.id,
+          speakers: [],
+          sponsors: [],
+          participating_organizations: [],
+          partners: [],
+          success: false,
+          error: 'No content in response'
+        }));
+      }
       
       // Try multiple JSON extraction methods
       let jsonMatch = text.match(/\[[\s\S]*?\]/);

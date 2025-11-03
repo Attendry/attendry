@@ -1185,6 +1185,12 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     ORCHESTRATOR_CONFIG.thresholds.prioritization
   );
 
+  const prioritizedWithMeta = prioritized.map((item, index) => ({
+    ...item,
+    index,
+    isDirectory: isLowValueDirectory(item.url)
+  }));
+
   const canonicalizeUrl = (url: string | undefined) => {
     if (!url) return '';
     return url.replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
@@ -1210,15 +1216,29 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
 
   // Use parallel processing for event extraction with Firecrawl extract
   const parallelProcessor = getParallelProcessor();
-  const detailedTargets = prioritized.slice(0, MAX_DETAILED_EXTRACTIONS);
-  const extractionTasks = detailedTargets.map((item, index) => {
-    return createParallelTask(
-      `extraction_${index}`,
+  const nonDirectoryTargets = prioritizedWithMeta.filter(item => !item.isDirectory);
+  let detailedPlan = nonDirectoryTargets.slice(0, MAX_DETAILED_EXTRACTIONS);
+
+  if (detailedPlan.length < Math.min(MAX_DETAILED_EXTRACTIONS, prioritizedWithMeta.length)) {
+    const remainingSlots = MAX_DETAILED_EXTRACTIONS - detailedPlan.length;
+    if (remainingSlots > 0) {
+      const directoryFallback = prioritizedWithMeta
+        .filter(item => item.isDirectory && !detailedPlan.some(plan => plan.index === item.index))
+        .slice(0, remainingSlots);
+      detailedPlan = detailedPlan.concat(directoryFallback);
+    }
+  }
+
+  const detailedIndices = new Set(detailedPlan.map(item => item.index));
+
+  const extractionTasks = detailedPlan.map(item =>
+    createParallelTask(
+      `extraction_${item.index}`,
       item.url,
       item.score,
       'firecrawl'
-    );
-  });
+    )
+  );
 
   const extractionResults = extractionTasks.length > 0
     ? await parallelProcessor.processParallel(
@@ -1253,7 +1273,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     }
 
     const taskIndex = parseInt(result.id.split('_')[1], 10);
-    const prioritizedItem = detailedTargets[taskIndex];
+    const prioritizedItem = prioritizedWithMeta.find(item => item.index === taskIndex);
     if (!prioritizedItem) {
       return;
     }
@@ -1316,7 +1336,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         stageTimings: {
           extraction: result.result.duration || Date.now() - startTime
         },
-        directorySource,
+        directorySource: prioritizedItem.isDirectory,
         stub: false
       }
     });
@@ -1325,9 +1345,8 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   });
 
   // Fallback for detailed targets without successful extraction
-  detailedTargets.forEach((item, index) => {
-    if (!processedIndexes.has(index)) {
-      const directorySource = isLowValueDirectory(item.url);
+  detailedPlan.forEach((item) => {
+    if (!processedIndexes.has(item.index)) {
       events.push({
         url: item.url,
         title: deriveTitleFromUrl(item.url),
@@ -1348,16 +1367,18 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
           },
           skipSpeakerEnhancement: true,
           stub: true,
-          directorySource
+          directorySource: item.isDirectory
         }
       });
     }
   });
 
   // Provide minimal events for remaining prioritized URLs beyond detailed extraction
-  const fallbackTargets = prioritized.slice(detailedTargets.length);
-  fallbackTargets.forEach(item => {
-    const directorySource = isLowValueDirectory(item.url);
+  prioritizedWithMeta.forEach(item => {
+    if (processedIndexes.has(item.index) || detailedIndices.has(item.index)) {
+      return;
+    }
+
     events.push({
       url: item.url,
       title: deriveTitleFromUrl(item.url),
@@ -1378,15 +1399,14 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         },
         skipSpeakerEnhancement: true,
         stub: true,
-        directorySource
+        directorySource: item.isDirectory
       }
     });
   });
 
   // If extraction failed for every URL (no detailed targets), ensure minimal results
   if (events.length === 0) {
-    prioritized.forEach((item) => {
-      const directorySource = isLowValueDirectory(item.url);
+    prioritizedWithMeta.forEach((item) => {
       events.push({
         url: item.url,
         title: deriveTitleFromUrl(item.url),
@@ -1407,7 +1427,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
           },
           skipSpeakerEnhancement: true,
           stub: true,
-          directorySource
+          directorySource: item.isDirectory
         }
       });
     });
@@ -1508,13 +1528,29 @@ function filterAndRankEvents(events: EventCandidate[]): EventCandidate[] {
   const hasMeaningfulDetails = (event: EventCandidate) =>
     hasSpeakerData(event) || hasMeaningfulDescription(event);
 
-  return events
+  let filtered = events
     .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.confidence)
     .filter(event => !event.metadata?.stub)
     .filter(event => !event.metadata?.directorySource || hasSpeakerData(event))
     .filter(event => hasMeaningfulDetails(event))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
+
+  if (filtered.length === 0) {
+    filtered = events
+      .filter(event => !event.metadata?.stub)
+      .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.prioritization)
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
+  }
+
+  if (filtered.length === 0) {
+    filtered = events
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, Math.min(ORCHESTRATOR_CONFIG.limits.maxExtractions, events.length));
+  }
+
+  return filtered;
 }
 
 /**
