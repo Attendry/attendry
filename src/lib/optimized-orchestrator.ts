@@ -1376,10 +1376,7 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   // Process enhancement results
   const enhancedEvents: EventCandidate[] = [];
   enhancementResults.forEach((result, index) => {
-    if (result.success && result.result && typeof result.result === 'object' && 'event' in result.result) {
-      const enhancedEvent = result.result.event as EventCandidate;
-      enhancedEvents.push(enhancedEvent);
-    }
+    console.log(`[optimized-orchestrator] Enhancement result ${index}: success=${result.success}, hasResult=${!!result.result}, error=${result.error?.message || 'none'}`); if (result.success && result.result) { const enhancedEvent = result.result as EventCandidate; console.log(`[optimized-orchestrator] Adding enhanced event: ${enhancedEvent.title || enhancedEvent.url}`); enhancedEvents.push(enhancedEvent); } else { console.warn('[optimized-orchestrator] Enhancement failed for task:', result.id, result.error?.message); }
   });
 
   console.log(`[optimized-orchestrator] Enhanced ${enhancedEvents.length} events in ${Date.now() - startTime}ms`);
