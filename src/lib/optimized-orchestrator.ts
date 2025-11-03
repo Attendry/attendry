@@ -674,7 +674,7 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
  */
 async function discoverEventCandidates(query: string, params: OptimizedSearchParams, userProfile?: any): Promise<string[]> {
   const startTime = Date.now();
-  
+
   // Create multiple query variations for parallel discovery
   const queryVariations = [
     query, // Original query
@@ -990,6 +990,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     }
     
     // Return enhanced fallback scoring that keeps high-quality URLs above the publish threshold
+    const minConfidence = Math.max(ORCHESTRATOR_CONFIG.thresholds.confidence + 0.05, ORCHESTRATOR_CONFIG.thresholds.prioritization);
     return urls.map((url, idx) => {
       const baseScore = Math.max(ORCHESTRATOR_CONFIG.thresholds.confidence + 0.15, 0.7);
       let score = baseScore - idx * 0.05;
@@ -1005,9 +1006,10 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         score += 0.02;
       }
 
+      const normalizedScore = Number.isFinite(score) ? score : minConfidence;
       return {
         url,
-        score: Math.min(Math.max(score, ORCHESTRATOR_CONFIG.thresholds.prioritization), 0.95),
+        score: Math.min(Math.max(normalizedScore, minConfidence), 0.95),
         reason: `fallback_${errorType}`
       };
     });
@@ -1127,6 +1129,30 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   if (prioritized.length === 0) return [];
   
   const startTime = Date.now();
+  const MAX_DETAILED_EXTRACTIONS = Math.min(3, ORCHESTRATOR_CONFIG.limits.maxExtractions);
+  const fallbackConfidenceFloor = Math.max(
+    ORCHESTRATOR_CONFIG.thresholds.confidence + 0.05,
+    ORCHESTRATOR_CONFIG.thresholds.prioritization
+  );
+
+  const normalizeConfidence = (value: unknown, floor: number) => {
+    let numeric: number | null = null;
+
+    if (typeof value === 'number') {
+      numeric = value;
+    } else if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      if (!Number.isNaN(parsed)) {
+        numeric = parsed;
+      }
+    }
+
+    if (numeric === null || !Number.isFinite(numeric)) {
+      return floor;
+    }
+
+    return Math.max(numeric, floor);
+  };
   
   const canonicalizeUrl = (url: string | undefined) => {
     if (!url) return '';
@@ -1153,7 +1179,8 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
 
   // Use parallel processing for event extraction with Firecrawl extract
   const parallelProcessor = getParallelProcessor();
-  const extractionTasks = prioritized.map((item, index) => {
+  const detailedTargets = prioritized.slice(0, MAX_DETAILED_EXTRACTIONS);
+  const extractionTasks = detailedTargets.map((item, index) => {
     return createParallelTask(
       `extraction_${index}`,
       item.url,
@@ -1162,27 +1189,29 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     );
   });
 
-  const extractionResults = await parallelProcessor.processParallel(
-    extractionTasks,
-    async (task) => {
-      return await executeWithRetry(async () => {
-        const url = task.data;
-        console.log('[optimized-orchestrator] Extracting event details from:', url);
-        const extractionStart = Date.now();
-        const extractResult = await SearchService.extractEvents([url]);
-        return {
-          ...extractResult,
-          duration: Date.now() - extractionStart
-        };
-      }, 'firecrawl');
-    },
-    {
-      maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions,
-      enableEarlyTermination: false, // ensure we attempt extraction for all prioritized URLs
-      qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.parseQuality,
-      minResults: 1
-    }
-  );
+  const extractionResults = extractionTasks.length > 0
+    ? await parallelProcessor.processParallel(
+        extractionTasks,
+        async (task) => {
+          return await executeWithRetry(async () => {
+            const url = task.data;
+            console.log('[optimized-orchestrator] Extracting event details from:', url);
+            const extractionStart = Date.now();
+            const extractResult = await SearchService.extractEvents([url]);
+            return {
+              ...extractResult,
+              duration: Date.now() - extractionStart
+            };
+          }, 'firecrawl');
+        },
+        {
+          maxConcurrency: 1,
+          enableEarlyTermination: false,
+          qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.parseQuality,
+          minResults: 1
+        }
+      )
+    : [];
 
   // Process extraction results
   const events: EventCandidate[] = [];
@@ -1193,7 +1222,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     }
 
     const taskIndex = parseInt(result.id.split('_')[1], 10);
-    const prioritizedItem = prioritized[taskIndex];
+    const prioritizedItem = detailedTargets[taskIndex];
     if (!prioritizedItem) {
       return;
     }
@@ -1230,9 +1259,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
           .map((sponsor: string) => ({ name: sponsor.trim() }))
       : [];
 
-    const confidenceFromExtraction = typeof extractedPayload.confidence === 'number'
-      ? extractedPayload.confidence
-      : 0;
+    const confidenceFromExtraction = normalizeConfidence(extractedPayload.confidence, fallbackConfidenceFloor);
 
     events.push({
       url: prioritizedItem.url,
@@ -1243,7 +1270,13 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       venue: extractedPayload.venue || '',
       speakers,
       sponsors,
-      confidence: Math.min(1, Math.max(prioritizedItem.score, confidenceFromExtraction)),
+      confidence: Math.min(
+        1,
+        Math.max(
+          normalizeConfidence(prioritizedItem.score, fallbackConfidenceFloor),
+          confidenceFromExtraction
+        )
+      ),
       source: 'firecrawl',
       metadata: {
         originalQuery: prioritizedItem.url,
@@ -1258,7 +1291,60 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     processedIndexes.add(taskIndex);
   });
 
-  // If extraction failed for every URL, fall back to derived metadata to avoid empty responses
+  // Fallback for detailed targets without successful extraction
+  detailedTargets.forEach((item, index) => {
+    if (!processedIndexes.has(index)) {
+      events.push({
+        url: item.url,
+        title: deriveTitleFromUrl(item.url),
+        description: '',
+        date: '',
+        location: '',
+        venue: '',
+        speakers: [],
+        sponsors: [],
+        confidence: normalizeConfidence(item.score, fallbackConfidenceFloor),
+        source: 'firecrawl',
+        metadata: {
+          originalQuery: item.url,
+          country: params.country,
+          processingTime: Date.now() - startTime,
+          stageTimings: {
+            extraction: Date.now() - startTime
+          },
+          skipSpeakerEnhancement: true
+        }
+      });
+    }
+  });
+
+  // Provide minimal events for remaining prioritized URLs beyond detailed extraction
+  const fallbackTargets = prioritized.slice(detailedTargets.length);
+  fallbackTargets.forEach(item => {
+    events.push({
+      url: item.url,
+      title: deriveTitleFromUrl(item.url),
+      description: '',
+      date: '',
+      location: '',
+      venue: '',
+      speakers: [],
+      sponsors: [],
+      confidence: normalizeConfidence(item.score, fallbackConfidenceFloor),
+      source: 'firecrawl',
+      metadata: {
+        originalQuery: item.url,
+        country: params.country,
+        processingTime: Date.now() - startTime,
+        stageTimings: {
+          extraction: Date.now() - startTime
+        },
+        skipSpeakerEnhancement: true
+      }
+    });
+  });
+
+  // If extraction failed for every URL (no detailed targets), ensure minimal results
   if (events.length === 0) {
     prioritized.forEach((item) => {
       events.push({
@@ -1270,7 +1356,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         venue: '',
         speakers: [],
         sponsors: [],
-        confidence: item.score,
+        confidence: normalizeConfidence(item.score, fallbackConfidenceFloor),
         source: 'firecrawl',
         metadata: {
           originalQuery: item.url,
@@ -1278,7 +1364,8 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
           processingTime: Date.now() - startTime,
           stageTimings: {
             extraction: Date.now() - startTime
-          }
+          },
+          skipSpeakerEnhancement: true
         }
       });
     });
@@ -1296,10 +1383,15 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   if (events.length === 0) return [];
   
   const startTime = Date.now();
+  const enhanceableEvents = events.filter(event => !event.metadata?.skipSpeakerEnhancement);
+
+  if (enhanceableEvents.length === 0) {
+    return events;
+  }
   
   // Use parallel processing for speaker enhancement
   const parallelProcessor = getParallelProcessor();
-  const enhancementTasks = events.map((event, index) => 
+  const enhancementTasks = enhanceableEvents.map((event, index) => 
     createParallelTask(
       `enhancement_${index}`,
       event.url,
@@ -1314,7 +1406,7 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
       return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
         const eventIndex = parseInt(task.id.split('_')[1], 10);
-        const originalEvent = events[eventIndex];
+        const originalEvent = enhanceableEvents[eventIndex];
 
         if (!originalEvent) {
           throw new Error(`No event found for enhancement task ${task.id}`);
@@ -1334,16 +1426,31 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
   );
 
   // Process enhancement results
-  const enhancedEvents: EventCandidate[] = [];
+  const enhancedMap = new Map<string, EventCandidate>();
   enhancementResults.forEach((result) => {
+    const eventIndex = parseInt(result.id.split('_')[1], 10);
+    const originalEvent = enhanceableEvents[eventIndex];
+
+    if (!originalEvent) {
+      return;
+    }
+
     if (result.success && result.result) {
-      enhancedEvents.push(result.result as EventCandidate);
+      enhancedMap.set(originalEvent.url, result.result as EventCandidate);
+    } else {
+      enhancedMap.set(originalEvent.url, originalEvent);
     }
   });
 
-  console.log(`[optimized-orchestrator] Enhanced ${enhancedEvents.length} events in ${Date.now() - startTime}ms`);
-  
-  return enhancedEvents;
+  console.log(`[optimized-orchestrator] Enhanced ${enhancedMap.size} events in ${Date.now() - startTime}ms`);
+
+  return events.map(event => {
+    if (event.metadata?.skipSpeakerEnhancement) {
+      return event;
+    }
+
+    return enhancedMap.get(event.url) || event;
+  });
 }
 
 /**
