@@ -829,7 +829,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 256, // Reduced from 1024 to 256
+              maxOutputTokens: 1024, // Increased to handle full responses and avoid MAX_TOKENS truncation
               topP: 0.9,
               topK: 20,
               candidateCount: 1,
@@ -876,6 +876,12 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         // Parse the response
         const responseData = JSON.parse(rawText);
         
+        // Handle MAX_TOKENS finish reason - even if truncated, try to extract what we have
+        const finishReason = responseData.candidates?.[0]?.finishReason;
+        if (finishReason === 'MAX_TOKENS') {
+          console.warn('[optimized-orchestrator] Gemini response truncated due to MAX_TOKENS, attempting to extract partial content');
+        }
+        
         // Handle different response formats
         let content = null;
         if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -891,6 +897,11 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         console.debug('[optimized-orchestrator] Extracted content:', content ? content.substring(0, 100) + '...' : 'null');
         
         if (!content) {
+          // If MAX_TOKENS and no content, this means the response was fully truncated
+          if (finishReason === 'MAX_TOKENS') {
+            console.warn('[optimized-orchestrator] Gemini response fully truncated due to MAX_TOKENS, prompt may be too long');
+            throw new Error('Gemini response truncated - prompt too long');
+          }
           console.warn('[optimized-orchestrator] No content in Gemini response, full response:', JSON.stringify(responseData, null, 2));
           throw new Error('No content in Gemini response');
         }
@@ -1110,6 +1121,26 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   if (prioritized.length === 0) return [];
   
   const startTime = Date.now();
+  const firecrawlKey = process.env.FIRECRAWL_KEY;
+  
+  if (!firecrawlKey) {
+    console.warn('[optimized-orchestrator] No FIRECRAWL_KEY, returning minimal events');
+    return prioritized.map((item) => ({
+      url: item.url,
+      title: 'Event',
+      description: '',
+      confidence: item.score,
+      source: 'firecrawl' as const,
+      metadata: {
+        originalQuery: item.url,
+        country: params.country,
+        processingTime: Date.now() - startTime,
+        stageTimings: {
+          extraction: Date.now() - startTime
+        }
+      }
+    }));
+  }
   
   // Use parallel processing for event extraction
   const parallelProcessor = getParallelProcessor();
@@ -1127,15 +1158,48 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     async (task) => {
       return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Extracting event details from:', task.data);
-        const result = await unifiedSearch({
-          q: task.data,
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          country: params.country || undefined,
-          limit: 1,
-          useCache: true
+        
+        // Use Firecrawl v2 scrape API to extract event details
+        const scrapeResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${firecrawlKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            url: task.data,
+            formats: ['markdown', 'html'],
+            onlyMainContent: false,
+            timeout: 20000
+          })
         });
-        return result;
+
+        if (!scrapeResponse.ok) {
+          throw new Error(`Firecrawl scrape failed: ${scrapeResponse.status}`);
+        }
+
+        const scrapeData = await scrapeResponse.json();
+        
+        // Extract basic event information from scraped content
+        const metadata = scrapeData.data?.metadata || {};
+        const markdown = scrapeData.data?.markdown || scrapeData.data?.content || '';
+        
+        // Basic parsing - extract title, description, and other metadata
+        const title = metadata.title || extractTitleFromMarkdown(markdown) || 'Event';
+        const description = metadata.description || extractDescriptionFromMarkdown(markdown) || '';
+        
+        return {
+          success: true,
+          result: {
+            url: task.data,
+            title,
+            description,
+            date: extractDateFromMarkdown(markdown),
+            location: extractLocationFromMarkdown(markdown),
+            venue: extractVenueFromMarkdown(markdown),
+            metadata
+          }
+        };
       }, 'firecrawl');
     },
     {
@@ -1149,39 +1213,116 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   // Process extraction results
   const events: EventCandidate[] = [];
   extractionResults.forEach((result, index) => {
-    if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
-      const searchResult = result.result as { items: any[] };
-      if (searchResult.items && searchResult.items.length > 0) {
-        const item = searchResult.items[0];
-        const prioritizedItem = prioritized[index];
-        
-        events.push({
-          url: prioritizedItem.url,
-          title: item.title || 'Untitled Event',
-          description: item.description || '',
-          date: item.date || '',
-          location: item.location || '',
-          venue: item.venue || '',
-          speakers: item.speakers || [],
-          sponsors: item.sponsors || [],
-          confidence: prioritizedItem.score,
-          source: 'firecrawl',
-          metadata: {
-            originalQuery: prioritizedItem.url,
-            country: params.country,
-            processingTime: Date.now() - startTime,
-            stageTimings: {
-              extraction: Date.now() - startTime
-            }
+    if (result.success && result.result) {
+      const extractedData = result.result as any;
+      const prioritizedItem = prioritized[index];
+      
+      events.push({
+        url: prioritizedItem.url,
+        title: extractedData.title || 'Untitled Event',
+        description: extractedData.description || '',
+        date: extractedData.date || '',
+        location: extractedData.location || '',
+        venue: extractedData.venue || '',
+        speakers: [],
+        sponsors: [],
+        confidence: prioritizedItem.score,
+        source: 'firecrawl',
+        metadata: {
+          originalQuery: prioritizedItem.url,
+          country: params.country,
+          processingTime: Date.now() - startTime,
+          stageTimings: {
+            extraction: Date.now() - startTime
           }
-        });
-      }
+        }
+      });
     }
   });
 
   console.log(`[optimized-orchestrator] Extracted ${events.length} events from ${prioritized.length} prioritized URLs in ${Date.now() - startTime}ms`);
   
   return events;
+}
+
+/**
+ * Helper functions to extract event information from markdown content
+ */
+function extractTitleFromMarkdown(markdown: string): string | null {
+  // Try to find the first H1 heading
+  const h1Match = markdown.match(/^#\s+(.+)$/m);
+  if (h1Match) return h1Match[1].trim();
+  
+  // Try to find title in first few lines
+  const lines = markdown.split('\n').slice(0, 5);
+  for (const line of lines) {
+    if (line.trim().length > 10 && line.trim().length < 200) {
+      return line.trim();
+    }
+  }
+  
+  return null;
+}
+
+function extractDescriptionFromMarkdown(markdown: string): string {
+  // Extract first substantial paragraph
+  const paragraphs = markdown.split('\n\n').filter(p => p.trim().length > 50);
+  if (paragraphs.length > 0) {
+    return paragraphs[0].substring(0, 500).trim();
+  }
+  return '';
+}
+
+function extractDateFromMarkdown(markdown: string): string {
+  // Look for date patterns
+  const datePatterns = [
+    /\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}/g,
+    /\d{4}[.\/-]\d{1,2}[.\/-]\d{1,2}/g,
+    /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/gi,
+    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+\d{1,2},?\s+\d{4}/gi
+  ];
+  
+  for (const pattern of datePatterns) {
+    const match = markdown.match(pattern);
+    if (match) {
+      return match[0];
+    }
+  }
+  
+  return '';
+}
+
+function extractLocationFromMarkdown(markdown: string): string {
+  // Look for location indicators
+  const locationPatterns = [
+    /(?:Location|Venue|Address|Where):\s*(.+)/i,
+    /(?:in|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g
+  ];
+  
+  for (const pattern of locationPatterns) {
+    const match = markdown.match(pattern);
+    if (match) {
+      return match[1].trim();
+    }
+  }
+  
+  return '';
+}
+
+function extractVenueFromMarkdown(markdown: string): string {
+  // Look for venue indicators
+  const venuePatterns = [
+    /(?:Venue|Location):\s*(.+)/i
+  ];
+  
+  for (const pattern of venuePatterns) {
+    const match = markdown.match(pattern);
+    if (match) {
+      return match[1].trim();
+    }
+  }
+  
+  return '';
 }
 
 /**
@@ -1203,14 +1344,25 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
     )
   );
   
+  // Create a map from URL to event for proper mapping
+  const eventMap = new Map<string, EventCandidate>();
+  events.forEach(event => {
+    eventMap.set(event.url, event);
+  });
+  
   const enhancementResults = await parallelProcessor.processParallel(
     enhancementTasks,
     async (task) => {
       return await executeWithRetry(async () => {
         console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
+        // Use URL to map back to the original event
+        const originalEvent = eventMap.get(task.data);
+        if (!originalEvent) {
+          throw new Error(`Event not found for URL: ${task.data}`);
+        }
         // This would typically call a speaker enhancement service
         // For now, we'll just return the original event
-        return { success: true, result: { event: events[parseInt(task.id.split('_')[1])] } };
+        return { success: true, result: { event: originalEvent } };
       }, 'firecrawl');
     },
     {
