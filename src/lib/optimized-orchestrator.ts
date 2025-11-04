@@ -829,7 +829,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 256, // Reduced from 1024 to 256
+              maxOutputTokens: 2048, // Increased to 2048 to allow sufficient tokens for structured JSON responses with speakers/events metadata
               topP: 0.9,
               topK: 20,
               candidateCount: 1,

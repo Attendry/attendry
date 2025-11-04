@@ -31,17 +31,17 @@ export interface EventMetadataPrompt {
 // Base configurations for different task types
 const BASE_CONFIGS = {
   SPEAKER_EXTRACTION: {
-    maxTokens: 1024, // Increased with system instructions
+    maxTokens: 2048, // Increased to 2048 to allow comprehensive speaker extraction with title, organization, and bio
     temperature: 0.1,
     systemInstruction: `You are a professional event analyst specializing in extracting speaker information from German and English event content. You identify speakers by their roles (Referent, Speaker, Moderator, etc.) and extract their professional details accurately.`
   },
   EVENT_PRIORITIZATION: {
-    maxTokens: 512, // Increased with system instructions
+    maxTokens: 1024, // Increased to 1024 to allow better prioritization explanations
     temperature: 0.1,
     systemInstruction: `You are a business event curator who evaluates event URLs for relevance to business professionals. You focus on conferences, workshops, and professional networking events that provide value to industry experts.`
   },
   EVENT_METADATA: {
-    maxTokens: 512, // Increased with system instructions
+    maxTokens: 1024, // Increased to 1024 to allow comprehensive event metadata extraction
     temperature: 0.1,
     systemInstruction: `You are an event information specialist who extracts structured metadata from event content. You identify key details like dates, locations, organizers, and registration information with high accuracy.`
   }
@@ -327,3 +327,5 @@ export function getFallbackPrompt(taskType: keyof typeof BASE_CONFIGS): string {
   
   return fallbacks[taskType];
 }
+
+

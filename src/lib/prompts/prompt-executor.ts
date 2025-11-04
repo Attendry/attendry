@@ -82,7 +82,7 @@ export class PromptExecutor {
         const response = await generateContentWithRetry({
           prompt: `${fallbackPrompt}\n\nContent: ${sanitizePromptContent(content, 1000)}`,
           systemInstruction: "You are a professional event analyst extracting speaker information.",
-          maxOutputTokens: 512,
+          maxOutputTokens: 2048, // Increased to 2048 to allow sufficient tokens for speaker extraction with title/organization
           temperature: 0.1
         });
         
