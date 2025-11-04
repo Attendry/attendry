@@ -541,139 +541,137 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
     console.log('Gemini key not available, returning empty speakers array');
     return [];
   }
-  
+
   try {
     console.log('Initializing Gemini for speaker extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     console.log('Gemini model initialized successfully');
-    
-    // Limit content length to prevent timeouts - use first 2000 chars per page
-    const combinedContent = crawlResults.map(result => 
+
+    const combinedContent = crawlResults.map(result =>
       `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 2000)}${result.content.length > 2000 ? '...' : ''}`
     ).join('\n\n');
-    
+
     console.log('Preparing content for Gemini analysis, total content length:', combinedContent.length);
-    
-    // Use the new prompt management system
+
     const { createSpeakerExtractionPrompt } = await import('./prompts/gemini-prompts');
     const { promptExecutor } = await import('./prompts/prompt-executor');
-    
+
     const prompt = createSpeakerExtractionPrompt(combinedContent, 15, 'general');
-    
     const result = await promptExecutor.executeSpeakerExtraction(prompt, combinedContent);
-    
+
     if (result.success && result.data?.speakers) {
       return result.data.speakers;
-    } else {
-      console.warn('Speaker extraction failed:', result.error);
-      return [];
     }
+
+    console.warn('Speaker extraction failed:', result.error);
+    return [];
+  } catch (error) {
+    console.warn('Speaker extraction error:', error);
+    return [];
+  }
+}
+
+export async function analyzeEventRequest(request: EventAnalysisRequest): Promise<EventAnalysisResponse> {
   const startTime = Date.now();
-  
-  // Set overall timeout for the entire analysis (2 minutes)
+
+  let timeoutId: NodeJS.Timeout | undefined;
   const overallTimeout = new Promise<EventAnalysisResponse>((_, reject) => {
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       reject(new Error('Event analysis timed out after 2 minutes'));
     }, 120000);
   });
-  
-  const analysisPromise = (async () => {
+
+  const analysisPromise = (async (): Promise<EventAnalysisResponse> => {
     try {
-      console.log('Starting event analysis for:', request.eventUrl);
-    
-    const { eventUrl, eventTitle, eventDate, country } = request;
-    
-    if (!eventUrl) {
-      return {
-        success: false,
-        cached: false,
-        event: {} as EventMetadata,
-        speakers: [],
-        crawl_stats: {
-          pages_crawled: 0,
-          total_content_length: 0,
-          speakers_found: 0,
-          crawl_duration_ms: 0
-        },
-        error: "Event URL is required"
-      };
-    }
-    
-    // Check cache first (but allow cache bypass for debugging)
-    const cachedResult = await getCachedAnalysis(eventUrl);
-    if (cachedResult && !process.env.BYPASS_CACHE && !process.env.NODE_ENV?.includes('development')) {
-      console.log('Returning cached result for:', eventUrl);
-      return cachedResult;
-    } else if (cachedResult) {
-      console.log('Cache bypassed for:', eventUrl);
-    }
-    
-    // Deep crawl the event
-    let crawlResults = await deepCrawlEvent(eventUrl);
-    
-    // If crawling failed or returned no content, try Google CSE fallback
-    if (crawlResults.length === 0 || crawlResults.every(result => result.content.length < 100)) {
-      console.log('Crawling failed or returned minimal content, trying Google CSE fallback');
-      crawlResults = await fallbackToGoogleCSE(eventTitle || 'Event', eventUrl);
-    }
-    
-    if (crawlResults.length === 0) {
-      return {
-        success: false,
-        cached: false,
-        event: {} as EventMetadata,
-        speakers: [],
-        crawl_stats: {
-          pages_crawled: 0,
-          total_content_length: 0,
-          speakers_found: 0,
-          crawl_duration_ms: Date.now() - startTime
-        },
-        error: "Failed to crawl event content"
-      };
-    }
-    
-    // Extract event metadata
-    console.log('Starting event metadata extraction...');
-    const eventMetadata = await extractEventMetadata(crawlResults, eventTitle, eventDate, country);
-    console.log('Event metadata extraction completed:', { title: eventMetadata.title, location: eventMetadata.location });
-    
-    // Extract and enhance speakers
-    console.log('Starting speaker extraction and enhancement...');
-    const speakers = await extractAndEnhanceSpeakers(crawlResults);
-    console.log('Speaker extraction completed, found', speakers.length, 'speakers');
-    
-    const crawlDuration = Date.now() - startTime;
-    const totalContentLength = crawlResults.reduce((sum, result) => sum + result.content.length, 0);
-    
-    const analysisResult: EventAnalysisResponse = {
-      success: true,
-      cached: false,
-      event: eventMetadata,
-      speakers: speakers,
-      crawl_stats: {
-        pages_crawled: crawlResults.length,
-        total_content_length: totalContentLength,
-        speakers_found: speakers.length,
-        crawl_duration_ms: crawlDuration
+      const { eventUrl, eventTitle, eventDate, country } = request;
+
+      if (!eventUrl) {
+        return {
+          success: false,
+          cached: false,
+          event: {} as EventMetadata,
+          speakers: [],
+          crawl_stats: {
+            pages_crawled: 0,
+            total_content_length: 0,
+            speakers_found: 0,
+            crawl_duration_ms: 0
+          },
+          error: 'Event URL is required'
+        };
       }
-    };
-    
-    // Cache the result
-    await cacheAnalysis(eventUrl, analysisResult);
-    
-    console.log('Event analysis completed:', {
-      pages_crawled: crawlResults.length,
-      speakers_found: speakers.length,
-      duration_ms: crawlDuration
-    });
-    
+
+      const cachedResult = await getCachedAnalysis(eventUrl);
+      const shouldUseCache = !process.env.BYPASS_CACHE && !process.env.NODE_ENV?.includes('development');
+      if (cachedResult && shouldUseCache) {
+        console.log('Returning cached result for:', eventUrl);
+        return cachedResult;
+      }
+
+      if (cachedResult && !shouldUseCache) {
+        console.log('Cache bypassed for:', eventUrl);
+      }
+
+      let crawlResults = await deepCrawlEvent(eventUrl);
+
+      if (crawlResults.length === 0 || crawlResults.every(result => (result.content?.length ?? 0) < 100)) {
+        console.log('Crawling failed or returned minimal content, trying Google CSE fallback');
+        crawlResults = await fallbackToGoogleCSE(eventTitle || 'Event', eventUrl);
+      }
+
+      if (crawlResults.length === 0) {
+        return {
+          success: false,
+          cached: false,
+          event: {} as EventMetadata,
+          speakers: [],
+          crawl_stats: {
+            pages_crawled: 0,
+            total_content_length: 0,
+            speakers_found: 0,
+            crawl_duration_ms: Date.now() - startTime
+          },
+          error: 'Failed to crawl event content'
+        };
+      }
+
+      console.log('Starting event metadata extraction...');
+      const eventMetadata = await extractEventMetadata(crawlResults, eventTitle, eventDate, country);
+      console.log('Event metadata extraction completed:', { title: eventMetadata.title, location: eventMetadata.location });
+
+      console.log('Starting speaker extraction and enhancement...');
+      const speakers = await extractAndEnhanceSpeakers(crawlResults);
+      console.log('Speaker extraction completed, found', speakers.length, 'speakers');
+
+      const crawlDuration = Date.now() - startTime;
+      const totalContentLength = crawlResults.reduce((sum, result) => sum + (result.content?.length ?? 0), 0);
+
+      const analysisResult: EventAnalysisResponse = {
+        success: true,
+        cached: false,
+        event: eventMetadata,
+        speakers,
+        crawl_stats: {
+          pages_crawled: crawlResults.length,
+          total_content_length: totalContentLength,
+          speakers_found: speakers.length,
+          crawl_duration_ms: crawlDuration
+        }
+      };
+
+      await cacheAnalysis(eventUrl, analysisResult);
+
+      console.log('Event analysis completed:', {
+        pages_crawled: crawlResults.length,
+        speakers_found: speakers.length,
+        duration_ms: crawlDuration
+      });
+
       return analysisResult;
-      
     } catch (error) {
       console.error('Event analysis error:', error);
-      
+
       return {
         success: false,
         cached: false,
@@ -689,7 +687,27 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       };
     }
   })();
-  
-  // Race between analysis and timeout
-  return Promise.race([analysisPromise, overallTimeout]);
+
+  try {
+    const result = await Promise.race([analysisPromise, overallTimeout]);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    return result;
+  } catch (error) {
+    console.error('Event analysis overall failure:', error);
+    return {
+      success: false,
+      cached: false,
+      event: {} as EventMetadata,
+      speakers: [],
+      crawl_stats: {
+        pages_crawled: 0,
+        total_content_length: 0,
+        speakers_found: 0,
+        crawl_duration_ms: Date.now() - startTime
+      },
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
 }
