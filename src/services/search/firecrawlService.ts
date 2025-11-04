@@ -61,7 +61,13 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
     for (const timeoutMs of timeouts) {
       try {
         const res = await doFirecrawl({ ...fcParams, timeoutMs, countryContext });
-        if (res?.items?.length) return res;
+        if (res?.items?.length) {
+          if (!res.content) {
+            console.warn('[firecrawl] Result had URLs but no scraped content; continuing to next attempt');
+            continue;
+          }
+          return res;
+        }
       } catch (e: any) {
         console.warn('[firecrawl] Search attempt failed:', e?.message || e);
         // Only swallow timeouts; rethrow others
@@ -72,7 +78,7 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
       }
     }
     console.warn('[firecrawl] All retry attempts failed, returning empty results');
-    return { items: [] };
+    return { items: [], content: undefined };
   }
 
   return await firecrawlSearchWithBackoff();
