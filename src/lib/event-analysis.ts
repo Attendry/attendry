@@ -55,17 +55,17 @@ export interface SpeakerData {
   title: string;
   company: string;
   bio: string;
-  expertise_areas: string[];
-  social_links: {
+  expertise_areas?: string[];
+  social_links?: {
     linkedin?: string;
     twitter?: string;
     website?: string;
   };
-  speaking_history: string[];
-  education: string[];
-  achievements: string[];
-  industry_connections: string[];
-  recent_news: string[];
+  speaking_history?: string[];
+  education?: string[];
+  achievements?: string[];
+  industry_connections?: string[];
+  recent_news?: string[];
   contact?: string;
 }
 
@@ -466,13 +466,12 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
       properties: {
         title: { type: 'string' },
         description: { type: 'string' },
-        date: { type: 'string' },
-        location: { type: 'string' },
-        organizer: { type: 'string' },
-        website: { type: 'string' },
+        date: { type: 'string', nullable: true },
+        location: { type: 'string', nullable: true },
+        organizer: { type: 'string', nullable: true },
+        website: { type: 'string', nullable: true },
         registrationUrl: { type: 'string', nullable: true }
-      },
-      required: ['title', 'description', 'date', 'location', 'organizer', 'website']
+      }
     };
 
     const model = genAI.getGenerativeModel({
@@ -513,7 +512,12 @@ ${combinedContent}`;
     console.log('Gemini API call completed for metadata, processing response...');
     const text = response.text();
     console.log('Gemini metadata response received, length:', text.length);
-    
+
+    if (!text || !text.trim()) {
+      console.warn('Gemini metadata extraction returned empty payload');
+      throw new Error('Empty metadata payload');
+    }
+
     try {
       const metadata = JSON.parse(text);
       return {
@@ -568,17 +572,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
               name: { type: 'string' },
               title: { type: 'string', nullable: true },
               company: { type: 'string', nullable: true },
-              bio: { type: 'string', nullable: true },
-              expertise_areas: { type: 'array', items: { type: 'string' }, nullable: true },
-              social_links: {
-                type: 'object',
-                nullable: true,
-                properties: {
-                  linkedin: { type: 'string', nullable: true },
-                  twitter: { type: 'string', nullable: true },
-                  website: { type: 'string', nullable: true }
-                }
-              }
+              bio: { type: 'string', nullable: true }
             },
             required: ['name']
           }
@@ -625,6 +619,11 @@ ${combinedContent}`;
     const response = await result.response;
     const text = response.text();
 
+    if (!text || !text.trim()) {
+      console.warn('Speaker extraction returned empty payload');
+      return [];
+    }
+
     try {
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed?.speakers)) {
@@ -633,19 +632,7 @@ ${combinedContent}`;
             name: speaker.name,
             title: speaker.title ?? '',
             company: speaker.company ?? '',
-            bio: speaker.bio ?? '',
-            expertise_areas: Array.isArray(speaker.expertise_areas) ? speaker.expertise_areas : [],
-            social_links: {
-              linkedin: speaker.social_links?.linkedin ?? undefined,
-              twitter: speaker.social_links?.twitter ?? undefined,
-              website: speaker.social_links?.website ?? undefined
-            },
-            speaking_history: Array.isArray(speaker.speaking_history) ? speaker.speaking_history : [],
-            education: Array.isArray(speaker.education) ? speaker.education : [],
-            achievements: Array.isArray(speaker.achievements) ? speaker.achievements : [],
-            industry_connections: Array.isArray(speaker.industry_connections) ? speaker.industry_connections : [],
-            recent_news: Array.isArray(speaker.recent_news) ? speaker.recent_news : [],
-            contact: speaker.contact ?? undefined
+            bio: speaker.bio ?? ''
           }))
           .filter((speaker: SpeakerData) => Boolean(speaker.name));
       }

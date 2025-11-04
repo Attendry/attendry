@@ -838,7 +838,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
               score: { type: 'NUMBER' },
               reason: { type: 'STRING' }
             },
-            required: ['url', 'score']
+            required: ['url']
           }
         };
 
@@ -860,7 +860,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
               response_schema: responseSchema
             },
             thinkingConfig: {
-              thinking_budget: 0
+              thinkingBudget: 0
             },
             safetySettings: [
               {
@@ -887,12 +887,14 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         clearTimeout(timeoutId);
         
         if (!response.ok) {
+          const errorBody = await response.text();
           console.warn('[optimized-orchestrator] Gemini API failed', {
             status: response.status,
             statusText: response.statusText,
             modelPath,
             attempt: i + 1,
-            timeout
+            timeout,
+            errorBody: errorBody?.slice(0, 500)
           });
           throw new Error(`Gemini API failed: ${response.status} ${response.statusText}`);
         }
