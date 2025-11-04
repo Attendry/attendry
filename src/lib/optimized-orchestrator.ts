@@ -43,6 +43,8 @@ import {
   generateSpeakerCacheKey,
   warmPopularSearches 
 } from './advanced-cache';
+import { deepCrawlEvent, extractEventMetadata, extractAndEnhanceSpeakers } from './event-analysis';
+import type { SpeakerData } from './event-analysis';
 import { 
   cacheOptimizer,
   invalidateCacheByPattern,
@@ -190,8 +192,8 @@ const ORCHESTRATOR_CONFIG = {
     enhancement: OPTIMIZED_CONFIG.timeouts.enhancement,
   },
   parallel: {
-    maxConcurrentExtractions: getOptimizedConcurrency().maxConcurrentExtractions,
-    maxConcurrentEnhancements: getOptimizedConcurrency().maxConcurrentEnhancements,
+    maxConcurrentExtractions: Math.min(getOptimizedConcurrency().maxConcurrentExtractions, 4),
+    maxConcurrentEnhancements: Math.min(getOptimizedConcurrency().maxConcurrentEnhancements, 3),
     maxConcurrentDiscoveries: getOptimizedConcurrency().maxConcurrentDiscoveries,
     enableSmartBatching: getOptimizedPerformance().enableSmartBatching,
     enableEarlyTermination: getOptimizedPerformance().enableEarlyTermination,
@@ -229,6 +231,13 @@ export interface EventCandidate {
       prioritization?: number;
       extraction?: number;
       enhancement?: number;
+    };
+    analysis?: {
+      organizer?: string;
+      website?: string;
+      registrationUrl?: string;
+      pagesCrawled?: number;
+      totalContentLength?: number;
     };
   };
 }
@@ -448,7 +457,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     // Step 6: Speaker enhancement
     const enhancementStart = Date.now();
-    const enhanced = await enhanceEventSpeakers(extracted, params);
+    const enhanced = await enhanceEventSpeakers(extracted);
     const enhancementTime = Date.now() - enhancementStart;
     logs.push({
       stage: 'enhancement',
@@ -1015,92 +1024,103 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   
   // Get weighted template for enhanced context
   const template = WEIGHTED_INDUSTRY_TEMPLATES[industry];
-  
-  if (template) {
-    // Use weighted Gemini context for enhanced precision
-    const weightedContext = buildWeightedGeminiContext(
-      template,
-      userProfile,
-      urls,
-      params.country || 'DE'
-    );
-    
-    console.log('[optimized-orchestrator] Using weighted Gemini context:', {
-      industry,
-      weights: {
-        industrySpecificQuery: template.precision.industrySpecificQuery.weight,
-        crossIndustryPrevention: template.precision.crossIndustryPrevention.weight,
-        geographicCoverage: template.precision.geographicCoverage.weight,
-        qualityRequirements: template.precision.qualityRequirements.weight,
-        eventTypeSpecificity: template.precision.eventTypeSpecificity.weight
-      },
-      contextLength: weightedContext.length
-    });
-    
-    // Use ultra-concise prompt to avoid MAX_TOKENS
-    const prompt = `Rate ${template.name} URLs (0-1 score):
 
-${urls.slice(0, 3).join('\n')}
+  const countryContext = getCountryContext(params.country);
+  const locationContext = countryContext.countryNames[0] || countryContext.iso2 || 'target region';
 
-JSON: [{"url":"...","score":0.0,"reason":"..."}]`;
-    
-    // Continue with existing Gemini API call logic using weighted context
-    return await executeGeminiCall(prompt, urls);
-  } else {
-    // Fallback to original approach if no weighted template available
-    const baseQuery = searchConfig?.baseQuery || '';
-    const excludeTerms = searchConfig?.excludeTerms || '';
-    
-    // Build user-specific context
-    const userIndustryTerms = userProfile?.industry_terms || [];
-    const userIcpTerms = userProfile?.icp_terms || [];
-    const userCompetitors = userProfile?.competitors || [];
-    
-    // Build location context
-    const countryContext = getCountryContext(params.country);
-    const locationContext = countryContext.countryNames[0] || 'Europe';
-  
-    // Build timeframe context
-    let timeframeLabel = 'within the specified timeframe';
-    if (params.dateFrom && params.dateTo) {
-      const fromDate = new Date(params.dateFrom);
-      const toDate = new Date(params.dateTo);
-      const now = new Date();
-      
+  let timeframeLabel = '';
+  if (params.dateFrom && params.dateTo) {
+    const fromDate = new Date(params.dateFrom);
+    const toDate = new Date(params.dateTo);
+    const now = new Date();
+
+    if (!Number.isNaN(fromDate.getTime()) && !Number.isNaN(toDate.getTime())) {
       if (fromDate >= now) {
-        const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
-        timeframeLabel = `within the next ${daysDiff} days`;
+        const daysDiff = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)));
+        timeframeLabel = ` Focus on events within the next ${daysDiff} days.`;
       } else if (toDate <= now) {
-        const daysDiff = Math.ceil((fromDate.getTime() - toDate.getTime()) / (1000 * 60 * 60 * 24));
-        timeframeLabel = `within the past ${daysDiff} days`;
+        const daysDiff = Math.max(1, Math.ceil((fromDate.getTime() - toDate.getTime()) / (1000 * 60 * 60 * 24)));
+        timeframeLabel = ` Focus on events from the past ${daysDiff} days.`;
       } else {
-        timeframeLabel = `from ${params.dateFrom} to ${params.dateTo}`;
+        timeframeLabel = ` Focus on events happening between ${params.dateFrom} and ${params.dateTo}.`;
       }
     }
-    
-    // Build optimized user-specific context for the prompt (reduced for better performance)
-    const userContextParts = [];
-    if (userIndustryTerms.length > 0) {
-      userContextParts.push(`Industry: ${userIndustryTerms.slice(0, 2).join(', ')}`);
-    }
-    if (userIcpTerms.length > 0) {
-      userContextParts.push(`Target: ${userIcpTerms.slice(0, 2).join(', ')}`);
-    }
-    if (userCompetitors.length > 0) {
-      userContextParts.push(`Competitors: ${userCompetitors.slice(0, 1).join(', ')}`);
-    }
-    const userContextText = userContextParts.length > 0 ? `\n\nUSER CONTEXT: ${userContextParts.join('; ')}` : '';
-
-    // Ultra-concise prompt to avoid MAX_TOKENS
-    const prompt = `Rate ${industry} URLs (0-1):
-
-${urls.slice(0, 3).join('\n')}
-
-JSON: [{"url":"...","score":0.0,"reason":"..."}]`;
-    
-    // Use fallback Gemini call
-    return await executeGeminiCall(prompt, urls);
   }
+
+  const userIndustryTerms = userProfile?.industry_terms || [];
+  const userIcpTerms = userProfile?.icp_terms || [];
+  const userCompetitors = userProfile?.competitors || [];
+  const userContextParts: string[] = [];
+  if (userIndustryTerms.length > 0) {
+    userContextParts.push(`Industry focus: ${userIndustryTerms.slice(0, 2).join(', ')}`);
+  }
+  if (userIcpTerms.length > 0) {
+    userContextParts.push(`Target audience: ${userIcpTerms.slice(0, 2).join(', ')}`);
+  }
+  if (userCompetitors.length > 0) {
+    userContextParts.push(`Competitors: ${userCompetitors.slice(0, 1).join(', ')}`);
+  }
+  const userContextText = userContextParts.length > 0 ? ` ${userContextParts.join(' | ')}` : '';
+
+  const weightedContext = template
+    ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
+    : `Rate ${industry} events in ${locationContext}.`;
+
+  const chunkSize = 6;
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Favor pages with specific dates, locations, and named speakers. Score 0 (irrelevant) to 1 (ideal). Keep reason <= 12 chars.`;
+
+  console.log('[optimized-orchestrator] Gemini prioritization setup:', {
+    industry,
+    urls: urls.length,
+    contextLength: baseContext.length,
+    chunkSize
+  });
+
+  const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
+
+  const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
+    let score = 0.4 - idx * 0.02;
+    if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+      score += 0.2;
+    }
+    if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
+      score += 0.25;
+    }
+    if (url.includes('de') || url.includes('germany')) {
+      score += 0.05;
+    }
+    return { url, score: Math.max(0.45, Math.min(score, 0.9)), reason };
+  };
+
+  for (let i = 0; i < urls.length; i += chunkSize) {
+    const chunk = urls.slice(i, i + chunkSize);
+    const numberedList = chunk.map((url, idx) => `${idx + 1}. ${url}`).join('\n');
+    const prompt = `${baseContext}\nURLs:\n${numberedList}\n\nReturn JSON array: [{"url":"...","score":0.0,"reason":"why"}]`;
+
+    try {
+      const chunkResults = await executeGeminiCall(prompt, chunk);
+      chunkResults.forEach((item) => {
+        if (!resultsMap.has(item.url)) {
+          resultsMap.set(item.url, item);
+        }
+      });
+    } catch (error) {
+      console.warn('[optimized-orchestrator] Gemini chunk prioritization failed, applying fallback:', error instanceof Error ? error.message : error);
+      chunk.forEach((url, localIdx) => {
+        const globalIdx = i + localIdx;
+        if (!resultsMap.has(url)) {
+          resultsMap.set(url, fallbackForUrl(url, globalIdx, 'fallback_chunk_failed'));
+        }
+      });
+    }
+  }
+
+  if (resultsMap.size === 0) {
+    console.warn('[optimized-orchestrator] Gemini returned no results; using full fallback scoring');
+    return urls.map((url, idx) => fallbackForUrl(url, idx, 'fallback_all_failed'));
+  }
+
+  return urls.map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_missing'));
 }
 
 /**
@@ -1111,9 +1131,9 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   
   const startTime = Date.now();
   
-  // Use parallel processing for event extraction
+  // Use parallel processing for event extraction, but throttle to respect Firecrawl limits
   const parallelProcessor = getParallelProcessor();
-  const extractionTasks = prioritized.map((item, index) => 
+  const extractionTasks = prioritized.map((item, index) =>
     createParallelTask(
       `extraction_${index}`,
       item.url,
@@ -1121,65 +1141,148 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       'firecrawl'
     )
   );
-  
+
+  type ExtractionPayload = {
+    metadata: {
+      title: string;
+      description: string;
+      date: string;
+      location: string;
+      organizer: string;
+      website: string;
+      registrationUrl?: string;
+    };
+    speakers: SpeakerData[];
+    crawlStats: {
+      pagesCrawled: number;
+      totalContentLength: number;
+      durationMs: number;
+      provider: 'firecrawl' | 'cse';
+    };
+  } | null;
+
   const extractionResults = await parallelProcessor.processParallel(
     extractionTasks,
     async (task) => {
       return await executeWithRetry(async () => {
-        console.log('[optimized-orchestrator] Extracting event details from:', task.data);
-        const result = await unifiedSearch({
-          q: task.data,
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          country: params.country || undefined,
-          limit: 1,
-          useCache: true
-        });
-        return result;
+        const extractionStart = Date.now();
+        const url = task.data;
+        console.log('[optimized-orchestrator] Deep crawling event:', url);
+
+        const crawlResults = await deepCrawlEvent(url);
+
+        if (!crawlResults || crawlResults.length === 0) {
+          console.warn('[optimized-orchestrator] Deep crawl returned no content, skipping:', url);
+          return null;
+        }
+
+        const totalContentLength = crawlResults.reduce((sum, result) => sum + (result.content?.length || 0), 0);
+        const provider = crawlResults.some(result => result.metadata?.source === 'google_cse') ? 'cse' as const : 'firecrawl';
+
+        let metadata;
+        try {
+          metadata = await extractEventMetadata(crawlResults, undefined, undefined, params.country || undefined);
+        } catch (error) {
+          console.warn('[optimized-orchestrator] Metadata extraction failed, using fallback:', error instanceof Error ? error.message : error);
+          metadata = {
+            title: crawlResults[0]?.title || 'Untitled Event',
+            description: crawlResults[0]?.description || '',
+            date: '',
+            location: params.country || '',
+            organizer: '',
+            website: url,
+            registrationUrl: undefined
+          };
+        }
+
+        let speakers: SpeakerData[] = [];
+        try {
+          speakers = await extractAndEnhanceSpeakers(crawlResults);
+        } catch (error) {
+          console.warn('[optimized-orchestrator] Speaker extraction failed, continuing without speakers:', error instanceof Error ? error.message : error);
+        }
+
+        return {
+          metadata,
+          speakers,
+          crawlStats: {
+            pagesCrawled: crawlResults.length,
+            totalContentLength,
+            durationMs: Date.now() - extractionStart,
+            provider
+          }
+        } satisfies ExtractionPayload;
       }, 'firecrawl');
     },
     {
-      maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions,
-      enableEarlyTermination: ORCHESTRATOR_CONFIG.parallel.enableEarlyTermination,
+      maxConcurrency: Math.min(ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions, 3),
+      enableEarlyTermination: false,
       qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.parseQuality,
       minResults: 1
     }
   );
 
-  // Process extraction results
   const events: EventCandidate[] = [];
+
   extractionResults.forEach((result, index) => {
-    if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
-      const searchResult = result.result as { items: any[] };
-      if (searchResult.items && searchResult.items.length > 0) {
-        const item = searchResult.items[0];
-        const prioritizedItem = prioritized[index];
-        
-        events.push({
-          url: prioritizedItem.url,
-          title: item.title || 'Untitled Event',
-          description: item.description || '',
-          date: item.date || '',
-          location: item.location || '',
-          venue: item.venue || '',
-          speakers: item.speakers || [],
-          sponsors: item.sponsors || [],
-          confidence: prioritizedItem.score,
-          source: 'firecrawl',
-          metadata: {
-            originalQuery: prioritizedItem.url,
-            country: params.country,
-            processingTime: Date.now() - startTime,
-            stageTimings: {
-              extraction: Date.now() - startTime
-            }
-          }
-        });
-      }
+    const prioritizedItem = prioritized[index];
+    if (!prioritizedItem) {
+      return;
     }
+
+    if (!result.success || !result.result) {
+      console.warn('[optimized-orchestrator] Extraction failed for URL, applying fallback:', prioritizedItem.url);
+      return;
+    }
+
+    const payload = result.result as ExtractionPayload;
+    if (!payload) {
+      console.warn('[optimized-orchestrator] Extraction payload empty, skipping:', prioritizedItem.url);
+      return;
+    }
+
+    const mappedSpeakers = payload.speakers
+      .slice(0, ORCHESTRATOR_CONFIG.limits.maxSpeakers)
+      .map((speaker) => ({
+        name: speaker.name,
+        title: speaker.title || undefined,
+        company: speaker.company || undefined
+      }));
+
+    events.push({
+      url: prioritizedItem.url,
+      title: payload.metadata.title || 'Untitled Event',
+      description: payload.metadata.description || '',
+      date: payload.metadata.date || '',
+      location: payload.metadata.location || '',
+      venue: '',
+      speakers: mappedSpeakers,
+      sponsors: [],
+      confidence: prioritizedItem.score,
+      source: payload.crawlStats.provider,
+      metadata: {
+        originalQuery: prioritizedItem.url,
+        country: params.country,
+        processingTime: result.duration,
+        stageTimings: {
+          extraction: result.duration
+        },
+        analysis: {
+          organizer: payload.metadata.organizer,
+          website: payload.metadata.website,
+          registrationUrl: payload.metadata.registrationUrl,
+          pagesCrawled: payload.crawlStats.pagesCrawled,
+          totalContentLength: payload.crawlStats.totalContentLength
+        }
+      }
+    });
   });
 
-  console.log(`[optimized-orchestrator] Extracted ${events.length} events from ${prioritized.length} prioritized URLs in ${Date.now() - startTime}ms`);
+  console.log('[optimized-orchestrator] Extraction summary:', {
+    requested: prioritized.length,
+    produced: events.length,
+    durationMs: Date.now() - startTime
+  });
   
   return events;
 }
@@ -1187,57 +1290,11 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
 /**
  * Enhance event speakers using parallel processing
  */
-async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedSearchParams): Promise<EventCandidate[]> {
+async function enhanceEventSpeakers(events: EventCandidate[]): Promise<EventCandidate[]> {
   if (events.length === 0) return [];
-  
-  const startTime = Date.now();
-  
-  // Use parallel processing for speaker enhancement
-  const parallelProcessor = getParallelProcessor();
-  const enhancementTasks = events.map((event, index) => 
-    createParallelTask(
-      `enhancement_${index}`,
-      event.url,
-      event.confidence,
-      'firecrawl'
-    )
-  );
-  
-  const enhancementResults = await parallelProcessor.processParallel(
-    enhancementTasks,
-    async (task) => {
-      return await executeWithRetry(async () => {
-        console.log('[optimized-orchestrator] Enhancing speakers for:', task.data);
-        // This would typically call a speaker enhancement service
-        // For now, we'll just return the original event
-        return { success: true, result: { event: events[parseInt(task.id.split('_')[1])] } };
-      }, 'firecrawl');
-    },
-    {
-      maxConcurrency: ORCHESTRATOR_CONFIG.parallel.maxConcurrentEnhancements,
-      enableEarlyTermination: ORCHESTRATOR_CONFIG.parallel.enableEarlyTermination,
-      qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.confidence,
-      minResults: 1
-    }
-  );
 
-  // Process enhancement results
-  const enhancedEvents: EventCandidate[] = [];
-  enhancementResults.forEach((result, index) => {
-    if (result.success && result.result && typeof result.result === 'object' && 'event' in result.result) {
-      const enhancedEvent = result.result.event as EventCandidate;
-      enhancedEvents.push(enhancedEvent);
-    }
-  });
-
-  if (enhancedEvents.length === 0) {
-    console.warn('[optimized-orchestrator] Speaker enhancement produced no results; falling back to extracted events');
-    return events;
-  }
-
-  console.log(`[optimized-orchestrator] Enhanced ${enhancedEvents.length} events in ${Date.now() - startTime}ms`);
-  
-  return enhancedEvents;
+  console.log('[optimized-orchestrator] Skipping secondary speaker enhancement - deep crawl already provided speaker data');
+  return events;
 }
 
 /**
