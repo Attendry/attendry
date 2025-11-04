@@ -1230,6 +1230,11 @@ async function enhanceEventSpeakers(events: EventCandidate[], params: OptimizedS
     }
   });
 
+  if (enhancedEvents.length === 0) {
+    console.warn('[optimized-orchestrator] Speaker enhancement produced no results; falling back to extracted events');
+    return events;
+  }
+
   console.log(`[optimized-orchestrator] Enhanced ${enhancedEvents.length} events in ${Date.now() - startTime}ms`);
   
   return enhancedEvents;
