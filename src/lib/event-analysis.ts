@@ -33,6 +33,41 @@ const FIRECRAWL_RATE_LIMIT = {
 // Cache configuration
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
+const DIRECTORY_DOMAINS = new Set([
+  'conferencealerts.co.in',
+  'internationalconferencealerts.com',
+  'www.cvent.com',
+  'cvent.com',
+  'www.everlaw.com',
+  'everlaw.com',
+  'www.vendelux.com',
+  'vendelux.com'
+]);
+
+const DIRECTORY_PATH_SEGMENTS = [
+  '/blog/',
+  '/insights',
+  '/professional-development',
+  '/press',
+  '/news',
+  '/events/b/',
+  '/b/',
+  '/resources/'
+];
+
+const EVENT_MONTH_KEYWORDS = [
+  'january','february','march','april','may','june','july','august','september','october','november','december',
+  'januar','februar','märz','april','mai','juni','juli','august','september','oktober','november','dezember'
+];
+
+const EVENT_LOCATION_KEYWORDS = [
+  'berlin','münchen','munich','frankfurt','hamburg','stuttgart','düsseldorf','köln','cologne','germany','deutschland'
+];
+
+const EVENT_CALL_TO_ACTION_KEYWORDS = [
+  'register','anmeldung','anmelden','sign up','jetzt registrieren','jetzt anmelden','tickets','ticket'
+];
+
 export interface EventAnalysisRequest {
   eventUrl: string;
   eventTitle?: string;
@@ -264,6 +299,11 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
     // Wait for all sub-page crawls to complete
     const subPageResults = await Promise.all(subPagePromises);
     results.push(...subPageResults.filter(result => result !== null));
+
+    const combinedContent = results.map(result => result.content).join('\n\n');
+    if (isLikelyDirectoryListing(eventUrl, combinedContent)) {
+      return [];
+    }
     
   } catch (error) {
     console.error('Deep crawl error:', error);
@@ -335,6 +375,48 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
   }
   
   return [...new Set(urls)]; // Remove duplicates
+}
+
+function isLikelyDirectoryListing(eventUrl: string, combinedContent: string): boolean {
+  if (!combinedContent || combinedContent.length < 400) {
+    return true;
+  }
+
+  const urlObj = new URL(eventUrl);
+  const normalized = combinedContent.toLowerCase();
+
+  const hasYear = /\b20[2-9][0-9]\b/.test(normalized);
+  const hasMonth = EVENT_MONTH_KEYWORDS.some(keyword => normalized.includes(keyword));
+  const hasSchedule = /(agenda|programm|schedule|timetable|ablauf)/i.test(normalized);
+  const hasSpeakerSection = /(speaker|speakers|referent|referenten|keynote|moderator)/i.test(normalized);
+  const hasCallToAction = EVENT_CALL_TO_ACTION_KEYWORDS.some(keyword => normalized.includes(keyword));
+  const hasLocation = EVENT_LOCATION_KEYWORDS.some(keyword => normalized.includes(keyword));
+
+  const signalScore = [
+    hasYear || hasMonth,
+    hasSchedule,
+    hasSpeakerSection,
+    hasCallToAction,
+    hasLocation
+  ].filter(Boolean).length;
+
+  const isAggregatorDomain = DIRECTORY_DOMAINS.has(urlObj.hostname);
+  const isAggregatorPath = DIRECTORY_PATH_SEGMENTS.some(segment => urlObj.pathname.includes(segment));
+
+  const requiredScore = (isAggregatorDomain || isAggregatorPath) ? 2 : 1;
+
+  if (signalScore < requiredScore) {
+    console.warn('Filtered directory-style listing due to low event signal score', {
+      eventUrl,
+      signalScore,
+      requiredScore,
+      isAggregatorDomain,
+      isAggregatorPath
+    });
+    return true;
+  }
+
+  return false;
 }
 
 function extractSpeakerNamesManually(text: string): string[] {
@@ -483,9 +565,6 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
         maxOutputTokens: 256,
         responseMimeType: 'application/json',
         responseSchema: metadataSchema
-      },
-      thinkingConfig: {
-        thinkingBudget: 0
       }
     });
     console.log('Gemini model initialized for metadata extraction');
@@ -590,9 +669,6 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
         maxOutputTokens: 320,
         responseMimeType: 'application/json',
         responseSchema: speakerSchema
-      },
-      thinkingConfig: {
-        thinkingBudget: 0
       }
     });
     console.log('Gemini model initialized successfully');

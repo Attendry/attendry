@@ -859,9 +859,6 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
               response_mime_type: 'application/json',
               response_schema: responseSchema
             },
-            thinkingConfig: {
-              thinkingBudget: 0
-            },
             safetySettings: [
               {
                 category: "HARM_CATEGORY_HARASSMENT",
