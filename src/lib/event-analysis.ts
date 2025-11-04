@@ -193,8 +193,8 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
       body: JSON.stringify({
         url: eventUrl,
         formats: ['markdown'],
-        onlyMainContent: false, // Get more content, not just main content
-        timeout: 25000 // Increased to 25s for stability
+        onlyMainContent: true,
+        timeout: 20000
       })
     });
     
@@ -220,7 +220,7 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
     console.log('Found potential sub-pages:', subPageUrls.length);
     
     // Crawl sub-pages in parallel (OPTIMIZED FOR SPEED)
-    const subPagePromises = subPageUrls.slice(0, 3).map(async (subUrl, index) => { // Reduced to 3 sub-pages, parallel processing
+    const subPagePromises = subPageUrls.slice(0, 3).map(async (subUrl, index) => {
       // Stagger requests slightly to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, index * 200)); // 200ms stagger
       
@@ -234,8 +234,8 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
           body: JSON.stringify({
             url: subUrl,
             formats: ['markdown'],
-            onlyMainContent: false,
-            timeout: 10000 // Further reduced to 10s for sub-pages
+            onlyMainContent: true,
+            timeout: 10000
           })
         });
         
@@ -461,59 +461,70 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
   try {
     console.log('Initializing Gemini for event metadata extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const metadataSchema = {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        description: { type: 'string' },
+        date: { type: 'string' },
+        location: { type: 'string' },
+        organizer: { type: 'string' },
+        website: { type: 'string' },
+        registrationUrl: { type: 'string', nullable: true }
+      },
+      required: ['title', 'description', 'date', 'location', 'organizer', 'website']
+    };
+
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        temperature: 0.1,
+        topP: 0.8,
+        topK: 12,
+        maxOutputTokens: 256,
+        responseMimeType: 'application/json',
+        responseSchema: metadataSchema
+      },
+      thinkingConfig: {
+        thinkingBudget: 0
+      }
+    });
     console.log('Gemini model initialized for metadata extraction');
     
     const combinedContent = crawlResults.map(result => 
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1000)}...`
+      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 800)}...`
     ).join('\n\n');
     
-    const prompt = `Extract event metadata from the following crawled content:
+    const prompt = `Extract factual event metadata as JSON. Use null when unsure.
 
-${combinedContent}
-
-Please extract and return the following information in JSON format:
-{
-  "title": "Event title",
-  "description": "Event description",
-  "date": "Event date (YYYY-MM-DD format if possible)",
-  "location": "Event location/city",
-  "organizer": "Event organizer name",
-  "website": "Event website URL",
-  "registrationUrl": "Registration URL if found"
-}
-
-Focus on extracting accurate, factual information. If information is not available, use "Unknown" or null.`;
+${combinedContent}`;
 
     console.log('Calling Gemini API for event metadata extraction...');
     
-    // Add timeout to prevent hanging
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Gemini API timeout after 20 seconds')), 20000);
     });
     
-    const geminiPromise = model.generateContent(prompt);
+    const geminiPromise = model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+    });
     const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
     const response = await result.response;
     console.log('Gemini API call completed for metadata, processing response...');
     const text = response.text();
     console.log('Gemini metadata response received, length:', text.length);
     
-    // Try to parse JSON
     try {
-      const jsonMatch = text.match(/\{[\s\S]*?\}/);
-      if (jsonMatch) {
-        const metadata = JSON.parse(jsonMatch[0]);
-        return {
-          title: metadata.title || eventTitle || 'Unknown Event',
-          description: metadata.description || '',
-          date: metadata.date || eventDate || 'Unknown Date',
-          location: metadata.location || country || 'Unknown Location',
-          organizer: metadata.organizer || 'Unknown Organizer',
-          website: metadata.website || crawlResults[0]?.url || '',
-          registrationUrl: metadata.registrationUrl
-        };
-      }
+      const metadata = JSON.parse(text);
+      return {
+        title: metadata.title || eventTitle || 'Unknown Event',
+        description: metadata.description || '',
+        date: metadata.date || eventDate || 'Unknown Date',
+        location: metadata.location || country || 'Unknown Location',
+        organizer: metadata.organizer || 'Unknown Organizer',
+        website: metadata.website || crawlResults[0]?.url || '',
+        registrationUrl: metadata.registrationUrl ?? undefined
+      };
     } catch (parseError) {
       console.warn('Failed to parse event metadata JSON:', parseError);
     }
@@ -545,26 +556,104 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
   try {
     console.log('Initializing Gemini for speaker extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const speakerSchema = {
+      type: 'object',
+      properties: {
+        speakers: {
+          type: 'array',
+          maxItems: 15,
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              title: { type: 'string', nullable: true },
+              company: { type: 'string', nullable: true },
+              bio: { type: 'string', nullable: true },
+              expertise_areas: { type: 'array', items: { type: 'string' }, nullable: true },
+              social_links: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  linkedin: { type: 'string', nullable: true },
+                  twitter: { type: 'string', nullable: true },
+                  website: { type: 'string', nullable: true }
+                }
+              }
+            },
+            required: ['name']
+          }
+        }
+      },
+      required: ['speakers']
+    };
+
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.5-flash',
+      generationConfig: {
+        temperature: 0.2,
+        topP: 0.8,
+        topK: 12,
+        maxOutputTokens: 320,
+        responseMimeType: 'application/json',
+        responseSchema: speakerSchema
+      },
+      thinkingConfig: {
+        thinkingBudget: 0
+      }
+    });
     console.log('Gemini model initialized successfully');
 
     const combinedContent = crawlResults.map(result =>
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 2000)}${result.content.length > 2000 ? '...' : ''}`
+      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1500)}${result.content.length > 1500 ? '...' : ''}`
     ).join('\n\n');
 
     console.log('Preparing content for Gemini analysis, total content length:', combinedContent.length);
 
-    const { createSpeakerExtractionPrompt } = await import('./prompts/gemini-prompts');
-    const { promptExecutor } = await import('./prompts/prompt-executor');
+    const prompt = `Extract up to 15 unique speakers from this event content. Respond with JSON matching schema. Combine duplicates by name.
 
-    const prompt = createSpeakerExtractionPrompt(combinedContent, 15, 'general');
-    const result = await promptExecutor.executeSpeakerExtraction(prompt, combinedContent);
+${combinedContent}`;
 
-    if (result.success && result.data?.speakers) {
-      return result.data.speakers;
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Gemini API timeout after 25 seconds')), 25000);
+    });
+
+    const geminiPromise = model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }]
+    });
+
+    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+    const response = await result.response;
+    const text = response.text();
+
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed?.speakers)) {
+        return parsed.speakers
+          .map((speaker: any) => ({
+            name: speaker.name,
+            title: speaker.title ?? '',
+            company: speaker.company ?? '',
+            bio: speaker.bio ?? '',
+            expertise_areas: Array.isArray(speaker.expertise_areas) ? speaker.expertise_areas : [],
+            social_links: {
+              linkedin: speaker.social_links?.linkedin ?? undefined,
+              twitter: speaker.social_links?.twitter ?? undefined,
+              website: speaker.social_links?.website ?? undefined
+            },
+            speaking_history: Array.isArray(speaker.speaking_history) ? speaker.speaking_history : [],
+            education: Array.isArray(speaker.education) ? speaker.education : [],
+            achievements: Array.isArray(speaker.achievements) ? speaker.achievements : [],
+            industry_connections: Array.isArray(speaker.industry_connections) ? speaker.industry_connections : [],
+            recent_news: Array.isArray(speaker.recent_news) ? speaker.recent_news : [],
+            contact: speaker.contact ?? undefined
+          }))
+          .filter((speaker: SpeakerData) => Boolean(speaker.name));
+      }
+    } catch (error) {
+      console.warn('Speaker extraction JSON parse failed:', error);
     }
 
-    console.warn('Speaker extraction failed:', result.error);
+    console.warn('Speaker extraction failed, returning empty array');
     return [];
   } catch (error) {
     console.warn('Speaker extraction error:', error);

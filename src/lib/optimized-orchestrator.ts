@@ -829,6 +829,19 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
       try {
         console.log(`[optimized-orchestrator] Attempting Gemini call with ${timeout}ms timeout (attempt ${i + 1}/${timeouts.length})`);
         
+        const responseSchema = {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              url: { type: 'STRING' },
+              score: { type: 'NUMBER' },
+              reason: { type: 'STRING' }
+            },
+            required: ['url', 'score']
+          }
+        };
+
         const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${geminiKey}`, {
           method: 'POST',
           headers: { 
@@ -838,11 +851,16 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 512,
-              topP: 0.9,
-              topK: 20,
+              maxOutputTokens: 160,
+              topP: 0.8,
+              topK: 12,
               candidateCount: 1,
-              stopSequences: []
+              stopSequences: [],
+              response_mime_type: 'application/json',
+              response_schema: responseSchema
+            },
+            thinkingConfig: {
+              thinking_budget: 0
             },
             safetySettings: [
               {
@@ -882,36 +900,22 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         const rawText = await response.text();
         console.debug('[optimized-orchestrator] Gemini raw response prefix', rawText.slice(0, 200));
         
-        // Parse the response
         const responseData = JSON.parse(rawText);
-        
-        // Handle different response formats
-        let content = null;
-        if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
-          content = responseData.candidates[0].content.parts[0].text;
-        } else if (responseData.candidates?.[0]?.content?.text) {
-          content = responseData.candidates[0].content.text;
-        } else if (responseData.text) {
-          content = responseData.text;
-        } else if (responseData.candidates?.[0]?.text) {
-          content = responseData.candidates[0].text;
-        }
-        
-        console.debug('[optimized-orchestrator] Extracted content:', content ? content.substring(0, 100) + '...' : 'null');
-        
-        if (!content) {
+
+        const payloadText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!payloadText) {
           console.warn('[optimized-orchestrator] No content in Gemini response, full response:', JSON.stringify(responseData, null, 2));
           throw new Error('No content in Gemini response');
         }
 
-        // Extract JSON from the response
-        const jsonMatch = content.match(/\[[\s\S]*\]/);
-        if (!jsonMatch) {
-          console.warn('[optimized-orchestrator] No JSON array found in response');
-          throw new Error('No JSON array found in response');
+        let prioritized: any;
+        try {
+          prioritized = JSON.parse(payloadText);
+        } catch (parseError) {
+          console.warn('[optimized-orchestrator] Failed to parse JSON payload:', payloadText.slice(0, 200));
+          throw new Error('Invalid JSON payload');
         }
 
-        const prioritized = JSON.parse(jsonMatch[0]);
         if (!Array.isArray(prioritized)) {
           throw new Error('Response is not an array');
         }
@@ -1066,7 +1070,7 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  const chunkSize = 6;
+  const chunkSize = 4;
   const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Favor pages with specific dates, locations, and named speakers. Score 0 (irrelevant) to 1 (ideal). Keep reason <= 12 chars.`;
 
   console.log('[optimized-orchestrator] Gemini prioritization setup:', {
