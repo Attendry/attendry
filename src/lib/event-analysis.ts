@@ -68,6 +68,22 @@ const EVENT_CALL_TO_ACTION_KEYWORDS = [
   'register','anmeldung','anmelden','sign up','jetzt registrieren','jetzt anmelden','tickets','ticket'
 ];
 
+const LOCATION_MAP: Record<string, string> = {
+  berlin: 'Berlin, Germany',
+  münchen: 'Munich, Germany',
+  munich: 'Munich, Germany',
+  frankfurt: 'Frankfurt, Germany',
+  hamburg: 'Hamburg, Germany',
+  stuttgart: 'Stuttgart, Germany',
+  düsseldorf: 'Düsseldorf, Germany',
+  duesseldorf: 'Düsseldorf, Germany',
+  köln: 'Cologne, Germany',
+  koeln: 'Cologne, Germany',
+  cologne: 'Cologne, Germany',
+  germany: 'Germany',
+  deutschland: 'Germany'
+};
+
 export interface EventAnalysisRequest {
   eventUrl: string;
   eventTitle?: string;
@@ -124,6 +140,135 @@ export interface EventAnalysisResponse {
     crawl_duration_ms: number;
   };
   error?: string;
+}
+
+function chunkText(text: string, chunkSize = 1800, overlap = 200): string[] {
+  const sanitized = (text || '').replace(/\s+\n/g, '\n').trim();
+  if (!sanitized) return [];
+  if (sanitized.length <= chunkSize) return [sanitized];
+
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < sanitized.length) {
+    const end = Math.min(sanitized.length, start + chunkSize);
+    const chunk = sanitized.slice(start, end).trim();
+    if (chunk) {
+      chunks.push(chunk);
+    }
+    if (end === sanitized.length) break;
+    start = Math.max(0, end - overlap);
+    if (start === 0 && end === sanitized.length) break;
+  }
+  return chunks;
+}
+
+function isMeaningfulValue(value: unknown): value is string {
+  if (!value && value !== 0) return false;
+  const str = String(value).trim();
+  if (!str) return false;
+  const normalized = str.toLowerCase();
+  const placeholders = ['unknown', 'tbd', 'n/a', 'null', 'none'];
+  return !placeholders.includes(normalized);
+}
+
+function selectBetterValue(existing: string, candidate?: string | null): string {
+  const current = existing?.trim() ?? '';
+  const next = candidate?.trim() ?? '';
+  if (!next) return current;
+  if (!current) return next;
+  return next.length > current.length ? next : current;
+}
+
+function extractDateFromContent(content: string): string | undefined {
+  if (!content) return undefined;
+  const patterns = [
+    /(\d{1,2}\s?[–-]\s?\d{1,2}\s(?:January|February|March|April|May|June|July|August|September|October|November|December|Januar|Februar|März|Mai|Juni|Juli|Oktober|Dezember)\s20\d{2})/i,
+    /((?:January|February|March|April|May|June|July|August|September|October|November|December|Januar|Februar|März|Mai|Juni|Juli|Oktober|Dezember)\s\d{1,2},?\s20\d{2})/i,
+    /(\d{1,2}\.\d{1,2}\.20\d{2})/,
+    /(20\d{2})/
+  ];
+  for (const pattern of patterns) {
+    const match = content.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  return undefined;
+}
+
+function extractRegistrationUrl(content: string): string | undefined {
+  const match = content.match(/https?:\/\/[^\s"'<>]+?(?:register|anmeldung|tickets)[^\s"'<>]*/i);
+  return match ? match[0] : undefined;
+}
+
+function extractOrganizer(content: string): string | undefined {
+  const organizerPatterns = [
+    /(?:Organizer|Organiser|Hosted by|Veranstalter|Presented by)[:\-]\s*(.+)/i,
+    /Contact\s*[:\-]\s*(.+)/i
+  ];
+  for (const pattern of organizerPatterns) {
+    const match = content.match(pattern);
+    if (match && match[1]) {
+      return match[1].split(/\n|\r/)[0].trim();
+    }
+  }
+  return undefined;
+}
+
+function extractDescriptionSnippet(crawlResults: CrawlResult[]): string {
+  const primary = crawlResults[0];
+  if (!primary) return '';
+  if (isMeaningfulValue(primary.description)) {
+    return primary.description.trim();
+  }
+  const snippet = primary.content?.slice(0, 400)?.replace(/\s+/g, ' ').trim();
+  return snippet || '';
+}
+
+function normalizeLocation(raw: string): string {
+  if (!raw) return '';
+  const lower = raw.toLowerCase();
+  if (LOCATION_MAP[lower]) {
+    return LOCATION_MAP[lower];
+  }
+  return raw.trim();
+}
+
+function applyMetadataHeuristics(
+  metadata: {
+    title: string;
+    description: string;
+    date: string;
+    location: string;
+    organizer: string;
+    website: string;
+    registrationUrl?: string;
+  },
+  combinedContent: string,
+  crawlResults: CrawlResult[],
+  eventTitle?: string,
+  eventDate?: string,
+  country?: string
+): EventMetadata {
+  const fallbackTitle = eventTitle || crawlResults[0]?.title || 'Unknown Event';
+  const fallbackDescription = selectBetterValue(metadata.description, extractDescriptionSnippet(crawlResults));
+  const fallbackDate = eventDate || extractDateFromContent(combinedContent) || 'Unknown Date';
+  const detectedLocationMatch = combinedContent.match(/\b(Berlin|München|Munich|Frankfurt|Hamburg|Stuttgart|Düsseldorf|Duesseldorf|Köln|Koeln|Cologne|Germany|Deutschland)\b/i);
+  const detectedLocation = normalizeLocation(metadata.location || (detectedLocationMatch ? detectedLocationMatch[0] : ''));
+  const fallbackLocation = normalizeLocation(country || detectedLocation || '');
+  const organizer = selectBetterValue(metadata.organizer, extractOrganizer(combinedContent)) || 'Unknown Organizer';
+  const website = metadata.website?.trim() || crawlResults[0]?.url || '';
+  const registrationUrl = metadata.registrationUrl?.trim() || extractRegistrationUrl(combinedContent);
+
+  return {
+    title: isMeaningfulValue(metadata.title) ? metadata.title : fallbackTitle,
+    description: isMeaningfulValue(metadata.description) ? metadata.description : (fallbackDescription || 'Description forthcoming.'),
+    date: isMeaningfulValue(metadata.date) ? metadata.date : fallbackDate,
+    location: isMeaningfulValue(detectedLocation) ? detectedLocation : (isMeaningfulValue(fallbackLocation) ? fallbackLocation : 'Unknown Location'),
+    organizer: organizer || 'Unknown Organizer',
+    website: website || crawlResults[0]?.url || '',
+    registrationUrl: registrationUrl
+  };
 }
 
 // Rate limiting storage (in production, use Redis or similar)
@@ -569,48 +714,92 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
     });
     console.log('Gemini model initialized for metadata extraction');
     
-    const combinedContent = crawlResults.map(result => 
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 800)}...`
-    ).join('\n\n');
-    
-    const prompt = `Extract factual event metadata as JSON. Use null when unsure.
+    const serializedSections = crawlResults.map(result =>
+      `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`
+    ).join('\n\n---\n\n');
 
-${combinedContent}`;
-
-    console.log('Calling Gemini API for event metadata extraction...');
-    
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Gemini API timeout after 20 seconds')), 20000);
+    const sectionChunks = crawlResults.flatMap(result => {
+      const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
+      return chunkText(sectionText, 1600, 200).slice(0, 2);
     });
-    
-    const geminiPromise = model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }]
-    });
-    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
-    const response = await result.response;
-    console.log('Gemini API call completed for metadata, processing response...');
-    const text = response.text();
-    console.log('Gemini metadata response received, length:', text.length);
 
-    if (!text || !text.trim()) {
-      console.warn('Gemini metadata extraction returned empty payload');
-      throw new Error('Empty metadata payload');
+    const chunks = sectionChunks.slice(0, 8);
+    const aggregatedMetadata = {
+      title: '',
+      description: '',
+      date: '',
+      location: '',
+      organizer: '',
+      website: '',
+      registrationUrl: ''
+    };
+
+    const desiredFields: Array<keyof typeof aggregatedMetadata> = ['title', 'description', 'date', 'location', 'organizer', 'website'];
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const prompt = `Extract factual event metadata as JSON using the provided schema. Only return fields you can confirm from this content chunk. Use null when unsure.
+
+Chunk ${i + 1}/${chunks.length}:
+${chunk}`;
+
+      console.log(`[event-analysis] Calling Gemini for metadata chunk ${i + 1}/${chunks.length}`);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Gemini metadata chunk timeout after 12 seconds')), 12000);
+      });
+
+      try {
+        const geminiPromise = model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        });
+        const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+        const response = await result.response;
+        const text = response.text();
+
+        if (!text || !text.trim()) {
+          console.warn(`[event-analysis] Empty metadata response for chunk ${i + 1}`);
+          continue;
+        }
+
+        const metadata = JSON.parse(text);
+        if (metadata) {
+          aggregatedMetadata.title = selectBetterValue(aggregatedMetadata.title, metadata.title);
+          aggregatedMetadata.description = selectBetterValue(aggregatedMetadata.description, metadata.description);
+          aggregatedMetadata.date = selectBetterValue(aggregatedMetadata.date, metadata.date);
+          aggregatedMetadata.location = selectBetterValue(aggregatedMetadata.location, metadata.location);
+          aggregatedMetadata.organizer = selectBetterValue(aggregatedMetadata.organizer, metadata.organizer);
+          aggregatedMetadata.website = selectBetterValue(aggregatedMetadata.website, metadata.website);
+          const registrationCandidate = metadata.registrationUrl ?? metadata.registration_url ?? metadata.registrationurl;
+          aggregatedMetadata.registrationUrl = selectBetterValue(aggregatedMetadata.registrationUrl, registrationCandidate);
+        }
+
+        const allSatisfied = desiredFields.every(field => isMeaningfulValue(aggregatedMetadata[field]));
+        if (allSatisfied) {
+          break;
+        }
+      } catch (chunkError) {
+        console.warn(`[event-analysis] Metadata chunk ${i + 1} failed`, chunkError);
+      }
     }
 
-    try {
-      const metadata = JSON.parse(text);
-      return {
-        title: metadata.title || eventTitle || 'Unknown Event',
-        description: metadata.description || '',
-        date: metadata.date || eventDate || 'Unknown Date',
-        location: metadata.location || country || 'Unknown Location',
-        organizer: metadata.organizer || 'Unknown Organizer',
-        website: metadata.website || crawlResults[0]?.url || '',
-        registrationUrl: metadata.registrationUrl ?? undefined
-      };
-    } catch (parseError) {
-      console.warn('Failed to parse event metadata JSON:', parseError);
-    }
+    const finalMetadata = applyMetadataHeuristics(
+      {
+        title: aggregatedMetadata.title,
+        description: aggregatedMetadata.description,
+        date: aggregatedMetadata.date,
+        location: aggregatedMetadata.location,
+        organizer: aggregatedMetadata.organizer,
+        website: aggregatedMetadata.website,
+        registrationUrl: aggregatedMetadata.registrationUrl || undefined
+      },
+      serializedSections,
+      crawlResults,
+      eventTitle,
+      eventDate,
+      country
+    );
+
+    return finalMetadata;
   } catch (error) {
     console.warn('Event metadata extraction error:', error);
     if (error instanceof Error && error.message.includes('timeout')) {
@@ -673,47 +862,95 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
     });
     console.log('Gemini model initialized successfully');
 
-    const combinedContent = crawlResults.map(result =>
-      `Page: ${result.title}\nURL: ${result.url}\nContent: ${result.content.substring(0, 1500)}${result.content.length > 1500 ? '...' : ''}`
-    ).join('\n\n');
+    const serializedSections = crawlResults.map(result =>
+      `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`
+    ).join('\n\n---\n\n');
 
-    console.log('Preparing content for Gemini analysis, total content length:', combinedContent.length);
-
-    const prompt = `Extract up to 15 unique speakers from this event content. Respond with JSON matching schema. Combine duplicates by name.
-
-${combinedContent}`;
-
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Gemini API timeout after 25 seconds')), 25000);
+    const sectionChunks = crawlResults.flatMap(result => {
+      const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
+      return chunkText(sectionText, 1500, 200).slice(0, 3);
     });
 
-    const geminiPromise = model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }]
-    });
+    const chunks = sectionChunks.slice(0, 12);
+    console.log('Preparing content for Gemini analysis, total chunk count:', chunks.length);
 
-    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
-    const response = await result.response;
-    const text = response.text();
+    const speakerMap = new Map<string, SpeakerData>();
 
-    if (!text || !text.trim()) {
-      console.warn('Speaker extraction returned empty payload');
-      return [];
+    const upsertSpeaker = (speaker: any) => {
+      if (!speaker) return;
+      const rawName = speaker.name ?? speaker.fullName ?? speaker.full_name;
+      if (!isMeaningfulValue(rawName)) return;
+      const name = rawName.trim();
+      const key = name.toLowerCase();
+      const existing = speakerMap.get(key);
+      const normalizedSpeaker: SpeakerData = {
+        name,
+        title: speaker.title?.trim?.() ?? '',
+        company: speaker.company?.trim?.() ?? '',
+        bio: speaker.bio?.trim?.() ?? ''
+      };
+
+      if (!existing) {
+        speakerMap.set(key, normalizedSpeaker);
+        return;
+      }
+
+      existing.title = selectBetterValue(existing.title, normalizedSpeaker.title);
+      existing.company = selectBetterValue(existing.company, normalizedSpeaker.company);
+      existing.bio = selectBetterValue(existing.bio, normalizedSpeaker.bio);
+      speakerMap.set(key, existing);
+    };
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const prompt = `Extract up to 15 unique speakers from this event content chunk. Respond with JSON matching the schema. Avoid duplicates. Use null when information is missing.
+
+Chunk ${i + 1}/${chunks.length}:
+${chunk}`;
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Gemini speaker chunk timeout after 18 seconds')), 18000);
+      });
+
+      try {
+        const geminiPromise = model.generateContent({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        });
+
+        const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+        const response = await result.response;
+        const text = response.text();
+
+        if (!text || !text.trim()) {
+          console.warn(`[event-analysis] Empty speaker response for chunk ${i + 1}`);
+          continue;
+        }
+
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed?.speakers)) {
+          parsed.speakers.forEach(upsertSpeaker);
+        }
+      } catch (chunkError) {
+        console.warn(`[event-analysis] Speaker chunk ${i + 1} failed`, chunkError);
+      }
+
+      if (speakerMap.size >= 15) {
+        break;
+      }
     }
 
-    try {
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed?.speakers)) {
-        return parsed.speakers
-          .map((speaker: any) => ({
-            name: speaker.name,
-            title: speaker.title ?? '',
-            company: speaker.company ?? '',
-            bio: speaker.bio ?? ''
-          }))
-          .filter((speaker: SpeakerData) => Boolean(speaker.name));
-      }
-    } catch (error) {
-      console.warn('Speaker extraction JSON parse failed:', error);
+    if (speakerMap.size > 0) {
+      return Array.from(speakerMap.values()).slice(0, 20);
+    }
+
+    const fallbackNames = extractSpeakerNamesManually(serializedSections);
+    if (fallbackNames.length > 0) {
+      return fallbackNames.map(name => ({
+        name,
+        title: '',
+        company: '',
+        bio: ''
+      }));
     }
 
     console.warn('Speaker extraction failed, returning empty array');
