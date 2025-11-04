@@ -991,7 +991,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     // Return fallback scoring
     return urls.map((url, idx) => ({ 
       url, 
-      score: Math.max(0.45 - idx * 0.02, 0.05), 
+      score: Math.max(0.8 - idx * 0.02, 0.45), 
       reason: `fallback_${errorType}` 
     }));
   }
