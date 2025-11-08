@@ -707,7 +707,7 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
         temperature: 0.1,
         topP: 0.8,
         topK: 12,
-        maxOutputTokens: 256,
+        maxOutputTokens: 2048, // Increased to handle JSON responses properly
         responseMimeType: 'application/json',
         responseSchema: metadataSchema
       }
@@ -779,7 +779,106 @@ ${chunk}`;
         }
       } catch (chunkError) {
         console.warn(`[event-analysis] Metadata chunk ${i + 1} failed`, chunkError);
+        // Check if it's a MAX_TOKENS error
+        if (chunkError instanceof Error && chunkError.message.includes('MAX_TOKENS')) {
+          console.warn(`[event-analysis] Chunk ${i + 1} hit MAX_TOKENS limit, may need to reduce chunk size`);
+        }
       }
+
+    console.log('Calling Gemini API for event metadata extraction...');
+    
+    // Add timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Gemini API timeout after 20 seconds')), 20000);
+    });
+    
+    const geminiPromise = model.generateContent(prompt);
+    const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+    const response = await result.response;
+    
+    // Check for finishReason
+    const finishReason = response.candidates?.[0]?.finishReason;
+    if (finishReason === 'MAX_TOKENS') {
+      console.warn('Event metadata extraction: MAX_TOKENS reached, response may be truncated');
+    }
+    
+    console.log('Gemini API call completed for metadata, processing response...');
+    
+    // Handle empty response
+    let text: string;
+    try {
+      text = response.text();
+    } catch (textError) {
+      console.warn('Failed to get text from Gemini response:', textError);
+      console.warn('Response finishReason:', finishReason);
+      throw new Error('Empty response from Gemini API');
+    }
+    
+    if (!text || text.trim().length === 0) {
+      console.warn('Empty text response from Gemini, finishReason:', finishReason);
+      throw new Error('Empty response from Gemini API');
+    }
+    
+    console.log('Gemini metadata response received, length:', text.length);
+    
+    // Try to parse JSON with better error handling
+    try {
+      // Try to find JSON in code blocks first
+      let jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+      if (!jsonMatch) {
+        // Try to find JSON object
+        jsonMatch = text.match(/\{[\s\S]*?\}/);
+      }
+      
+      if (jsonMatch) {
+        let jsonStr = jsonMatch[0];
+        // If it was in a code block, extract the inner JSON
+        if (jsonStr.startsWith('```json')) {
+          jsonStr = jsonMatch[1];
+        }
+        
+        // Try to repair common JSON issues
+        try {
+          const metadata = JSON.parse(jsonStr);
+          return {
+            title: metadata.title || eventTitle || 'Unknown Event',
+            description: metadata.description || '',
+            date: metadata.date || eventDate || 'Unknown Date',
+            location: metadata.location || country || 'Unknown Location',
+            organizer: metadata.organizer || 'Unknown Organizer',
+            website: metadata.website || crawlResults[0]?.url || '',
+            registrationUrl: metadata.registrationUrl
+          };
+        } catch (parseError) {
+          // Try to repair JSON
+          try {
+            const repaired = jsonStr
+              .replace(/,\s*}/g, '}')  // Remove trailing commas
+              .replace(/,\s*]/g, ']')
+              .replace(/([{,]\s*)(\w+):/g, '$1"$2":')  // Add quotes to keys
+              .replace(/:\s*([^",\[\]{}]+)([,}\]])/g, ': "$1"$2');  // Add quotes to values
+            const metadata = JSON.parse(repaired);
+            return {
+              title: metadata.title || eventTitle || 'Unknown Event',
+              description: metadata.description || '',
+              date: metadata.date || eventDate || 'Unknown Date',
+              location: metadata.location || country || 'Unknown Location',
+              organizer: metadata.organizer || 'Unknown Organizer',
+              website: metadata.website || crawlResults[0]?.url || '',
+              registrationUrl: metadata.registrationUrl
+            };
+          } catch (repairError) {
+            console.warn('Failed to parse or repair event metadata JSON:', parseError, repairError);
+            console.warn('Raw response text:', text.substring(0, 500));
+          }
+        }
+      } else {
+        console.warn('No JSON found in Gemini response, text preview:', text.substring(0, 200));
+      }
+    } catch (parseError) {
+      console.warn('Failed to parse event metadata JSON:', parseError);
+      console.warn('Response text:', text.substring(0, 500));
+>>>>>>> d3ee248 (Fix Gemini MAX_TOKENS errors and improve search reliability)
     }
 
     const finalMetadata = applyMetadataHeuristics(
@@ -804,6 +903,10 @@ ${chunk}`;
     console.warn('Event metadata extraction error:', error);
     if (error instanceof Error && error.message.includes('timeout')) {
       console.warn('Event metadata extraction timed out, using fallback');
+    } else if (error instanceof Error && error.message.includes('MAX_TOKENS')) {
+      console.warn('Event metadata extraction hit MAX_TOKENS, using fallback');
+    } else if (error instanceof Error && error.message.includes('Empty')) {
+      console.warn('Event metadata extraction returned empty response, using fallback');
     }
   }
   

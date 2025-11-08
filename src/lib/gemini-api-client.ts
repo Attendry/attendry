@@ -122,16 +122,48 @@ export class GeminiAPIClient {
       const data = await response.json();
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
+      // Check finishReason first
+      const finishReason = data.candidates?.[0]?.finishReason;
+      const usageMetadata = data.usageMetadata;
+      
       if (!text) {
-        console.warn('[gemini-api] No text content in response:', data);
+        console.warn('[gemini-api] No text content in response:', {
+          finishReason,
+          usageMetadata,
+          hasCandidates: !!data.candidates?.[0]
+        });
         
         // Check if it's a MAX_TOKENS error
-        const finishReason = data.candidates?.[0]?.finishReason;
         if (finishReason === 'MAX_TOKENS') {
-          throw new GeminiAPIError('Response truncated due to token limit - prompt too long', undefined, undefined, data);
+          console.warn('[gemini-api] MAX_TOKENS reached - response was truncated. Consider increasing maxOutputTokens or reducing prompt size.');
+          throw new GeminiAPIError(
+            'Response truncated due to token limit - increase maxOutputTokens or reduce prompt size', 
+            undefined, 
+            undefined, 
+            { ...data, finishReason, usageMetadata }
+          );
         }
         
-        throw new GeminiAPIError('No text content in Gemini response', undefined, undefined, data);
+        // Check for other finish reasons
+        if (finishReason === 'SAFETY') {
+          throw new GeminiAPIError('Response blocked by safety filters', undefined, undefined, data);
+        }
+        
+        if (finishReason === 'RECITATION') {
+          throw new GeminiAPIError('Response blocked due to recitation policy', undefined, undefined, data);
+        }
+        
+        throw new GeminiAPIError(
+          `No text content in Gemini response (finishReason: ${finishReason || 'unknown'})`, 
+          undefined, 
+          undefined, 
+          { ...data, finishReason, usageMetadata }
+        );
+      }
+      
+      // Log if MAX_TOKENS was reached but we still got content (truncated response)
+      if (finishReason === 'MAX_TOKENS' && text) {
+        console.warn('[gemini-api] MAX_TOKENS reached but partial content received. Response may be truncated.');
       }
 
       console.log(`[gemini-api] Response received (${text.length} chars)`);

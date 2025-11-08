@@ -851,9 +851,9 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 160,
-              topP: 0.8,
-              topK: 12,
+              maxOutputTokens: 2048, // Increased to handle JSON responses properly
+              topP: 0.9,
+              topK: 20,
               candidateCount: 1,
               stopSequences: [],
               response_mime_type: 'application/json',
@@ -900,23 +900,66 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         console.debug('[optimized-orchestrator] Gemini raw response prefix', rawText.slice(0, 200));
         
         const responseData = JSON.parse(rawText);
-
-        const payloadText = responseData.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        // Check finishReason first to understand why content might be missing
+        const finishReason = responseData.candidates?.[0]?.finishReason;
+        const usageMetadata = responseData.usageMetadata;
+        
+        // Handle structured JSON response (when response_mime_type is 'application/json')
+        let payloadText = null;
+        if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
+          payloadText = responseData.candidates[0].content.parts[0].text;
+        } else if (responseData.candidates?.[0]?.content?.text) {
+          payloadText = responseData.candidates[0].content.text;
+        }
+        
+        console.debug('[optimized-orchestrator] Extracted content:', payloadText ? payloadText.substring(0, 100) + '...' : 'null');
+        console.debug('[optimized-orchestrator] Finish reason:', finishReason, 'Usage:', usageMetadata);
+        
+        // Handle MAX_TOKENS case
+        if (!payloadText && finishReason === 'MAX_TOKENS') {
+          console.warn('[optimized-orchestrator] MAX_TOKENS reached - response was truncated. This indicates maxOutputTokens may be too low or prompt too long.');
+          throw new Error('MAX_TOKENS: Response truncated - increase maxOutputTokens or reduce prompt size');
+        }
+        
         if (!payloadText) {
           console.warn('[optimized-orchestrator] No content in Gemini response, full response:', JSON.stringify(responseData, null, 2));
-          throw new Error('No content in Gemini response');
+          throw new Error(`No content in Gemini response (finishReason: ${finishReason || 'unknown'})`);
         }
 
+        // Parse JSON payload (should be structured JSON due to response_mime_type)
         let prioritized: any;
         try {
           prioritized = JSON.parse(payloadText);
         } catch (parseError) {
-          console.warn('[optimized-orchestrator] Failed to parse JSON payload:', payloadText.slice(0, 200));
-          throw new Error('Invalid JSON payload');
+          console.warn('[optimized-orchestrator] Failed to parse JSON payload, trying to repair:', parseError);
+          // Try to repair common JSON issues
+          try {
+            const repaired = payloadText
+              .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
+              .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
+              .replace(/([{,]\s*)(\w+):/g, '$1"$2":')  // Add quotes to unquoted keys
+              .replace(/:\s*([^",\[\]{}]+)([,}\]])/g, ': "$1"$2');  // Add quotes to unquoted string values
+            prioritized = JSON.parse(repaired);
+          } catch (repairError) {
+            console.warn('[optimized-orchestrator] JSON repair failed:', repairError);
+            throw new Error('Invalid JSON payload');
+          }
         }
 
+        // Handle both array and object responses
         if (!Array.isArray(prioritized)) {
-          throw new Error('Response is not an array');
+          if (prioritized && typeof prioritized === 'object') {
+            // If it's an object with an array property, extract it
+            const arrayKeys = Object.keys(prioritized).filter(key => Array.isArray(prioritized[key]));
+            if (arrayKeys.length > 0) {
+              prioritized = prioritized[arrayKeys[0]];
+            } else {
+              throw new Error('Response is not an array and no array property found');
+            }
+          } else {
+            throw new Error('Response is not an array');
+          }
         }
 
         // Normalize and validate results
