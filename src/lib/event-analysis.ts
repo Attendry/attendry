@@ -671,20 +671,35 @@ export async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string):
 }
 
 export async function extractEventMetadata(crawlResults: CrawlResult[], eventTitle?: string, eventDate?: string, country?: string): Promise<EventMetadata> {
+  const fallbackMetadata: EventMetadata = {
+    title: eventTitle || crawlResults[0]?.title || 'Unknown Event',
+    description: crawlResults[0]?.description || '',
+    date: eventDate || 'Unknown Date',
+    location: country || 'Unknown Location',
+    organizer: 'Unknown Organizer',
+    website: crawlResults[0]?.url || '',
+    registrationUrl: undefined
+  };
+
   if (!geminiKey) {
     console.log('Gemini key not available for metadata extraction, using fallback');
-    // Fallback to basic extraction
-    return {
-      title: eventTitle || crawlResults[0]?.title || 'Unknown Event',
-      description: crawlResults[0]?.description || '',
-      date: eventDate || 'Unknown Date',
-      location: country || 'Unknown Location',
-      organizer: 'Unknown Organizer',
-      website: crawlResults[0]?.url || '',
-      registrationUrl: undefined
-    };
+    return fallbackMetadata;
   }
-  
+
+  if (!crawlResults || crawlResults.length === 0) {
+    return fallbackMetadata;
+  }
+
+  const primaryUrl = crawlResults[0]?.url || '';
+  const serializedSections = crawlResults.map(result =>
+    `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`
+  ).join('\n\n---\n\n');
+
+  if (primaryUrl && isLikelyDirectoryListing(primaryUrl, serializedSections)) {
+    console.warn('Detected directory-style listing during metadata extraction, using fallback', { primaryUrl });
+    return fallbackMetadata;
+  }
+
   try {
     console.log('Initializing Gemini for event metadata extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
@@ -714,16 +729,12 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
     });
     console.log('Gemini model initialized for metadata extraction');
     
-    const serializedSections = crawlResults.map(result =>
-      `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`
-    ).join('\n\n---\n\n');
-
     const sectionChunks = crawlResults.flatMap(result => {
       const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
-      return chunkText(sectionText, 1600, 200).slice(0, 2);
+      return chunkText(sectionText, 1200, 150).slice(0, 2);
     });
 
-    const chunks = sectionChunks.slice(0, 8);
+    const chunks = sectionChunks.slice(0, 6);
     const aggregatedMetadata = {
       title: '',
       description: '',
@@ -745,10 +756,15 @@ ${chunk}`;
 
       console.log(`[event-analysis] Calling Gemini for metadata chunk ${i + 1}/${chunks.length}`);
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Gemini metadata chunk timeout after 12 seconds')), 12000);
+        setTimeout(() => reject(new Error('Gemini metadata chunk timeout after 10 seconds')), 10000);
       });
 
       try {
+        if (chunk.trim().length < 250) {
+          console.warn(`[event-analysis] Skipping metadata chunk ${i + 1} due to insufficient content`);
+          continue;
+        }
+
         const geminiPromise = model.generateContent({
           contents: [{ role: 'user', parts: [{ text: prompt }] }]
         });
@@ -808,20 +824,16 @@ ${chunk}`;
   }
   
   // Fallback
-  return {
-    title: eventTitle || crawlResults[0]?.title || 'Unknown Event',
-    description: crawlResults[0]?.description || '',
-    date: eventDate || 'Unknown Date',
-    location: country || 'Unknown Location',
-    organizer: 'Unknown Organizer',
-    website: crawlResults[0]?.url || '',
-    registrationUrl: undefined
-  };
+  return fallbackMetadata;
 }
 
 export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Promise<SpeakerData[]> {
   if (!geminiKey) {
     console.log('Gemini key not available, returning empty speakers array');
+    return [];
+  }
+
+  if (!crawlResults || crawlResults.length === 0) {
     return [];
   }
 
@@ -855,7 +867,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
         temperature: 0.2,
         topP: 0.8,
         topK: 12,
-        maxOutputTokens: 320,
+        maxOutputTokens: 256,
         responseMimeType: 'application/json',
         responseSchema: speakerSchema
       }
@@ -866,12 +878,18 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`
     ).join('\n\n---\n\n');
 
+    const primaryUrl = crawlResults[0]?.url || '';
+    if (primaryUrl && isLikelyDirectoryListing(primaryUrl, serializedSections)) {
+      console.warn('Detected directory-style listing during speaker extraction, skipping Gemini call', { primaryUrl });
+      return [];
+    }
+
     const sectionChunks = crawlResults.flatMap(result => {
       const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
-      return chunkText(sectionText, 1500, 200).slice(0, 3);
+      return chunkText(sectionText, 1200, 150).slice(0, 2);
     });
 
-    const chunks = sectionChunks.slice(0, 12);
+    const chunks = sectionChunks.slice(0, 6);
     console.log('Preparing content for Gemini analysis, total chunk count:', chunks.length);
 
     const speakerMap = new Map<string, SpeakerData>();
@@ -909,10 +927,15 @@ Chunk ${i + 1}/${chunks.length}:
 ${chunk}`;
 
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Gemini speaker chunk timeout after 18 seconds')), 18000);
+        setTimeout(() => reject(new Error('Gemini speaker chunk timeout after 12 seconds')), 12000);
       });
 
       try {
+        if (chunk.trim().length < 250) {
+          console.warn(`[event-analysis] Skipping speaker chunk ${i + 1} due to insufficient content`);
+          continue;
+        }
+
         const geminiPromise = model.generateContent({
           contents: [{ role: 'user', parts: [{ text: prompt }] }]
         });

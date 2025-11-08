@@ -14,6 +14,7 @@
  * - Event metadata validation and enrichment
  */
 
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { unifiedSearch } from './search/unified-search-core';
 import { executeWithRetry, executeWithGracefulDegradation, executeWithCircuitBreaker } from './error-recovery';
 import { supabaseServer } from './supabase-server';
@@ -65,6 +66,28 @@ import {
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
 const firecrawlKey = process.env.FIRECRAWL_KEY;
+const geminiModelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
+const geminiModelId = geminiModelPath
+  .split('/')
+  .pop()
+  ?.replace(':generateContent', '') || 'gemini-2.5-flash';
+
+type GenerativeModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
+
+const GEMINI_PRIORITIZATION_SCHEMA = {
+  type: 'array' as const,
+  items: {
+    type: 'object' as const,
+    properties: {
+      url: { type: 'string' },
+      score: { type: 'number' },
+      reason: { type: 'string' }
+    },
+    required: ['url', 'score']
+  }
+};
+
+let geminiPrioritizationModel: GenerativeModel | null = null;
 
 // Rate limiter for Gemini API calls
 const geminiRateLimiter = {
@@ -810,246 +833,169 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
  * Execute Gemini API call with proper error handling and metrics
  */
 async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<{url: string, score: number, reason: string}>> {
-  const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
   const startTime = Date.now();
-  
+
+  if (!geminiKey) {
+    return urls.map((url, idx) => ({
+      url,
+      score: Math.max(0.8 - idx * 0.02, 0.45),
+      reason: 'fallback_missing_key'
+    }));
+  }
+
+  const attemptTimeouts = [18000, 14000]; // milliseconds
+
   try {
-    // Apply rate limiting before making API call
-    await geminiRateLimiter.waitIfNeeded();
-    
-    // Implement aggressive timeout strategy (8s -> 5s -> 3s)
-    const timeouts = [8000, 5000, 3000];
-    let lastError: any = null;
-    
-    for (let i = 0; i < timeouts.length; i++) {
-      const timeout = timeouts[i];
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-      
+    // Lazily instantiate the prioritization model once
+    if (!geminiPrioritizationModel) {
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      geminiPrioritizationModel = genAI.getGenerativeModel({
+        model: geminiModelId,
+        generationConfig: {
+          temperature: 0.1,
+          topP: 0.9,
+          topK: 20,
+          maxOutputTokens: 1024,
+          responseMimeType: 'application/json',
+          responseSchema: GEMINI_PRIORITIZATION_SCHEMA
+        }
+      });
+    }
+
+    for (let attempt = 0; attempt < attemptTimeouts.length; attempt++) {
+      const timeoutMs = attemptTimeouts[attempt];
+
       try {
-        console.log(`[optimized-orchestrator] Attempting Gemini call with ${timeout}ms timeout (attempt ${i + 1}/${timeouts.length})`);
-        
-        const responseSchema = {
-          type: 'ARRAY',
-          items: {
-            type: 'OBJECT',
-            properties: {
-              url: { type: 'STRING' },
-              score: { type: 'NUMBER' },
-              reason: { type: 'STRING' }
-            },
-            required: ['url']
-          }
+        await geminiRateLimiter.waitIfNeeded();
+        console.log(`[optimized-orchestrator] Attempting Gemini prioritization with ${timeoutMs}ms timeout (attempt ${attempt + 1}/${attemptTimeouts.length})`);
+
+        const requestPayload = {
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' }
+          ]
         };
 
-        const response = await fetch(`https://generativelanguage.googleapis.com/${modelPath}?key=${geminiKey}`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [{ role: 'user', parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 2048, // Increased to handle JSON responses properly
-              topP: 0.9,
-              topK: 20,
-              candidateCount: 1,
-              stopSequences: [],
-              response_mime_type: 'application/json',
-              response_schema: responseSchema
-            },
-            safetySettings: [
-              {
-                category: "HARM_CATEGORY_HARASSMENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_HATE_SPEECH", 
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              },
-              {
-                category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold: "BLOCK_MEDIUM_AND_ABOVE"
-              }
-            ]
-          }),
-          signal: controller.signal
+        let timeoutId: NodeJS.Timeout | undefined;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(`Gemini prioritization timeout after ${timeoutMs}ms`)), timeoutMs);
         });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          const errorBody = await response.text();
-          console.warn('[optimized-orchestrator] Gemini API failed', {
-            status: response.status,
-            statusText: response.statusText,
-            modelPath,
-            attempt: i + 1,
-            timeout,
-            errorBody: errorBody?.slice(0, 500)
-          });
-          throw new Error(`Gemini API failed: ${response.status} ${response.statusText}`);
+
+        const result = await Promise.race([
+          geminiPrioritizationModel!.generateContent(requestPayload),
+          timeoutPromise
+        ]) as Awaited<ReturnType<GenerativeModel['generateContent']>>;
+
+        if (timeoutId) {
+          clearTimeout(timeoutId);
         }
 
-        const rawText = await response.text();
-        console.debug('[optimized-orchestrator] Gemini raw response prefix', rawText.slice(0, 200));
-        
-        const responseData = JSON.parse(rawText);
-        
-        // Check finishReason first to understand why content might be missing
-        const finishReason = responseData.candidates?.[0]?.finishReason;
-        const usageMetadata = responseData.usageMetadata;
-        
-        // Handle structured JSON response (when response_mime_type is 'application/json')
-        let payloadText = null;
-        if (responseData.candidates?.[0]?.content?.parts?.[0]?.text) {
-          payloadText = responseData.candidates[0].content.parts[0].text;
-        } else if (responseData.candidates?.[0]?.content?.text) {
-          payloadText = responseData.candidates[0].content.text;
-        }
-        
-        console.debug('[optimized-orchestrator] Extracted content:', payloadText ? payloadText.substring(0, 100) + '...' : 'null');
-        console.debug('[optimized-orchestrator] Finish reason:', finishReason, 'Usage:', usageMetadata);
-        
-        // Handle MAX_TOKENS case
-        if (!payloadText && finishReason === 'MAX_TOKENS') {
-          console.warn('[optimized-orchestrator] MAX_TOKENS reached - response was truncated. This indicates maxOutputTokens may be too low or prompt too long.');
-          throw new Error('MAX_TOKENS: Response truncated - increase maxOutputTokens or reduce prompt size');
-        }
-        
-        if (!payloadText) {
-          console.warn('[optimized-orchestrator] No content in Gemini response, full response:', JSON.stringify(responseData, null, 2));
-          throw new Error(`No content in Gemini response (finishReason: ${finishReason || 'unknown'})`);
+        const response = result?.response;
+        const finishReason = response?.candidates?.[0]?.finishReason;
+        const usageMetadata = (response as any)?.usageMetadata;
+
+        const text = typeof response?.text === 'function'
+          ? response.text()
+          : response?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        console.debug('[optimized-orchestrator] Gemini prioritization finish reason:', finishReason, 'Usage:', usageMetadata);
+
+        if (!text) {
+          throw new Error(`No content in Gemini response${finishReason ? ` (finishReason: ${finishReason})` : ''}`);
         }
 
-        // Parse JSON payload (should be structured JSON due to response_mime_type)
-        let prioritized: any;
+        let parsed: any;
         try {
-          prioritized = JSON.parse(payloadText);
+          parsed = JSON.parse(text);
         } catch (parseError) {
-          console.warn('[optimized-orchestrator] Failed to parse JSON payload, trying to repair:', parseError);
-          // Try to repair common JSON issues
-          try {
-            const repaired = payloadText
-              .replace(/,\s*}/g, '}')  // Remove trailing commas in objects
-              .replace(/,\s*]/g, ']')  // Remove trailing commas in arrays
-              .replace(/([{,]\s*)(\w+):/g, '$1"$2":')  // Add quotes to unquoted keys
-              .replace(/:\s*([^",\[\]{}]+)([,}\]])/g, ': "$1"$2');  // Add quotes to unquoted string values
-            prioritized = JSON.parse(repaired);
-          } catch (repairError) {
-            console.warn('[optimized-orchestrator] JSON repair failed:', repairError);
-            throw new Error('Invalid JSON payload');
-          }
+          console.warn('[optimized-orchestrator] Failed to parse Gemini prioritization output:', parseError);
+          throw new Error('Invalid JSON payload from Gemini prioritization');
         }
 
-        // Handle both array and object responses
-        if (!Array.isArray(prioritized)) {
-          if (prioritized && typeof prioritized === 'object') {
-            // If it's an object with an array property, extract it
-            const arrayKeys = Object.keys(prioritized).filter(key => Array.isArray(prioritized[key]));
-            if (arrayKeys.length > 0) {
-              prioritized = prioritized[arrayKeys[0]];
-            } else {
-              throw new Error('Response is not an array and no array property found');
-            }
-          } else {
-            throw new Error('Response is not an array');
-          }
+        if (!Array.isArray(parsed)) {
+          throw new Error('Gemini prioritization response is not an array');
         }
 
-        // Normalize and validate results
-        const normalized = prioritized
+        const normalized = parsed
           .map((item: any, idx: number) => {
-            if (typeof item === 'string') {
-              return { url: item, score: 0.5 - idx * 0.02, reason: 'string_result' };
+            if (!item || typeof item.url !== 'string') {
+              return null;
             }
-            if (!item || typeof item.url !== 'string') return null;
-            const score = typeof item.score === 'number' ? item.score : 0.5 - idx * 0.02;
-            return {
-              url: item.url,
-              score: Math.min(Math.max(score, 0), 1),
-              reason: typeof item.reason === 'string' ? item.reason : 'gemini'
-            };
+            const rawScore = typeof item.score === 'number' ? item.score : parseFloat(item.score);
+            const score = Number.isFinite(rawScore) ? Math.min(Math.max(rawScore, 0), 1) : Math.max(0.5 - idx * 0.02, 0.05);
+            const reason = typeof item.reason === 'string' && item.reason.trim().length > 0 ? item.reason.trim().slice(0, 24) : 'gemini';
+            return { url: item.url, score, reason };
           })
-          .filter((item: any): item is {url: string, score: number, reason: string} => !!item)
+          .filter((item): item is { url: string; score: number; reason: string } => !!item)
           .filter(item => urls.includes(item.url));
 
-        if (normalized.length > 0) {
-          const responseTime = Date.now() - startTime;
-          geminiMetrics.recordCall(true, responseTime);
-          
-          console.log('[optimized-orchestrator] Successfully prioritized', normalized.length, 'URLs via Gemini:', {
-            attempt: i + 1,
-            timeout,
-            responseTime: responseTime + 'ms',
-            promptLength: prompt.length,
-            modelUsed: modelPath
-          });
-          return normalized;
+        if (normalized.length === 0) {
+          throw new Error('No valid prioritized URLs returned by Gemini');
         }
 
-        throw new Error('No valid prioritized URLs found');
-        
-      } catch (error: any) {
-        clearTimeout(timeoutId);
-        lastError = error;
-        
-        if (i === timeouts.length - 1) {
-          // Final attempt failed
-          const responseTime = Date.now() - startTime;
-          geminiMetrics.recordCall(false, responseTime, 'timeout');
+        const responseTime = Date.now() - startTime;
+        geminiMetrics.recordCall(true, responseTime);
+        console.log('[optimized-orchestrator] Successfully prioritized URLs via Gemini:', {
+          attempt: attempt + 1,
+          responseTime: `${responseTime}ms`,
+          finishReason,
+          promptLength: prompt.length,
+          modelUsed: geminiModelId
+        });
+
+        return normalized;
+      } catch (error) {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        console.warn(`[optimized-orchestrator] Gemini prioritization attempt ${attempt + 1} failed:`, error instanceof Error ? error.message : error);
+
+        if (attempt === attemptTimeouts.length - 1) {
           throw error;
-        } else {
-          console.warn(`[optimized-orchestrator] Gemini attempt ${i + 1} failed with ${timeout}ms timeout, trying next timeout:`, error?.message || 'Unknown error');
         }
       }
     }
-    
-    throw lastError;
-
-  } catch (error: any) {
-    // Record error metrics
+  } catch (error) {
     const responseTime = Date.now() - startTime;
     let errorType = 'unknown';
-    
-    // Structured error handling with specific error types
-    if (error?.code === 20) { // ABORT_ERR
-      console.warn('[optimized-orchestrator] Gemini timeout after all attempts, using fallback');
-      errorType = 'timeout';
-      geminiMetrics.recordCall(false, responseTime, 'timeout');
-    } else if (error?.message?.includes('fetch failed')) {
-      console.warn('[optimized-orchestrator] Gemini network error, using fallback');
-      errorType = 'network';
-      geminiMetrics.recordCall(false, responseTime, 'network');
-    } else if (error?.message?.includes('quota') || error?.message?.includes('rate limit')) {
-      console.warn('[optimized-orchestrator] Gemini quota/rate limit exceeded, using fallback');
-      errorType = 'quota';
-      geminiMetrics.recordCall(false, responseTime, 'quota');
-    } else if (error?.message?.includes('safety')) {
-      console.warn('[optimized-orchestrator] Gemini safety filter triggered, using fallback');
-      errorType = 'safety';
-      geminiMetrics.recordCall(false, responseTime, 'safety');
-    } else if (error?.message?.includes('invalid')) {
-      console.warn('[optimized-orchestrator] Gemini invalid request, using fallback');
-      errorType = 'invalid';
-      geminiMetrics.recordCall(false, responseTime, 'invalid');
+
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      if (message.includes('timeout')) {
+        errorType = 'timeout';
+      } else if (message.includes('quota') || message.includes('rate limit')) {
+        errorType = 'quota';
+      } else if (message.includes('safety')) {
+        errorType = 'safety';
+      } else if (message.includes('invalid') || message.includes('json')) {
+        errorType = 'invalid';
+      } else if (message.includes('network') || message.includes('fetch')) {
+        errorType = 'network';
+      }
+
+      console.warn('[optimized-orchestrator] Gemini prioritization failed, falling back:', error.message);
     } else {
-      console.warn('[optimized-orchestrator] Gemini unknown error, using fallback:', error?.message || 'Unknown error');
-      geminiMetrics.recordCall(false, responseTime, 'unknown');
+      console.warn('[optimized-orchestrator] Gemini prioritization failed with unknown error, falling back:', error);
     }
-    
-    // Return fallback scoring
-    return urls.map((url, idx) => ({ 
-      url, 
-      score: Math.max(0.8 - idx * 0.02, 0.45), 
-      reason: `fallback_${errorType}` 
+
+    geminiMetrics.recordCall(false, responseTime, errorType);
+
+    return urls.map((url, idx) => ({
+      url,
+      score: Math.max(0.8 - idx * 0.02, 0.45),
+      reason: `fallback_${errorType}`
     }));
   }
+
+  // Should never reach here, but keep TypeScript satisfied
+  return urls.map((url, idx) => ({
+    url,
+    score: Math.max(0.8 - idx * 0.02, 0.45),
+    reason: 'fallback_unknown'
+  }));
 }
 
 /**
