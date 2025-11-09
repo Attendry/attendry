@@ -77,10 +77,6 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
       try {
         const res = await doFirecrawl({ ...fcParams, timeoutMs, countryContext });
         if (res?.items?.length) {
-          if (!res.content) {
-            console.warn('[firecrawl] Result had URLs but no scraped content; continuing to next attempt');
-            continue;
-          }
           return res;
         }
       } catch (e: any) {

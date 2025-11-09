@@ -280,32 +280,29 @@ export function buildWeightedGeminiContext(
   country: string
 ): string {
   const countryName = getCountryName(country);
-  const industryFocus = template.industryTerms.slice(0, 3).join(', ');
-  const cities = template.geographicCoverage.cities
+  const industryFocus = template.industryTerms[0] || template.name;
+  const targetRole =
+    (userProfile?.icp_terms as string[] | undefined)?.[0] ||
+    template.icpTerms[0];
+  const highlightCity = template.geographicCoverage.cities
     .filter(c => c.weight >= 6)
     .map(c => c.city)
-    .slice(0, 3);
-  const targetRoles =
-    (userProfile?.icp_terms as string[] | undefined)?.slice(0, 2).join(', ') ||
-    template.icpTerms.slice(0, 2).join(', ');
+    .find(Boolean);
 
-  const contextSentences: string[] = [
-    `Score URLs for future ${template.name.toLowerCase()} events in ${countryName}.`,
-    `Reward pages with confirmed 2025+ dates, venue, agenda; reject directories or past-event summaries.`,
-    `Return JSON [{"url":"","score":0,"reason":""}] (reason keyword <=12 chars, e.g. "berlin2025").`
+  const parts: string[] = [
+    `Rank upcoming ${template.name.toLowerCase()} events in ${countryName}.`,
+    'Prefer pages with clear future date, venue, registration. Downrank directories or past recaps.'
   ];
 
   if (industryFocus) {
-    contextSentences.push(`Focus topics: ${industryFocus}.`);
+    parts.push(`Topic:${industryFocus}.`);
+  }
+  if (targetRole) {
+    parts.push(`Role:${targetRole}.`);
+  }
+  if (highlightCity) {
+    parts.push(`City:${highlightCity}.`);
   }
 
-  if (targetRoles) {
-    contextSentences.push(`Target roles: ${targetRoles}.`);
-  }
-
-  if (cities.length > 0) {
-    contextSentences.push(`Important cities: ${cities.join(', ')}.`);
-  }
-
-  return contextSentences.join(' ');
+  return parts.join(' ');
 }

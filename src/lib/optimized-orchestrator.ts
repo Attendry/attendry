@@ -80,12 +80,16 @@ const AGGREGATOR_HOSTS = new Set([
   'allconferencealert.com',
   'conferencealerts.co.in',
   'conferenceineurope.net',
+  'conferenceineurope.org',
   'eventbrite.com',
-  'internationalconferencealerts.com',
-  'vendelux.com',
-  'linkedin.com',
+  'eventbrite.de',
+  'eventbrite.co.uk',
+  'freeconferencealerts.com',
   'globalli.io',
-  'researchbunny.com'
+  'internationalconferencealerts.com',
+  'linkedin.com',
+  'researchbunny.com',
+  'vendelux.com'
 ]);
 
 type GenerativeModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
@@ -940,9 +944,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
   const attemptTimeouts = [12000]; // single short attempt (ms)
 
   try {
-    const systemInstruction = `You are a ranking service that returns ONLY JSON. \
-Do not include explanations, thoughts, or comments. Output must be a JSON array of objects \
-with "url", "score", "reason". Score between 0 and 1. Reason <=12 chars. Never include additional text.`;
+    const systemInstruction = 'Return only JSON array [{"url":"","score":0,"reason":""}]. Score 0-1. Reason<=10 chars. No explanations.';
 
     // Lazily instantiate the prioritization model once
     if (!geminiPrioritizationModel) {
@@ -962,10 +964,10 @@ with "url", "score", "reason". Score between 0 and 1. Reason <=12 chars. Never i
 
         const generationConfig = {
           temperature: 0.1,
-          topP: 0.8,
+          topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 64,
+          maxOutputTokens: 48,
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1016,7 +1018,7 @@ with "url", "score", "reason". Score between 0 and 1. Reason <=12 chars. Never i
           throw new Error('Gemini prioritization response is empty or invalid');
         }
 
-        const limited = parsed.slice(0, chunk.length);
+        const limited = parsed.slice(0, urls.length);
 
         const normalized = limited
           .map((item: any, idx: number) => {
@@ -1121,50 +1123,40 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const locationContext = countryContext.countryNames[0] || countryContext.iso2 || 'target region';
 
   let timeframeLabel = '';
-  if (params.dateFrom && params.dateTo) {
-    const fromDate = new Date(params.dateFrom);
-    const toDate = new Date(params.dateTo);
-    const now = new Date();
-
-    if (!Number.isNaN(fromDate.getTime()) && !Number.isNaN(toDate.getTime())) {
-      if (fromDate >= now) {
-        const daysDiff = Math.max(1, Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)));
-        timeframeLabel = ` Focus on events within the next ${daysDiff} days.`;
-      } else if (toDate <= now) {
-        const daysDiff = Math.max(1, Math.ceil((fromDate.getTime() - toDate.getTime()) / (1000 * 60 * 60 * 24)));
-        timeframeLabel = ` Focus on events from the past ${daysDiff} days.`;
-      } else {
-        timeframeLabel = ` Focus on events happening between ${params.dateFrom} and ${params.dateTo}.`;
-      }
-    }
-  }
+if (params.dateFrom && params.dateTo) {
+  timeframeLabel = ` window:${params.dateFrom}->${params.dateTo}.`;
+} else if (params.dateFrom) {
+  timeframeLabel = ` after:${params.dateFrom}.`;
+} else if (params.dateTo) {
+  timeframeLabel = ` before:${params.dateTo}.`;
+}
 
   const userIndustryTerms = userProfile?.industry_terms || [];
   const userIcpTerms = userProfile?.icp_terms || [];
-  const userCompetitors = userProfile?.competitors || [];
   const userContextParts: string[] = [];
   if (userIndustryTerms.length > 0) {
-    userContextParts.push(`Industry focus: ${userIndustryTerms.slice(0, 2).join(', ')}`);
+  userContextParts.push(`topics:${userIndustryTerms[0]}`);
   }
   if (userIcpTerms.length > 0) {
-    userContextParts.push(`Target audience: ${userIcpTerms.slice(0, 2).join(', ')}`);
+  userContextParts.push(`roles:${userIcpTerms[0]}`);
   }
   // Competitor context increases prompt length significantly; omit for stability.
-  const userContextText = userContextParts.length > 0 ? ` ${userContextParts.join(' | ')}` : '';
+const userContextText = userContextParts.length > 0 ? ` ${userContextParts.join(' ')}` : '';
 
   const weightedContext = template
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
   const chunkSize = 1;
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score 0-1. Output JSON [{"url":"","score":0,"reason":""}] (reason<=12 chars, no prose).`;
+const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
-  console.log('[optimized-orchestrator] Gemini prioritization setup:', {
-    industry,
-    urls: urls.length,
-    contextLength: baseContext.length,
-    chunkSize
-  });
+    console.log('[optimized-orchestrator] Gemini prioritization setup:', {
+      industry,
+      urls: urls.length,
+      filtered: filteredUrls.length,
+      contextLength: baseContext.length,
+      chunkSize
+    });
 
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
@@ -1200,7 +1192,7 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   for (let i = 0; i < filteredUrls.length; i += chunkSize) {
     const chunk = filteredUrls.slice(i, i + chunkSize);
     const numberedList = chunk.map((url, idx) => `${idx + 1}. ${url}`).join('\n');
-    const prompt = `${baseContext}\nURLs:\n${numberedList}\n\nReturn JSON array: [{"url":"...","score":0.0,"reason":"why"}]`;
+    const prompt = `${baseContext}\nURLs:\n${numberedList}`;
 
     try {
       const chunkResults = await executeGeminiCall(prompt, chunk);
