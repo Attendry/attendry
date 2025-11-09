@@ -36,12 +36,18 @@ const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 const DIRECTORY_DOMAINS = new Set([
   'conferencealerts.co.in',
   'internationalconferencealerts.com',
-  'www.cvent.com',
   'cvent.com',
-  'www.everlaw.com',
   'everlaw.com',
-  'www.vendelux.com',
   'vendelux.com'
+]);
+
+const AGGREGATOR_DOMAINS = new Set([
+  '10times.com',
+  'allconferencealert.com',
+  'conferenceineurope.net',
+  'eventbrite.com',
+  'globalriskcommunity.com',
+  'linkedin.com'
 ]);
 
 const DIRECTORY_PATH_SEGMENTS = [
@@ -67,6 +73,11 @@ const EVENT_LOCATION_KEYWORDS = [
 const EVENT_CALL_TO_ACTION_KEYWORDS = [
   'register','anmeldung','anmelden','sign up','jetzt registrieren','jetzt anmelden','tickets','ticket'
 ];
+
+function normalizeHostname(value: string | undefined): string {
+  if (!value) return '';
+  return value.replace(/^www\./, '').toLowerCase();
+}
 
 const LOCATION_MAP: Record<string, string> = {
   berlin: 'Berlin, Germany',
@@ -695,6 +706,18 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
     `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`
   ).join('\n\n---\n\n');
 
+  let normalizedHost = '';
+  try {
+    normalizedHost = normalizeHostname(new URL(primaryUrl).hostname);
+  } catch {
+    normalizedHost = '';
+  }
+
+  if (normalizedHost && (DIRECTORY_DOMAINS.has(normalizedHost) || AGGREGATOR_DOMAINS.has(normalizedHost))) {
+    console.warn('Skipping Gemini metadata extraction for aggregator/directory domain', { primaryUrl, normalizedHost });
+    return fallbackMetadata;
+  }
+
   if (primaryUrl && isLikelyDirectoryListing(primaryUrl, serializedSections)) {
     console.warn('Detected directory-style listing during metadata extraction, using fallback', { primaryUrl });
     return fallbackMetadata;
@@ -879,6 +902,18 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
     ).join('\n\n---\n\n');
 
     const primaryUrl = crawlResults[0]?.url || '';
+    let normalizedHost = '';
+    try {
+      normalizedHost = normalizeHostname(new URL(primaryUrl).hostname);
+    } catch {
+      normalizedHost = '';
+    }
+
+    if (normalizedHost && (DIRECTORY_DOMAINS.has(normalizedHost) || AGGREGATOR_DOMAINS.has(normalizedHost))) {
+      console.warn('Skipping Gemini speaker extraction for aggregator/directory domain', { primaryUrl, normalizedHost });
+      return [];
+    }
+
     if (primaryUrl && isLikelyDirectoryListing(primaryUrl, serializedSections)) {
       console.warn('Detected directory-style listing during speaker extraction, skipping Gemini call', { primaryUrl });
       return [];

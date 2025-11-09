@@ -72,6 +72,8 @@ const geminiModelId = geminiModelPath
   .split('/')
   .pop()
   ?.replace(':generateContent', '') || 'gemini-2.5-flash';
+const geminiPrioritizationModelId =
+  process.env.GEMINI_PRIORITIZATION_MODEL || geminiModelId;
 
 type GenerativeModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
 
@@ -894,22 +896,18 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     }));
   }
 
-  const attemptTimeouts = [20000, 15000]; // milliseconds
+  const attemptTimeouts = [20000, 15000, 12000]; // milliseconds
 
   try {
+    const systemInstruction = `You are a ranking service that returns ONLY JSON. \
+Do not include explanations, thoughts, or comments. Output must be a JSON array of objects \
+with "url", "score", "reason". Score between 0 and 1. Reason <=12 chars. Never include additional text.`;
+
     // Lazily instantiate the prioritization model once
     if (!geminiPrioritizationModel) {
       const genAI = new GoogleGenerativeAI(geminiKey);
       geminiPrioritizationModel = genAI.getGenerativeModel({
-        model: geminiModelId,
-        generationConfig: {
-          temperature: 0.1,
-          topP: 0.9,
-          topK: 20,
-          maxOutputTokens: 1024,
-          responseMimeType: 'application/json',
-          responseSchema: GEMINI_PRIORITIZATION_SCHEMA
-        }
+        model: geminiPrioritizationModelId
       });
     }
 
@@ -921,8 +919,20 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         await geminiRateLimiter.waitIfNeeded();
         console.log(`[optimized-orchestrator] Attempting Gemini prioritization with ${timeoutMs}ms timeout (attempt ${attempt + 1}/${attemptTimeouts.length})`);
 
+        const generationConfig = {
+          temperature: 0.1,
+          topP: 0.8,
+          topK: 20,
+          candidateCount: 1,
+          maxOutputTokens: attempt === 0 ? 192 : attempt === 1 ? 160 : 120,
+          responseMimeType: 'application/json',
+          responseSchema: GEMINI_PRIORITIZATION_SCHEMA
+        };
+
         const requestPayload = {
+          systemInstruction: { parts: [{ text: systemInstruction }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig,
           safetySettings: [
             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -965,14 +975,16 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           throw new Error('Gemini prioritization response is empty or invalid');
         }
 
-        const normalized = parsed
+        const limited = parsed.slice(0, chunk.length);
+
+        const normalized = limited
           .map((item: any, idx: number) => {
             if (!item || typeof item.url !== 'string') {
               return null;
             }
             const rawScore = typeof item.score === 'number' ? item.score : parseFloat(item.score);
             const score = Number.isFinite(rawScore) ? Math.min(Math.max(rawScore, 0), 1) : Math.max(0.5 - idx * 0.02, 0.05);
-            const reason = typeof item.reason === 'string' && item.reason.trim().length > 0 ? item.reason.trim().slice(0, 24) : 'gemini';
+            const reason = typeof item.reason === 'string' && item.reason.trim().length > 0 ? item.reason.trim().slice(0, 12) : 'gemini';
             return { url: item.url, score, reason };
           })
           .filter((item): item is { url: string; score: number; reason: string } => !!item)
@@ -989,7 +1001,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           responseTime: `${responseTime}ms`,
           finishReason,
           promptLength: prompt.length,
-          modelUsed: geminiModelId
+          modelUsed: geminiPrioritizationModelId
         });
 
         return normalized;
@@ -1105,8 +1117,8 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  const chunkSize = 3;
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Rate relevance 0-1. Prefer concrete dates, locations, confirmed speakers. Reasons must be <=12 chars.`;
+  const chunkSize = 2;
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Rate relevance 0-1. Return at most ${chunkSize} entries. Avoid intermediate thoughts. Reasons must be <=12 chars.`;
 
   console.log('[optimized-orchestrator] Gemini prioritization setup:', {
     industry,
