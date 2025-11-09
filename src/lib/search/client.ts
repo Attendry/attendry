@@ -85,7 +85,8 @@ export async function fetchEvents(
 
 async function safeReadJson(response: Response): Promise<Record<string, unknown> | null> {
   try {
-    return (await response.json()) as Record<string, unknown>;
+    const resClone = response.clone();
+    return (await resClone.json()) as Record<string, unknown>;
   } catch {
     return null;
   }

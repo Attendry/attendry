@@ -5,6 +5,7 @@
  */
 
 import { buildEffectiveQuery } from '@/search/query';
+import { buildUnifiedQuery } from '@/lib/unified-query-builder';
 import { withTimeoutAndRetry } from '@/utils/net/withTimeoutAndRetry';
 import { logger } from '@/utils/logger';
 import { RetryService } from '@/lib/services/retry-service';
@@ -28,10 +29,24 @@ export async function firecrawlSearch(args: FirecrawlArgs) {
 
   // ✅ Use the explicit builder; never override with a fixed German literal string.
   const q = buildEffectiveQuery({ baseQuery, userText, countryContext });
+  let narrativeQuery: string | undefined;
+  try {
+    const unified = await buildUnifiedQuery({
+      userText: baseQuery,
+      country: countryContext?.iso2,
+      dateFrom,
+      dateTo,
+      language: countryContext?.locale?.startsWith('de') ? 'de' : 'en',
+      userProfile: countryContext?.userProfile
+    });
+    narrativeQuery = unified.narrativeQuery;
+  } catch (err) {
+    console.warn('[firecrawlSearch] Failed to build unified narrative query:', err);
+  }
 
   // Build params WITHOUT rewriting the query text.
   const fcParams = {
-    query: q,                 // ← not a literal
+    query: narrativeQuery || q,
     limit: Math.min(limit, 15),
     sources: ['web'] as const,
     ignoreInvalidURLs: true,

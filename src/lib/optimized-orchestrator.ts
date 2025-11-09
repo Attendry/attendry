@@ -118,6 +118,14 @@ function parseGeminiPrioritizationPayload(rawText: string): any[] {
     return direct;
   }
 
+  const trimmed = rawText.trim();
+  if (trimmed.startsWith('[') && !trimmed.endsWith(']')) {
+    const repairedTail = tryParse(trimmed + ']');
+    if (repairedTail) {
+      return repairedTail;
+    }
+  }
+
   // Try to find the first JSON array in the text
   const arrayMatch = rawText.match(/\[[\s\S]*]/);
   if (arrayMatch) {
@@ -136,6 +144,26 @@ function parseGeminiPrioritizationPayload(rawText: string): any[] {
     const arrayKey = Object.keys(repaired.data).find((key) => Array.isArray((repaired.data as any)[key]));
     if (arrayKey) {
       return repaired.data[arrayKey];
+    }
+  }
+
+  // Try to parse individual objects even if the array is truncated
+  const objectMatches = rawText.match(/\{[\s\S]*?\}(?=,|\s*\]|$)/g);
+  if (objectMatches && objectMatches.length > 0) {
+    const repairedObjects = objectMatches.map((chunk) => {
+      const repaired = attemptJsonRepair(chunk);
+      if (repaired.success && repaired.data && typeof repaired.data === 'object') {
+        return repaired.data;
+      }
+      try {
+        return JSON.parse(chunk);
+      } catch {
+        return null;
+      }
+    }).filter(Boolean) as any[];
+
+    if (repairedObjects.length > 0) {
+      return repairedObjects;
     }
   }
 

@@ -364,7 +364,7 @@ function buildNarrativeQuery(params: {
     if (dateFrom === dateTo) {
       temporalDescription = `scheduled for ${formatDate(dateFrom)}`;
     } else if (fromYear === toYear) {
-      temporalDescription = `taking place between ${formatDate(dateFrom)} and ${formatDate(dateTo)} ${fromYear}`;
+      temporalDescription = `taking place between ${formatDate(dateFrom)} and ${formatDate(dateTo)}`;
     } else {
       temporalDescription = `taking place between ${formatDate(dateFrom)} and ${formatDate(dateTo)}`;
     }
