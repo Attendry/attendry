@@ -290,10 +290,9 @@ export function buildWeightedGeminiContext(
     template.icpTerms.slice(0, 2).join(', ');
 
   const contextSentences: string[] = [
-    `You score URLs for upcoming ${template.name.toLowerCase()} events in ${countryName}.`,
-    `Reward pages that clearly describe a 2025+ in-person or hybrid event with dates, city, and agenda.`,
-    `Penalise directories, press releases, recaps of past events, or vendor marketing pages.`,
-    `Return only JSON array [{"url":"","score":0.0,"reason":""}] with reason keyword <= 12 chars (e.g. "munich2025").`
+    `Score URLs for future ${template.name.toLowerCase()} events in ${countryName}.`,
+    `Reward pages with confirmed 2025+ dates, venue, agenda; reject directories or past-event summaries.`,
+    `Return JSON [{"url":"","score":0,"reason":""}] (reason keyword <=12 chars, e.g. "berlin2025").`
   ];
 
   if (industryFocus) {

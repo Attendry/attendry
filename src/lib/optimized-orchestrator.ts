@@ -924,7 +924,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     }));
   }
 
-  const attemptTimeouts = [20000, 15000, 12000]; // milliseconds
+  const attemptTimeouts = [12000]; // milliseconds
 
   try {
     const systemInstruction = `You are a ranking service that returns ONLY JSON. \
@@ -952,7 +952,7 @@ with "url", "score", "reason". Score between 0 and 1. Reason <=12 chars. Never i
           topP: 0.8,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: attempt === 0 ? 128 : attempt === 1 ? 96 : 64,
+          maxOutputTokens: 64,
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1136,17 +1136,15 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   if (userIcpTerms.length > 0) {
     userContextParts.push(`Target audience: ${userIcpTerms.slice(0, 2).join(', ')}`);
   }
-  if (userCompetitors.length > 0) {
-    userContextParts.push(`Competitors: ${userCompetitors.slice(0, 1).join(', ')}`);
-  }
+  // Competitor context increases prompt length significantly; omit for stability.
   const userContextText = userContextParts.length > 0 ? ` ${userContextParts.join(' | ')}` : '';
 
   const weightedContext = template
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  const chunkSize = 2;
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Rate relevance 0-1. Return at most ${chunkSize} entries. Avoid intermediate thoughts. Reasons must be <=12 chars.`;
+  const chunkSize = 1;
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score relevance 0-1. Output JSON [{"url":"","score":0,"reason":""}] with reason <=12 chars and no prose.`;
 
   console.log('[optimized-orchestrator] Gemini prioritization setup:', {
     industry,
