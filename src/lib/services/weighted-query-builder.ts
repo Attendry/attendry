@@ -170,60 +170,56 @@ function buildNarrativeQuery(
   userText?: string
 ): string {
   const countryName = getCountryName(country);
-  const industryTerms = template.industryTerms.slice(0, 5).join(', ');
-  const icpTerms = template.icpTerms.slice(0, 3).join(', ');
-  
-  let narrative = `Find ${template.name.toLowerCase()} events and professional conferences in ${countryName}`;
-  
-  // Add industry-specific context
-  if (template.precision.industrySpecificQuery.weight >= 7) {
-    narrative += `, including ${industryTerms}`;
+  const industryTerms = template.industryTerms.slice(0, 4);
+  const icpTerms = template.icpTerms.slice(0, 3);
+
+  const highlightedCities = template.geographicCoverage.cities
+    .filter(c => c.weight >= 6)
+    .map(c => c.city)
+    .slice(0, 3);
+
+  const locationPhrase = highlightedCities.length > 0
+    ? `${countryName} (including ${highlightedCities.join(', ')})`
+    : countryName;
+
+  const narrativeParts: string[] = [];
+
+  narrativeParts.push(
+    `Find ${template.name.toLowerCase()} business events and professional conferences in ${locationPhrase}`,
+    'scheduled through the upcoming 12 months'
+  );
+
+  if (industryTerms.length > 0) {
+    narrativeParts.push(`covering ${industryTerms.join(', ')}`);
   }
-  
-  // Add ICP context
-  if (template.precision.industrySpecificQuery.weight >= 5) {
-    narrative += `, targeting ${icpTerms}`;
+
+  if (icpTerms.length > 0) {
+    narrativeParts.push(`for leaders such as ${icpTerms.join(', ')}`);
   }
-  
-  // Add user-specific context
+
   if (userProfile) {
-    const userIndustryTerms = userProfile.industry_terms || [];
-    const userIcpTerms = userProfile.icp_terms || [];
-    const userCompetitors = userProfile.competitors || [];
-    
+    const userIndustryTerms = (userProfile.industry_terms || []).slice(0, 3);
+    const userIcpTerms = (userProfile.icp_terms || []).slice(0, 2);
+
     if (userIndustryTerms.length > 0) {
-      narrative += `, including ${userIndustryTerms.slice(0, 3).join(', ')}`;
+      narrativeParts.push(`with emphasis on ${userIndustryTerms.join(', ')}`);
     }
     if (userIcpTerms.length > 0) {
-      narrative += `, targeting ${userIcpTerms.slice(0, 2).join(', ')}`;
-    }
-    if (userCompetitors.length > 0) {
-      narrative += `, involving competitors like ${userCompetitors.slice(0, 2).join(', ')}`;
+      narrativeParts.push(`serving audiences like ${userIcpTerms.join(', ')}`);
     }
   }
-  
-  // Add user text context
+
   if (userText && userText.trim()) {
-    narrative += `, related to ${userText.trim()}`;
+    narrativeParts.push(`related to ${userText.trim()}`);
   }
-  
-  // Add quality requirements context
+
   if (template.precision.qualityRequirements.weight >= 6) {
-    narrative += ', with speaker information and location details';
+    narrativeParts.push('prioritise events that publish agendas, speakers, and venues');
+  } else {
+    narrativeParts.push('prioritise events with clear dates and locations');
   }
-  
-  // Add geographic coverage context
-  if (template.precision.geographicCoverage.weight >= 7) {
-    const cities = template.geographicCoverage.cities
-      .filter(c => c.weight >= 7)
-      .map(c => c.city)
-      .slice(0, 5);
-    if (cities.length > 0) {
-      narrative += `, in cities like ${cities.join(', ')}`;
-    }
-  }
-  
-  return narrative;
+
+  return narrativeParts.join(', ') + '.';
 }
 
 /**
@@ -283,71 +279,34 @@ export function buildWeightedGeminiContext(
   urls: string[],
   country: string
 ): string {
-  const industryWeight = template.precision.industrySpecificQuery.weight;
-  const preventionWeight = template.precision.crossIndustryPrevention.weight;
-  const qualityWeight = template.precision.qualityRequirements.weight;
-  const geoWeight = template.precision.geographicCoverage.weight;
-  
-  let context = `Rate URLs for ${template.name} events in ${getCountryName(country)}.`;
-  
-  // Add industry-specific context based on weight
-  if (industryWeight >= 7) {
-    context += ` Focus on ${template.industryTerms.slice(0, 5).join(', ')} events.`;
-  } else if (industryWeight >= 4) {
-    context += ` Include both ${template.industryTerms.slice(0, 3).join(', ')} and general business events.`;
+  const countryName = getCountryName(country);
+  const industryFocus = template.industryTerms.slice(0, 3).join(', ');
+  const cities = template.geographicCoverage.cities
+    .filter(c => c.weight >= 6)
+    .map(c => c.city)
+    .slice(0, 3);
+  const targetRoles =
+    (userProfile?.icp_terms as string[] | undefined)?.slice(0, 2).join(', ') ||
+    template.icpTerms.slice(0, 2).join(', ');
+
+  const contextSentences: string[] = [
+    `You score URLs for upcoming ${template.name.toLowerCase()} events in ${countryName}.`,
+    `Reward pages that clearly describe a 2025+ in-person or hybrid event with dates, city, and agenda.`,
+    `Penalise directories, press releases, recaps of past events, or vendor marketing pages.`,
+    `Return only JSON array [{"url":"","score":0.0,"reason":""}] with reason keyword <= 12 chars (e.g. "munich2025").`
+  ];
+
+  if (industryFocus) {
+    contextSentences.push(`Focus topics: ${industryFocus}.`);
   }
-  
-  // Add cross-industry prevention context based on weight
-  if (preventionWeight >= 7) {
-    const excludeTerms = template.negativeFilters.industries
-      .filter(f => f.weight >= 7)
-      .map(f => f.term)
-      .slice(0, 5)
-      .join(', ');
-    context += ` Exclude: ${excludeTerms}.`;
-  } else if (preventionWeight >= 4) {
-    const excludeTerms = template.negativeFilters.industries
-      .filter(f => f.weight >= 5)
-      .map(f => f.term)
-      .slice(0, 3)
-      .join(', ');
-    context += ` Avoid: ${excludeTerms}.`;
+
+  if (targetRoles) {
+    contextSentences.push(`Target roles: ${targetRoles}.`);
   }
-  
-  // Add quality requirements context based on weight
-  if (qualityWeight >= 7) {
-    context += ` Require: speaker data, location data, date data.`;
-  } else if (qualityWeight >= 4) {
-    context += ` Prefer: events with speaker and location data.`;
+
+  if (cities.length > 0) {
+    contextSentences.push(`Important cities: ${cities.join(', ')}.`);
   }
-  
-  // Add geographic coverage context based on weight
-  if (geoWeight >= 7) {
-    const cities = template.geographicCoverage.cities
-      .filter(c => c.weight >= 7)
-      .map(c => c.city)
-      .slice(0, 5);
-    if (cities.length > 0) {
-      context += ` Focus on: ${cities.join(', ')}.`;
-    }
-  }
-  
-  // Add user-specific context
-  if (userProfile) {
-    const userIndustryTerms = userProfile.industry_terms || [];
-    const userIcpTerms = userProfile.icp_terms || [];
-    const userCompetitors = userProfile.competitors || [];
-    
-    if (userIndustryTerms.length > 0) {
-      context += ` User interests: ${userIndustryTerms.slice(0, 3).join(', ')}.`;
-    }
-    if (userIcpTerms.length > 0) {
-      context += ` Target audience: ${userIcpTerms.slice(0, 2).join(', ')}.`;
-    }
-    if (userCompetitors.length > 0) {
-      context += ` Competitors: ${userCompetitors.slice(0, 2).join(', ')}.`;
-    }
-  }
-  
-  return context;
+
+  return contextSentences.join(' ');
 }

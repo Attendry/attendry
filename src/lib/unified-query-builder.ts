@@ -336,11 +336,14 @@ function buildNarrativeQuery(params: {
   const countryName = country ? countryMap[country] || country : 'Europe';
   
   // Build event type description
-  const eventTypeDescription = eventTypes.slice(0, 8).join(', ');
+  const eventTypeDescription = eventTypes.slice(0, 6).join(', ');
   
-  // Build location description
-  const locationDescription = locationTerms.length > 0 
-    ? locationTerms.slice(0, 4).join(', ')
+  // Build location description (country first, then key cities)
+  const highlightedCities = locationTerms
+    .filter(term => term && term.toLowerCase() !== countryName.toLowerCase())
+    .slice(0, 3);
+  const locationDescription = highlightedCities.length > 0
+    ? `${countryName} (including ${highlightedCities.join(', ')})`
     : countryName;
   
   // Build temporal description
@@ -348,11 +351,27 @@ function buildNarrativeQuery(params: {
   if (dateFrom && dateTo) {
     const fromYear = new Date(dateFrom).getFullYear();
     const toYear = new Date(dateTo).getFullYear();
-    temporalDescription = `for ${fromYear}-${toYear}`;
+    const formatDate = (value: string) => {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return value;
+      return new Intl.DateTimeFormat(language === 'de' ? 'de-DE' : 'en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      }).format(d);
+    };
+
+    if (dateFrom === dateTo) {
+      temporalDescription = `scheduled for ${formatDate(dateFrom)}`;
+    } else if (fromYear === toYear) {
+      temporalDescription = `taking place between ${formatDate(dateFrom)} and ${formatDate(dateTo)} ${fromYear}`;
+    } else {
+      temporalDescription = `taking place between ${formatDate(dateFrom)} and ${formatDate(dateTo)}`;
+    }
   } else if (timeframe) {
     temporalDescription = `for ${timeframe}`;
   } else {
-    temporalDescription = 'for 2025-2027';
+    temporalDescription = 'scheduled through the upcoming 12 months';
   }
   
   // Build user-specific context for narrative query
@@ -360,7 +379,6 @@ function buildNarrativeQuery(params: {
   if (userProfile) {
     const industryTerms = userProfile.industry_terms || [];
     const icpTerms = userProfile.icp_terms || [];
-    const competitors = userProfile.competitors || [];
     
     const userContextParts = [];
     if (industryTerms.length > 0) {
@@ -368,9 +386,6 @@ function buildNarrativeQuery(params: {
     }
     if (icpTerms.length > 0) {
       userContextParts.push(`targeting ${icpTerms.slice(0, 2).join(', ')}`);
-    }
-    if (competitors.length > 0) {
-      userContextParts.push(`involving competitors like ${competitors.slice(0, 1).join(', ')}`);
     }
     
     if (userContextParts.length > 0) {
@@ -380,11 +395,11 @@ function buildNarrativeQuery(params: {
 
   // Build narrative query based on language with user context
   if (language === 'de') {
-    return `Finde Geschäftsveranstaltungen und professionelle Events in ${countryName} ${temporalDescription}, einschließlich ${eventTypeDescription} in ${locationDescription}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
+    return `Finde Geschäftsveranstaltungen und professionelle Events in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
   } else if (language === 'fr') {
-    return `Trouvez des événements d'affaires et professionnels en ${countryName} ${temporalDescription}, y compris ${eventTypeDescription} à ${locationDescription}. Focus sur les affaires et le développement professionnel${userContext}.`;
+    return `Trouvez des événements d'affaires et professionnels en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}. Focus sur les affaires et le développement professionnel${userContext}.`;
   } else {
-    return `Find business events and professional conferences in ${countryName} ${temporalDescription}, including ${eventTypeDescription} in ${locationDescription}. Focus on business and professional development${userContext}.`;
+    return `Find business events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}. Focus on business and professional development${userContext}.`;
   }
 }
 

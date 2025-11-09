@@ -924,7 +924,7 @@ with "url", "score", "reason". Score between 0 and 1. Reason <=12 chars. Never i
           topP: 0.8,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: attempt === 0 ? 192 : attempt === 1 ? 160 : 120,
+          maxOutputTokens: attempt === 0 ? 128 : attempt === 1 ? 96 : 64,
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -960,7 +960,7 @@ with "url", "score", "reason". Score between 0 and 1. Reason <=12 chars. Never i
         const usageMetadata = (response as any)?.usageMetadata;
 
         const text = typeof response?.text === 'function'
-          ? response.text()
+          ? await response.text()
           : response?.candidates?.[0]?.content?.parts?.[0]?.text;
 
         console.debug('[optimized-orchestrator] Gemini prioritization finish reason:', finishReason, 'Usage:', usageMetadata);
@@ -969,7 +969,7 @@ with "url", "score", "reason". Score between 0 and 1. Reason <=12 chars. Never i
           throw new Error(`No content in Gemini response${finishReason ? ` (finishReason: ${finishReason})` : ''}`);
         }
 
-        const parsed = parseGeminiPrioritizationPayload(text);
+        const parsed = parseGeminiPrioritizationPayload(text as string);
 
         if (!parsed || parsed.length === 0) {
           throw new Error('Gemini prioritization response is empty or invalid');

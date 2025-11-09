@@ -793,7 +793,7 @@ ${chunk}`;
         });
         const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
         const response = await result.response;
-        const text = response.text();
+        const text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
         if (!text || !text.trim()) {
           console.warn(`[event-analysis] Empty metadata response for chunk ${i + 1}`);
@@ -977,7 +977,7 @@ ${chunk}`;
 
         const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
         const response = await result.response;
-        const text = response.text();
+        const text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
         if (!text || !text.trim()) {
           console.warn(`[event-analysis] Empty speaker response for chunk ${i + 1}`);
