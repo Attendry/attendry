@@ -46,6 +46,7 @@ import {
 } from './advanced-cache';
 import { deepCrawlEvent, extractEventMetadata, extractAndEnhanceSpeakers } from './event-analysis';
 import type { SpeakerData } from './event-analysis';
+import { attemptJsonRepair } from './ai/gemini-bypass';
 import { 
   cacheOptimizer,
   invalidateCacheByPattern,
@@ -88,6 +89,56 @@ const GEMINI_PRIORITIZATION_SCHEMA = {
 };
 
 let geminiPrioritizationModel: GenerativeModel | null = null;
+
+function parseGeminiPrioritizationPayload(rawText: string): any[] {
+  const candidates: any[] = [];
+
+  const tryParse = (text: string): any[] | null => {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      if (parsed && typeof parsed === 'object') {
+        const arrayKey = Object.keys(parsed).find((key) => Array.isArray((parsed as any)[key]));
+        if (arrayKey) {
+          return parsed[arrayKey];
+        }
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  };
+
+  const direct = tryParse(rawText);
+  if (direct) {
+    return direct;
+  }
+
+  // Try to find the first JSON array in the text
+  const arrayMatch = rawText.match(/\[[\s\S]*]/);
+  if (arrayMatch) {
+    const arrayParsed = tryParse(arrayMatch[0]);
+    if (arrayParsed) {
+      return arrayParsed;
+    }
+  }
+
+  // Attempt JSON repair helper
+  const repaired = attemptJsonRepair(rawText);
+  if (repaired.success && Array.isArray(repaired.data)) {
+    return repaired.data;
+  }
+  if (repaired.success && repaired.data && typeof repaired.data === 'object') {
+    const arrayKey = Object.keys(repaired.data).find((key) => Array.isArray((repaired.data as any)[key]));
+    if (arrayKey) {
+      return repaired.data[arrayKey];
+    }
+  }
+
+  return candidates;
+}
 
 // Rate limiter for Gemini API calls
 const geminiRateLimiter = {
@@ -843,7 +894,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     }));
   }
 
-  const attemptTimeouts = [18000, 14000]; // milliseconds
+  const attemptTimeouts = [20000, 15000]; // milliseconds
 
   try {
     // Lazily instantiate the prioritization model once
@@ -865,6 +916,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     for (let attempt = 0; attempt < attemptTimeouts.length; attempt++) {
       const timeoutMs = attemptTimeouts[attempt];
 
+      let timeoutId: NodeJS.Timeout | null = null;
       try {
         await geminiRateLimiter.waitIfNeeded();
         console.log(`[optimized-orchestrator] Attempting Gemini prioritization with ${timeoutMs}ms timeout (attempt ${attempt + 1}/${attemptTimeouts.length})`);
@@ -879,7 +931,6 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           ]
         };
 
-        let timeoutId: NodeJS.Timeout | undefined;
         const timeoutPromise = new Promise<never>((_, reject) => {
           timeoutId = setTimeout(() => reject(new Error(`Gemini prioritization timeout after ${timeoutMs}ms`)), timeoutMs);
         });
@@ -891,6 +942,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
 
         if (timeoutId) {
           clearTimeout(timeoutId);
+          timeoutId = null;
         }
 
         const response = result?.response;
@@ -907,16 +959,10 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           throw new Error(`No content in Gemini response${finishReason ? ` (finishReason: ${finishReason})` : ''}`);
         }
 
-        let parsed: any;
-        try {
-          parsed = JSON.parse(text);
-        } catch (parseError) {
-          console.warn('[optimized-orchestrator] Failed to parse Gemini prioritization output:', parseError);
-          throw new Error('Invalid JSON payload from Gemini prioritization');
-        }
+        const parsed = parseGeminiPrioritizationPayload(text);
 
-        if (!Array.isArray(parsed)) {
-          throw new Error('Gemini prioritization response is not an array');
+        if (!parsed || parsed.length === 0) {
+          throw new Error('Gemini prioritization response is empty or invalid');
         }
 
         const normalized = parsed
@@ -950,6 +996,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
       } catch (error) {
         if (timeoutId) {
           clearTimeout(timeoutId);
+          timeoutId = null;
         }
         console.warn(`[optimized-orchestrator] Gemini prioritization attempt ${attempt + 1} failed:`, error instanceof Error ? error.message : error);
 
@@ -1058,8 +1105,8 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  const chunkSize = 4;
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Favor pages with specific dates, locations, and named speakers. Score 0 (irrelevant) to 1 (ideal). Keep reason <= 12 chars.`;
+  const chunkSize = 3;
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Rate relevance 0-1. Prefer concrete dates, locations, confirmed speakers. Reasons must be <=12 chars.`;
 
   console.log('[optimized-orchestrator] Gemini prioritization setup:', {
     industry,

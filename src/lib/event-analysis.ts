@@ -756,11 +756,11 @@ ${chunk}`;
 
       console.log(`[event-analysis] Calling Gemini for metadata chunk ${i + 1}/${chunks.length}`);
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Gemini metadata chunk timeout after 10 seconds')), 10000);
+        setTimeout(() => reject(new Error('Gemini metadata chunk timeout after 15 seconds')), 15000);
       });
 
       try {
-        if (chunk.trim().length < 250) {
+        if (chunk.trim().length < 200) {
           console.warn(`[event-analysis] Skipping metadata chunk ${i + 1} due to insufficient content`);
           continue;
         }
@@ -927,7 +927,7 @@ Chunk ${i + 1}/${chunks.length}:
 ${chunk}`;
 
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Gemini speaker chunk timeout after 12 seconds')), 12000);
+        setTimeout(() => reject(new Error('Gemini speaker chunk timeout after 15 seconds')), 15000);
       });
 
       try {
