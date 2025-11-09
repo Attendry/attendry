@@ -75,6 +75,19 @@ const geminiModelId = geminiModelPath
 const geminiPrioritizationModelId =
   process.env.GEMINI_PRIORITIZATION_MODEL || geminiModelId;
 
+const AGGREGATOR_HOSTS = new Set([
+  '10times.com',
+  'allconferencealert.com',
+  'conferencealerts.co.in',
+  'conferenceineurope.net',
+  'eventbrite.com',
+  'internationalconferencealerts.com',
+  'vendelux.com',
+  'linkedin.com',
+  'globalli.io',
+  'researchbunny.com'
+]);
+
 type GenerativeModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
 
 const GEMINI_PRIORITIZATION_SCHEMA = {
@@ -924,7 +937,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     }));
   }
 
-  const attemptTimeouts = [12000]; // milliseconds
+  const attemptTimeouts = [12000]; // single short attempt (ms)
 
   try {
     const systemInstruction = `You are a ranking service that returns ONLY JSON. \
@@ -1144,7 +1157,7 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     : `Rate ${industry} events in ${locationContext}.`;
 
   const chunkSize = 1;
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score relevance 0-1. Output JSON [{"url":"","score":0,"reason":""}] with reason <=12 chars and no prose.`;
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score 0-1. Output JSON [{"url":"","score":0,"reason":""}] (reason<=12 chars, no prose).`;
 
   console.log('[optimized-orchestrator] Gemini prioritization setup:', {
     industry,
@@ -1169,8 +1182,23 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     return { url, score: Math.max(0.45, Math.min(score, 0.9)), reason };
   };
 
-  for (let i = 0; i < urls.length; i += chunkSize) {
-    const chunk = urls.slice(i, i + chunkSize);
+  const filteredUrls = urls.filter((url, idx) => {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+      if (AGGREGATOR_HOSTS.has(host)) {
+        if (!resultsMap.has(url)) {
+          resultsMap.set(url, fallbackForUrl(url, idx, 'agg_skip'));
+        }
+        return false;
+      }
+    } catch {
+      // keep url if parsing fails
+    }
+    return true;
+  });
+
+  for (let i = 0; i < filteredUrls.length; i += chunkSize) {
+    const chunk = filteredUrls.slice(i, i + chunkSize);
     const numberedList = chunk.map((url, idx) => `${idx + 1}. ${url}`).join('\n');
     const prompt = `${baseContext}\nURLs:\n${numberedList}\n\nReturn JSON array: [{"url":"...","score":0.0,"reason":"why"}]`;
 
