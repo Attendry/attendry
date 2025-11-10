@@ -89,7 +89,12 @@ const AGGREGATOR_HOSTS = new Set([
   'internationalconferencealerts.com',
   'linkedin.com',
   'researchbunny.com',
-  'vendelux.com'
+  'vendelux.com',
+  'conference-service.com',
+  'eventora.com',
+  'eventsworld.com',
+  'globalriskcommunity.com',
+  'cvent.com'
 ]);
 
 type GenerativeModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
@@ -890,37 +895,82 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
   
   const startTime = Date.now();
   
+  // Filter out aggregator sites BEFORE prioritization to prevent wasting resources
+  const nonAggregatorUrls = urls.filter(url => {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+      if (AGGREGATOR_HOSTS.has(host)) {
+        console.log(`[optimized-orchestrator] Filtering out aggregator domain: ${host}`);
+        return false;
+      }
+      return true;
+    } catch {
+      return true;  // keep url if parsing fails
+    }
+  });
+  
+  console.log(`[optimized-orchestrator] Filtered ${urls.length - nonAggregatorUrls.length} aggregator URLs, ${nonAggregatorUrls.length} remaining`);
+  
+  if (nonAggregatorUrls.length === 0) {
+    console.warn('[optimized-orchestrator] All URLs were aggregators, returning empty array');
+    return [];
+  }
+  
   try {
     const prioritized = await executeWithRetry(async () => {
-      return await prioritizeWithGemini(urls, params);
+      return await prioritizeWithGemini(nonAggregatorUrls, params);
     }, 'gemini');
 
     const filtered = prioritized.filter(item => item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
     
-    console.log(`[optimized-orchestrator] Prioritized ${filtered.length}/${urls.length} candidates in ${Date.now() - startTime}ms`);
+    console.log(`[optimized-orchestrator] Prioritized ${filtered.length}/${nonAggregatorUrls.length} candidates in ${Date.now() - startTime}ms`);
     
     return filtered;
   } catch (error) {
     console.warn('[optimized-orchestrator] Prioritization failed, using enhanced fallback scoring:', error);
     
-    // Enhanced fallback scoring with URL pattern recognition
-    return urls.map((url, idx) => {
-      let score = 0.4 - idx * 0.02; // Base score with slight degradation
+    // Enhanced fallback scoring with industry relevance
+    const searchConfig = await getSearchConfig();
+    const userProfile = await getUserProfile();
+    const industryTerms = (userProfile?.industry_terms as string[]) || [];
+    const icpTerms = (userProfile?.icp_terms as string[]) || [];
+    
+    return nonAggregatorUrls.map((url, idx) => {
+      let score = 0.3 - idx * 0.02; // Base score with degradation
       
-      // Boost scores for high-quality domains
-      if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-        score += 0.2;
+      const urlLower = url.toLowerCase();
+      
+      // Heavy boost for industry-specific terms in URL path
+      let industryMatch = false;
+      for (const term of industryTerms) {
+        if (urlLower.includes(term.toLowerCase())) {
+          score += 0.4;
+          industryMatch = true;
+          break;
+        }
       }
-      if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
-        score += 0.3;
+      
+      // Additional boost for generic industry keywords if no specific match
+      if (!industryMatch) {
+        if (urlLower.includes('/legal') || urlLower.includes('/compliance') || 
+            urlLower.includes('/regulatory') || urlLower.includes('/ediscovery')) {
+          score += 0.3;
+        }
       }
-      if (url.includes('de') || url.includes('germany')) {
-        score += 0.1;
+      
+      // Boost for specific event pages (not generic directories)
+      if (/\/(event|summit|conference)\/[^\/]+/.test(url)) {
+        score += 0.25;
+      }
+      
+      // Small boost for location
+      if (urlLower.includes('germany') || urlLower.includes('berlin') || urlLower.includes('munich')) {
+        score += 0.05;
       }
       
       return { 
         url, 
-        score: Math.min(score, 0.9), 
+        score: Math.max(0.1, Math.min(score, 0.9)), 
         reason: 'enhanced_fallback' 
       };
     });
@@ -944,7 +994,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
   const attemptTimeouts = [12000]; // single short attempt (ms)
 
   try {
-    const systemInstruction = 'Return only JSON array [{"url":"","score":0,"reason":""}]. Score 0-1. Reason<=10 chars. No explanations.';
+    const systemInstruction = 'Return only JSON array [{"url":"","score":0,"reason":""}]. Score 0-1 based on industry relevance. Prioritize URLs with specific events matching the industry focus. Penalize generic directories. Reason<=10 chars. No explanations.';
 
     // Lazily instantiate the prioritization model once
     if (!geminiPrioritizationModel) {
@@ -967,7 +1017,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 48,
+          maxOutputTokens: 256,  // Increased from 48 to 256 to prevent MAX_TOKENS errors
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1153,17 +1203,39 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
   const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
-    let score = 0.4 - idx * 0.02;
-    if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-      score += 0.2;
+    let score = 0.3 - idx * 0.02;  // Lower base score
+    
+    // Check if it's an aggregator domain - heavily penalize
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+      if (AGGREGATOR_HOSTS.has(host)) {
+        return { url, score: 0.05, reason: 'aggregator' };  // Very low score for aggregators
+      }
+    } catch {
+      // keep url if parsing fails
     }
-    if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
-      score += 0.25;
+    
+    // Boost for specific event pages (not just generic directories)
+    const hasSpecificEvent = /\/(event|summit|conference)\/[^\/]+/.test(url);
+    if (hasSpecificEvent) {
+      score += 0.3;
+    } else if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+      score += 0.1;  // Smaller boost for generic event keywords
     }
-    if (url.includes('de') || url.includes('germany')) {
+    
+    // Boost for industry-specific terms IN THE URL PATH (not just domain)
+    const urlLower = url.toLowerCase();
+    if (urlLower.includes('/legal') || urlLower.includes('/compliance') || urlLower.includes('/regulatory') || 
+        urlLower.includes('/ediscovery') || urlLower.includes('/governance')) {
+      score += 0.35;
+    }
+    
+    // Small boost for location
+    if (url.includes('de') || url.includes('germany') || url.includes('berlin') || url.includes('munich')) {
       score += 0.05;
     }
-    return { url, score: Math.max(0.45, Math.min(score, 0.9)), reason };
+    
+    return { url, score: Math.max(0.1, Math.min(score, 0.9)), reason };
   };
 
   const filteredUrls = urls.filter((url, idx) => {

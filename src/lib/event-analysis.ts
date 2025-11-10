@@ -38,16 +38,25 @@ const DIRECTORY_DOMAINS = new Set([
   'internationalconferencealerts.com',
   'cvent.com',
   'everlaw.com',
-  'vendelux.com'
+  'vendelux.com',
+  'conference-service.com',
+  'eventora.com',
+  'eventsworld.com'
 ]);
 
 const AGGREGATOR_DOMAINS = new Set([
   '10times.com',
   'allconferencealert.com',
   'conferenceineurope.net',
+  'conferenceineurope.org',
   'eventbrite.com',
+  'eventbrite.de',
+  'eventbrite.co.uk',
+  'freeconferencealerts.com',
   'globalriskcommunity.com',
-  'linkedin.com'
+  'globalli.io',
+  'linkedin.com',
+  'researchbunny.com'
 ]);
 
 const DIRECTORY_PATH_SEGMENTS = [
