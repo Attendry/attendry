@@ -1248,26 +1248,56 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  // Batch prioritization to reduce API calls and improve performance
-  const chunkSize = Math.min(5, filteredUrls.length); // Process up to 5 URLs at once
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
-
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
+  // Create industry/ICP-aware fallback scoring function
   const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
+    const urlLower = url.toLowerCase();
     let score = 0.4 - idx * 0.02;
-    if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+    
+    // Boost for event-related keywords
+    if (urlLower.includes('conference') || urlLower.includes('summit') || urlLower.includes('event') || urlLower.includes('workshop') || urlLower.includes('seminar')) {
       score += 0.2;
     }
-    if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
+    
+    // Boost for industry-specific terms from user profile
+    if (userIndustryTerms.length > 0) {
+      const industryMatch = userIndustryTerms.some(term => urlLower.includes(term.toLowerCase()));
+      if (industryMatch) {
+        score += 0.3; // Strong boost for industry match
+      }
+    }
+    
+    // Boost for ICP-specific terms
+    if (userIcpTerms.length > 0) {
+      const icpMatch = userIcpTerms.some(term => urlLower.includes(term.toLowerCase()));
+      if (icpMatch) {
+        score += 0.2; // Boost for ICP match
+      }
+    }
+    
+    // Boost for industry keywords (fallback if no user profile)
+    const industryKeywords = ['legal', 'compliance', 'regulatory', 'governance', 'risk', 'audit', 'investigation', 'ediscovery'];
+    const hasIndustryKeyword = industryKeywords.some(keyword => urlLower.includes(keyword));
+    if (hasIndustryKeyword) {
       score += 0.25;
     }
-    if (url.includes('de') || url.includes('germany')) {
-      score += 0.05;
+    
+    // Boost for geographic match
+    if (params.country && (urlLower.includes(params.country.toLowerCase()) || urlLower.includes('de') || urlLower.includes('germany'))) {
+      score += 0.1;
     }
-    return { url, score: Math.max(0.45, Math.min(score, 0.9)), reason };
+    
+    // Penalize aggregator sites
+    const aggregatorKeywords = ['conferencealerts', '10times', 'eventbrite', 'allconference', 'freeconference', 'conferenceineurope', 'internationalconference'];
+    if (aggregatorKeywords.some(keyword => urlLower.includes(keyword))) {
+      score -= 0.2; // Reduce score for aggregators
+    }
+    
+    return { url, score: Math.max(0.3, Math.min(score, 0.95)), reason };
   };
 
+  // Filter out aggregator URLs first
   const filteredUrls = urls.filter((url, idx) => {
     try {
       const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
