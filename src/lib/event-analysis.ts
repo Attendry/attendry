@@ -945,16 +945,41 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
     const isLikelyPersonName = (name: string): boolean => {
       const nameLower = name.toLowerCase();
       
+      // Filter out call-to-action phrases and UI elements
+      const ctaKeywords = [
+        'reserve', 'register', 'book', 'buy', 'purchase', 'sign up', 'login',
+        'learn more', 'read more', 'view more', 'see more', 'click here',
+        'download', 'subscribe', 'join', 'enroll', 'attend', 'save', 'share',
+        'contact', 'submit', 'apply', 'ticket', 'seat', 'now', 'today'
+      ];
+      
+      if (ctaKeywords.some(keyword => nameLower.includes(keyword))) {
+        console.log(`[speaker-validation] Filtered out CTA/UI element: "${name}"`);
+        return false;
+      }
+      
       // Filter out event/session titles
       const eventKeywords = [
         'summit', 'forum', 'conference', 'act', 'practice', 'risk', 'privacy',
         'lawyers', 'compliance', 'webinar', 'session', 'panel', 'workshop',
         'event', 'meeting', 'seminar', 'symposium', 'congress', 'convention',
-        'day', 'week', 'month', 'year', 'edition', 'annual', 'international'
+        'day', 'week', 'month', 'year', 'edition', 'annual', 'international',
+        'program', 'agenda', 'schedule', 'keynote', 'presentation', 'track'
       ];
       
       if (eventKeywords.some(keyword => nameLower.includes(keyword))) {
         console.log(`[speaker-validation] Filtered out event name: "${name}"`);
+        return false;
+      }
+      
+      // Filter out generic organizational terms
+      const orgKeywords = [
+        'committee', 'board', 'team', 'group', 'department', 'organization',
+        'association', 'institute', 'foundation', 'council', 'society', 'partner'
+      ];
+      
+      if (orgKeywords.some(keyword => nameLower.includes(keyword))) {
+        console.log(`[speaker-validation] Filtered out organization term: "${name}"`);
         return false;
       }
       
@@ -965,6 +990,12 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
         return false;
       }
       
+      // Filter out if name is too long (likely a sentence or title)
+      if (parts.length > 4 || name.length > 50) {
+        console.log(`[speaker-validation] Filtered out overly long name: "${name}"`);
+        return false;
+      }
+      
       // Check if name contains only proper capitalization (Person Names are Title Case)
       const hasProperCapitalization = parts.every(part => 
         part.length > 0 && /^[A-ZÄÖÜ]/.test(part)
@@ -972,6 +1003,16 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       
       if (!hasProperCapitalization) {
         console.log(`[speaker-validation] Filtered out improper capitalization: "${name}"`);
+        return false;
+      }
+      
+      // Check that each word looks like a name part (letters only, possibly with hyphens/apostrophes)
+      const hasValidCharacters = parts.every(part => 
+        /^[A-ZÄÖÜa-zäöüß\-']+$/.test(part)
+      );
+      
+      if (!hasValidCharacters) {
+        console.log(`[speaker-validation] Filtered out invalid characters: "${name}"`);
         return false;
       }
       
