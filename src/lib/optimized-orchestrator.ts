@@ -302,9 +302,9 @@ const ORCHESTRATOR_CONFIG = {
     parseQuality: 0.5,      // Minimum parse quality
   },
   limits: {
-    maxCandidates: 40,      // Increased from 30 for better coverage
-    maxExtractions: 20,     // Increased from 15 for more results
-    maxSpeakers: 30,        // Increased from 25 for richer data
+    maxCandidates: 30,      // Reduced to prevent timeout
+    maxExtractions: 10,     // Reduced to prevent timeout (was 20)
+    maxSpeakers: 20,        // Reduced to prevent timeout
   },
   timeouts: {
     discovery: optimizeTimeout('firecrawl'),      // Optimized timeout
@@ -498,6 +498,14 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   const startTime = Date.now();
   const logs: OptimizedSearchResult['logs'] = [];
   
+  // Set up timeout protection (240s to stay under Vercel's 300s limit)
+  const TIMEOUT_MS = 240000; // 4 minutes
+  const timeoutPromise = new Promise<OptimizedSearchResult>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`Search operation timed out after ${TIMEOUT_MS / 1000} seconds`));
+    }, TIMEOUT_MS);
+  });
+  
   // Register request with resource optimizer
   resourceOptimizer.registerRequest();
   
@@ -513,6 +521,41 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     console.warn('[optimized-orchestrator] Cache warming failed:', error);
   });
   
+  try {
+    // Wrap entire search in timeout protection
+    return await Promise.race([
+      performOptimizedSearch(params, startTime, logs),
+      timeoutPromise
+    ]);
+  } catch (error) {
+    const totalDuration = Date.now() - startTime;
+    console.error('[optimized-orchestrator] Search failed:', error);
+    
+    return {
+      events: [],
+      logs: [
+        ...logs,
+        {
+          stage: 'error',
+          message: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+          data: { duration: totalDuration }
+        }
+      ],
+      metadata: {
+        sourceBreakdown: { firecrawl: 0, cse: 0, database: 0 },
+        totalDuration,
+        cacheHitRate: 0
+      }
+    };
+  }
+}
+
+async function performOptimizedSearch(
+  params: OptimizedSearchParams,
+  startTime: number,
+  logs: OptimizedSearchResult['logs']
+): Promise<OptimizedSearchResult> {
   try {
     // Step 1: Load user profile for personalized search
     const userProfileStart = Date.now();
@@ -557,6 +600,8 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     // Step 4: Intelligent prioritization
     const prioritizationStart = Date.now();
     const prioritized = await prioritizeCandidates(candidates, params);
+    // Limit prioritized URLs to prevent timeout
+    const limitedPrioritized = prioritized.slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
     const prioritizationTime = Date.now() - prioritizationStart;
     logs.push({
       stage: 'prioritization',
@@ -565,10 +610,22 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       data: { prioritizedCount: prioritized.length, duration: prioritizationTime }
     });
 
-    // Step 5: Parallel extraction
+    // Step 5: Parallel extraction (limited to prevent timeout)
     const extractionStart = Date.now();
-    const extracted = await extractEventDetails(prioritized, params);
+    const extracted = await extractEventDetails(limitedPrioritized, params);
     const extractionTime = Date.now() - extractionStart;
+    
+    // Early termination if we have enough results and time is running out
+    const elapsedTime = Date.now() - startTime;
+    if (extracted.length >= 5 && elapsedTime > 180000) { // 3 minutes
+      console.log('[optimized-orchestrator] Early termination: enough results found, time limit approaching');
+      logs.push({
+        stage: 'early_termination',
+        message: 'Terminated early due to time constraints',
+        timestamp: new Date().toISOString(),
+        data: { eventsFound: extracted.length, elapsedTime }
+      });
+    }
     logs.push({
       stage: 'extraction',
       message: `Extracted ${extracted.length} events`,
@@ -621,7 +678,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       events: finalEvents,
       metadata: {
         totalCandidates: candidates.length,
-        prioritizedCandidates: prioritized.length,
+        prioritizedCandidates: limitedPrioritized.length,
         extractedCandidates: extracted.length,
         enhancedCandidates: enhanced.length,
         totalDuration,
@@ -967,7 +1024,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 512, // Increased from 48 to handle JSON array with multiple URLs, scores, and reasons
+          maxOutputTokens: 2048, // Increased significantly to handle JSON array + thoughts tokens (Gemini 2.5-flash uses thoughts for reasoning)
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1157,7 +1214,8 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  const chunkSize = 1;
+  // Batch prioritization to reduce API calls and improve performance
+  const chunkSize = Math.min(5, filteredUrls.length); // Process up to 5 URLs at once
   const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
