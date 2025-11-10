@@ -1234,15 +1234,23 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
 
   const userIndustryTerms = userProfile?.industry_terms || [];
   const userIcpTerms = userProfile?.icp_terms || [];
+  
+  // Build comprehensive user context for filtering
   const userContextParts: string[] = [];
   if (userIndustryTerms.length > 0) {
-    userContextParts.push(`topics:${userIndustryTerms[0]}`);
+    // Include multiple industry terms for better filtering
+    const industryTermsText = userIndustryTerms.slice(0, 3).join(', ');
+    userContextParts.push(`Industry topics: ${industryTermsText}`);
   }
   if (userIcpTerms.length > 0) {
-    userContextParts.push(`roles:${userIcpTerms[0]}`);
+    // Include multiple ICP terms for better filtering
+    const icpTermsText = userIcpTerms.slice(0, 2).join(', ');
+    userContextParts.push(`Target roles: ${icpTermsText}`);
   }
-  // Competitor context increases prompt length significantly; omit for stability.
-  const userContextText = userContextParts.length > 0 ? ` ${userContextParts.join(' ')}` : '';
+  
+  const userContextText = userContextParts.length > 0 
+    ? `\n\nFILTERING REQUIREMENTS:\n- Prioritize events related to: ${userContextParts.join('; ')}\n- Score URLs higher (0.7-1.0) if they match these topics/roles\n- Score URLs lower (0.0-0.4) if they are generic business events without industry/ICP relevance\n- Exclude aggregator directories and generic event listings\n` 
+    : '';
 
   const weightedContext = template
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
@@ -1315,7 +1323,7 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
 
   // Batch prioritization to reduce API calls and improve performance
   const chunkSize = Math.min(5, filteredUrls.length); // Process up to 5 URLs at once
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText}\n\nScore each URL 0-1 based on relevance to the industry topics and target roles above. Return JSON array [{"url":"","score":0,"reason":""}]. Reason should be <=10 chars, no explanations.`;
 
   console.log('[optimized-orchestrator] Gemini prioritization setup:', {
     industry,
