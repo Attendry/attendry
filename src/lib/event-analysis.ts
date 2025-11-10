@@ -902,7 +902,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
         temperature: 0.2,
         topP: 0.8,
         topK: 12,
-        maxOutputTokens: 256,
+        maxOutputTokens: 1024,  // Increased from 256 to handle thinking tokens + response
         responseMimeType: 'application/json',
         responseSchema: speakerSchema
       }
@@ -941,11 +941,54 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
 
     const speakerMap = new Map<string, SpeakerData>();
 
+    // Validation: Filter out non-person names
+    const isLikelyPersonName = (name: string): boolean => {
+      const nameLower = name.toLowerCase();
+      
+      // Filter out event/session titles
+      const eventKeywords = [
+        'summit', 'forum', 'conference', 'act', 'practice', 'risk', 'privacy',
+        'lawyers', 'compliance', 'webinar', 'session', 'panel', 'workshop',
+        'event', 'meeting', 'seminar', 'symposium', 'congress', 'convention',
+        'day', 'week', 'month', 'year', 'edition', 'annual', 'international'
+      ];
+      
+      if (eventKeywords.some(keyword => nameLower.includes(keyword))) {
+        console.log(`[speaker-validation] Filtered out event name: "${name}"`);
+        return false;
+      }
+      
+      // Must have at least first and last name
+      const parts = name.split(/\s+/);
+      if (parts.length < 2) {
+        console.log(`[speaker-validation] Filtered out single-word name: "${name}"`);
+        return false;
+      }
+      
+      // Check if name contains only proper capitalization (Person Names are Title Case)
+      const hasProperCapitalization = parts.every(part => 
+        part.length > 0 && /^[A-ZÄÖÜ]/.test(part)
+      );
+      
+      if (!hasProperCapitalization) {
+        console.log(`[speaker-validation] Filtered out improper capitalization: "${name}"`);
+        return false;
+      }
+      
+      return true;
+    };
+
     const upsertSpeaker = (speaker: any) => {
       if (!speaker) return;
       const rawName = speaker.name ?? speaker.fullName ?? speaker.full_name;
       if (!isMeaningfulValue(rawName)) return;
       const name = rawName.trim();
+      
+      // Validate that this is likely a person name
+      if (!isLikelyPersonName(name)) {
+        return;
+      }
+      
       const key = name.toLowerCase();
       const existing = speakerMap.get(key);
       const normalizedSpeaker: SpeakerData = {
@@ -968,7 +1011,19 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      const prompt = `Extract up to 15 unique speakers from this event content chunk. Respond with JSON matching the schema. Avoid duplicates. Use null when information is missing.
+      const prompt = `Extract ONLY PEOPLE (actual speakers/presenters) from this event content. DO NOT extract:
+- Event names (e.g., "Privacy Summit", "Risk Forum")
+- Session titles (e.g., "Practices Act", "Lawyers Forum")
+- Organization names
+- Conference names
+
+Look for INDIVIDUAL PEOPLE with their:
+- Full name (REQUIRED - must be a person's name)
+- Job title (if mentioned)
+- Company/organization (if mentioned)
+- Bio/description (if mentioned)
+
+Return up to 15 unique PEOPLE as JSON. If no people are found, return {"speakers": []}.
 
 Chunk ${i + 1}/${chunks.length}:
 ${chunk}`;
@@ -996,9 +1051,29 @@ ${chunk}`;
           continue;
         }
 
-        const parsed = JSON.parse(text);
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch (jsonError) {
+          // Try to extract JSON from response if it's wrapped in markdown or other text
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              parsed = JSON.parse(jsonMatch[0]);
+              console.log(`[event-analysis] Recovered JSON from chunk ${i + 1} using regex extraction`);
+            } catch (retryError) {
+              throw new Error(`JSON parsing failed: ${jsonError instanceof Error ? jsonError.message : 'Unknown error'}`);
+            }
+          } else {
+            throw jsonError;
+          }
+        }
+        
         if (Array.isArray(parsed?.speakers)) {
+          console.log(`[event-analysis] Processing ${parsed.speakers.length} speakers from chunk ${i + 1}`);
           parsed.speakers.forEach(upsertSpeaker);
+        } else {
+          console.warn(`[event-analysis] Chunk ${i + 1} response has no speakers array`, parsed);
         }
       } catch (chunkError) {
         console.warn(`[event-analysis] Speaker chunk ${i + 1} failed`, chunkError);
@@ -1010,11 +1085,15 @@ ${chunk}`;
     }
 
     if (speakerMap.size > 0) {
-      return Array.from(speakerMap.values()).slice(0, 20);
+      const finalSpeakers = Array.from(speakerMap.values()).slice(0, 20);
+      console.log(`[event-analysis] ✓ Successfully extracted ${finalSpeakers.length} validated speakers`);
+      return finalSpeakers;
     }
 
+    console.log('[event-analysis] No speakers found via Gemini, trying manual extraction fallback...');
     const fallbackNames = extractSpeakerNamesManually(serializedSections);
     if (fallbackNames.length > 0) {
+      console.log(`[event-analysis] ✓ Manual extraction found ${fallbackNames.length} speaker names`);
       return fallbackNames.map(name => ({
         name,
         title: '',
@@ -1023,7 +1102,7 @@ ${chunk}`;
       }));
     }
 
-    console.warn('Speaker extraction failed, returning empty array');
+    console.warn('[event-analysis] ⚠ Speaker extraction failed completely, returning empty array');
     return [];
   } catch (error) {
     console.warn('Speaker extraction error:', error);
