@@ -543,6 +543,7 @@ function isLikelyDirectoryListing(eventUrl: string, combinedContent: string): bo
 
   const urlObj = new URL(eventUrl);
   const normalized = combinedContent.toLowerCase();
+  const path = urlObj.pathname.toLowerCase();
 
   const hasYear = /\b20[2-9][0-9]\b/.test(normalized);
   const hasMonth = EVENT_MONTH_KEYWORDS.some(keyword => normalized.includes(keyword));
@@ -561,6 +562,20 @@ function isLikelyDirectoryListing(eventUrl: string, combinedContent: string): bo
 
   const isAggregatorDomain = DIRECTORY_DOMAINS.has(urlObj.hostname);
   const isAggregatorPath = DIRECTORY_PATH_SEGMENTS.some(segment => urlObj.pathname.includes(segment));
+  const headingCount = (normalized.match(/\n###\s+/g) || []).length;
+  const calendarGlyphCount = (normalized.match(/🗓/g) || []).length;
+  const monthTokenCount = (normalized.match(/\b(?:january|february|march|april|may|june|july|august|september|october|november|december|januar|februar|märz|mai|juni|juli|oktober|dezember)\b/g) || []).length;
+  const multiEventIndicators = [
+    headingCount >= 4,
+    calendarGlyphCount >= 3,
+    monthTokenCount >= 6
+  ].filter(Boolean).length;
+
+  const isEventsIndexPath =
+    path === '/events' ||
+    path === '/events/' ||
+    path === '/events/index' ||
+    path === '/events/index.html';
 
   const requiredScore = (isAggregatorDomain || isAggregatorPath) ? 2 : 1;
 
@@ -571,6 +586,19 @@ function isLikelyDirectoryListing(eventUrl: string, combinedContent: string): bo
       requiredScore,
       isAggregatorDomain,
       isAggregatorPath
+    });
+    return true;
+  }
+
+  if ((isAggregatorDomain || isEventsIndexPath) && multiEventIndicators >= 1) {
+    console.warn('Filtered directory-style listing due to multi-event indicators', {
+      eventUrl,
+      multiEventIndicators,
+      headingCount,
+      calendarGlyphCount,
+      monthTokenCount,
+      isEventsIndexPath,
+      isAggregatorDomain
     });
     return true;
   }

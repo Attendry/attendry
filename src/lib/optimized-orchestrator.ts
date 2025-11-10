@@ -1073,7 +1073,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         await geminiRateLimiter.waitIfNeeded();
         console.log(`[optimized-orchestrator] Attempting Gemini prioritization with ${timeoutMs}ms timeout (attempt ${attempt + 1}/${attemptTimeouts.length})`);
 
-        const dynamicMaxTokens = Math.min(128, Math.max(64, urls.length * 32));
+        const dynamicMaxTokens = Math.min(256, Math.max(96, urls.length * 48));
         const generationConfig = {
           temperature: 0.1,
           topP: 0.7,
@@ -1475,6 +1475,14 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   );
 
   const events: EventCandidate[] = [];
+  const isLowSignalEvent = (metadata: { title: string; description: string; date: string; location: string; organizer: string; website: string; registrationUrl?: string; }) => {
+    const normalizedTitle = metadata.title?.trim().toLowerCase();
+    const genericTitles = new Set(['unknown event', 'event', 'events', 'no event information found', 'konferenz', 'veranstaltung']);
+    const hasGenericTitle = !normalizedTitle || normalizedTitle.length <= 6 || genericTitles.has(normalizedTitle);
+    const hasUnknownDate = !metadata.date || metadata.date.toLowerCase().includes('unknown');
+    const hasWeakDescription = !metadata.description || metadata.description.trim().length < 40;
+    return hasGenericTitle || hasUnknownDate || hasWeakDescription;
+  };
 
   extractionResults.forEach((result, index) => {
     const prioritizedItem = actionableCandidates[index];
@@ -1490,6 +1498,16 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     const payload = result.result as ExtractionPayload;
     if (!payload) {
       console.warn('[optimized-orchestrator] Extraction payload empty, skipping:', prioritizedItem.url);
+      return;
+    }
+
+    if (isLowSignalEvent(payload.metadata)) {
+      console.warn('[optimized-orchestrator] Dropping low-signal event metadata', {
+        url: prioritizedItem.url,
+        title: payload.metadata.title,
+        date: payload.metadata.date,
+        descriptionLength: payload.metadata.description?.length || 0
+      });
       return;
     }
 
