@@ -1,11 +1,14 @@
 # Speaker Extraction Fix
 
 ## Problem
-Speaker extraction was incorrectly identifying event names and session titles as speaker names, resulting in entries like:
+Speaker extraction was incorrectly identifying non-person elements as speaker names, resulting in entries like:
 - "Practices Act" (session title, not a person)
 - "Lawyers Forum" (event name, not a person)
 - "Privacy Summit" (event name, not a person)
 - "Risk Summit" (event name, not a person)
+- **"Reserve Seat"** (call-to-action button, not a person)
+- **"Register Now"** (UI element, not a person)
+- **"Book Ticket"** (CTA phrase, not a person)
 
 Additionally, JSON parsing errors were occurring: `Expected double-quoted property name in JSON at position 42`
 
@@ -41,29 +44,57 @@ Look for INDIVIDUAL PEOPLE with their:
 Return up to 15 unique PEOPLE as JSON. If no people are found, return {"speakers": []}.`;
 ```
 
-### 3. Validation Function
+### 3. Comprehensive Validation Function
 Added `isLikelyPersonName()` to filter out non-person entries:
 
 ```typescript
 const isLikelyPersonName = (name: string): boolean => {
   const nameLower = name.toLowerCase();
   
+  // Filter out call-to-action phrases and UI elements (NEW!)
+  const ctaKeywords = [
+    'reserve', 'register', 'book', 'buy', 'purchase', 'sign up', 'login',
+    'learn more', 'read more', 'view more', 'see more', 'click here',
+    'download', 'subscribe', 'join', 'enroll', 'attend', 'save', 'share',
+    'contact', 'submit', 'apply', 'ticket', 'seat', 'now', 'today'
+  ];
+  
+  if (ctaKeywords.some(keyword => nameLower.includes(keyword))) {
+    return false;  // Not a person name - it's a CTA/UI element
+  }
+  
   // Filter out event/session titles
   const eventKeywords = [
     'summit', 'forum', 'conference', 'act', 'practice', 'risk', 'privacy',
     'lawyers', 'compliance', 'webinar', 'session', 'panel', 'workshop',
     'event', 'meeting', 'seminar', 'symposium', 'congress', 'convention',
-    'day', 'week', 'month', 'year', 'edition', 'annual', 'international'
+    'day', 'week', 'month', 'year', 'edition', 'annual', 'international',
+    'program', 'agenda', 'schedule', 'keynote', 'presentation', 'track'
   ];
   
   if (eventKeywords.some(keyword => nameLower.includes(keyword))) {
     return false;  // Not a person name
   }
   
+  // Filter out organizational terms (NEW!)
+  const orgKeywords = [
+    'committee', 'board', 'team', 'group', 'department', 'organization',
+    'association', 'institute', 'foundation', 'council', 'society', 'partner'
+  ];
+  
+  if (orgKeywords.some(keyword => nameLower.includes(keyword))) {
+    return false;  // Not a person name - it's an organization
+  }
+  
   // Must have at least first and last name
   const parts = name.split(/\s+/);
-  if (parts.length < 2) {
-    return false;
+  if (parts.length < 2 || parts.length > 4) {
+    return false;  // Too short or too long
+  }
+  
+  // Length validation (NEW!)
+  if (name.length > 50) {
+    return false;  // Likely a sentence, not a name
   }
   
   // Check proper capitalization (Person Names are Title Case)
@@ -71,15 +102,27 @@ const isLikelyPersonName = (name: string): boolean => {
     part.length > 0 && /^[A-ZÄÖÜ]/.test(part)
   );
   
-  return hasProperCapitalization;
+  if (!hasProperCapitalization) {
+    return false;
+  }
+  
+  // Character validation (NEW!)
+  const hasValidCharacters = parts.every(part => 
+    /^[A-ZÄÖÜa-zäöüß\-']+$/.test(part)
+  );
+  
+  return hasValidCharacters;  // Only letters, hyphens, apostrophes
 };
 ```
 
 **Filters Applied:**
-- ❌ Single-word names (must have first + last)
-- ❌ Names containing event keywords (summit, forum, conference, etc.)
-- ❌ Improper capitalization (not Title Case)
-- ✅ Only proper person names (e.g., "John Smith", "Maria García")
+- ❌ **CTA/UI elements**: reserve, register, book, seat, ticket, login, etc.
+- ❌ **Event keywords**: summit, forum, conference, act, practice, etc.
+- ❌ **Organizational terms**: committee, board, team, institute, etc.
+- ❌ **Single-word or overly long names** (must be 2-4 words, max 50 chars)
+- ❌ **Improper capitalization** (not Title Case)
+- ❌ **Invalid characters** (must be letters, hyphens, apostrophes only)
+- ✅ **Only proper person names** (e.g., "John Smith", "Maria García", "Anne-Marie O'Connor")
 
 ### 4. Better JSON Parsing
 ```typescript
@@ -106,9 +149,15 @@ Handles cases where Gemini wraps JSON in markdown code blocks or adds extra text
 
 **Validation Logs:**
 ```
+[speaker-validation] Filtered out CTA/UI element: "Reserve Seat"
+[speaker-validation] Filtered out CTA/UI element: "Register Now"
+[speaker-validation] Filtered out CTA/UI element: "Book Ticket"
 [speaker-validation] Filtered out event name: "Privacy Summit"
+[speaker-validation] Filtered out organization term: "Organizing Committee"
 [speaker-validation] Filtered out single-word name: "Conference"
 [speaker-validation] Filtered out improper capitalization: "john smith"
+[speaker-validation] Filtered out overly long name: "The International Conference Committee"
+[speaker-validation] Filtered out invalid characters: "Speaker #1"
 ```
 
 **Processing Logs:**
