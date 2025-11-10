@@ -70,27 +70,46 @@ export async function fetchEvents(
     ...init,
   });
 
+  const responseClone = res.clone();
+
   if (!res.ok) {
-    const error = await safeReadJson(res);
-    throw new Error(typeof error?.error === 'string' ? error.error : "Search failed");
+    const errorPayload = await safeReadJson(responseClone);
+    const message =
+      (typeof errorPayload?.error === "string" && errorPayload.error.trim().length > 0)
+        ? errorPayload.error
+        : res.status === 504
+          ? "Search timed out. Please try again."
+          : `Search failed with status ${res.status}`;
+    throw new Error(message);
   }
 
-  const data = await safeReadJson(res);
-  if (!data) {
+  try {
+    return (await res.json()) as EventsSearchResponse;
+  } catch (jsonError) {
+    const fallback = await safeReadJson(responseClone);
+    if (fallback) {
+      return fallback as EventsSearchResponse;
+    }
     throw new Error("Invalid response format");
   }
-  
-  return data as EventsSearchResponse;
 }
 
 async function safeReadJson(response: Response): Promise<Record<string, unknown> | null> {
   try {
+    if (response.bodyUsed) {
+      return null;
+    }
     const text = await response.text();
     if (!text) {
       return null;
     }
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return null;
+    }
+    return JSON.parse(trimmed) as Record<string, unknown>;
+  } catch (err) {
+    console.warn("safeReadJson: failed to parse response body", err);
     return null;
   }
 }

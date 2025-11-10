@@ -1150,14 +1150,6 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const chunkSize = 1;
   const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
-  console.log('[optimized-orchestrator] Gemini prioritization setup:', {
-    industry,
-    urls: urls.length,
-    filtered: filteredUrls.length,
-    contextLength: baseContext.length,
-    chunkSize
-  });
-
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
   const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
@@ -1187,6 +1179,14 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
       // keep url if parsing fails
     }
     return true;
+  });
+
+  console.log('[optimized-orchestrator] Gemini prioritization setup:', {
+    industry,
+    urls: urls.length,
+    filtered: filteredUrls.length,
+    contextLength: baseContext.length,
+    chunkSize
   });
 
   for (let i = 0; i < filteredUrls.length; i += chunkSize) {
