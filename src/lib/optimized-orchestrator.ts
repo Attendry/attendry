@@ -92,6 +92,15 @@ const AGGREGATOR_HOSTS = new Set([
   'vendelux.com'
 ]);
 
+function isAggregatorDomain(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return AGGREGATOR_HOSTS.has(host);
+  } catch {
+    return false;
+  }
+}
+
 type GenerativeModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
 
 const GEMINI_PRIORITIZATION_SCHEMA = {
@@ -731,29 +740,113 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: any): Promise<string> {
   // Get search configuration to determine industry
   const searchConfig = await getSearchConfig();
-  const industry = searchConfig?.industry || 'legal-compliance';
+  const activeConfig = await loadActiveConfig();
+  const industry = searchConfig?.industry || activeConfig?.industry || 'legal-compliance';
   
   // Get weighted template for the industry
   const template = WEIGHTED_INDUSTRY_TEMPLATES[industry];
   
   if (template) {
-    // Use weighted query builder for enhanced precision
-    const weightedResult = buildWeightedQuery(
-      template,
-      userProfile,
-      params.country || 'DE',
-      params.userText
-    );
-    
-    console.log('[optimized-orchestrator] Built weighted query:', {
-      industry,
-      weights: weightedResult.weights,
-      queryLength: weightedResult.query.length,
-      negativeFilters: weightedResult.negativeFilters.length,
-      geographicTerms: weightedResult.geographicTerms.length
+    const weightedResult = buildWeightedQuery(template, userProfile, params.country || 'DE', params.userText);
+
+    const wrapClause = (clause?: string | null): string | null => {
+      if (!clause) return null;
+      const trimmed = clause.trim();
+      if (!trimmed) return null;
+      return trimmed.startsWith('(') && trimmed.endsWith(')') ? trimmed : `(${trimmed})`;
+    };
+
+    const tokenizeTerms = (input?: string | string[] | null, limit = 16): string[] => {
+      if (!input) return [];
+      const values = Array.isArray(input) ? input : input.split(/\r?\n|,/);
+      const regex = /"[^"]+"|\S+/g;
+      const results: string[] = [];
+      const seen = new Set<string>();
+
+      for (const value of values) {
+        if (!value) continue;
+        const text = String(value);
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(text)) !== null) {
+          const token = match[0].trim();
+          if (!token) continue;
+          const normalized = /\s/.test(token) && !/^".+"$/.test(token) ? `"${token}"` : token;
+          if (!seen.has(normalized)) {
+            seen.add(normalized);
+            results.push(normalized);
+            if (results.length >= limit) break;
+          }
+        }
+        if (results.length >= limit) break;
+      }
+
+      return results;
+    };
+
+    const positiveClauses: string[] = [];
+    const baseline = wrapClause(weightedResult.query);
+    if (baseline) positiveClauses.push(baseline);
+
+    const configBase = wrapClause(activeConfig?.baseQuery);
+    if (configBase) positiveClauses.push(configBase);
+
+    const configEventTerms = tokenizeTerms(activeConfig?.eventTerms, 8);
+    if (configEventTerms.length) {
+      positiveClauses.push(`(${configEventTerms.join(' OR ')})`);
+    }
+
+    const dbEventTerms = tokenizeTerms(searchConfig?.event_terms ?? searchConfig?.eventTerms, 8);
+    if (dbEventTerms.length) {
+      positiveClauses.push(`(${dbEventTerms.join(' OR ')})`);
+    }
+
+    const negativeTerms = new Set<string>();
+    weightedResult.negativeFilters.forEach((term) => {
+      if (term && term.trim()) {
+        const normalized = /\s/.test(term) && !/^".+"$/.test(term) ? `"${term.trim()}"` : term.trim();
+        negativeTerms.add(normalized);
+      }
     });
-    
-    return weightedResult.query;
+
+    tokenizeTerms(activeConfig?.excludeTerms, 24).forEach((term) => negativeTerms.add(term));
+    tokenizeTerms(searchConfig?.exclude_terms ?? searchConfig?.excludeTerms, 24).forEach((term) => negativeTerms.add(term));
+
+    if (Array.isArray(activeConfig?.disqualifyCountryTerms)) {
+      tokenizeTerms(activeConfig.disqualifyCountryTerms, 24).forEach((term) => negativeTerms.add(term));
+    }
+    if (Array.isArray(activeConfig?.disqualifyCityTerms)) {
+      tokenizeTerms(activeConfig.disqualifyCityTerms, 24).forEach((term) => negativeTerms.add(term));
+    }
+
+    const combinedPositive = [...new Set(positiveClauses)].filter(Boolean).join(' AND ');
+    const negativeClause = negativeTerms.size ? ` AND NOT (${Array.from(negativeTerms).join(' OR ')})` : '';
+    const finalQuery = `${combinedPositive}${negativeClause}`.trim();
+
+    let narrativeQuery = weightedResult.narrativeQuery;
+    if (configEventTerms.length) {
+      narrativeQuery = `${narrativeQuery} Highlight events covering ${configEventTerms.slice(0, 3).join(', ')}.`;
+    }
+    if (dbEventTerms.length) {
+      narrativeQuery = `${narrativeQuery} Include matches for ${dbEventTerms.slice(0, 3).join(', ')}.`;
+    }
+    if (params.dateFrom || params.dateTo) {
+      const dateLabel = params.dateFrom && params.dateTo
+        ? `between ${params.dateFrom} and ${params.dateTo}`
+        : params.dateFrom
+          ? `after ${params.dateFrom}`
+          : `before ${params.dateTo}`;
+      narrativeQuery = `${narrativeQuery} Focus on events ${dateLabel}.`;
+    }
+
+    console.log('[optimized-orchestrator] Built weighted query with active config', {
+      industry,
+      queryLength: finalQuery.length,
+      positiveClauses: positiveClauses.length,
+      negativeTerms: negativeTerms.size,
+      narrativeLength: narrativeQuery.length
+    });
+
+    return finalQuery;
   } else {
     // Fallback to unified query builder if no weighted template available
     const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
@@ -962,12 +1055,13 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         await geminiRateLimiter.waitIfNeeded();
         console.log(`[optimized-orchestrator] Attempting Gemini prioritization with ${timeoutMs}ms timeout (attempt ${attempt + 1}/${attemptTimeouts.length})`);
 
+        const dynamicMaxTokens = Math.min(128, Math.max(64, urls.length * 32));
         const generationConfig = {
           temperature: 0.1,
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 48,
+          maxOutputTokens: dynamicMaxTokens,
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1217,7 +1311,37 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     return urls.map((url, idx) => fallbackForUrl(url, idx, 'fallback_all_failed'));
   }
 
-  return urls.map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_missing'));
+  const primaryResults: Array<{ url: string; score: number; reason: string }> = [];
+  const aggregatorResults: Array<{ url: string; score: number; reason: string }> = [];
+
+  urls.forEach((url, idx) => {
+    const entry = resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_missing');
+    if (isAggregatorDomain(url)) {
+      aggregatorResults.push({ ...entry, reason: entry.reason || 'aggregator' });
+    } else {
+      primaryResults.push(entry);
+    }
+  });
+
+  if (primaryResults.length) {
+    if (aggregatorResults.length) {
+      console.log('[optimized-orchestrator] Dropping aggregator candidates from prioritization', {
+        dropped: aggregatorResults.length
+      });
+    }
+    return primaryResults;
+  }
+
+  if (aggregatorResults.length) {
+    console.warn('[optimized-orchestrator] Only aggregator URLs discovered; returning limited fallback');
+    return aggregatorResults.slice(0, 5).map((entry, idx) => ({
+      ...entry,
+      score: Math.min(entry.score, 0.35),
+      reason: 'aggregator_fallback'
+    }));
+  }
+
+  return urls.map((url, idx) => fallbackForUrl(url, idx, 'fallback_missing'));
 }
 
 /**
@@ -1230,7 +1354,19 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   
   // Use parallel processing for event extraction, but throttle to respect Firecrawl limits
   const parallelProcessor = getParallelProcessor();
-  const extractionTasks = prioritized.map((item, index) =>
+  const actionableCandidates = prioritized.filter((item) => !isAggregatorDomain(item.url));
+
+  if (actionableCandidates.length < prioritized.length) {
+    console.log('[optimized-orchestrator] Skipping aggregator URLs during extraction', {
+      skipped: prioritized.length - actionableCandidates.length
+    });
+  }
+
+  if (actionableCandidates.length === 0) {
+    return [];
+  }
+
+  const extractionTasks = actionableCandidates.map((item, index) =>
     createParallelTask(
       `extraction_${index}`,
       item.url,
@@ -1322,7 +1458,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   const events: EventCandidate[] = [];
 
   extractionResults.forEach((result, index) => {
-    const prioritizedItem = prioritized[index];
+    const prioritizedItem = actionableCandidates[index];
     if (!prioritizedItem) {
       return;
     }
