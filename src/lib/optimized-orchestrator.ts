@@ -349,6 +349,7 @@ export interface EventCandidate {
   sponsors?: SponsorInfo[];
   confidence: number;
   source: 'firecrawl' | 'cse' | 'database';
+  dateRangeSource?: 'original' | '2-weeks' | '1-month';  // Track which date range found this event
   metadata: {
     originalQuery: string;
     country: string | null;
@@ -573,7 +574,13 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     // Step 5: Parallel extraction
     const extractionStart = Date.now();
-    const extracted = await extractEventDetails(prioritized, params);
+    let extracted = await extractEventDetails(prioritized, params);
+    
+    // Tag events with original date range
+    extracted.forEach(event => {
+      event.dateRangeSource = 'original';
+    });
+    
     const extractionTime = Date.now() - extractionStart;
     logs.push({
       stage: 'extraction',
@@ -581,6 +588,81 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       timestamp: new Date().toISOString(),
       data: { extractedCount: extracted.length, duration: extractionTime }
     });
+    
+    // Step 5.5: Auto-expand date range if few results found
+    const MIN_RESULTS_THRESHOLD = 3;
+    
+    if (extracted.length < MIN_RESULTS_THRESHOLD && params.dateFrom && params.dateTo) {
+      console.log(`[optimized-orchestrator] Only ${extracted.length} events found. Expanding date range...`);
+      logs.push({
+        stage: 'date_expansion',
+        message: `Expanding date range: ${extracted.length} events found (threshold: ${MIN_RESULTS_THRESHOLD})`,
+        timestamp: new Date().toISOString(),
+        data: { originalResults: extracted.length, threshold: MIN_RESULTS_THRESHOLD }
+      });
+      
+      // Try 2 weeks first
+      const twoWeeksFrom = params.dateFrom;
+      const twoWeeksTo = new Date(new Date(params.dateTo).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      
+      console.log(`[optimized-orchestrator] Trying 2-week expansion: ${twoWeeksFrom} to ${twoWeeksTo}`);
+      
+      const expandedParams = { ...params, dateTo: twoWeeksTo };
+      const expandedQuery = await buildOptimizedQuery(expandedParams, userProfile);
+      const expandedCandidates = await discoverEventCandidates(expandedQuery, expandedParams, userProfile);
+      const expandedPrioritized = await prioritizeCandidates(expandedCandidates, expandedParams);
+      const expandedExtracted = await extractEventDetails(expandedPrioritized, expandedParams);
+      
+      // Tag 2-week expanded events
+      expandedExtracted.forEach(event => {
+        event.dateRangeSource = '2-weeks';
+      });
+      
+      // Merge unique events
+      const originalUrls = new Set(extracted.map(e => e.url));
+      const newEvents = expandedExtracted.filter(e => !originalUrls.has(e.url));
+      extracted = [...extracted, ...newEvents];
+      
+      console.log(`[optimized-orchestrator] After 2-week expansion: ${extracted.length} total events (${newEvents.length} new)`);
+      logs.push({
+        stage: 'date_expansion',
+        message: `2-week expansion added ${newEvents.length} events`,
+        timestamp: new Date().toISOString(),
+        data: { totalEvents: extracted.length, newEvents: newEvents.length, expandedTo: twoWeeksTo }
+      });
+      
+      // If still not enough, try 1 month
+      if (extracted.length < MIN_RESULTS_THRESHOLD) {
+        const oneMonthFrom = params.dateFrom;
+        const oneMonthTo = new Date(new Date(params.dateTo).getTime() + 23 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        
+        console.log(`[optimized-orchestrator] Still only ${extracted.length} events. Trying 1-month expansion: ${oneMonthFrom} to ${oneMonthTo}`);
+        
+        const monthParams = { ...params, dateTo: oneMonthTo };
+        const monthQuery = await buildOptimizedQuery(monthParams, userProfile);
+        const monthCandidates = await discoverEventCandidates(monthQuery, monthParams, userProfile);
+        const monthPrioritized = await prioritizeCandidates(monthCandidates, monthParams);
+        const monthExtracted = await extractEventDetails(monthPrioritized, monthParams);
+        
+        // Tag 1-month expanded events
+        monthExtracted.forEach(event => {
+          event.dateRangeSource = '1-month';
+        });
+        
+        // Merge unique events
+        const allUrls = new Set(extracted.map(e => e.url));
+        const monthNewEvents = monthExtracted.filter(e => !allUrls.has(e.url));
+        extracted = [...extracted, ...monthNewEvents];
+        
+        console.log(`[optimized-orchestrator] After 1-month expansion: ${extracted.length} total events (${monthNewEvents.length} new)`);
+        logs.push({
+          stage: 'date_expansion',
+          message: `1-month expansion added ${monthNewEvents.length} events`,
+          timestamp: new Date().toISOString(),
+          data: { totalEvents: extracted.length, newEvents: monthNewEvents.length, expandedTo: oneMonthTo }
+        });
+      }
+    }
 
     // Step 6: Speaker enhancement
     const enhancementStart = Date.now();

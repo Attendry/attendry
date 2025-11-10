@@ -216,6 +216,7 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         confidence: e.confidence ?? null, // ✅ Include confidence
         confidence_reason: e.confidence_reason ?? null, // ✅ Include confidence reason
         pipeline_metadata: e.pipeline_metadata ?? null, // ✅ Include pipeline metadata
+        dateRangeSource: e.dateRangeSource ?? null, // ✅ Include date range source for visual indicators
       }));
 
       // Store results in context with user profile data
