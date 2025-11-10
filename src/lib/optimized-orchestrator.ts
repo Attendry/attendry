@@ -919,9 +919,38 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
     }
   });
 
-  // Filter and deduplicate URLs
+  // Filter and deduplicate URLs, excluding blog posts and non-event pages
+  const nonEventPathPatterns = [
+    '/blog/', '/blogs/', '/news/', '/article/', '/articles/', '/post/', '/posts/',
+    '/insights/', '/resources/', '/guides/', '/guide/', '/tutorial/', '/tutorials/',
+    '/press/', '/media/', '/about/', '/contact/', '/careers/', '/jobs/',
+    '/thought-leadership/', '/whitepaper/', '/whitepapers/', '/ebook/', '/ebooks/',
+    '/webinar/', '/webinars/', '/podcast/', '/podcasts/', '/video/', '/videos/'
+  ];
+  
   const urls = allUrls
     .filter(url => typeof url === 'string' && url.startsWith('http'))
+    .filter(url => {
+      // Filter out aggregator hosts
+      try {
+        const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+        if (AGGREGATOR_HOSTS.has(host)) {
+          return false;
+        }
+      } catch {
+        // Keep if URL parsing fails
+      }
+      
+      // Filter out blog posts and non-event pages
+      const urlLower = url.toLowerCase();
+      const isBlogOrNonEvent = nonEventPathPatterns.some(pattern => urlLower.includes(pattern));
+      if (isBlogOrNonEvent) {
+        console.log('[optimized-orchestrator] Filtered out blog/non-event URL:', url);
+        return false;
+      }
+      
+      return true;
+    })
     .filter((url, index, array) => array.indexOf(url) === index) // Remove duplicates
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxCandidates);
 
@@ -1003,10 +1032,20 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
         score += 0.1;
       }
       
+      // Heavily penalize blog posts and non-event pages
+      const nonEventPatterns = ['/blog/', '/blogs/', '/news/', '/article/', '/articles/', '/post/', '/posts/', 
+                                 '/insights/', '/resources/', '/guides/', '/guide/', '/tutorial/', '/tutorials/',
+                                 '/press/', '/media/', '/thought-leadership/', '/whitepaper/', '/ebook/'];
+      if (nonEventPatterns.some(pattern => urlLower.includes(pattern))) {
+        score = 0.1; // Very low score for blog posts
+        return { url, score, reason: 'blog_post' };
+      }
+      
       // Penalize aggregator sites
-      const aggregatorKeywords = ['conferencealerts', '10times', 'eventbrite', 'allconference', 'freeconference', 'conferenceineurope', 'internationalconference'];
+      const aggregatorKeywords = ['conferencealerts', '10times', 'eventbrite', 'allconference', 'freeconference', 
+                                  'conferenceineurope', 'internationalconference', 'vendelux'];
       if (aggregatorKeywords.some(keyword => urlLower.includes(keyword))) {
-        score -= 0.3; // Reduce score for aggregators
+        score -= 0.4; // Heavy penalty for aggregators
       }
       
       return { 
@@ -1249,7 +1288,7 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   }
   
   const userContextText = userContextParts.length > 0 
-    ? `\n\nFILTERING REQUIREMENTS:\n- Prioritize events related to: ${userContextParts.join('; ')}\n- Score URLs higher (0.7-1.0) if they match these topics/roles\n- Score URLs lower (0.0-0.4) if they are generic business events without industry/ICP relevance\n- Exclude aggregator directories and generic event listings\n` 
+    ? `\n\nFILTERING REQUIREMENTS:\n- Prioritize events related to: ${userContextParts.join('; ')}\n- Score URLs higher (0.7-1.0) if they match these topics/roles\n- Score URLs lower (0.0-0.4) if they are generic business events without industry/ICP relevance\n- EXCLUDE blog posts, news articles, guides, tutorials, and non-event pages (score 0.0-0.2)\n- EXCLUDE aggregator directories and generic event listings (score 0.0-0.2)\n- Only include actual event pages with dates, venues, or registration information\n` 
     : '';
 
   const weightedContext = template
@@ -1296,16 +1335,29 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
       score += 0.1;
     }
     
+    // Heavily penalize blog posts and non-event pages
+    const nonEventPatterns = ['/blog/', '/blogs/', '/news/', '/article/', '/articles/', '/post/', '/posts/', 
+                               '/insights/', '/resources/', '/guides/', '/guide/', '/tutorial/', '/tutorials/',
+                               '/press/', '/media/', '/thought-leadership/', '/whitepaper/', '/ebook/'];
+    if (nonEventPatterns.some(pattern => urlLower.includes(pattern))) {
+      return { url, score: 0.1, reason: 'blog_post' }; // Very low score for blog posts
+    }
+    
     // Penalize aggregator sites
-    const aggregatorKeywords = ['conferencealerts', '10times', 'eventbrite', 'allconference', 'freeconference', 'conferenceineurope', 'internationalconference'];
+    const aggregatorKeywords = ['conferencealerts', '10times', 'eventbrite', 'allconference', 'freeconference', 
+                                'conferenceineurope', 'internationalconference', 'vendelux'];
     if (aggregatorKeywords.some(keyword => urlLower.includes(keyword))) {
-      score -= 0.2; // Reduce score for aggregators
+      score -= 0.3; // Heavy penalty for aggregators
     }
     
     return { url, score: Math.max(0.3, Math.min(score, 0.95)), reason };
   };
 
-  // Filter out aggregator URLs first
+  // Filter out aggregator URLs and blog posts
+  const nonEventPathPatterns = ['/blog/', '/blogs/', '/news/', '/article/', '/articles/', '/post/', '/posts/', 
+                                 '/insights/', '/resources/', '/guides/', '/guide/', '/tutorial/', '/tutorials/',
+                                 '/press/', '/media/', '/thought-leadership/', '/whitepaper/', '/ebook/'];
+  
   const filteredUrls = urls.filter((url, idx) => {
     try {
       const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
@@ -1318,6 +1370,18 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     } catch {
       // keep url if parsing fails
     }
+    
+    // Filter out blog posts and non-event pages
+    const urlLower = url.toLowerCase();
+    const isBlogOrNonEvent = nonEventPathPatterns.some(pattern => urlLower.includes(pattern));
+    if (isBlogOrNonEvent) {
+      if (!resultsMap.has(url)) {
+        resultsMap.set(url, fallbackForUrl(url, idx, 'blog_post'));
+      }
+      console.log('[optimized-orchestrator] Filtered out blog/non-event URL in prioritization:', url);
+      return false;
+    }
+    
     return true;
   });
 
