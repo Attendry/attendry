@@ -47,7 +47,10 @@ const AGGREGATOR_DOMAINS = new Set([
   'conferenceineurope.net',
   'eventbrite.com',
   'globalriskcommunity.com',
-  'linkedin.com'
+  'linkedin.com',
+  'conference2go.com',
+  'conferenceindex.org',
+  'bigevent.io'
 ]);
 
 const DIRECTORY_PATH_SEGMENTS = [

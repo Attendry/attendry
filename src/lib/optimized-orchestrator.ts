@@ -89,7 +89,10 @@ const AGGREGATOR_HOSTS = new Set([
   'internationalconferencealerts.com',
   'linkedin.com',
   'researchbunny.com',
-  'vendelux.com'
+  'vendelux.com',
+  'conference2go.com',
+  'conferenceindex.org',
+  'bigevent.io'
 ]);
 
 function isAggregatorDomain(url: string): boolean {
@@ -741,7 +744,13 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
   // Get search configuration to determine industry
   const searchConfig = await getSearchConfig();
   const activeConfig = await loadActiveConfig();
-  const industry = searchConfig?.industry || activeConfig?.industry || 'legal-compliance';
+  const rawIndustry = searchConfig?.industry || activeConfig?.industry || 'legal-compliance';
+  const normalizedIndustry = (rawIndustry || 'legal-compliance')
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/_+/g, '-');
+  const industry = normalizedIndustry in WEIGHTED_INDUSTRY_TEMPLATES ? normalizedIndustry : 'legal-compliance';
   
   // Get weighted template for the industry
   const template = WEIGHTED_INDUSTRY_TEMPLATES[industry];
@@ -958,8 +967,17 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
   // Filter and deduplicate URLs
   const urls = allUrls
     .filter(url => typeof url === 'string' && url.startsWith('http'))
-    .filter((url, index, array) => array.indexOf(url) === index) // Remove duplicates
+    .filter((url, index, array) => array.indexOf(url) === index)
+    .filter(url => !isAggregatorDomain(url))
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxCandidates);
+
+  if (urls.length === 0 && allUrls.length > 0) {
+    console.warn('[optimized-orchestrator] Only aggregator domains discovered during discovery; retaining top aggregator URLs as fallback');
+    return allUrls
+      .filter(url => typeof url === 'string' && url.startsWith('http'))
+      .filter((url, index, array) => array.indexOf(url) === index)
+      .slice(0, 5);
+  }
 
   console.log(`[optimized-orchestrator] Discovered ${urls.length} unique URLs from ${queryVariations.length} query variations in ${Date.now() - startTime}ms`);
   
@@ -1242,7 +1260,8 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     : `Rate ${industry} events in ${locationContext}.`;
 
   const chunkSize = 1;
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
+  const baseContextRaw = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
+  const baseContext = baseContextRaw.length > 480 ? `${baseContextRaw.slice(0, 480)}...` : baseContextRaw;
 
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
