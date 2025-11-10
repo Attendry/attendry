@@ -846,6 +846,17 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
       const chunk = chunks[i];
       const prompt = `Extract factual event metadata as JSON using the provided schema. Only return fields you can confirm from this content chunk. Use null when unsure.
 
+**Date Extraction Guidelines:**
+- Look for dates in formats like: "November 10-17, 2025", "10-17 Nov 2025", "2025-11-10 to 2025-11-17"
+- Return dates in ISO format: "2025-11-10" or as a range: "2025-11-10 to 2025-11-17"
+- Check event headers, registration sections, and "when" or "date" sections
+- If you find a date range, return it as "YYYY-MM-DD to YYYY-MM-DD"
+
+**Location Extraction Guidelines:**
+- Look for city names (Berlin, München, Frankfurt, etc.)
+- Look for venue names and addresses
+- Return format: "City, Country" (e.g., "Berlin, Germany")
+
 Chunk ${i + 1}/${chunks.length}:
 ${chunk}`;
 
@@ -964,9 +975,9 @@ function extractSpeakerSections(content: string): Array<{
   const lines = content.split('\n');
   let currentSection: { heading: string; lines: string[]; startIndex: number } | null = null;
   
-  // Speaker heading patterns
-  const speakerHeaderPattern = /^#{1,3}\s*(Speakers?|Presenters?|Faculty|Keynote|Panelists?|Referenten?|Sprecher|Moderatoren?|Featured|Guest)\b/i;
-  const nonSpeakerHeaderPattern = /^#{1,3}\s*(Venue|Location|Hotel|Travel|Register|Ticket|Sponsor|Partner|Privacy|Terms|Cookie|Contact|About|Home|FAQ|Pricing)/i;
+  // Speaker heading patterns - support both markdown (##) and plain text headers (all caps or title case)
+  const speakerHeaderPattern = /^(?:#{1,3}\s*)?(SPEAKERS?|PRESENTERS?|FACULTY|KEYNOTE|PANELISTS?|REFERENTEN?|SPRECHER|MODERATOREN?|FEATURED|GUEST|Speakers?|Presenters?|Faculty|Keynote|Panelists?|Referenten?|Sprecher|Moderatoren?|Featured|Guest)(?:\s*:)?$/i;
+  const nonSpeakerHeaderPattern = /^(?:#{1,3}\s*)?(VENUE|LOCATION|HOTEL|TRAVEL|REGISTER|TICKET|SPONSOR|PARTNER|PRIVACY|TERMS|COOKIE|CONTACT|ABOUT|HOME|FAQ|PRICING|Venue|Location|Hotel|Travel|Register|Ticket|Sponsor|Partner|Privacy|Terms|Cookie|Contact|About|Home|FAQ|Pricing)(?:\s*:)?$/i;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -1135,7 +1146,8 @@ function isLikelyPersonName(name: string): boolean {
   // Filter out generic organizational terms
   const orgKeywords = [
     'committee', 'board', 'team', 'group', 'department', 'organization',
-    'association', 'institute', 'foundation', 'council', 'society', 'partner'
+    'association', 'institute', 'foundation', 'council', 'society', 'partner',
+    'center', 'centre', 'resource', 'library', 'portal', 'hub', 'network'
   ];
   
   if (orgKeywords.some(keyword => nameLower.includes(keyword))) {

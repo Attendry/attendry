@@ -934,7 +934,7 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
       }, 'firecrawl');
     },
     {
-      maxConcurrency: 4, // Process all query variations in parallel
+      maxConcurrency: 12, // Firecrawl supports up to 50 concurrent browsers, using 12 for optimal throughput
       enableEarlyTermination: false, // Don't terminate early for discovery
       qualityThreshold: 0.5,
       minResults: 1
