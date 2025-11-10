@@ -1027,7 +1027,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
             }
             const rawScore = typeof item.score === 'number' ? item.score : parseFloat(item.score);
             const score = Number.isFinite(rawScore) ? Math.min(Math.max(rawScore, 0), 1) : Math.max(0.5 - idx * 0.02, 0.05);
-            const reason = typeof item.reason === 'string' && item.reason.trim().length > 0 ? item.reason.trim().slice(0, 12) : 'gemini';
+            const reason = typeof item.reason === 'string' && item.reason.trim().length > 0 ? item.reason.trim().slice(0, 10) : 'gemini';
             return { url: item.url, score, reason };
           })
           .filter((item): item is { url: string; score: number; reason: string } => !!item)
@@ -1123,40 +1123,40 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const locationContext = countryContext.countryNames[0] || countryContext.iso2 || 'target region';
 
   let timeframeLabel = '';
-if (params.dateFrom && params.dateTo) {
-  timeframeLabel = ` window:${params.dateFrom}->${params.dateTo}.`;
-} else if (params.dateFrom) {
-  timeframeLabel = ` after:${params.dateFrom}.`;
-} else if (params.dateTo) {
-  timeframeLabel = ` before:${params.dateTo}.`;
-}
+  if (params.dateFrom && params.dateTo) {
+    timeframeLabel = ` window:${params.dateFrom}->${params.dateTo}.`;
+  } else if (params.dateFrom) {
+    timeframeLabel = ` after:${params.dateFrom}.`;
+  } else if (params.dateTo) {
+    timeframeLabel = ` before:${params.dateTo}.`;
+  }
 
   const userIndustryTerms = userProfile?.industry_terms || [];
   const userIcpTerms = userProfile?.icp_terms || [];
   const userContextParts: string[] = [];
   if (userIndustryTerms.length > 0) {
-  userContextParts.push(`topics:${userIndustryTerms[0]}`);
+    userContextParts.push(`topics:${userIndustryTerms[0]}`);
   }
   if (userIcpTerms.length > 0) {
-  userContextParts.push(`roles:${userIcpTerms[0]}`);
+    userContextParts.push(`roles:${userIcpTerms[0]}`);
   }
   // Competitor context increases prompt length significantly; omit for stability.
-const userContextText = userContextParts.length > 0 ? ` ${userContextParts.join(' ')}` : '';
+  const userContextText = userContextParts.length > 0 ? ` ${userContextParts.join(' ')}` : '';
 
   const weightedContext = template
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
   const chunkSize = 1;
-const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
-    console.log('[optimized-orchestrator] Gemini prioritization setup:', {
-      industry,
-      urls: urls.length,
-      filtered: filteredUrls.length,
-      contextLength: baseContext.length,
-      chunkSize
-    });
+  console.log('[optimized-orchestrator] Gemini prioritization setup:', {
+    industry,
+    urls: urls.length,
+    filtered: filteredUrls.length,
+    contextLength: baseContext.length,
+    chunkSize
+  });
 
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
