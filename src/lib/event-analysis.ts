@@ -922,6 +922,87 @@ ${chunk}`;
   return fallbackMetadata;
 }
 
+/**
+ * Validation: Filter out non-person names from speaker extraction
+ * Used by both Gemini extraction and manual fallback
+ */
+function isLikelyPersonName(name: string): boolean {
+  const nameLower = name.toLowerCase();
+  
+  // Filter out call-to-action phrases and UI elements
+  const ctaKeywords = [
+    'reserve', 'register', 'book', 'buy', 'purchase', 'sign up', 'login',
+    'learn more', 'read more', 'view more', 'see more', 'click here',
+    'download', 'subscribe', 'join', 'enroll', 'attend', 'save', 'share',
+    'contact', 'submit', 'apply', 'ticket', 'seat', 'now', 'today'
+  ];
+  
+  if (ctaKeywords.some(keyword => nameLower.includes(keyword))) {
+    console.log(`[speaker-validation] Filtered out CTA/UI element: "${name}"`);
+    return false;
+  }
+  
+  // Filter out event/session titles
+  const eventKeywords = [
+    'summit', 'forum', 'conference', 'act', 'practice', 'risk', 'privacy',
+    'lawyers', 'compliance', 'webinar', 'session', 'panel', 'workshop',
+    'event', 'meeting', 'seminar', 'symposium', 'congress', 'convention',
+    'day', 'week', 'month', 'year', 'edition', 'annual', 'international',
+    'program', 'agenda', 'schedule', 'keynote', 'presentation', 'track'
+  ];
+  
+  if (eventKeywords.some(keyword => nameLower.includes(keyword))) {
+    console.log(`[speaker-validation] Filtered out event name: "${name}"`);
+    return false;
+  }
+  
+  // Filter out generic organizational terms
+  const orgKeywords = [
+    'committee', 'board', 'team', 'group', 'department', 'organization',
+    'association', 'institute', 'foundation', 'council', 'society', 'partner'
+  ];
+  
+  if (orgKeywords.some(keyword => nameLower.includes(keyword))) {
+    console.log(`[speaker-validation] Filtered out organization term: "${name}"`);
+    return false;
+  }
+  
+  // Must have at least first and last name
+  const parts = name.split(/\s+/);
+  if (parts.length < 2) {
+    console.log(`[speaker-validation] Filtered out single-word name: "${name}"`);
+    return false;
+  }
+  
+  // Filter out if name is too long (likely a sentence or title)
+  if (parts.length > 4 || name.length > 50) {
+    console.log(`[speaker-validation] Filtered out overly long name: "${name}"`);
+    return false;
+  }
+  
+  // Check if name contains only proper capitalization (Person Names are Title Case)
+  const hasProperCapitalization = parts.every(part => 
+    part.length > 0 && /^[A-ZÄÖÜ]/.test(part)
+  );
+  
+  if (!hasProperCapitalization) {
+    console.log(`[speaker-validation] Filtered out improper capitalization: "${name}"`);
+    return false;
+  }
+  
+  // Check that each word looks like a name part (letters only, possibly with hyphens/apostrophes)
+  const hasValidCharacters = parts.every(part => 
+    /^[A-ZÄÖÜa-zäöüß\-']+$/.test(part)
+  );
+  
+  if (!hasValidCharacters) {
+    console.log(`[speaker-validation] Filtered out invalid characters: "${name}"`);
+    return false;
+  }
+  
+  return true;
+}
+
 export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Promise<SpeakerData[]> {
   if (!geminiKey) {
     console.log('Gemini key not available, returning empty speakers array');
@@ -1001,84 +1082,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
 
     const speakerMap = new Map<string, SpeakerData>();
 
-    // Validation: Filter out non-person names
-    const isLikelyPersonName = (name: string): boolean => {
-      const nameLower = name.toLowerCase();
-      
-      // Filter out call-to-action phrases and UI elements
-      const ctaKeywords = [
-        'reserve', 'register', 'book', 'buy', 'purchase', 'sign up', 'login',
-        'learn more', 'read more', 'view more', 'see more', 'click here',
-        'download', 'subscribe', 'join', 'enroll', 'attend', 'save', 'share',
-        'contact', 'submit', 'apply', 'ticket', 'seat', 'now', 'today'
-      ];
-      
-      if (ctaKeywords.some(keyword => nameLower.includes(keyword))) {
-        console.log(`[speaker-validation] Filtered out CTA/UI element: "${name}"`);
-        return false;
-      }
-      
-      // Filter out event/session titles
-      const eventKeywords = [
-        'summit', 'forum', 'conference', 'act', 'practice', 'risk', 'privacy',
-        'lawyers', 'compliance', 'webinar', 'session', 'panel', 'workshop',
-        'event', 'meeting', 'seminar', 'symposium', 'congress', 'convention',
-        'day', 'week', 'month', 'year', 'edition', 'annual', 'international',
-        'program', 'agenda', 'schedule', 'keynote', 'presentation', 'track'
-      ];
-      
-      if (eventKeywords.some(keyword => nameLower.includes(keyword))) {
-        console.log(`[speaker-validation] Filtered out event name: "${name}"`);
-        return false;
-      }
-      
-      // Filter out generic organizational terms
-      const orgKeywords = [
-        'committee', 'board', 'team', 'group', 'department', 'organization',
-        'association', 'institute', 'foundation', 'council', 'society', 'partner'
-      ];
-      
-      if (orgKeywords.some(keyword => nameLower.includes(keyword))) {
-        console.log(`[speaker-validation] Filtered out organization term: "${name}"`);
-        return false;
-      }
-      
-      // Must have at least first and last name
-      const parts = name.split(/\s+/);
-      if (parts.length < 2) {
-        console.log(`[speaker-validation] Filtered out single-word name: "${name}"`);
-        return false;
-      }
-      
-      // Filter out if name is too long (likely a sentence or title)
-      if (parts.length > 4 || name.length > 50) {
-        console.log(`[speaker-validation] Filtered out overly long name: "${name}"`);
-        return false;
-      }
-      
-      // Check if name contains only proper capitalization (Person Names are Title Case)
-      const hasProperCapitalization = parts.every(part => 
-        part.length > 0 && /^[A-ZÄÖÜ]/.test(part)
-      );
-      
-      if (!hasProperCapitalization) {
-        console.log(`[speaker-validation] Filtered out improper capitalization: "${name}"`);
-        return false;
-      }
-      
-      // Check that each word looks like a name part (letters only, possibly with hyphens/apostrophes)
-      const hasValidCharacters = parts.every(part => 
-        /^[A-ZÄÖÜa-zäöüß\-']+$/.test(part)
-      );
-      
-      if (!hasValidCharacters) {
-        console.log(`[speaker-validation] Filtered out invalid characters: "${name}"`);
-        return false;
-      }
-      
-      return true;
-    };
-
+    // Upsert speaker with validation
     const upsertSpeaker = (speaker: any) => {
       if (!speaker) return;
       const rawName = speaker.name ?? speaker.fullName ?? speaker.full_name;
@@ -1213,13 +1217,21 @@ ${chunk}`;
     console.log('[event-analysis] No speakers found via Gemini, trying manual extraction fallback...');
     const fallbackNames = extractSpeakerNamesManually(serializedSections);
     if (fallbackNames.length > 0) {
-      console.log(`[event-analysis] ✓ Manual extraction found ${fallbackNames.length} speaker names`);
-      return fallbackNames.map(name => ({
-        name,
-        title: '',
-        company: '',
-        bio: ''
-      }));
+      console.log(`[event-analysis] Manual extraction found ${fallbackNames.length} potential names, validating...`);
+      
+      // CRITICAL: Apply same validation as Gemini results
+      const validatedNames = fallbackNames.filter(name => isLikelyPersonName(name));
+      
+      console.log(`[event-analysis] ✓ Manual extraction: ${validatedNames.length}/${fallbackNames.length} names passed validation`);
+      
+      if (validatedNames.length > 0) {
+        return validatedNames.map(name => ({
+          name,
+          title: '',
+          company: '',
+          bio: ''
+        }));
+      }
     }
 
     console.warn('[event-analysis] ⚠ Speaker extraction failed completely, returning empty array');
