@@ -303,7 +303,7 @@ const ORCHESTRATOR_CONFIG = {
   },
   limits: {
     maxCandidates: 40,      // Increased from 30 for better coverage
-    maxExtractions: 20,     // Increased from 15 for more results
+    maxExtractions: 12,     // Reduced from 20 to 12 to prevent timeout
     maxSpeakers: 30,        // Increased from 25 for richer data
   },
   timeouts: {
@@ -1150,14 +1150,6 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const chunkSize = 1;
   const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
-  console.log('[optimized-orchestrator] Gemini prioritization setup:', {
-    industry,
-    urls: urls.length,
-    filtered: filteredUrls.length,
-    contextLength: baseContext.length,
-    chunkSize
-  });
-
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
   const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
@@ -1187,6 +1179,14 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
       // keep url if parsing fails
     }
     return true;
+  });
+
+  console.log('[optimized-orchestrator] Gemini prioritization setup:', {
+    industry,
+    urls: urls.length,
+    filtered: filteredUrls.length,
+    contextLength: baseContext.length,
+    chunkSize
   });
 
   for (let i = 0; i < filteredUrls.length; i += chunkSize) {
@@ -1228,9 +1228,14 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   
   const startTime = Date.now();
   
+  // Limit the number of URLs to extract to prevent timeout (max 12)
+  const limitedPrioritized = prioritized.slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
+  
+  console.log(`[optimized-orchestrator] Extracting ${limitedPrioritized.length}/${prioritized.length} URLs (limited for performance)`);
+  
   // Use parallel processing for event extraction, but throttle to respect Firecrawl limits
   const parallelProcessor = getParallelProcessor();
-  const extractionTasks = prioritized.map((item, index) =>
+  const extractionTasks = limitedPrioritized.map((item, index) =>
     createParallelTask(
       `extraction_${index}`,
       item.url,
@@ -1266,7 +1271,15 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         const url = task.data;
         console.log('[optimized-orchestrator] Deep crawling event:', url);
 
-        const crawlResults = await deepCrawlEvent(url);
+        // Add timeout for individual deep crawl (30 seconds max)
+        const crawlPromise = deepCrawlEvent(url);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Deep crawl timeout')), 30000)
+        );
+        const crawlResults = await Promise.race([crawlPromise, timeoutPromise]).catch(err => {
+          console.warn('[optimized-orchestrator] Deep crawl timed out or failed:', url, err);
+          return [];
+        });
 
         if (!crawlResults || crawlResults.length === 0) {
           console.warn('[optimized-orchestrator] Deep crawl returned no content, skipping:', url);
@@ -1322,7 +1335,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   const events: EventCandidate[] = [];
 
   extractionResults.forEach((result, index) => {
-    const prioritizedItem = prioritized[index];
+    const prioritizedItem = limitedPrioritized[index];
     if (!prioritizedItem) {
       return;
     }

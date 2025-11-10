@@ -374,7 +374,7 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
   try {
     console.log('Starting deep crawl for:', eventUrl);
     
-    // First, crawl the main page with Firecrawl v2 API
+    // First, crawl the main page with Firecrawl v2 API (reduced timeout)
     const mainPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
@@ -385,8 +385,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
         url: eventUrl,
         formats: ['markdown'],
         onlyMainContent: true,
-        timeout: 20000
-      })
+        timeout: 12000  // Reduced from 20000 to 12000 (12 seconds)
+      }),
+      signal: AbortSignal.timeout(15000)  // Add abort signal for safety
     });
     
     if (mainPageResponse.ok) {
@@ -410,8 +411,8 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
     const subPageUrls = extractSubPageUrls(eventUrl, results[0]?.content || '');
     console.log('Found potential sub-pages:', subPageUrls.length);
     
-    // Crawl sub-pages in parallel (OPTIMIZED FOR SPEED)
-    const subPagePromises = subPageUrls.slice(0, 3).map(async (subUrl, index) => {
+    // Crawl sub-pages in parallel (OPTIMIZED FOR SPEED) - Reduced to 2 pages max
+    const subPagePromises = subPageUrls.slice(0, 2).map(async (subUrl, index) => {
       // Stagger requests slightly to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, index * 200)); // 200ms stagger
       
@@ -426,8 +427,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
             url: subUrl,
             formats: ['markdown'],
             onlyMainContent: true,
-            timeout: 10000
-          })
+            timeout: 8000  // Reduced from 10000 to 8000 (8 seconds)
+          }),
+          signal: AbortSignal.timeout(10000)  // Add abort signal for safety
         });
         
         if (subPageResponse.ok) {

@@ -19,8 +19,8 @@ export const PARALLEL_CONFIG = {
   // Dynamic concurrency limits based on system resources
   concurrency: {
     min: 2,                    // Minimum concurrent operations
-    max: 10,                   // Maximum concurrent operations
-    default: 5,                // Default concurrent operations
+    max: 5,                    // Maximum concurrent operations (reduced from 10 to prevent timeout)
+    default: 3,                // Default concurrent operations (reduced from 5)
     adaptive: true,            // Enable adaptive concurrency
   },
   
