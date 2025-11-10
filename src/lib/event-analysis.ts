@@ -40,6 +40,7 @@ const DIRECTORY_DOMAINS = new Set([
   'everlaw.com',
   'vendelux.com',
   'conference-service.com',
+  'conference2go.com',          // Generic aggregator
   'eventora.com',
   'eventsworld.com'
 ]);

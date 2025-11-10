@@ -91,6 +91,7 @@ const AGGREGATOR_HOSTS = new Set([
   'researchbunny.com',
   'vendelux.com',
   'conference-service.com',
+  'conference2go.com',           // NEW - generic aggregator
   'eventora.com',
   'eventsworld.com',
   'globalriskcommunity.com',
@@ -1017,7 +1018,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 256,  // Increased from 48 to 256 to prevent MAX_TOKENS errors
+          maxOutputTokens: 512,  // Increased to 512 to accommodate thinking tokens (255) + response
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1460,13 +1461,70 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     });
   });
 
-  console.log('[optimized-orchestrator] Extraction summary:', {
+  console.log('[optimized-orchestrator] Extraction summary (before filtering):', {
     requested: prioritized.length,
     produced: events.length,
     durationMs: Date.now() - startTime
   });
   
-  return events;
+  // Filter events by content relevance to user profile
+  const filteredEvents = await filterByContentRelevance(events, params);
+  
+  console.log('[optimized-orchestrator] Content filtering summary:', {
+    beforeFiltering: events.length,
+    afterFiltering: filteredEvents.length,
+    filtered: events.length - filteredEvents.length
+  });
+  
+  return filteredEvents;
+}
+
+/**
+ * Filter events by content relevance to user profile
+ */
+async function filterByContentRelevance(events: EventCandidate[], params: OptimizedSearchParams): Promise<EventCandidate[]> {
+  if (events.length === 0) return [];
+  
+  const userProfile = await getUserProfile();
+  if (!userProfile || !userProfile.industry_terms || userProfile.industry_terms.length === 0) {
+    console.log('[optimized-orchestrator] No user profile or industry terms, skipping content filtering');
+    return events;
+  }
+  
+  const industryTerms = (userProfile.industry_terms as string[]).map(term => term.toLowerCase());
+  const icpTerms = (userProfile.icp_terms as string[] || []).map(term => term.toLowerCase());
+  
+  console.log('[optimized-orchestrator] Filtering with industry terms:', industryTerms.slice(0, 5), 'and ICP terms:', icpTerms.slice(0, 3));
+  
+  return events.filter(event => {
+    const searchText = `${event.title} ${event.description}`.toLowerCase();
+    
+    // Check if event content contains ANY industry term
+    const hasIndustryMatch = industryTerms.some(term => {
+      // Check for word boundary matches to avoid partial matches
+      const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      return regex.test(searchText);
+    });
+    
+    if (hasIndustryMatch) {
+      console.log(`[optimized-orchestrator] ✓ Event matches industry terms: "${event.title.substring(0, 80)}"`);
+      return true;
+    }
+    
+    // Check for ICP terms as secondary filter
+    const hasIcpMatch = icpTerms.some(term => {
+      const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      return regex.test(searchText);
+    });
+    
+    if (hasIcpMatch) {
+      console.log(`[optimized-orchestrator] ✓ Event matches ICP terms: "${event.title.substring(0, 80)}"`);
+      return true;
+    }
+    
+    console.log(`[optimized-orchestrator] ✗ Event filtered out (no match): "${event.title.substring(0, 80)}"`);
+    return false;
+  });
 }
 
 /**
