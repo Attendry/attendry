@@ -70,28 +70,25 @@ export async function fetchEvents(
     ...init,
   });
 
+  // Read response body once and reuse
+  const responseText = await res.text();
+  
   if (!res.ok) {
-    const error = await safeReadJson(res);
-    throw new Error(typeof error?.error === 'string' ? error.error : "Search failed");
+    try {
+      const error = JSON.parse(responseText);
+      throw new Error(typeof error?.error === 'string' ? error.error : "Search failed");
+    } catch {
+      throw new Error(`Search failed with status ${res.status}`);
+    }
   }
 
-  const data = await safeReadJson(res);
-  if (!data) {
+  try {
+    const data = JSON.parse(responseText);
+    return data as EventsSearchResponse;
+  } catch {
     throw new Error("Invalid response format");
   }
-  
-  return data as EventsSearchResponse;
 }
 
-async function safeReadJson(response: Response): Promise<Record<string, unknown> | null> {
-  try {
-    const text = await response.text();
-    if (!text) {
-      return null;
-    }
-    return JSON.parse(text) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
+// Removed safeReadJson - response body is now read once in fetchEvents
 
