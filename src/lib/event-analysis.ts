@@ -923,6 +923,182 @@ ${chunk}`;
 }
 
 /**
+ * Detect speaker section content patterns for quality scoring
+ */
+function detectSpeakerContentPatterns(text: string): {
+  speakerNameCount: number;
+  titleCount: number;
+  organizationCount: number;
+  bioIndicators: number;
+  density: number;
+} {
+  const personNamePattern = /\b[A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+\b/g;
+  const jobTitlePattern = /\b(CEO|CTO|CFO|Director|Manager|Head of|VP|President|Partner|Founder|Chief|Senior|Lead)\b/gi;
+  const organizationPattern = /\bat [A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*/g;
+  const bioPattern = /\b(experience|expert|specializes?|specialized|background|works at|responsible for|leads?|manages?)\b/gi;
+  
+  const speakerNameCount = (text.match(personNamePattern) || []).length;
+  const titleCount = (text.match(jobTitlePattern) || []).length;
+  const organizationCount = (text.match(organizationPattern) || []).length;
+  const bioIndicators = (text.match(bioPattern) || []).length;
+  const density = (speakerNameCount / Math.max(text.length, 1)) * 1000; // speakers per 1000 chars
+  
+  return { speakerNameCount, titleCount, organizationCount, bioIndicators, density };
+}
+
+/**
+ * Extract and score speaker sections from content
+ */
+function extractSpeakerSections(content: string): Array<{
+  heading: string;
+  content: string;
+  score: number;
+  startIndex: number;
+}> {
+  const sections: Array<{
+    heading: string;
+    lines: string[];
+    startIndex: number;
+  }> = [];
+  
+  const lines = content.split('\n');
+  let currentSection: { heading: string; lines: string[]; startIndex: number } | null = null;
+  
+  // Speaker heading patterns
+  const speakerHeaderPattern = /^#{1,3}\s*(Speakers?|Presenters?|Faculty|Keynote|Panelists?|Referenten?|Sprecher|Moderatoren?|Featured|Guest)\b/i;
+  const nonSpeakerHeaderPattern = /^#{1,3}\s*(Venue|Location|Hotel|Travel|Register|Ticket|Sponsor|Partner|Privacy|Terms|Cookie|Contact|About|Home|FAQ|Pricing)/i;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Check if this is a speaker section header
+    if (speakerHeaderPattern.test(line)) {
+      // Save previous section if exists
+      if (currentSection && currentSection.lines.length > 0) {
+        sections.push(currentSection);
+      }
+      
+      // Start new section
+      currentSection = {
+        heading: line,
+        lines: [],
+        startIndex: i
+      };
+    } 
+    // Check if we hit a non-speaker section
+    else if (nonSpeakerHeaderPattern.test(line) && currentSection) {
+      sections.push(currentSection);
+      currentSection = null;
+    }
+    // Add line to current section
+    else if (currentSection) {
+      currentSection.lines.push(line);
+    }
+  }
+  
+  // Add final section
+  if (currentSection && currentSection.lines.length > 0) {
+    sections.push(currentSection);
+  }
+  
+  // Score and filter sections
+  return sections
+    .map(section => {
+      const sectionContent = section.lines.join('\n');
+      const patterns = detectSpeakerContentPatterns(sectionContent);
+      
+      let score = 0;
+      
+      // Strong signals
+      if (patterns.speakerNameCount >= 2) score += 0.4;
+      if (patterns.titleCount >= 2) score += 0.3;
+      if (patterns.organizationCount >= 1) score += 0.2;
+      if (patterns.bioIndicators >= 2) score += 0.1;
+      
+      // Density bonus
+      if (patterns.density > 5) score += 0.2;
+      
+      // Noise penalties
+      if (sectionContent.toLowerCase().includes('register now')) score -= 0.2;
+      if (sectionContent.toLowerCase().includes('cookie')) score -= 0.1;
+      if (sectionContent.length < 200) score -= 0.3;
+      
+      return {
+        heading: section.heading,
+        content: sectionContent,
+        score: Math.max(0, Math.min(1, score)),
+        startIndex: section.startIndex
+      };
+    })
+    .filter(section => section.score > 0.3) // Quality threshold
+    .sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Create smart chunks focused on speaker-dense sections
+ */
+function createSmartChunks(
+  crawlResults: CrawlResult[],
+  maxChunks: number = 6
+): string[] {
+  const allSections: Array<{
+    heading: string;
+    content: string;
+    score: number;
+    sourceUrl: string;
+    sourceTitle: string;
+  }> = [];
+  
+  // Extract speaker sections from all crawl results
+  for (const result of crawlResults) {
+    const sections = extractSpeakerSections(result.content || '');
+    allSections.push(...sections.map(s => ({
+      ...s,
+      sourceUrl: result.url,
+      sourceTitle: result.title || 'Unknown'
+    })));
+  }
+  
+  // Sort by quality score
+  const sortedSections = allSections.sort((a, b) => b.score - a.score);
+  
+  if (sortedSections.length > 0) {
+    console.log(`[smart-chunking] Found ${sortedSections.length} speaker sections, using focused chunking`);
+    
+    const chunks: string[] = [];
+    
+    for (const section of sortedSections) {
+      // For speaker sections, use smaller chunks to avoid splitting bios
+      const sectionChunks = chunkText(section.content, 800, 100);
+      
+      // Add context to each chunk
+      const contextualChunks = sectionChunks.map(chunk => 
+        `Section: ${section.heading}\nURL: ${section.sourceUrl}\n\n${chunk}`
+      );
+      
+      chunks.push(...contextualChunks);
+      
+      if (chunks.length >= maxChunks) {
+        break;
+      }
+    }
+    
+    const result = chunks.slice(0, maxChunks);
+    console.log(`[smart-chunking] Created ${result.length} speaker-focused chunks (avg ${Math.round(result.reduce((sum, c) => sum + c.length, 0) / result.length)} chars)`);
+    return result;
+  }
+  
+  // Fallback to generic chunking
+  console.log('[smart-chunking] No speaker sections found, using generic chunking');
+  const sectionChunks = crawlResults.flatMap(result => {
+    const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
+    return chunkText(sectionText, 1200, 150).slice(0, 2);
+  });
+  
+  return sectionChunks.slice(0, maxChunks);
+}
+
+/**
  * Validation: Filter out non-person names from speaker extraction
  * Used by both Gemini extraction and manual fallback
  */
@@ -1072,12 +1248,8 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       return [];
     }
 
-    const sectionChunks = crawlResults.flatMap(result => {
-      const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
-      return chunkText(sectionText, 1200, 150).slice(0, 2);
-    });
-
-    const chunks = sectionChunks.slice(0, 6);
+    // Use smart chunking to focus on speaker sections
+    const chunks = createSmartChunks(crawlResults, 6);
     console.log('Preparing content for Gemini analysis, total chunk count:', chunks.length);
 
     const speakerMap = new Map<string, SpeakerData>();
