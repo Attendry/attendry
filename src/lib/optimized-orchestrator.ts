@@ -958,29 +958,63 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
     
     return filtered;
   } catch (error) {
-    console.warn('[optimized-orchestrator] Prioritization failed, using enhanced fallback scoring:', error);
+    console.warn('[optimized-orchestrator] Prioritization failed, using enhanced fallback scoring with industry/ICP terms:', error);
     
-    // Enhanced fallback scoring with URL pattern recognition
+    // Get user profile for industry/ICP-aware fallback scoring
+    const userProfile = await getUserProfile();
+    const userIndustryTerms = userProfile?.industry_terms || [];
+    const userIcpTerms = userProfile?.icp_terms || [];
+    
+    // Enhanced fallback scoring with industry/ICP awareness
     return urls.map((url, idx) => {
+      const urlLower = url.toLowerCase();
       let score = 0.4 - idx * 0.02; // Base score with slight degradation
       
-      // Boost scores for high-quality domains
-      if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
+      // Boost for event-related keywords
+      if (urlLower.includes('conference') || urlLower.includes('summit') || urlLower.includes('event') || urlLower.includes('workshop') || urlLower.includes('seminar')) {
         score += 0.2;
       }
-      if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
+      
+      // Strong boost for industry-specific terms from user profile
+      if (userIndustryTerms.length > 0) {
+        const industryMatch = userIndustryTerms.some(term => urlLower.includes(term.toLowerCase()));
+        if (industryMatch) {
+          score += 0.35; // Strong boost for industry match
+        }
+      }
+      
+      // Boost for ICP-specific terms
+      if (userIcpTerms.length > 0) {
+        const icpMatch = userIcpTerms.some(term => urlLower.includes(term.toLowerCase()));
+        if (icpMatch) {
+          score += 0.25; // Boost for ICP match
+        }
+      }
+      
+      // Fallback industry keywords if no user profile
+      const industryKeywords = ['legal', 'compliance', 'regulatory', 'governance', 'risk', 'audit', 'investigation', 'ediscovery'];
+      const hasIndustryKeyword = industryKeywords.some(keyword => urlLower.includes(keyword));
+      if (hasIndustryKeyword) {
         score += 0.3;
       }
-      if (url.includes('de') || url.includes('germany')) {
+      
+      // Geographic match
+      if (params.country && (urlLower.includes(params.country.toLowerCase()) || urlLower.includes('de') || urlLower.includes('germany'))) {
         score += 0.1;
+      }
+      
+      // Penalize aggregator sites
+      const aggregatorKeywords = ['conferencealerts', '10times', 'eventbrite', 'allconference', 'freeconference', 'conferenceineurope', 'internationalconference'];
+      if (aggregatorKeywords.some(keyword => urlLower.includes(keyword))) {
+        score -= 0.3; // Reduce score for aggregators
       }
       
       return { 
         url, 
-        score: Math.min(score, 0.9), 
+        score: Math.max(0.3, Math.min(score, 0.95)), 
         reason: 'enhanced_fallback' 
       };
-    });
+    }).filter(item => item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization); // Filter by threshold
   }
 }
 
@@ -1249,12 +1283,18 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     return true;
   });
 
+  // Batch prioritization to reduce API calls and improve performance
+  const chunkSize = Math.min(5, filteredUrls.length); // Process up to 5 URLs at once
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
+
   console.log('[optimized-orchestrator] Gemini prioritization setup:', {
     industry,
     urls: urls.length,
     filtered: filteredUrls.length,
     contextLength: baseContext.length,
-    chunkSize
+    chunkSize,
+    industryTerms: userIndustryTerms.length,
+    icpTerms: userIcpTerms.length
   });
 
   for (let i = 0; i < filteredUrls.length; i += chunkSize) {
