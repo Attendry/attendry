@@ -967,7 +967,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 48,
+          maxOutputTokens: 512, // Increased from 48 to handle JSON array with multiple URLs, scores, and reasons
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1008,8 +1008,18 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
 
         console.debug('[optimized-orchestrator] Gemini prioritization finish reason:', finishReason, 'Usage:', usageMetadata);
 
+        // Handle MAX_TOKENS - if we have partial content, try to use it
         if (!text) {
+          if (finishReason === 'MAX_TOKENS') {
+            console.warn('[optimized-orchestrator] MAX_TOKENS reached with no content - maxOutputTokens may be too low');
+            throw new Error(`MAX_TOKENS reached with no content - increase maxOutputTokens`);
+          }
           throw new Error(`No content in Gemini response${finishReason ? ` (finishReason: ${finishReason})` : ''}`);
+        }
+
+        // Log warning if MAX_TOKENS but we have partial content
+        if (finishReason === 'MAX_TOKENS' && text) {
+          console.warn('[optimized-orchestrator] MAX_TOKENS reached but partial content received - response may be truncated');
         }
 
         const parsed = parseGeminiPrioritizationPayload(text as string);
@@ -1254,7 +1264,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       pagesCrawled: number;
       totalContentLength: number;
       durationMs: number;
-      provider: 'firecrawl' | 'cse';
+      provider: 'firecrawl' | 'cse' | 'fallback';
     };
   } | null;
 
@@ -1269,8 +1279,38 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         const crawlResults = await deepCrawlEvent(url);
 
         if (!crawlResults || crawlResults.length === 0) {
-          console.warn('[optimized-orchestrator] Deep crawl returned no content, skipping:', url);
-          return null;
+          console.warn('[optimized-orchestrator] Deep crawl returned no content, creating fallback event from URL:', url);
+          // Create a basic event from the URL even if crawling fails
+          try {
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname.replace('www.', '');
+            const pathParts = urlObj.pathname.split('/').filter(part => part.length > 0);
+            const title = pathParts.length > 0 
+              ? pathParts[pathParts.length - 1].replace(/[-_]/g, ' ').replace(/\.[^.]*$/, '')
+              : hostname.replace(/\./g, ' ');
+            
+            return {
+              metadata: {
+                title: title.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+                description: `Event found at ${hostname}`,
+                date: params.dateFrom || '',
+                location: params.country || '',
+                organizer: hostname,
+                website: url,
+                registrationUrl: undefined
+              },
+              speakers: [],
+              crawlStats: {
+                pagesCrawled: 0,
+                totalContentLength: 0,
+                durationMs: Date.now() - extractionStart,
+                provider: 'fallback' as const
+              }
+            } satisfies ExtractionPayload;
+          } catch (error) {
+            console.warn('[optimized-orchestrator] Failed to create fallback event:', error instanceof Error ? error.message : error);
+            return null;
+          }
         }
 
         const totalContentLength = crawlResults.reduce((sum, result) => sum + (result.content?.length || 0), 0);
@@ -1329,6 +1369,44 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
 
     if (!result.success || !result.result) {
       console.warn('[optimized-orchestrator] Extraction failed for URL, applying fallback:', prioritizedItem.url);
+      // Create a basic fallback event from the URL
+      try {
+        const urlObj = new URL(prioritizedItem.url);
+        const hostname = urlObj.hostname.replace('www.', '');
+        const pathParts = urlObj.pathname.split('/').filter(part => part.length > 0);
+        const title = pathParts.length > 0 
+          ? pathParts[pathParts.length - 1].replace(/[-_]/g, ' ').replace(/\.[^.]*$/, '')
+          : hostname.replace(/\./g, ' ');
+        
+        events.push({
+          url: prioritizedItem.url,
+          title: title.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+          description: `Event found at ${hostname}`,
+          date: params.dateFrom || undefined,
+          country: params.country || undefined,
+          location: params.country || undefined,
+          confidence: prioritizedItem.score * 0.7, // Lower confidence for fallback events
+          confidenceReason: `fallback_${prioritizedItem.reason}`,
+          speakers: [],
+          metadata: {
+            title: title.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+            description: `Event found at ${hostname}`,
+            date: params.dateFrom || '',
+            location: params.country || '',
+            organizer: hostname,
+            website: prioritizedItem.url,
+            registrationUrl: undefined
+          },
+          crawlStats: {
+            pagesCrawled: 0,
+            totalContentLength: 0,
+            durationMs: 0,
+            provider: 'fallback' as const
+          }
+        });
+      } catch (error) {
+        console.warn('[optimized-orchestrator] Failed to create fallback event from URL:', error instanceof Error ? error.message : error);
+      }
       return;
     }
 
