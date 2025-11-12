@@ -105,6 +105,17 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
       }));
 
       setSearchResults(events);
+      
+      // Log for debugging
+      if (events.length === 0) {
+        console.log('No events found in search response:', {
+          hasEvents: !!data.events,
+          eventsLength: data.events?.length,
+          hasItems: !!data.items,
+          itemsLength: data.items?.length,
+          dataKeys: Object.keys(data),
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
       console.error('Search error:', err);
@@ -180,27 +191,29 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Event Search</h3>
               <p className="text-xs text-gray-500">
-                {searchResults.length > 0 
-                  ? `${searchResults.length} events found` 
-                  : 'Search for events and speakers'}
+                {isSearching 
+                  ? 'Searching...' 
+                  : searchResults.length > 0 
+                    ? `${searchResults.length} events found` 
+                    : keywords 
+                      ? 'No events found - click to refine search'
+                      : 'Search for events and speakers'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {searchResults.length > 0 && (
-              <button
-                onClick={handleQuickSearch}
-                disabled={isSearching}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-blue-300"
-              >
-                {isSearching ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Search className="h-3 w-3" />
-                )}
-                Go
-              </button>
-            )}
+            <button
+              onClick={handleQuickSearch}
+              disabled={isSearching}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-blue-300"
+            >
+              {isSearching ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Search className="h-3 w-3" />
+              )}
+              {keywords ? 'Search' : 'Go'}
+            </button>
             <button
               onClick={() => setIsMinimized(false)}
               className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
@@ -283,6 +296,19 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
       {error && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {!isSearching && searchResults.length === 0 && !error && (
+        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
+          <p className="text-sm text-gray-600">
+            No events found for your search criteria. Try:
+          </p>
+          <ul className="mt-2 text-xs text-gray-500 space-y-1">
+            <li>• Adjusting your keywords</li>
+            <li>• Trying a different country</li>
+            <li>• Expanding the date range</li>
+          </ul>
         </div>
       )}
 
