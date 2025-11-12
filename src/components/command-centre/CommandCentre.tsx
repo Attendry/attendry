@@ -28,6 +28,7 @@ import {
 import { useTrendingInsights } from '@/lib/hooks/useTrendingInsights';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
+import { EventSearchPanel } from './EventSearchPanel';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',
@@ -187,6 +188,13 @@ export function CommandCentre() {
       </header>
 
       <CommandMetrics metrics={metrics} loading={profilesLoading && profiles.length === 0} />
+
+      <EventSearchPanel
+        onSpeakersFound={() => {
+          // Refresh profiles when speakers are saved
+          refreshProfiles();
+        }}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -422,17 +430,17 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
         <p className="mt-3 line-clamp-3 text-sm text-gray-600">{profile.notes}</p>
       )}
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5">
           <label htmlFor={`status-${profile.id}`} className="text-xs font-medium text-gray-600">
-            Outreach status
+            Status:
           </label>
           <select
             id={`status-${profile.id}`}
             value={outreach_status}
             onChange={(event) => onStatusChange(profile.id, event.target.value as SavedSpeakerProfile['outreach_status'])}
             disabled={isUpdating}
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+            className="flex-1 border-0 bg-transparent px-1 py-0 text-xs font-medium text-gray-700 focus:ring-0"
           >
             {Object.entries(STATUS_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
@@ -443,10 +451,10 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
         </div>
         <Link
           href={`/saved-profiles`}
-          className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+          className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
         >
-          View full profile
-          <ArrowUpRight className="h-4 w-4" />
+          View profile
+          <ArrowUpRight className="h-3 w-3" />
         </Link>
       </div>
     </div>
