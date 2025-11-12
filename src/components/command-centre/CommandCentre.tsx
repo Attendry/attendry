@@ -28,6 +28,7 @@ import {
 import { useTrendingInsights } from '@/lib/hooks/useTrendingInsights';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
+import { EventSearchPanel } from './EventSearchPanel';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',
@@ -88,6 +89,16 @@ export function CommandCentre() {
 
   const accountData = useAccountIntelligenceData({ enabled: authReady && !!userId });
   const trendingData = useTrendingInsights();
+
+  // Handle saving speakers from event search
+  const handleSaveSpeakerFromEvent = async (event: any) => {
+    try {
+      // Navigate to the event page where they can see and save speakers
+      window.open(event.source_url, '_blank');
+    } catch (err) {
+      console.error('Failed to open event:', err);
+    }
+  };
 
   const metrics = useMemo(() => {
     const readyForOutreach = profiles.filter((profile) => profile.outreach_status === 'not_started').length;
@@ -185,6 +196,8 @@ export function CommandCentre() {
           </Link>
         </div>
       </header>
+
+      <EventSearchPanel onSaveSpeaker={handleSaveSpeakerFromEvent} />
 
       <CommandMetrics metrics={metrics} loading={profilesLoading && profiles.length === 0} />
 
@@ -373,81 +386,89 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
   return (
     <div className="rounded-xl border border-gray-200 p-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">{speaker_data.name}</h3>
-          <p className="text-sm text-gray-600">
-            {displayTitle ? <span className="font-medium text-gray-700">{displayTitle}</span> : 'Role TBD'}
-            {displayOrg && <span className="text-gray-400"> · </span>}
-            {displayOrg}
-          </p>
-          {location && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-              <MapPinSmall />
-              {location}
-            </p>
+        <div className="flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">{speaker_data.name}</h3>
+              <p className="text-sm text-gray-600">
+                {displayTitle ? <span className="font-medium text-gray-700">{displayTitle}</span> : 'Role TBD'}
+                {displayOrg && <span className="text-gray-400"> · </span>}
+                {displayOrg}
+              </p>
+              {location && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                  <MapPinSmall />
+                  {location}
+                </p>
+              )}
+            </div>
+            <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${STATUS_COLORS[outreach_status]}`}>
+              {STATUS_LABELS[outreach_status]}
+            </span>
+          </div>
+
+          {/* Compact Contact Actions */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {speaker_data.email && (
+              <a
+                href={`mailto:${speaker_data.email}`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <Mail className="h-3.5 w-3.5" /> Email
+              </a>
+            )}
+            {enhanced_data.social_links?.linkedin || speaker_data.linkedin_url ? (
+              <a
+                href={enhanced_data.social_links?.linkedin || speaker_data.linkedin_url || '#'}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 transition-colors hover:bg-gray-50"
+              >
+                <Linkedin className="h-3.5 w-3.5" /> LinkedIn
+              </a>
+            ) : null}
+            <Link
+              href={`/saved-profiles`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-blue-600 transition-colors hover:bg-blue-50"
+            >
+              View profile
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+
+          {profile.notes && (
+            <p className="mt-3 line-clamp-2 text-sm text-gray-600">{profile.notes}</p>
           )}
-          {confidence != null && (
-            <p className="mt-2 text-xs text-gray-500">
-              Data confidence: <span className="font-medium text-gray-700">{Math.round(confidence * 100)}%</span>
-            </p>
-          )}
+
+          {/* Compact Status Control Box */}
+          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <label htmlFor={`status-${profile.id}`} className="text-xs font-medium text-gray-600 whitespace-nowrap">
+                  Status:
+                </label>
+                <select
+                  id={`status-${profile.id}`}
+                  value={outreach_status}
+                  onChange={(event) => onStatusChange(profile.id, event.target.value as SavedSpeakerProfile['outreach_status'])}
+                  disabled={isUpdating}
+                  className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs"
+                >
+                  {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {confidence != null && (
+                <span className="text-xs text-gray-500 ml-auto">
+                  {Math.round(confidence * 100)}% confidence
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[outreach_status]}`}>
-          {STATUS_LABELS[outreach_status]}
-        </span>
-      </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {speaker_data.email && (
-          <a
-            href={`mailto:${speaker_data.email}`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-          >
-            <Mail className="h-4 w-4" /> Email
-          </a>
-        )}
-        {enhanced_data.social_links?.linkedin || speaker_data.linkedin_url ? (
-          <a
-            href={enhanced_data.social_links?.linkedin || speaker_data.linkedin_url || '#'}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
-          >
-            <Linkedin className="h-4 w-4" /> LinkedIn
-          </a>
-        ) : null}
-      </div>
-
-      {profile.notes && (
-        <p className="mt-3 line-clamp-3 text-sm text-gray-600">{profile.notes}</p>
-      )}
-
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <label htmlFor={`status-${profile.id}`} className="text-xs font-medium text-gray-600">
-            Outreach status
-          </label>
-          <select
-            id={`status-${profile.id}`}
-            value={outreach_status}
-            onChange={(event) => onStatusChange(profile.id, event.target.value as SavedSpeakerProfile['outreach_status'])}
-            disabled={isUpdating}
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-          >
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Link
-          href={`/saved-profiles`}
-          className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
-        >
-          View full profile
-          <ArrowUpRight className="h-4 w-4" />
-        </Link>
       </div>
     </div>
   );
