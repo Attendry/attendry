@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Building2,
   Users,
@@ -16,6 +16,14 @@ import {
   AlertCircle,
   Plus,
   ArrowUpRight,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+  Globe2,
+  CalendarRange,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 
 import { SavedSpeakerProfile } from '@/lib/types/database';
@@ -28,6 +36,8 @@ import {
 import { useTrendingInsights } from '@/lib/hooks/useTrendingInsights';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
+import { deriveLocale, toISO2Country } from '@/lib/utils/country';
+import { EventRec } from '@/context/SearchResultsContext';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',
@@ -49,6 +59,51 @@ const STATUS_COLORS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   responded: 'bg-green-100 text-green-800',
   meeting_scheduled: 'bg-purple-100 text-purple-800',
 };
+
+type OutreachStatus = SavedSpeakerProfile['outreach_status'];
+type StatusCounts = Record<OutreachStatus | 'all', number>;
+
+const STATUS_HELPERS: Record<OutreachStatus, string> = {
+  not_started: 'Need first contact',
+  contacted: 'Awaiting response',
+  responded: 'Follow up promptly',
+  meeting_scheduled: 'Prepare for meeting',
+};
+
+const QUICK_SEARCH_LOCATIONS = [
+  { code: 'EU', name: 'All Europe' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' },
+  { code: 'NL', name: 'Netherlands' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'ES', name: 'Spain' },
+  { code: 'IT', name: 'Italy' },
+  { code: 'SE', name: 'Sweden' },
+  { code: 'PL', name: 'Poland' },
+  { code: 'BE', name: 'Belgium' },
+  { code: 'CH', name: 'Switzerland' },
+] as const;
+
+const QUICK_SEARCH_DAY_OPTIONS = [7, 14, 30] as const;
+
+const QUICK_SEARCH_DEFAULTS = {
+  country: 'EU' as typeof QUICK_SEARCH_LOCATIONS[number]['code'],
+  range: 'next' as 'next' | 'past',
+  days: 14 as (typeof QUICK_SEARCH_DAY_OPTIONS)[number],
+  keywords: '',
+};
+
+function toDateOnlyString(date: Date) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy.toISOString().slice(0, 10);
+}
+
+function shiftDate(base: Date, offset: number) {
+  const next = new Date(base);
+  next.setDate(next.getDate() + offset);
+  return next;
+}
 
 export function CommandCentre() {
   const [authReady, setAuthReady] = useState(false);
@@ -118,6 +173,16 @@ export function CommandCentre() {
     ];
   }, [profiles, accountData.stats.totalAccounts]);
 
+  const statusCounts = useMemo<StatusCounts>(() => {
+    return {
+      all: profiles.length,
+      not_started: profiles.filter((profile) => profile.outreach_status === 'not_started').length,
+      contacted: profiles.filter((profile) => profile.outreach_status === 'contacted').length,
+      responded: profiles.filter((profile) => profile.outreach_status === 'responded').length,
+      meeting_scheduled: profiles.filter((profile) => profile.outreach_status === 'meeting_scheduled').length,
+    };
+  }, [profiles]);
+
   const prioritizedProfiles = useMemo(() => {
     const filtered = statusFilter === 'all'
       ? profiles
@@ -186,6 +251,16 @@ export function CommandCentre() {
         </div>
       </header>
 
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <QuickEventSearchPanel onSpeakerSaved={refreshProfiles} />
+        <OutreachStatusPanel
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          counts={statusCounts}
+          loading={profilesLoading}
+        />
+      </div>
+
       <CommandMetrics metrics={metrics} loading={profilesLoading && profiles.length === 0} />
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -196,7 +271,6 @@ export function CommandCentre() {
             loading={profilesLoading}
             error={profilesError}
             statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
             onStatusChange={updateStatus}
           />
         </div>
@@ -220,6 +294,627 @@ export function CommandCentre() {
         onRefresh={accountData.refresh}
         onAddAccount={accountData.addAccount}
       />
+    </div>
+  );
+}
+
+interface QuickEventSearchPanelProps {
+  onSpeakerSaved?: () => Promise<void> | void;
+}
+
+type EventSpeaker = {
+  name?: string;
+  title?: string | null;
+  org?: string | null;
+  organization?: string | null;
+  company?: string | null;
+  profile_url?: string | null;
+  linkedin?: string | null;
+  email?: string | null;
+  [key: string]: unknown;
+};
+
+function getSpeakerSignature(speaker: EventSpeaker): string | null {
+  if (!speaker) return null;
+  const profileLink = (speaker.profile_url || speaker.linkedin || '').toString().trim().toLowerCase();
+  if (profileLink) {
+    return profileLink;
+  }
+  const name = (speaker.name || '').trim().toLowerCase();
+  if (!name) {
+    return null;
+  }
+  const organization = (
+    speaker.org ||
+    speaker.organization ||
+    speaker.company ||
+    speaker.title ||
+    ''
+  )
+    .toString()
+    .trim()
+    .toLowerCase();
+
+  return organization ? `${name}__${organization}` : name;
+}
+
+function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
+  const [config, setConfig] = useState(QUICK_SEARCH_DEFAULTS);
+  const [collapsed, setCollapsed] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [results, setResults] = useState<EventRec[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRunAt, setLastRunAt] = useState<number | null>(null);
+  const [savingSpeakerId, setSavingSpeakerId] = useState<string | null>(null);
+  const [speakerStatus, setSpeakerStatus] = useState<Record<string, 'saved' | 'error'>>({});
+  const [savedSignatures, setSavedSignatures] = useState<Record<string, 'saved'>>({});
+
+  const prioritizedResults = useMemo(() => {
+    const withSpeakers = results.filter(
+      (event) => Array.isArray(event.speakers) && (event.speakers as EventSpeaker[]).length > 0,
+    );
+    if (withSpeakers.length > 0) {
+      return withSpeakers;
+    }
+    return results;
+  }, [results]);
+
+  const speakerOccurrences = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    prioritizedResults.forEach((event) => {
+      const eventKey = event.id || event.source_url;
+      if (!eventKey) return;
+      const eventSpeakers = Array.isArray(event.speakers) ? (event.speakers as EventSpeaker[]) : [];
+      eventSpeakers.forEach((speaker) => {
+        const signature = getSpeakerSignature(speaker);
+        if (!signature) return;
+        if (!map.has(signature)) {
+          map.set(signature, new Set());
+        }
+        map.get(signature)!.add(eventKey);
+      });
+    });
+    return map;
+  }, [prioritizedResults]);
+
+  const resultsToShow = useMemo(() => prioritizedResults.slice(0, 5), [prioritizedResults]);
+
+  const locationLabel = useMemo(
+    () => QUICK_SEARCH_LOCATIONS.find((location) => location.code === config.country)?.name ?? 'All Europe',
+    [config.country],
+  );
+
+  const dateRangeSummary = useMemo(() => {
+    const now = new Date();
+    if (config.range === 'next') {
+      return {
+        from: toDateOnlyString(now),
+        to: toDateOnlyString(shiftDate(now, config.days)),
+      };
+    }
+    return {
+      from: toDateOnlyString(shiftDate(now, -config.days)),
+      to: toDateOnlyString(now),
+    };
+  }, [config.range, config.days]);
+
+  const updateConfig = (partial: Partial<typeof config>) => {
+    setConfig((prev) => ({ ...prev, ...partial }));
+  };
+
+  const runSearch = useCallback(async () => {
+    const now = new Date();
+    const from =
+      config.range === 'next'
+        ? toDateOnlyString(now)
+        : toDateOnlyString(shiftDate(now, -config.days));
+    const to =
+      config.range === 'next'
+        ? toDateOnlyString(shiftDate(now, config.days))
+        : toDateOnlyString(now);
+
+    setLoading(true);
+    setError(null);
+    setSpeakerStatus({});
+    try {
+      const normalizedCountry = toISO2Country(config.country) ?? 'EU';
+      const locale = deriveLocale(normalizedCountry);
+      const response = await fetch('/api/events/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userText: config.keywords.trim(),
+          country: normalizedCountry,
+          dateFrom: from,
+          dateTo: to,
+          locale,
+        }),
+      });
+
+      let payload: any;
+      try {
+        payload = await response.json();
+      } catch {
+        const text = await response.text();
+        throw new Error(text || 'Search service returned an unreadable response');
+      }
+
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Search failed');
+      }
+
+      const rawEvents: EventRec[] = (payload.events || payload.items || []) as EventRec[];
+      const normalizedEvents = rawEvents
+        .map((event) => ({
+          source_url: event.source_url || event.link || '',
+          title: event.title || event.source_url || 'Untitled Event',
+          starts_at: event.starts_at ?? null,
+          ends_at: event.ends_at ?? null,
+          city: event.city ?? null,
+          country: event.country ?? null,
+          organizer: event.organizer ?? null,
+          speakers: Array.isArray(event.speakers) ? event.speakers : [],
+          description: event.description ?? null,
+          venue: event.venue ?? null,
+          location: event.location ?? null,
+          confidence: event.confidence ?? null,
+          confidence_reason: event.confidence_reason ?? null,
+          pipeline_metadata: event.pipeline_metadata ?? null,
+          id: event.id,
+        }))
+        .filter((event) => !!event.source_url);
+
+      setResults(normalizedEvents);
+      setLastRunAt(Date.now());
+    } catch (err) {
+      setResults([]);
+      setError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [config]);
+
+  const buildSpeakerKey = useCallback((event: EventRec, speaker: EventSpeaker, index: number) => {
+    const eventKey = event.id || event.source_url;
+    const base =
+      speaker.profile_url ||
+      speaker.linkedin ||
+      speaker.email ||
+      speaker.name ||
+      `speaker-${index}`;
+    return `${eventKey}:${base}`;
+  }, []);
+
+  const handleSaveSpeaker = useCallback(
+    async (event: EventRec, speaker: EventSpeaker, key: string) => {
+      if (!speaker?.name) {
+        alert('Unable to save speaker without a name.');
+        return;
+      }
+      const signature = getSpeakerSignature(speaker);
+      if (signature && savedSignatures[signature] === 'saved') {
+        setSpeakerStatus((prev) => ({ ...prev, [key]: 'saved' }));
+        return;
+      }
+      setSavingSpeakerId(key);
+      try {
+        const response = await fetch('/api/profiles/saved', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            speaker_data: speaker,
+            enhanced_data: speaker,
+            metadata: {
+              saved_from: 'command-centre-quick-search',
+              event_source_url: event.source_url,
+              event_title: event.title,
+            },
+          }),
+        });
+        let payload: any = {};
+        try {
+          payload = await response.json();
+        } catch {
+          payload = {};
+        }
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to save speaker');
+        }
+        setSpeakerStatus((prev) => ({ ...prev, [key]: 'saved' }));
+        if (signature) {
+          setSavedSignatures((prev) => ({ ...prev, [signature]: 'saved' }));
+        }
+        if (onSpeakerSaved) {
+          await Promise.resolve(onSpeakerSaved());
+        }
+      } catch (err) {
+        setSpeakerStatus((prev) => ({ ...prev, [key]: 'error' }));
+        alert(err instanceof Error ? err.message : 'Failed to save speaker');
+      } finally {
+        setSavingSpeakerId(null);
+      }
+    },
+    [onSpeakerSaved, savedSignatures],
+  );
+
+  const formatDisplayDate = useCallback((value?: string | null) => {
+    if (!value) return 'Date TBD';
+    try {
+      return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return value;
+    }
+  }, []);
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-6 py-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-blue-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Event Discovery</h2>
+          </div>
+          <p className="mt-1 text-sm text-gray-600">
+            Run your go-to search and save speakers without leaving this page.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setCollapsed((prev) => !prev)}
+          className="rounded-full border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50"
+          aria-label={collapsed ? 'Expand event discovery panel' : 'Collapse event discovery panel'}
+        >
+          {collapsed ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+        </button>
+      </div>
+      {!collapsed && (
+        <div className="space-y-5 px-6 py-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end">
+            <div className="flex-1">
+              <label className="mb-2 block text-sm font-medium text-gray-700">Focus keywords</label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={config.keywords}
+                  onChange={(event) => updateConfig({ keywords: event.target.value })}
+                  placeholder="e.g. legal operations, privacy, fintech"
+                  className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+            <div className="flex flex-row items-center gap-3 md:w-auto">
+              <button
+                type="button"
+                onClick={() => void runSearch()}
+                disabled={loading}
+                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Searching
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Go
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((prev) => !prev)}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                {showAdvanced ? (
+                  <>
+                    Hide options
+                    <ChevronUp className="h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    Refine
+                    <ChevronDown className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700">
+              <Globe2 className="h-3.5 w-3.5" />
+              {locationLabel}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
+              <CalendarRange className="h-3.5 w-3.5" />
+              {config.range === 'next' ? `Next ${config.days} days` : `Past ${config.days} days`}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-600">
+              {dateRangeSummary.from} → {dateRangeSummary.to}
+            </span>
+            {lastRunAt && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-600">
+                Refreshed {new Date(lastRunAt).toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+
+          {showAdvanced && (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Location</label>
+                <select
+                  value={config.country}
+                  onChange={(event) => updateConfig({ country: event.target.value as typeof QUICK_SEARCH_DEFAULTS.country })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                >
+                  {QUICK_SEARCH_LOCATIONS.map((location) => (
+                    <option key={location.code} value={location.code}>
+                      {location.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Time frame</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['next', 'past'] as const).map((rangeOption) => {
+                    const isActive = config.range === rangeOption;
+                    return (
+                      <button
+                        key={rangeOption}
+                        type="button"
+                        onClick={() => updateConfig({ range: rangeOption })}
+                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                          isActive
+                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {rangeOption === 'next' ? 'Upcoming' : 'Look back'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">Days</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {QUICK_SEARCH_DAY_OPTIONS.map((option) => {
+                    const isActive = config.days === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => updateConfig({ days: option })}
+                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                          isActive
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {loading && (
+            <div className="flex items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 text-sm text-gray-600">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
+              Gathering events…
+            </div>
+          )}
+
+          {!loading && !error && resultsToShow.length === 0 && !lastRunAt && (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
+              Configure your defaults and tap <span className="font-medium text-gray-800">Go</span> to fetch fresh events.
+            </div>
+          )}
+
+          {!loading && !error && resultsToShow.length === 0 && lastRunAt && (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-600">
+              No events matched the current filter. Try widening the time frame or adding broader keywords.
+            </div>
+          )}
+
+          {!loading && resultsToShow.length > 0 && (
+            <div className="space-y-4">
+              {resultsToShow.map((event) => {
+                const eventKey = event.id || event.source_url;
+                const speakers = Array.isArray(event.speakers) ? (event.speakers as EventSpeaker[]) : [];
+                const topSpeakers = speakers.slice(0, 3);
+                return (
+                  <div key={eventKey} className="rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <a
+                          href={event.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="line-clamp-2 text-base font-semibold text-gray-900 hover:text-blue-600"
+                        >
+                          {event.title}
+                        </a>
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                          <span>{formatDisplayDate(event.starts_at)}</span>
+                          {event.city || event.country ? <span>{[event.city, event.country].filter(Boolean).join(', ')}</span> : null}
+                          {event.organizer && <span className="text-gray-500">Hosted by {event.organizer}</span>}
+                        </div>
+                      </div>
+                      <span className="mt-1 inline-flex flex-shrink-0 items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700 sm:mt-0">
+                        {speakers.length > 0 ? `${speakers.length} speaker${speakers.length === 1 ? '' : 's'}` : 'Speaker data pending'}
+                      </span>
+                    </div>
+                    {topSpeakers.length > 0 && (
+                      <ul className="mt-4 space-y-2">
+                        {topSpeakers.map((speaker, index) => {
+                          const speakerKey = buildSpeakerKey(event, speaker, index);
+                          const status = speakerStatus[speakerKey];
+                          const isSaving = savingSpeakerId === speakerKey;
+                          const organization = speaker.org || speaker.organization || speaker.company || '';
+                          const profileLink = speaker.linkedin || speaker.profile_url || null;
+                          const signature = getSpeakerSignature(speaker);
+                          const duplicateEventsCount = signature ? Math.max((speakerOccurrences.get(signature)?.size || 0) - 1, 0) : 0;
+                          const appearsMultiple = duplicateEventsCount > 0;
+                          const signatureSaved = signature ? savedSignatures[signature] === 'saved' : false;
+                          const savedHere = status === 'saved';
+                          const savedFromOtherEvent = signatureSaved && !savedHere;
+                          return (
+                            <li
+                              key={speakerKey}
+                              className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                            >
+                              <div className="min-w-0">
+                                <p className="line-clamp-1 font-medium text-gray-900">{speaker.name}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                                  <span className="truncate">
+                                    {[speaker.title, organization].filter(Boolean).join(' · ') || 'Role pending'}
+                                  </span>
+                                  {appearsMultiple && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 font-semibold text-purple-700">
+                                      <Sparkles className="h-3 w-3" />
+                                      {duplicateEventsCount === 1
+                                        ? 'Also in 1 other event'
+                                        : `Also in ${duplicateEventsCount} other events`}
+                                    </span>
+                                  )}
+                                  {savedFromOtherEvent && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">
+                                      Saved elsewhere
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-end">
+                                {savedHere || savedFromOtherEvent ? (
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+                                      savedFromOtherEvent
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-emerald-100 text-emerald-700'
+                                    }`}
+                                  >
+                                    ✓ Saved
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleSaveSpeaker(event, speaker, speakerKey)}
+                                    disabled={isSaving}
+                                    className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-gray-100 whitespace-nowrap"
+                                  >
+                                    {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                                    Save speaker
+                                  </button>
+                                )}
+                                {profileLink && (
+                                  <a
+                                    href={profileLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50 whitespace-nowrap"
+                                  >
+                                    <Linkedin className="h-3.5 w-3.5" />
+                                    Profile
+                                  </a>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+              {prioritizedResults.length > resultsToShow.length && (
+                <div className="text-xs text-gray-600">
+                  Showing top {resultsToShow.length} of {prioritizedResults.length} curated events. Visit{' '}
+                  <Link href="/events" className="font-medium text-blue-600 hover:text-blue-700">
+                    full search workspace
+                  </Link>{' '}
+                  to review everything.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface OutreachStatusPanelProps {
+  statusFilter: OutreachStatus | 'all';
+  setStatusFilter: (status: OutreachStatus | 'all') => void;
+  counts: StatusCounts;
+  loading: boolean;
+}
+
+function OutreachStatusPanel({ statusFilter, setStatusFilter, counts, loading }: OutreachStatusPanelProps) {
+  const options = useMemo(() => {
+    const order: Array<OutreachStatus | 'all'> = ['all', 'not_started', 'contacted', 'responded', 'meeting_scheduled'];
+    return order.map((value) => ({
+      value,
+      label: value === 'all' ? 'All saved' : STATUS_LABELS[value as OutreachStatus],
+      helper: value === 'all' ? 'Every profile in your queue' : STATUS_HELPERS[value as OutreachStatus],
+      count: counts[value],
+    }));
+  }, [counts]);
+
+  return (
+    <div className="h-full rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Outreach Focus</h2>
+          <p className="mt-1 text-sm text-gray-600">Pick a stage to see prioritised contacts.</p>
+        </div>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-blue-600" aria-label="Loading outreach states" />}
+      </div>
+      <div className="mt-5 space-y-2">
+        {options.map((option) => {
+          const isActive = statusFilter === option.value;
+          const colorClasses =
+            option.value !== 'all'
+              ? STATUS_COLORS[option.value as OutreachStatus]
+              : 'bg-gray-100 text-gray-700';
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setStatusFilter(option.value)}
+              className={`w-full rounded-xl border px-4 py-3 text-left transition ${
+                isActive
+                  ? 'border-blue-200 bg-blue-50 shadow-sm'
+                  : 'border-gray-200 bg-white hover:bg-gray-50'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{option.label}</p>
+                  <p className="text-xs text-gray-600">{option.helper}</p>
+                </div>
+                <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${colorClasses}`}>
+                  {option.count}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -259,8 +954,7 @@ interface TargetedSpeakersPanelProps {
   fullCount: number;
   loading: boolean;
   error: string | null;
-  statusFilter: string;
-  setStatusFilter: (status: SavedSpeakerProfile['outreach_status'] | 'all') => void;
+  statusFilter: SavedSpeakerProfile['outreach_status'] | 'all';
   onStatusChange: (id: string, status: SavedSpeakerProfile['outreach_status']) => Promise<void>;
 }
 
@@ -270,7 +964,6 @@ function TargetedSpeakersPanel({
   loading,
   error,
   statusFilter,
-  setStatusFilter,
   onStatusChange,
 }: TargetedSpeakersPanelProps) {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -288,25 +981,21 @@ function TargetedSpeakersPanel({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Targeted Speakers</h2>
-          <p className="text-sm text-gray-600">Top matches prioritized for outreach based on engagement signals.</p>
+          <p className="text-sm text-gray-600">
+            {statusFilter === 'all'
+              ? 'Top matches prioritized for outreach based on engagement signals.'
+              : `Focused on ${STATUS_LABELS[statusFilter]} contacts.`}
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {['all', 'not_started', 'contacted', 'responded', 'meeting_scheduled'].map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status as SavedSpeakerProfile['outreach_status'] | 'all')}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                statusFilter === status
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {status === 'all' ? 'All' : STATUS_LABELS[status as SavedSpeakerProfile['outreach_status']]}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+          <Target className="h-4 w-4 text-blue-600" />
+          <span>
+            Showing {profiles.length} {profiles.length === 1 ? 'profile' : 'profiles'}
+            {fullCount > profiles.length ? ` · ${fullCount - profiles.length} more saved` : ''}
+          </span>
         </div>
       </div>
 
@@ -423,27 +1112,32 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
       )}
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <label htmlFor={`status-${profile.id}`} className="text-xs font-medium text-gray-600">
-            Outreach status
-          </label>
-          <select
-            id={`status-${profile.id}`}
-            value={outreach_status}
-            onChange={(event) => onStatusChange(profile.id, event.target.value as SavedSpeakerProfile['outreach_status'])}
-            disabled={isUpdating}
-            className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-          >
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+        <div className="w-full sm:max-w-xs">
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+            <label
+              htmlFor={`status-${profile.id}`}
+              className="block text-xs font-semibold uppercase tracking-wide text-gray-500"
+            >
+              Outreach status
+            </label>
+            <select
+              id={`status-${profile.id}`}
+              value={outreach_status}
+              onChange={(event) => onStatusChange(profile.id, event.target.value as SavedSpeakerProfile['outreach_status'])}
+              disabled={isUpdating}
+              className="mt-2 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed"
+            >
+              {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <Link
           href={`/saved-profiles`}
-          className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+          className="inline-flex items-center gap-2 rounded-lg border border-blue-100 px-3 py-2 text-sm font-medium text-blue-600 transition hover:border-blue-200 hover:bg-blue-50"
         >
           View full profile
           <ArrowUpRight className="h-4 w-4" />
