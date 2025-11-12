@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Search, ChevronDown, ChevronUp, X, Loader2, Plus, Settings, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, X, Loader2, Plus, Settings, CheckCircle2, AlertCircle, ArrowUpRight } from 'lucide-react';
 import { deriveLocale, toISO2Country } from '@/lib/utils/country';
 import Link from 'next/link';
 
@@ -549,7 +549,20 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h5 className="text-sm font-medium text-gray-900">{event.title || 'Untitled Event'}</h5>
+                    <div className="flex items-start justify-between gap-2">
+                      <h5 className="text-sm font-medium text-gray-900 flex-1">{event.title || 'Untitled Event'}</h5>
+                      {event.source_url && (
+                        <a
+                          href={event.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                        >
+                          View
+                          <ArrowUpRight className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
                       {event.city && <span>{event.city}</span>}
                       {event.starts_at && (
@@ -557,6 +570,9 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
                       )}
                       {event.organizer && <span>by {event.organizer}</span>}
                     </div>
+                    {event.description && (
+                      <p className="mt-2 line-clamp-2 text-xs text-gray-600">{event.description}</p>
+                    )}
                     {event.speakers && event.speakers.length > 0 ? (
                       <div className="mt-2 space-y-1">
                         <p className="text-xs font-medium text-gray-700">Speakers:</p>
