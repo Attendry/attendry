@@ -439,9 +439,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
             url: subUrl,
             formats: ['markdown'],
             onlyMainContent: true,
-            timeout: 10000  // Increased to 10000 (10 seconds) for slow sites
+            timeout: 12000  // Increased to 12000 (12 seconds) to reduce 408 errors
           }),
-          signal: AbortSignal.timeout(12000)  // Add abort signal for safety (12s)
+          signal: AbortSignal.timeout(15000)  // Add abort signal for safety (15s)
         });
         
         if (subPageResponse.ok) {

@@ -649,9 +649,29 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     console.log('[optimized-orchestrator] Voyage gate metrics:', voyageResult.metrics);
 
-    // Step 3.7: Filter out obvious non-event URLs (documentation, PDFs, profile pages, generic listings)
+    // Step 3.7: Filter out obvious non-event URLs (documentation, PDFs, profile pages, generic listings, vendor pages)
     const filteredCandidates = candidates.filter(url => {
       const urlLower = url.toLowerCase();
+      
+      // Exclude ALL Microsoft Learn documentation (always docs, never events)
+      if (urlLower.includes('learn.microsoft.com')) {
+        console.log(`[url-filter] Excluding Microsoft Learn docs: ${url}`);
+        return false;
+      }
+      
+      // Exclude vendor product pages and resource centers
+      if (urlLower.includes('/products/') || urlLower.includes('/product/')) {
+        console.log(`[url-filter] Excluding product page: ${url}`);
+        return false;
+      }
+      
+      // Exclude vendor resources, spotlights, blogs (not events)
+      if (urlLower.includes('/resources/') || urlLower.includes('/resource/') || 
+          urlLower.includes('/spotlight/') || urlLower.includes('/blog/') ||
+          urlLower.includes('/article/') || urlLower.includes('/news/')) {
+        console.log(`[url-filter] Excluding resource/blog page: ${url}`);
+        return false;
+      }
       
       // Exclude documentation pages
       if (urlLower.includes('/docs/') || urlLower.includes('/documentation/')) return false;
@@ -673,11 +693,20 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         return false;
       }
       
-      // Exclude Microsoft Learn documentation (not events)
-      if (urlLower.includes('learn.microsoft.com') && urlLower.includes('/purview/')) return false;
-      
       // Exclude State Department budget documents
       if (urlLower.includes('state.gov') && urlLower.includes('/wp-content/uploads/')) return false;
+      
+      // Exclude known legal news/blog domains (not event listings)
+      const blogDomains = [
+        'consumerfinancialserviceslawmonitor.com',
+        'lawblog.',
+        'legalnews.',
+        'lawnews.'
+      ];
+      if (blogDomains.some(domain => urlLower.includes(domain))) {
+        console.log(`[url-filter] Excluding legal blog domain: ${url}`);
+        return false;
+      }
       
       return true;
     });

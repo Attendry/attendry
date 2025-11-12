@@ -23,7 +23,13 @@ export const AGGREGATOR_DOMAINS = [
   'cvent.com',
   'conferencealert.com',
   'conferenceseries.com',
-  'waset.org'
+  'waset.org',
+  // Vendor product/resource pages (not actual events)
+  'learn.microsoft.com',  // Always documentation
+  'consumerfinancialserviceslawmonitor.com',  // Legal news blog
+  'opentext.com',  // Vendor (only product pages, not their actual events if any)
+  'casepoint.com',  // Vendor (only product pages, not their actual events if any)
+  'relativity.com'  // Vendor (only product pages, not their actual events if any)
 ] as const;
 
 /**
