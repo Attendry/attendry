@@ -967,7 +967,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 48,
+          maxOutputTokens: 512,  // Increased from 48 to accommodate thinking tokens (47+) and JSON response
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
