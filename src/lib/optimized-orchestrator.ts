@@ -54,6 +54,15 @@ import {
   getCacheWarmingStats
 } from './cache-optimizer';
 import { 
+  isAggregatorUrl, 
+  calculateUrlBonus, 
+  RERANK_CONFIG,
+  createRerankMetrics,
+  type RerankMetrics
+} from '../config/rerank';
+import { parseWithRepair } from './llm/json';
+import { filterSpeakers, type RawSpeaker } from './extract/speakers';
+import { 
   performanceMonitor,
   recordApiPerformance,
   recordCachePerformance,
@@ -958,6 +967,33 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
 
   console.log(`[optimized-orchestrator] Discovered ${urls.length} unique URLs from ${queryVariations.length} query variations in ${Date.now() - startTime}ms`);
   
+  // PHASE 3: Pre-filter aggregators BEFORE prioritization/LLM
+  console.log('[optimized-orchestrator] Phase 3: Pre-filtering aggregators...');
+  const { nonAggregators, aggregators } = urls.reduce(
+    (acc, url) => {
+      if (isAggregatorUrl(url)) {
+        acc.aggregators.push(url);
+      } else {
+        acc.nonAggregators.push(url);
+      }
+      return acc;
+    },
+    { nonAggregators: [] as string[], aggregators: [] as string[] }
+  );
+  
+  let filteredUrls = nonAggregators;
+  let backstopKept = 0;
+  
+  // Keep backstop aggregators only if we have too few URLs
+  if (nonAggregators.length < RERANK_CONFIG.minNonAggregatorUrls && aggregators.length > 0) {
+    const backstop = aggregators.slice(0, RERANK_CONFIG.maxBackstopAggregators);
+    filteredUrls = [...nonAggregators, ...backstop];
+    backstopKept = backstop.length;
+    console.log(`[optimized-orchestrator] Added ${backstop.length} aggregator backstop URLs`);
+  }
+  
+  console.log(`[optimized-orchestrator] Pre-filter: ${urls.length} → ${filteredUrls.length} URLs (dropped ${aggregators.length - backstopKept} aggregators, kept ${backstopKept} backstop)`);
+  
   // Log parallel processing metrics
   const metrics = parallelProcessor.getMetrics();
   console.log(`[optimized-orchestrator] Discovery parallel processing metrics:`, {
@@ -967,7 +1003,7 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
     resourceUtilization: metrics.resourceUtilization
   });
   
-  return urls;
+  return filteredUrls;
 }
 
 /**
@@ -978,35 +1014,28 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
   
   const startTime = Date.now();
   
-  // Filter out aggregator sites BEFORE prioritization to prevent wasting resources
-  const nonAggregatorUrls = urls.filter(url => {
-    try {
-      const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
-      if (AGGREGATOR_HOSTS.has(host)) {
-        console.log(`[optimized-orchestrator] Filtering out aggregator domain: ${host}`);
-        return false;
-      }
-      return true;
-    } catch {
-      return true;  // keep url if parsing fails
-    }
-  });
-  
-  console.log(`[optimized-orchestrator] Filtered ${urls.length - nonAggregatorUrls.length} aggregator URLs, ${nonAggregatorUrls.length} remaining`);
-  
-  if (nonAggregatorUrls.length === 0) {
-    console.warn('[optimized-orchestrator] All URLs were aggregators, returning empty array');
-    return [];
-  }
+  // Aggregators already filtered in Phase 3, so work with the pre-filtered URLs
+  console.log(`[optimized-orchestrator] Phase 4: Prioritizing ${urls.length} pre-filtered URLs with domain bonuses...`);
   
   try {
     const prioritized = await executeWithRetry(async () => {
-      return await prioritizeWithGemini(nonAggregatorUrls, params);
+      return await prioritizeWithGemini(urls, params);
     }, 'gemini');
 
-    const filtered = prioritized.filter(item => item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
+    // PHASE 4: Apply domain bonuses (.de TLD, conference paths)
+    const withBonuses = prioritized.map(item => ({
+      ...item,
+      originalScore: item.score,
+      score: item.score + calculateUrlBonus(item.url)
+    }));
     
-    console.log(`[optimized-orchestrator] Prioritized ${filtered.length}/${nonAggregatorUrls.length} candidates in ${Date.now() - startTime}ms`);
+    // Re-sort by adjusted score
+    withBonuses.sort((a, b) => b.score - a.score);
+    
+    const filtered = withBonuses.filter(item => item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
+    
+    const bonusCount = withBonuses.filter(item => item.score > item.originalScore).length;
+    console.log(`[optimized-orchestrator] Prioritized ${filtered.length}/${urls.length} candidates (${bonusCount} with domain bonuses) in ${Date.now() - startTime}ms`);
     
     return filtered;
   } catch (error) {

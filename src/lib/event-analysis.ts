@@ -16,6 +16,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createHash } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
+import { filterSpeakers, type RawSpeaker } from "./extract/speakers";
 
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
@@ -883,7 +884,27 @@ ${chunk}`;
           continue;
         }
 
-        const metadata = JSON.parse(text);
+        // PHASE 1: Safe JSON parsing with auto-repair
+        let metadata: any = null;
+        try {
+          metadata = JSON.parse(text);
+        } catch (jsonError) {
+          // Try to extract JSON from response if it's wrapped
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              metadata = JSON.parse(jsonMatch[0]);
+              console.log(`[event-analysis] Recovered JSON from chunk ${i + 1} using regex extraction`);
+            } catch (retryError) {
+              console.warn(`[event-analysis] Metadata chunk ${i + 1} JSON parsing failed completely:`, jsonError);
+              continue;
+            }
+          } else {
+            console.warn(`[event-analysis] Metadata chunk ${i + 1} JSON parsing failed:`, jsonError);
+            continue;
+          }
+        }
+        
         if (metadata) {
           aggregatedMetadata.title = selectBetterValue(aggregatedMetadata.title, metadata.title);
           aggregatedMetadata.description = selectBetterValue(aggregatedMetadata.description, metadata.description);
@@ -1395,28 +1416,34 @@ ${chunk}`;
     });
 
     if (speakerMap.size > 0) {
-      const finalSpeakers = Array.from(speakerMap.values()).slice(0, 20);
-      console.log(`[event-analysis] ✓ Successfully extracted ${finalSpeakers.length} validated speakers`);
-      return finalSpeakers;
+      const rawSpeakers = Array.from(speakerMap.values()).slice(0, 20);
+      
+      // PHASE 2: Filter speakers to only include persons
+      const validSpeakers = filterSpeakers(rawSpeakers as RawSpeaker[]);
+      
+      console.log(`[event-analysis] ✓ Speaker extraction: ${rawSpeakers.length} raw → ${validSpeakers.length} validated (filtered ${rawSpeakers.length - validSpeakers.length} non-persons)`);
+      return validSpeakers as SpeakerData[];
     }
 
     console.log('[event-analysis] No speakers found via Gemini, trying manual extraction fallback...');
     const fallbackNames = extractSpeakerNamesManually(serializedSections);
     if (fallbackNames.length > 0) {
-      console.log(`[event-analysis] Manual extraction found ${fallbackNames.length} potential names, validating...`);
+      console.log(`[event-analysis] Manual extraction found ${fallbackNames.length} potential names`);
       
-      // CRITICAL: Apply same validation as Gemini results
-      const validatedNames = fallbackNames.filter(name => isLikelyPersonName(name));
+      // PHASE 2: Use same comprehensive filtering as Gemini results
+      const rawFallbackSpeakers = fallbackNames.map(name => ({
+        name,
+        title: '',
+        company: '',
+        bio: ''
+      }));
       
-      console.log(`[event-analysis] ✓ Manual extraction: ${validatedNames.length}/${fallbackNames.length} names passed validation`);
+      const validatedSpeakers = filterSpeakers(rawFallbackSpeakers as RawSpeaker[]);
       
-      if (validatedNames.length > 0) {
-        return validatedNames.map(name => ({
-          name,
-          title: '',
-          company: '',
-          bio: ''
-        }));
+      console.log(`[event-analysis] ✓ Manual extraction: ${fallbackNames.length} raw → ${validatedSpeakers.length} validated (filtered ${fallbackNames.length - validatedSpeakers.length} non-persons)`);
+      
+      if (validatedSpeakers.length > 0) {
+        return validatedSpeakers as SpeakerData[];
       }
     }
 

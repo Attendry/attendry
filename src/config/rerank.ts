@@ -173,30 +173,34 @@ export function buildRerankInstruction(params: {
 }): string {
   const parts: string[] = [];
   
-  // Hard excludes for aggregators
-  parts.push('Exclude aggregators (Vendelux, 10times, Allevents, InternationalConferenceAlerts, Eventbrite, Meetup, LinkedIn, ConferenceAlert, ConferenceSeries).');
-  parts.push('Prefer official conference or organizer sites.');
+  // HARD RULES
+  parts.push('**Hard rules:**');
   
-  // Country filtering
-  if (params.country === 'DE') {
-    parts.push('Only Germany; strongly deprioritize other countries.');
-  } else if (params.country) {
-    parts.push(`Focus on ${params.country} events.`);
-  }
-  
-  // Date window
+  // Country/date filtering
   if (params.dateFrom && params.dateTo) {
-    parts.push(`Event window: ${params.dateFrom} to ${params.dateTo} (ISO format).`);
+    if (params.country === 'DE' || params.country === 'Germany') {
+      parts.push(`- Only include events in Germany within ${params.dateFrom}..${params.dateTo} (ISO dates). Strongly deprioritize others.`);
+    } else {
+      parts.push(`- Event window: ${params.dateFrom} to ${params.dateTo} (ISO format).`);
+    }
   }
+  
+  // Aggregator exclusion
+  parts.push('- Prefer official organizer/conference websites; avoid aggregators (Vendelux, 10times, Allevents, InternationalConferenceAlerts, Eventbrite, Meetup, LinkedIn).');
+  
+  // Content quality
+  parts.push('- Prefer pages with clear "program/agenda/programm" or "speakers/referenten/faculty" sections.');
+  parts.push('- Exclude blog posts, news recaps, generic index pages, and 404/"page not found".');
+  
+  // SOFT BOOSTS
+  parts.push('**Soft boosts:**');
+  parts.push('- Boost .de domains and URLs containing /programm|program|agenda|schedule|referenten|speakers/.');
+  parts.push('- Prefer on-site events with venue/city present over webinars when ambiguous.');
   
   // Industry focus
   if (params.industry) {
-    parts.push(`Industry focus: ${params.industry}.`);
+    parts.push(`- Industry focus: ${params.industry}.`);
   }
-  
-  // On-site preference
-  parts.push('Prefer on-site events with physical venue.');
-  parts.push('Events must have confirmed dates and venue information.');
   
   return parts.join(' ');
 }
