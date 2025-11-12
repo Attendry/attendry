@@ -394,11 +394,28 @@ function buildNarrativeQuery(params: {
   }
 
   // Build narrative query based on language with user context
+  // If user has specific industry terms, prioritize those over generic "business"
+  const industryTerms = userProfile?.industry_terms || [];
+  const hasSpecificIndustry = industryTerms.length > 0;
+  
   if (language === 'de') {
+    if (hasSpecificIndustry) {
+      const primaryIndustry = industryTerms.slice(0, 3).join(', ');
+      return `Finde ${primaryIndustry} Events und Konferenzen in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}${userContext}.`;
+    }
     return `Finde Geschäftsveranstaltungen und professionelle Events in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
   } else if (language === 'fr') {
+    if (hasSpecificIndustry) {
+      const primaryIndustry = industryTerms.slice(0, 3).join(', ');
+      return `Trouvez des événements et conférences ${primaryIndustry} en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}${userContext}.`;
+    }
     return `Trouvez des événements d'affaires et professionnels en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}. Focus sur les affaires et le développement professionnel${userContext}.`;
   } else {
+    if (hasSpecificIndustry) {
+      // Lead with specific industry terms, not generic "business"
+      const primaryIndustry = industryTerms.slice(0, 3).join(', ');
+      return `Find ${primaryIndustry} events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}${userContext}.`;
+    }
     return `Find business events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}. Focus on business and professional development${userContext}.`;
   }
 }

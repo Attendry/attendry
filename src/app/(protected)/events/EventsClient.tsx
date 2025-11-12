@@ -182,13 +182,20 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         }),
       });
       
+      // Clone the response before reading to avoid "body stream already read" errors
+      const resClone = res.clone();
+      
       let data;
       try {
         data = await res.json();
       } catch (jsonError) {
-        // If response is not JSON, it's likely an HTML error page
-        const text = await res.text();
-        throw new Error(`Server returned non-JSON response: ${res.status} ${res.statusText}`);
+        // Use cloned response to read as text if JSON parsing fails
+        try {
+          const text = await resClone.text();
+          throw new Error(`Server returned non-JSON response (${res.status}): ${text.substring(0, 200)}`);
+        } catch (textError) {
+          throw new Error(`Server returned non-JSON response: ${res.status} ${res.statusText}`);
+        }
       }
       
       if (!res.ok) throw new Error(data?.error || res.statusText);
@@ -209,6 +216,7 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         confidence: e.confidence ?? null, // ✅ Include confidence
         confidence_reason: e.confidence_reason ?? null, // ✅ Include confidence reason
         pipeline_metadata: e.pipeline_metadata ?? null, // ✅ Include pipeline metadata
+        dateRangeSource: e.dateRangeSource ?? null, // ✅ Include date range source for visual indicators
       }));
 
       // Store results in context with user profile data

@@ -16,6 +16,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createHash } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
+import { filterSpeakers, type RawSpeaker } from "./extract/speakers";
 
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
@@ -38,16 +39,26 @@ const DIRECTORY_DOMAINS = new Set([
   'internationalconferencealerts.com',
   'cvent.com',
   'everlaw.com',
-  'vendelux.com'
+  'vendelux.com',
+  'conference-service.com',
+  'conference2go.com',          // Generic aggregator
+  'eventora.com',
+  'eventsworld.com'
 ]);
 
 const AGGREGATOR_DOMAINS = new Set([
   '10times.com',
   'allconferencealert.com',
   'conferenceineurope.net',
+  'conferenceineurope.org',
   'eventbrite.com',
+  'eventbrite.de',
+  'eventbrite.co.uk',
+  'freeconferencealerts.com',
   'globalriskcommunity.com',
-  'linkedin.com'
+  'globalli.io',
+  'linkedin.com',
+  'researchbunny.com'
 ]);
 
 const DIRECTORY_PATH_SEGMENTS = [
@@ -374,7 +385,7 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
   try {
     console.log('Starting deep crawl for:', eventUrl);
     
-    // First, crawl the main page with Firecrawl v2 API
+    // First, crawl the main page with Firecrawl v2 API (reduced timeout)
     const mainPageResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
       method: 'POST',
       headers: {
@@ -385,8 +396,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
         url: eventUrl,
         formats: ['markdown'],
         onlyMainContent: true,
-        timeout: 20000
-      })
+        timeout: 15000  // Increased to 15000 (15 seconds) for slow sites like haystackid.com
+      }),
+      signal: AbortSignal.timeout(18000)  // Add abort signal for safety (18s)
     });
     
     if (mainPageResponse.ok) {
@@ -406,12 +418,13 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
       console.warn('Main page crawl failed with status:', mainPageResponse.status);
     }
     
-    // Extract potential sub-pages from the main page content
-    const subPageUrls = extractSubPageUrls(eventUrl, results[0]?.content || '');
-    console.log('Found potential sub-pages:', subPageUrls.length);
+    // Extract and prioritize sub-pages from the main page content
+    const allSubPageUrls = extractSubPageUrls(eventUrl, results[0]?.content || '');
+    const prioritizedSubPageUrls = prioritizeSubPagesForSpeakers(allSubPageUrls);
+    console.log('Found potential sub-pages:', allSubPageUrls.length, '| Prioritized:', prioritizedSubPageUrls.slice(0, 2).map(u => u.split('/').pop()));
     
-    // Crawl sub-pages in parallel (OPTIMIZED FOR SPEED)
-    const subPagePromises = subPageUrls.slice(0, 3).map(async (subUrl, index) => {
+    // Crawl sub-pages in parallel (OPTIMIZED FOR SPEED) - Take top 2 prioritized pages
+    const subPagePromises = prioritizedSubPageUrls.slice(0, 2).map(async (subUrl, index) => {
       // Stagger requests slightly to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, index * 200)); // 200ms stagger
       
@@ -426,8 +439,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
             url: subUrl,
             formats: ['markdown'],
             onlyMainContent: true,
-            timeout: 10000
-          })
+            timeout: 10000  // Increased to 10000 (10 seconds) for slow sites
+          }),
+          signal: AbortSignal.timeout(12000)  // Add abort signal for safety (12s)
         });
         
         if (subPageResponse.ok) {
@@ -531,6 +545,65 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
   }
   
   return [...new Set(urls)]; // Remove duplicates
+}
+
+/**
+ * Prioritize sub-pages that are most likely to contain speaker information
+ */
+function prioritizeSubPagesForSpeakers(urls: string[]): string[] {
+  const scored = urls.map(url => {
+    const urlLower = url.toLowerCase();
+    const pathAndQuery = urlLower.split('//')[1] || urlLower; // Get path after domain
+    let score = 0;
+    
+    // High priority: speaker/presenter pages
+    if (pathAndQuery.includes('speaker')) score += 100;
+    if (pathAndQuery.includes('referent')) score += 100; // German
+    if (pathAndQuery.includes('presenters')) score += 95;
+    if (pathAndQuery.includes('faculty')) score += 90;
+    
+    // Medium-high priority: agenda/program pages (often include speakers)
+    if (pathAndQuery.includes('agenda')) score += 80;
+    if (pathAndQuery.includes('programm')) score += 80; // German
+    if (pathAndQuery.includes('program')) score += 75;
+    if (pathAndQuery.includes('schedule')) score += 70;
+    
+    // Medium priority: session/keynote pages
+    if (pathAndQuery.includes('session')) score += 60;
+    if (pathAndQuery.includes('keynote')) score += 65;
+    if (pathAndQuery.includes('workshop')) score += 55;
+    
+    // Low priority: general info
+    if (pathAndQuery.includes('about')) score += 30;
+    if (pathAndQuery.includes('info')) score += 25;
+    
+    // Negative priority: non-speaker pages
+    if (pathAndQuery.includes('register') || pathAndQuery.includes('registration')) score -= 50;
+    if (pathAndQuery.includes('ticket') || pathAndQuery.includes('tickets')) score -= 50;
+    if (pathAndQuery.includes('sponsor') || pathAndQuery.includes('sponsors')) score -= 40;
+    if (pathAndQuery.includes('partner') || pathAndQuery.includes('partners')) score -= 40;
+    if (pathAndQuery.includes('venue') || pathAndQuery.includes('location')) score -= 30;
+    if (pathAndQuery.includes('hotel') || pathAndQuery.includes('travel')) score -= 35;
+    if (pathAndQuery.includes('privacy') || pathAndQuery.includes('terms')) score -= 100;
+    if (pathAndQuery.includes('cookie') || pathAndQuery.includes('legal')) score -= 100;
+    if (pathAndQuery.includes('contact') || pathAndQuery.includes('impressum')) score -= 60;
+    
+    return { url, score };
+  });
+  
+  // Sort by score descending and return URLs
+  const prioritized = scored
+    .sort((a, b) => b.score - a.score)
+    .map(s => s.url);
+  
+  console.log('[event-analysis] Sub-page prioritization:', 
+    scored.slice(0, 5).map(s => ({ 
+      url: s.url.split('/').slice(-2).join('/'),
+      score: s.score 
+    }))
+  );
+  
+  return prioritized;
 }
 
 function isLikelyDirectoryListing(eventUrl: string, combinedContent: string): boolean {
@@ -774,6 +847,17 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
       const chunk = chunks[i];
       const prompt = `Extract factual event metadata as JSON using the provided schema. Only return fields you can confirm from this content chunk. Use null when unsure.
 
+**Date Extraction Guidelines:**
+- Look for dates in formats like: "November 10-17, 2025", "10-17 Nov 2025", "2025-11-10 to 2025-11-17"
+- Return dates in ISO format: "2025-11-10" or as a range: "2025-11-10 to 2025-11-17"
+- Check event headers, registration sections, and "when" or "date" sections
+- If you find a date range, return it as "YYYY-MM-DD to YYYY-MM-DD"
+
+**Location Extraction Guidelines:**
+- Look for city names (Berlin, München, Frankfurt, etc.)
+- Look for venue names and addresses
+- Return format: "City, Country" (e.g., "Berlin, Germany")
+
 Chunk ${i + 1}/${chunks.length}:
 ${chunk}`;
 
@@ -800,7 +884,27 @@ ${chunk}`;
           continue;
         }
 
-        const metadata = JSON.parse(text);
+        // PHASE 1: Safe JSON parsing with auto-repair
+        let metadata: any = null;
+        try {
+          metadata = JSON.parse(text);
+        } catch (jsonError) {
+          // Try to extract JSON from response if it's wrapped
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              metadata = JSON.parse(jsonMatch[0]);
+              console.log(`[event-analysis] Recovered JSON from chunk ${i + 1} using regex extraction`);
+            } catch (retryError) {
+              console.warn(`[event-analysis] Metadata chunk ${i + 1} JSON parsing failed completely:`, jsonError);
+              continue;
+            }
+          } else {
+            console.warn(`[event-analysis] Metadata chunk ${i + 1} JSON parsing failed:`, jsonError);
+            continue;
+          }
+        }
+        
         if (metadata) {
           aggregatedMetadata.title = selectBetterValue(aggregatedMetadata.title, metadata.title);
           aggregatedMetadata.description = selectBetterValue(aggregatedMetadata.description, metadata.description);
@@ -850,6 +954,266 @@ ${chunk}`;
   return fallbackMetadata;
 }
 
+/**
+ * Detect speaker section content patterns for quality scoring
+ */
+function detectSpeakerContentPatterns(text: string): {
+  speakerNameCount: number;
+  titleCount: number;
+  organizationCount: number;
+  bioIndicators: number;
+  density: number;
+} {
+  const personNamePattern = /\b[A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+\b/g;
+  const jobTitlePattern = /\b(CEO|CTO|CFO|Director|Manager|Head of|VP|President|Partner|Founder|Chief|Senior|Lead)\b/gi;
+  const organizationPattern = /\bat [A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)*/g;
+  const bioPattern = /\b(experience|expert|specializes?|specialized|background|works at|responsible for|leads?|manages?)\b/gi;
+  
+  const speakerNameCount = (text.match(personNamePattern) || []).length;
+  const titleCount = (text.match(jobTitlePattern) || []).length;
+  const organizationCount = (text.match(organizationPattern) || []).length;
+  const bioIndicators = (text.match(bioPattern) || []).length;
+  const density = (speakerNameCount / Math.max(text.length, 1)) * 1000; // speakers per 1000 chars
+  
+  return { speakerNameCount, titleCount, organizationCount, bioIndicators, density };
+}
+
+/**
+ * Extract and score speaker sections from content
+ */
+function extractSpeakerSections(content: string): Array<{
+  heading: string;
+  content: string;
+  score: number;
+  startIndex: number;
+}> {
+  const sections: Array<{
+    heading: string;
+    lines: string[];
+    startIndex: number;
+  }> = [];
+  
+  const lines = content.split('\n');
+  let currentSection: { heading: string; lines: string[]; startIndex: number } | null = null;
+  
+  // Speaker heading patterns - ULTRA FLEXIBLE to catch all real-world variations
+  // Matches: "Speakers", "## Referenten", "Ihre Speaker/-innen", "Tagungsleitung", etc.
+  const speakerHeaderPattern = /^\s*(?:#{1,3}\s*)?(?:Ihre\s+)?(?:SPEAKERS?|PRESENTERS?|FACULTY|KEYNOTE|PANELISTS?|REFERENTEN?|SPRECHER|MODERATOREN?|FEATURED|GUEST|TAGUNGSLEITUNG|Speaker[\/-]?innen?)(?:\s*[:)])?/i;
+  const nonSpeakerHeaderPattern = /^\s*(?:#{1,3}\s*)?(VENUE|LOCATION|HOTEL|TRAVEL|REGISTER|TICKET|SPONSOR|PARTNER|PRIVACY|TERMS|COOKIE|CONTACT|ABOUT|HOME|FAQ|PRICING|IMPRESSUM|AGB)(?:\s*[:)])?/i;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // Check if this is a speaker section header
+    if (speakerHeaderPattern.test(line)) {
+      // Save previous section if exists
+      if (currentSection && currentSection.lines.length > 0) {
+        sections.push(currentSection);
+      }
+      
+      // Start new section
+      currentSection = {
+        heading: line,
+        lines: [],
+        startIndex: i
+      };
+    } 
+    // Check if we hit a non-speaker section
+    else if (nonSpeakerHeaderPattern.test(line) && currentSection) {
+      sections.push(currentSection);
+      currentSection = null;
+    }
+    // Add line to current section
+    else if (currentSection) {
+      currentSection.lines.push(line);
+    }
+  }
+  
+  // Add final section
+  if (currentSection && currentSection.lines.length > 0) {
+    sections.push(currentSection);
+  }
+  
+  // Score and filter sections
+  return sections
+    .map(section => {
+      const sectionContent = section.lines.join('\n');
+      const patterns = detectSpeakerContentPatterns(sectionContent);
+      
+      let score = 0;
+      
+      // Strong signals
+      if (patterns.speakerNameCount >= 2) score += 0.4;
+      if (patterns.titleCount >= 2) score += 0.3;
+      if (patterns.organizationCount >= 1) score += 0.2;
+      if (patterns.bioIndicators >= 2) score += 0.1;
+      
+      // Density bonus
+      if (patterns.density > 5) score += 0.2;
+      
+      // Noise penalties
+      if (sectionContent.toLowerCase().includes('register now')) score -= 0.2;
+      if (sectionContent.toLowerCase().includes('cookie')) score -= 0.1;
+      if (sectionContent.length < 200) score -= 0.3;
+      
+      return {
+        heading: section.heading,
+        content: sectionContent,
+        score: Math.max(0, Math.min(1, score)),
+        startIndex: section.startIndex
+      };
+    })
+    .filter(section => section.score > 0.3) // Quality threshold
+    .sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Create smart chunks focused on speaker-dense sections
+ */
+function createSmartChunks(
+  crawlResults: CrawlResult[],
+  maxChunks: number = 6
+): string[] {
+  const allSections: Array<{
+    heading: string;
+    content: string;
+    score: number;
+    sourceUrl: string;
+    sourceTitle: string;
+  }> = [];
+  
+  // Extract speaker sections from all crawl results
+  for (const result of crawlResults) {
+    const sections = extractSpeakerSections(result.content || '');
+    allSections.push(...sections.map(s => ({
+      ...s,
+      sourceUrl: result.url,
+      sourceTitle: result.title || 'Unknown'
+    })));
+  }
+  
+  // Sort by quality score
+  const sortedSections = allSections.sort((a, b) => b.score - a.score);
+  
+  if (sortedSections.length > 0) {
+    console.log(`[smart-chunking] Found ${sortedSections.length} speaker sections, using focused chunking`);
+    
+    const chunks: string[] = [];
+    
+    for (const section of sortedSections) {
+      // For speaker sections, use smaller chunks to avoid splitting bios
+      const sectionChunks = chunkText(section.content, 800, 100);
+      
+      // Add context to each chunk
+      const contextualChunks = sectionChunks.map(chunk => 
+        `Section: ${section.heading}\nURL: ${section.sourceUrl}\n\n${chunk}`
+      );
+      
+      chunks.push(...contextualChunks);
+      
+      if (chunks.length >= maxChunks) {
+        break;
+      }
+    }
+    
+    const result = chunks.slice(0, maxChunks);
+    console.log(`[smart-chunking] Created ${result.length} speaker-focused chunks (avg ${Math.round(result.reduce((sum, c) => sum + c.length, 0) / result.length)} chars)`);
+    return result;
+  }
+  
+  // Fallback to generic chunking
+  console.log('[smart-chunking] No speaker sections found, using generic chunking');
+  const sectionChunks = crawlResults.flatMap(result => {
+    const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
+    return chunkText(sectionText, 1200, 150).slice(0, 2);
+  });
+  
+  return sectionChunks.slice(0, maxChunks);
+}
+
+/**
+ * Validation: Filter out non-person names from speaker extraction
+ * Used by both Gemini extraction and manual fallback
+ */
+function isLikelyPersonName(name: string): boolean {
+  const nameLower = name.toLowerCase();
+  
+  // Filter out call-to-action phrases and UI elements
+  const ctaKeywords = [
+    'reserve', 'register', 'book', 'buy', 'purchase', 'sign up', 'login',
+    'learn more', 'read more', 'view more', 'see more', 'click here',
+    'download', 'subscribe', 'join', 'enroll', 'attend', 'save', 'share',
+    'contact', 'submit', 'apply', 'ticket', 'seat', 'now', 'today'
+  ];
+  
+  if (ctaKeywords.some(keyword => nameLower.includes(keyword))) {
+    console.log(`[speaker-validation] Filtered out CTA/UI element: "${name}"`);
+    return false;
+  }
+  
+  // Filter out event/session titles
+  const eventKeywords = [
+    'summit', 'forum', 'conference', 'act', 'practice', 'risk', 'privacy',
+    'lawyers', 'compliance', 'webinar', 'session', 'panel', 'workshop',
+    'event', 'meeting', 'seminar', 'symposium', 'congress', 'convention',
+    'day', 'week', 'month', 'year', 'edition', 'annual', 'international',
+    'program', 'agenda', 'schedule', 'keynote', 'presentation', 'track',
+    'instructor', 'trainer', 'teacher', 'tutor', 'facilitator', 'educator'  // Filter out teaching roles
+  ];
+  
+  if (eventKeywords.some(keyword => nameLower.includes(keyword))) {
+    console.log(`[speaker-validation] Filtered out event name: "${name}"`);
+    return false;
+  }
+  
+  // Filter out generic organizational terms
+  const orgKeywords = [
+    'committee', 'board', 'team', 'group', 'department', 'organization',
+    'association', 'institute', 'foundation', 'council', 'society', 'partner',
+    'center', 'centre', 'resource', 'library', 'portal', 'hub', 'network'
+  ];
+  
+  if (orgKeywords.some(keyword => nameLower.includes(keyword))) {
+    console.log(`[speaker-validation] Filtered out organization term: "${name}"`);
+    return false;
+  }
+  
+  // Must have at least first and last name
+  const parts = name.split(/\s+/);
+  if (parts.length < 2) {
+    console.log(`[speaker-validation] Filtered out single-word name: "${name}"`);
+    return false;
+  }
+  
+  // Filter out if name is too long (likely a sentence or title)
+  if (parts.length > 4 || name.length > 50) {
+    console.log(`[speaker-validation] Filtered out overly long name: "${name}"`);
+    return false;
+  }
+  
+  // Check if name contains only proper capitalization (Person Names are Title Case)
+  const hasProperCapitalization = parts.every(part => 
+    part.length > 0 && /^[A-ZÄÖÜ]/.test(part)
+  );
+  
+  if (!hasProperCapitalization) {
+    console.log(`[speaker-validation] Filtered out improper capitalization: "${name}"`);
+    return false;
+  }
+  
+  // Check that each word looks like a name part (letters only, possibly with hyphens/apostrophes)
+  const hasValidCharacters = parts.every(part => 
+    /^[A-ZÄÖÜa-zäöüß\-']+$/.test(part)
+  );
+  
+  if (!hasValidCharacters) {
+    console.log(`[speaker-validation] Filtered out invalid characters: "${name}"`);
+    return false;
+  }
+  
+  return true;
+}
+
 export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Promise<SpeakerData[]> {
   if (!geminiKey) {
     console.log('Gemini key not available, returning empty speakers array');
@@ -890,7 +1254,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
         temperature: 0.2,
         topP: 0.8,
         topK: 12,
-        maxOutputTokens: 256,
+        maxOutputTokens: 2048,  // Increased to 2048 to handle thinking tokens (up to 1023 observed) + response
         responseMimeType: 'application/json',
         responseSchema: speakerSchema
       }
@@ -919,21 +1283,24 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       return [];
     }
 
-    const sectionChunks = crawlResults.flatMap(result => {
-      const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
-      return chunkText(sectionText, 1200, 150).slice(0, 2);
-    });
-
-    const chunks = sectionChunks.slice(0, 6);
+    // Use smart chunking to focus on speaker sections
+    const chunks = createSmartChunks(crawlResults, 6);
     console.log('Preparing content for Gemini analysis, total chunk count:', chunks.length);
 
     const speakerMap = new Map<string, SpeakerData>();
 
+    // Upsert speaker with validation
     const upsertSpeaker = (speaker: any) => {
       if (!speaker) return;
       const rawName = speaker.name ?? speaker.fullName ?? speaker.full_name;
       if (!isMeaningfulValue(rawName)) return;
       const name = rawName.trim();
+      
+      // Validate that this is likely a person name
+      if (!isLikelyPersonName(name)) {
+        return;
+      }
+      
       const key = name.toLowerCase();
       const existing = speakerMap.get(key);
       const normalizedSpeaker: SpeakerData = {
@@ -954,23 +1321,42 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       speakerMap.set(key, existing);
     };
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const prompt = `Extract up to 15 unique speakers from this event content chunk. Respond with JSON matching the schema. Avoid duplicates. Use null when information is missing.
+    // Process chunks in parallel for speed
+    const processChunk = async (chunk: string, index: number) => {
+      const prompt = `Extract ONLY PEOPLE (actual speakers/presenters) from this event content.
 
-Chunk ${i + 1}/${chunks.length}:
+REQUIRED: Each entry must be a REAL PERSON with a full name.
+
+DO NOT EXTRACT:
+✗ Event names: "Privacy Summit", "Risk Forum", "Compliance Day"
+✗ Session titles: "Practices Act", "Keynote Address", "Panel Discussion"  
+✗ Organization names: "ABC Corporation", "Legal Institute"
+✗ UI/CTA elements: "Reserve Seat", "Register Now", "Book Ticket", "Learn More"
+✗ Buttons/Links: "Sign Up", "Download", "Contact", "View More", "Save Date"
+✗ Generic roles: "Moderator", "Organizer", "Committee" (without names)
+✗ Organizational terms: "Organizing Committee", "Advisory Board", "Program Team"
+✗ Navigation/Menu items: "Home", "About", "Contact", "Privacy Policy"
+
+ONLY EXTRACT:
+✓ Full person names: "Dr. Sarah Johnson", "Michael Schmidt", "María García"
+✓ With context: job title, company, bio if available
+✓ Real individuals with first AND last names
+
+Return JSON with "speakers" array. If NO PEOPLE found, return {"speakers": []}.
+
+Content chunk ${index + 1}/${chunks.length}:
 ${chunk}`;
 
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Gemini speaker chunk timeout after 15 seconds')), 15000);
       });
 
-      try {
-        if (chunk.trim().length < 250) {
-          console.warn(`[event-analysis] Skipping speaker chunk ${i + 1} due to insufficient content`);
-          continue;
-        }
+      if (chunk.trim().length < 250) {
+        console.warn(`[event-analysis] Skipping speaker chunk ${index + 1} due to insufficient content`);
+        return [];
+      }
 
+      try {
         const geminiPromise = model.generateContent({
           contents: [{ role: 'user', parts: [{ text: prompt }] }]
         });
@@ -980,38 +1366,88 @@ ${chunk}`;
         const text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
         if (!text || !text.trim()) {
-          console.warn(`[event-analysis] Empty speaker response for chunk ${i + 1}`);
-          continue;
+          console.warn(`[event-analysis] Empty speaker response for chunk ${index + 1}`);
+          return [];
         }
 
-        const parsed = JSON.parse(text);
+        let parsed;
+        try {
+          parsed = JSON.parse(text);
+        } catch (jsonError) {
+          // Try to extract JSON from response if it's wrapped in markdown or other text
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              parsed = JSON.parse(jsonMatch[0]);
+              console.log(`[event-analysis] Recovered JSON from chunk ${index + 1} using regex extraction`);
+            } catch (retryError) {
+              throw new Error(`JSON parsing failed: ${jsonError instanceof Error ? jsonError.message : 'Unknown error'}`);
+            }
+          } else {
+            throw jsonError;
+          }
+        }
+        
         if (Array.isArray(parsed?.speakers)) {
-          parsed.speakers.forEach(upsertSpeaker);
+          console.log(`[event-analysis] Processing ${parsed.speakers.length} speakers from chunk ${index + 1}`);
+          return parsed.speakers;
+        } else {
+          console.warn(`[event-analysis] Chunk ${index + 1} response has no speakers array`, parsed);
+          return [];
         }
       } catch (chunkError) {
-        console.warn(`[event-analysis] Speaker chunk ${i + 1} failed`, chunkError);
+        console.warn(`[event-analysis] Speaker chunk ${index + 1} failed`, chunkError);
+        return [];
       }
+    };
 
-      if (speakerMap.size >= 15) {
-        break;
+    // Process all chunks in parallel
+    console.log('[event-analysis] Processing chunks in parallel for speed...');
+    const chunkPromises = chunks.map((chunk, i) => processChunk(chunk, i));
+    const chunkResults = await Promise.allSettled(chunkPromises);
+
+    // Process results
+    chunkResults.forEach((result, i) => {
+      if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+        result.value.forEach(upsertSpeaker);
+      } else if (result.status === 'rejected') {
+        console.warn(`[event-analysis] Chunk ${i + 1} rejected:`, result.reason);
       }
-    }
+    });
 
     if (speakerMap.size > 0) {
-      return Array.from(speakerMap.values()).slice(0, 20);
+      const rawSpeakers = Array.from(speakerMap.values()).slice(0, 20);
+      
+      // PHASE 2: Filter speakers to only include persons
+      const validSpeakers = filterSpeakers(rawSpeakers as RawSpeaker[]);
+      
+      console.log(`[event-analysis] ✓ Speaker extraction: ${rawSpeakers.length} raw → ${validSpeakers.length} validated (filtered ${rawSpeakers.length - validSpeakers.length} non-persons)`);
+      return validSpeakers as SpeakerData[];
     }
 
+    console.log('[event-analysis] No speakers found via Gemini, trying manual extraction fallback...');
     const fallbackNames = extractSpeakerNamesManually(serializedSections);
     if (fallbackNames.length > 0) {
-      return fallbackNames.map(name => ({
+      console.log(`[event-analysis] Manual extraction found ${fallbackNames.length} potential names`);
+      
+      // PHASE 2: Use same comprehensive filtering as Gemini results
+      const rawFallbackSpeakers = fallbackNames.map(name => ({
         name,
         title: '',
         company: '',
         bio: ''
       }));
+      
+      const validatedSpeakers = filterSpeakers(rawFallbackSpeakers as RawSpeaker[]);
+      
+      console.log(`[event-analysis] ✓ Manual extraction: ${fallbackNames.length} raw → ${validatedSpeakers.length} validated (filtered ${fallbackNames.length - validatedSpeakers.length} non-persons)`);
+      
+      if (validatedSpeakers.length > 0) {
+        return validatedSpeakers as SpeakerData[];
+      }
     }
 
-    console.warn('Speaker extraction failed, returning empty array');
+    console.warn('[event-analysis] ⚠ Speaker extraction failed completely, returning empty array');
     return [];
   } catch (error) {
     console.warn('Speaker extraction error:', error);

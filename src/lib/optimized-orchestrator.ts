@@ -54,6 +54,29 @@ import {
   getCacheWarmingStats
 } from './cache-optimizer';
 import { 
+  isAggregatorUrl, 
+  calculateUrlBonus, 
+  RERANK_CONFIG,
+  createRerankMetrics,
+  type RerankMetrics
+} from '../config/rerank';
+import { parseWithRepair } from './llm/json';
+import { filterSpeakers, type RawSpeaker } from './extract/speakers';
+import { SearchCfg } from '../config/search';
+import {
+  computeQuality,
+  isSolidHit,
+  extractHost,
+  type CandidateMeta,
+  type QualityWindow
+} from './quality/eventQuality';
+import {
+  computeExpandedWindow,
+  shouldAutoExpand,
+  type Window
+} from './search/autoExpand';
+import { applyVoyageGate } from './search/voyageGate';
+import { 
   performanceMonitor,
   recordApiPerformance,
   recordCachePerformance,
@@ -78,7 +101,10 @@ const geminiPrioritizationModelId =
 const AGGREGATOR_HOSTS = new Set([
   '10times.com',
   'allconferencealert.com',
+  'bigevent.io',
   'conferencealerts.co.in',
+  'conferencealerts.com',
+  'conferenceindex.org',
   'conferenceineurope.net',
   'conferenceineurope.org',
   'eventbrite.com',
@@ -89,8 +115,49 @@ const AGGREGATOR_HOSTS = new Set([
   'internationalconferencealerts.com',
   'linkedin.com',
   'researchbunny.com',
-  'vendelux.com'
+  'vendelux.com',
+  'conference-service.com',
+  'conference2go.com',           // NEW - generic aggregator
+  'eventora.com',
+  'eventsworld.com',
+  'globalriskcommunity.com',
+  'cvent.com'
 ]);
+
+const AGGREGATOR_KEYWORDS = [
+  'conferencealert',
+  'conferenceindex',
+  'conferenceineurope',
+  'conferencealerts',
+  'freeconferencealert',
+  'allconferencealert',
+  'bigevent',
+  'globaleventslist',
+  'vendelux',
+  '10times',
+  'eventbrite',
+  'cvent',
+];
+
+function normalizeHost(hostname: string) {
+  return hostname.replace(/^www\./, '').toLowerCase();
+}
+
+function isAggregatorUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = normalizeHost(parsed.hostname);
+    if (AGGREGATOR_HOSTS.has(host)) {
+      return true;
+    }
+    if (AGGREGATOR_KEYWORDS.some((keyword) => host.includes(keyword))) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 type GenerativeModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
 
@@ -303,7 +370,7 @@ const ORCHESTRATOR_CONFIG = {
   },
   limits: {
     maxCandidates: 40,      // Increased from 30 for better coverage
-    maxExtractions: 20,     // Increased from 15 for more results
+    maxExtractions: 12,     // Reduced from 20 to 12 to prevent timeout
     maxSpeakers: 30,        // Increased from 25 for richer data
   },
   timeouts: {
@@ -343,6 +410,7 @@ export interface EventCandidate {
   sponsors?: SponsorInfo[];
   confidence: number;
   source: 'firecrawl' | 'cse' | 'database';
+  dateRangeSource?: 'original' | '2-weeks' | '1-month';  // Track which date range found this event
   metadata: {
     originalQuery: string;
     country: string | null;
@@ -545,18 +613,88 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     // Step 3: Multi-source discovery
     const discoveryStart = Date.now();
-    const candidates = await discoverEventCandidates(query, params, userProfile);
+    const rawCandidates = await discoverEventCandidates(query, params, userProfile);
     const discoveryTime = Date.now() - discoveryStart;
     logs.push({
       stage: 'discovery',
-      message: `Discovered ${candidates.length} candidates`,
+      message: `Discovered ${rawCandidates.length} raw candidates`,
       timestamp: new Date().toISOString(),
-      data: { candidateCount: candidates.length, duration: discoveryTime }
+      data: { candidateCount: rawCandidates.length, duration: discoveryTime }
     });
 
-    // Step 4: Intelligent prioritization
+    // Step 3.5: Voyage rerank gate (pre-filter aggregators, apply DE bias)
+    const voyageStart = Date.now();
+    const voyageResult = await applyVoyageGate(
+      rawCandidates,
+      {
+        country: params.country || 'DE',
+        dateFrom: params.dateFrom || '',
+        dateTo: params.dateTo || '',
+        industry: userProfile?.industry_terms?.[0] || params.userText
+      },
+      process.env.VOYAGE_API_KEY
+    );
+    const candidates = voyageResult.urls;
+    const voyageTime = Date.now() - voyageStart;
+
+    logs.push({
+      stage: 'rerank',
+      message: `Voyage gate: ${rawCandidates.length} → ${candidates.length} URLs`,
+      timestamp: new Date().toISOString(),
+      data: {
+        ...voyageResult.metrics,
+        duration: voyageTime
+      }
+    });
+
+    console.log('[optimized-orchestrator] Voyage gate metrics:', voyageResult.metrics);
+
+    // Step 3.7: Filter out obvious non-event URLs (documentation, PDFs, profile pages, generic listings)
+    const filteredCandidates = candidates.filter(url => {
+      const urlLower = url.toLowerCase();
+      
+      // Exclude documentation pages
+      if (urlLower.includes('/docs/') || urlLower.includes('/documentation/')) return false;
+      
+      // Exclude PDFs and other documents
+      if (urlLower.endsWith('.pdf') || urlLower.endsWith('.doc') || urlLower.endsWith('.docx')) return false;
+      
+      // Exclude profile/people pages
+      if (urlLower.includes('/people/') || urlLower.includes('/person/') || urlLower.includes('/profile/')) return false;
+      
+      // Exclude legal/static pages
+      if (urlLower.includes('/privacy') || urlLower.includes('/terms') || urlLower.includes('/impressum') || urlLower.includes('/agb')) return false;
+      
+      // Exclude generic event listing pages (aggregator-like) - only if URL ends with /events/ or /events
+      // Allow specific event URLs like /events/event-name-2025
+      const endsWithEvents = urlLower.endsWith('/events/') || urlLower.endsWith('/events');
+      if (endsWithEvents) {
+        console.log(`[url-filter] Excluding generic events listing: ${url}`);
+        return false;
+      }
+      
+      // Exclude Microsoft Learn documentation (not events)
+      if (urlLower.includes('learn.microsoft.com') && urlLower.includes('/purview/')) return false;
+      
+      // Exclude State Department budget documents
+      if (urlLower.includes('state.gov') && urlLower.includes('/wp-content/uploads/')) return false;
+      
+      return true;
+    });
+    
+    if (filteredCandidates.length < candidates.length) {
+      console.log(`[url-filter] Filtered ${candidates.length} → ${filteredCandidates.length} URLs (removed ${candidates.length - filteredCandidates.length} non-event pages)`);
+      logs.push({
+        stage: 'url_filter',
+        message: `Filtered out ${candidates.length - filteredCandidates.length} non-event URLs`,
+        timestamp: new Date().toISOString(),
+        data: { before: candidates.length, after: filteredCandidates.length }
+      });
+    }
+
+    // Step 4: Intelligent prioritization (now on pre-filtered URLs)
     const prioritizationStart = Date.now();
-    const prioritized = await prioritizeCandidates(candidates, params);
+    const prioritized = await prioritizeCandidates(filteredCandidates, params);
     const prioritizationTime = Date.now() - prioritizationStart;
     logs.push({
       stage: 'prioritization',
@@ -567,7 +705,13 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     // Step 5: Parallel extraction
     const extractionStart = Date.now();
-    const extracted = await extractEventDetails(prioritized, params);
+    let extracted = await extractEventDetails(prioritized, params);
+    
+    // Tag events with original date range
+    extracted.forEach(event => {
+      event.dateRangeSource = 'original';
+    });
+    
     const extractionTime = Date.now() - extractionStart;
     logs.push({
       stage: 'extraction',
@@ -575,6 +719,179 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       timestamp: new Date().toISOString(),
       data: { extractedCount: extracted.length, duration: extractionTime }
     });
+    
+    // Step 5.3: Quality scoring and solid-hit gate
+    const qualityStart = Date.now();
+    const window: QualityWindow = {
+      from: params.dateFrom || '',
+      to: params.dateTo || ''
+    };
+
+    const scoredEvents = extracted.map(event => {
+      const meta: CandidateMeta = {
+        url: event.url,
+        host: extractHost(event.url),
+        country: event.country || undefined,
+        dateISO: event.date,
+        venue: event.venue || undefined,
+        city: event.city || undefined,
+        speakersCount: event.speakers?.length || 0,
+        hasSpeakerPage: (event.metadata?.analysis?.pagesCrawled || 0) > 1,
+        textSample: event.description?.substring(0, 500)
+      };
+      
+      const qualityResult = isSolidHit(meta, window);
+      
+      // Log why events fail quality check
+      if (!qualityResult.ok) {
+        console.log(`[quality-gate] Filtered: "${event.title?.substring(0, 60)}" | Quality: ${qualityResult.quality.toFixed(2)} | ` +
+          `Date: ${meta.dateISO || 'missing'} | City: ${meta.city || 'missing'} | Speakers: ${meta.speakersCount} | ` +
+          `Country: ${meta.country || extractHost(event.url)}`);
+      }
+      
+      return {
+        event,
+        ...qualityResult
+      };
+    });
+
+    // Filter to only solid hits
+    const solidEvents = scoredEvents.filter(s => s.ok).map(s => s.event);
+    const qualityTime = Date.now() - qualityStart;
+
+    const avgQuality = scoredEvents.length > 0 
+      ? scoredEvents.reduce((sum, s) => sum + s.quality, 0) / scoredEvents.length 
+      : 0;
+    
+    console.log(`[orchestrator] Quality scoring: ${extracted.length} → ${solidEvents.length} solid hits (avg quality: ${avgQuality.toFixed(2)})`);
+    
+    // Log quality breakdown if all filtered
+    if (solidEvents.length === 0 && extracted.length > 0) {
+      console.warn(`[quality-gate] All ${extracted.length} events filtered! Common issues: missing dates, no German location, < 2 speakers`);
+      console.warn(`[quality-gate] To fix: Ensure events have date (YYYY-MM-DD), city/venue, and ≥2 speakers`);
+    }
+
+    logs.push({
+      stage: 'quality',
+      message: `Quality gate: ${extracted.length} → ${solidEvents.length} solid hits`,
+      timestamp: new Date().toISOString(),
+      data: {
+        scored: extracted.length,
+        solid: solidEvents.length,
+        avgQuality: avgQuality.toFixed(2),
+        duration: qualityTime
+      }
+    });
+
+    // Update extracted to be solid events only
+    extracted = solidEvents;
+    
+    // Step 5.5: Auto-expand date range if insufficient solid hits
+    if (shouldAutoExpand(extracted.length) && params.dateFrom && params.dateTo) {
+      const prevSolidCount = extracted.length;
+      const origWindow: Window = { from: params.dateFrom, to: params.dateTo };
+      const expandedWindow = computeExpandedWindow(origWindow);
+      
+      // Only expand if window actually changed
+      if (expandedWindow.to !== origWindow.to) {
+        console.log(`[auto-expand] Expanding window from ${origWindow.to} to ${expandedWindow.to}`);
+        logs.push({
+          stage: 'auto_expand',
+          message: `Auto-expanding: ${prevSolidCount} solid hits < ${SearchCfg.minSolidHits} minimum`,
+          timestamp: new Date().toISOString(),
+          data: {
+            originalWindow: origWindow,
+            expandedWindow,
+            solidCountBefore: prevSolidCount
+          }
+        });
+        
+        // Re-run pipeline with expanded window
+        const expandedParams = { ...params, dateTo: expandedWindow.to };
+        const expandedQuery = await buildOptimizedQuery(expandedParams, userProfile);
+        
+        // Discovery → Voyage gate → Prioritization → Extraction → Quality
+        const expandedRawCandidates = await discoverEventCandidates(expandedQuery, expandedParams, userProfile);
+        const expandedVoyageResult = await applyVoyageGate(
+          expandedRawCandidates,
+          {
+            country: expandedParams.country || 'DE',
+            dateFrom: expandedWindow.from,
+            dateTo: expandedWindow.to,
+            industry: userProfile?.industry_terms?.[0] || expandedParams.userText
+          },
+          process.env.VOYAGE_API_KEY
+        );
+        const expandedCandidates = expandedVoyageResult.urls;
+        
+        // Filter out non-event URLs in expanded results (same logic as initial filter)
+        const expandedFilteredCandidates = expandedCandidates.filter(url => {
+          const urlLower = url.toLowerCase();
+          if (urlLower.includes('/docs/') || urlLower.includes('/documentation/')) return false;
+          if (urlLower.endsWith('.pdf') || urlLower.endsWith('.doc') || urlLower.endsWith('.docx')) return false;
+          if (urlLower.includes('/people/') || urlLower.includes('/person/') || urlLower.includes('/profile/')) return false;
+          if (urlLower.includes('/privacy') || urlLower.includes('/terms') || urlLower.includes('/impressum') || urlLower.includes('/agb')) return false;
+          // Exclude generic event listing pages
+          const endsWithEvents = urlLower.endsWith('/events/') || urlLower.endsWith('/events');
+          if (endsWithEvents) {
+            console.log(`[url-filter-expanded] Excluding generic events listing: ${url}`);
+            return false;
+          }
+          if (urlLower.includes('learn.microsoft.com') && urlLower.includes('/purview/')) return false;
+          if (urlLower.includes('state.gov') && urlLower.includes('/wp-content/uploads/')) return false;
+          return true;
+        });
+        
+        console.log(`[url-filter-expanded] Filtered ${expandedCandidates.length} → ${expandedFilteredCandidates.length} URLs`);
+        
+        const expandedPrioritized = await prioritizeCandidates(expandedFilteredCandidates, expandedParams);
+        let expandedExtracted = await extractEventDetails(expandedPrioritized, expandedParams);
+        
+        // Tag expanded events
+        expandedExtracted.forEach(event => {
+          event.dateRangeSource = '2-weeks';
+        });
+        
+        // Quality scoring on expanded events
+        const expandedScoredEvents = expandedExtracted.map(event => {
+          const meta: CandidateMeta = {
+            url: event.url,
+            host: extractHost(event.url),
+            country: event.country || undefined,
+            dateISO: event.date,
+            venue: event.venue || undefined,
+            city: event.city || undefined,
+            speakersCount: event.speakers?.length || 0,
+            hasSpeakerPage: (event.metadata?.analysis?.pagesCrawled || 0) > 1,
+            textSample: event.description?.substring(0, 500)
+          };
+          
+          return {
+            event,
+            ...isSolidHit(meta, expandedWindow)
+          };
+        });
+        
+        const expandedSolidEvents = expandedScoredEvents.filter(s => s.ok).map(s => s.event);
+        
+        // Merge unique events
+        const originalUrls = new Set(extracted.map(e => e.url));
+        const newEvents = expandedSolidEvents.filter(e => !originalUrls.has(e.url));
+        extracted = [...extracted, ...newEvents];
+        
+        console.log(`[auto-expand] After expansion: ${extracted.length} total solid hits (${newEvents.length} new)`);
+        logs.push({
+          stage: 'auto_expand',
+          message: `Expansion added ${newEvents.length} solid events`,
+          timestamp: new Date().toISOString(),
+          data: {
+            totalSolid: extracted.length,
+            newSolid: newEvents.length,
+            expandedTo: expandedWindow.to
+          }
+        });
+      }
+    }
 
     // Step 6: Speaker enhancement
     const enhancementStart = Date.now();
@@ -595,11 +912,18 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       ? finalEvents.reduce((sum, event) => sum + event.confidence, 0) / finalEvents.length 
       : 0;
 
+    // Mark low confidence if we don't have enough solid hits
+    const lowConfidence = extracted.length < SearchCfg.minSolidHits;
+    if (lowConfidence) {
+      console.warn(`[orchestrator] Low confidence: only ${extracted.length} solid hits (minimum: ${SearchCfg.minSolidHits})`);
+    }
+
     // Record final search performance
     recordApiPerformance('optimized_search_complete', totalDuration, true, {
       eventsFound: finalEvents.length.toString(),
       averageConfidence: averageConfidence.toFixed(2),
-      country: params.country || 'unknown'
+      country: params.country || 'unknown',
+      lowConfidence: lowConfidence.toString()
     });
 
     // Get performance metrics
@@ -620,12 +944,13 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     return {
       events: finalEvents,
       metadata: {
-        totalCandidates: candidates.length,
+        totalCandidates: rawCandidates.length,
         prioritizedCandidates: prioritized.length,
         extractedCandidates: extracted.length,
         enhancedCandidates: enhanced.length,
         totalDuration,
         averageConfidence,
+        lowConfidence,
         sourceBreakdown: getSourceBreakdown(finalEvents),
         providersUsed: ['firecrawl', 'cse', 'database'],
         // Performance optimization data
@@ -846,7 +1171,7 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
       }, 'firecrawl');
     },
     {
-      maxConcurrency: 4, // Process all query variations in parallel
+      maxConcurrency: 12, // Firecrawl supports up to 50 concurrent browsers, using 12 for optimal throughput
       enableEarlyTermination: false, // Don't terminate early for discovery
       qualityThreshold: 0.5,
       minResults: 1
@@ -890,37 +1215,75 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
   
   const startTime = Date.now();
   
+  // Aggregators already filtered in Phase 3, so work with the pre-filtered URLs
+  console.log(`[optimized-orchestrator] Phase 4: Prioritizing ${urls.length} pre-filtered URLs with domain bonuses...`);
+  
   try {
     const prioritized = await executeWithRetry(async () => {
       return await prioritizeWithGemini(urls, params);
     }, 'gemini');
 
-    const filtered = prioritized.filter(item => item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
+    // PHASE 4: Apply domain bonuses (.de TLD, conference paths)
+    const withBonuses = prioritized.map(item => ({
+      ...item,
+      originalScore: item.score,
+      score: item.score + calculateUrlBonus(item.url)
+    }));
     
-    console.log(`[optimized-orchestrator] Prioritized ${filtered.length}/${urls.length} candidates in ${Date.now() - startTime}ms`);
+    // Re-sort by adjusted score
+    withBonuses.sort((a, b) => b.score - a.score);
+    
+    const filtered = withBonuses.filter(item => item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
+    
+    const bonusCount = withBonuses.filter(item => item.score > item.originalScore).length;
+    console.log(`[optimized-orchestrator] Prioritized ${filtered.length}/${urls.length} candidates (${bonusCount} with domain bonuses) in ${Date.now() - startTime}ms`);
     
     return filtered;
   } catch (error) {
     console.warn('[optimized-orchestrator] Prioritization failed, using enhanced fallback scoring:', error);
     
-    // Enhanced fallback scoring with URL pattern recognition
-    return urls.map((url, idx) => {
-      let score = 0.4 - idx * 0.02; // Base score with slight degradation
+    // Enhanced fallback scoring with industry relevance
+    const searchConfig = await getSearchConfig();
+    const userProfile = await getUserProfile();
+    const industryTerms = (userProfile?.industry_terms as string[]) || [];
+    const icpTerms = (userProfile?.icp_terms as string[]) || [];
+    
+    return nonAggregatorUrls.map((url, idx) => {
+      let score = 0.3 - idx * 0.02; // Base score with degradation
       
-      // Boost scores for high-quality domains
-      if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-        score += 0.2;
+      const urlLower = url.toLowerCase();
+      
+      // Heavy boost for industry-specific terms in URL path
+      let industryMatch = false;
+      for (const term of industryTerms) {
+        if (urlLower.includes(term.toLowerCase())) {
+          score += 0.4;
+          industryMatch = true;
+          break;
+        }
       }
-      if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
-        score += 0.3;
+      
+      // Additional boost for generic industry keywords if no specific match
+      if (!industryMatch) {
+        if (urlLower.includes('/legal') || urlLower.includes('/compliance') || 
+            urlLower.includes('/regulatory') || urlLower.includes('/ediscovery')) {
+          score += 0.3;
+        }
       }
-      if (url.includes('de') || url.includes('germany')) {
-        score += 0.1;
+      
+      // Boost for specific event pages (not generic directories)
+      if (/\/(event|summit|conference)\/[^\/]+/.test(url)) {
+        score += 0.25;
+      }
+      
+      // Small boost for location
+      if (urlLower.includes('germany') || urlLower.includes('berlin') || urlLower.includes('munich')) {
+        score += 0.05;
       }
       
       return { 
         url, 
-        score: Math.min(score, 0.9), 
+        score: Math.max(0.1, Math.min(score, 0.9)), 
         reason: 'enhanced_fallback' 
       };
     });
@@ -944,7 +1307,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
   const attemptTimeouts = [12000]; // single short attempt (ms)
 
   try {
-    const systemInstruction = 'Return only JSON array [{"url":"","score":0,"reason":""}]. Score 0-1. Reason<=10 chars. No explanations.';
+    const systemInstruction = 'Return only JSON array [{"url":"","score":0,"reason":""}]. Score 0-1 based on industry relevance. Prioritize URLs with specific events matching the industry focus. Penalize generic directories. Reason<=10 chars. No explanations.';
 
     // Lazily instantiate the prioritization model once
     if (!geminiPrioritizationModel) {
@@ -967,7 +1330,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 48,
+          maxOutputTokens: 4096,  // Increased to 4096 to accommodate thinking tokens (up to 2047 observed!)
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1147,8 +1510,72 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  const chunkSize = 1;
+  // Hybrid approach: Keep fix/qc-nov12's chunkSize=3 + feat-cc's better scoring
+  const chunkSize = 3;  // Process 3 URLs per Gemini call - avoids MAX_TOKENS with thinking tokens
   const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
+
+  const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
+
+  const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
+    const aggregator = isAggregatorUrl(url);
+    let score = aggregator ? 0.22 - idx * 0.01 : 0.48 - idx * 0.02;  // feat-cc's better base scores
+
+    if (!aggregator) {
+      const normalizedUrl = url.toLowerCase();
+      
+      // Boost for specific event pages (fix/qc-nov12's detection)
+      const hasSpecificEvent = /\/(event|summit|conference)\/[^\/]+/.test(normalizedUrl);
+      if (hasSpecificEvent) {
+        score += 0.25;
+      } else if (normalizedUrl.includes('conference') || normalizedUrl.includes('summit') || normalizedUrl.includes('event')) {
+        score += 0.18;
+      }
+      
+      // Industry-specific terms (feat-cc's expanded list)
+      if (
+        normalizedUrl.includes('legal') ||
+        normalizedUrl.includes('compliance') ||
+        normalizedUrl.includes('regulatory') ||
+        normalizedUrl.includes('ediscovery') ||
+        normalizedUrl.includes('general-counsel') ||
+        normalizedUrl.includes('generalcounsel') ||
+        normalizedUrl.includes('gencounsel') ||
+        normalizedUrl.includes('chief-compliance') ||
+        normalizedUrl.includes('governance') ||
+        normalizedUrl.includes('privacy')
+      ) {
+        score += 0.28;
+      }
+      
+      // Location terms (feat-cc's expanded list)
+      if (
+        normalizedUrl.includes('de') ||
+        normalizedUrl.includes('germany') ||
+        normalizedUrl.includes('eu') ||
+        normalizedUrl.includes('berlin') ||
+        normalizedUrl.includes('munich') ||
+        normalizedUrl.includes('münchen') ||
+        normalizedUrl.includes('frankfurt')
+      ) {
+        score += 0.07;
+      }
+    }
+
+    const cappedScore = Math.min(score, aggregator ? 0.35 : 0.92);
+    const floorScore = Math.max(cappedScore, aggregator ? 0.05 : 0.4);
+    const taggedReason = aggregator && reason === 'fallback' ? 'aggregator' : reason;
+    return { url, score: floorScore, reason: taggedReason };
+  };
+
+  const filteredUrls = urls.filter((url, idx) => {
+    if (isAggregatorUrl(url)) {
+      if (!resultsMap.has(url)) {
+        resultsMap.set(url, fallbackForUrl(url, idx, 'agg_skip'));
+      }
+      return false;
+    }
+    return true;
+  });
 
   console.log('[optimized-orchestrator] Gemini prioritization setup:', {
     industry,
@@ -1158,36 +1585,6 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     chunkSize
   });
 
-  const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
-
-  const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
-    let score = 0.4 - idx * 0.02;
-    if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-      score += 0.2;
-    }
-    if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
-      score += 0.25;
-    }
-    if (url.includes('de') || url.includes('germany')) {
-      score += 0.05;
-    }
-    return { url, score: Math.max(0.45, Math.min(score, 0.9)), reason };
-  };
-
-  const filteredUrls = urls.filter((url, idx) => {
-    try {
-      const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
-      if (AGGREGATOR_HOSTS.has(host)) {
-        if (!resultsMap.has(url)) {
-          resultsMap.set(url, fallbackForUrl(url, idx, 'agg_skip'));
-        }
-        return false;
-      }
-    } catch {
-      // keep url if parsing fails
-    }
-    return true;
-  });
 
   for (let i = 0; i < filteredUrls.length; i += chunkSize) {
     const chunk = filteredUrls.slice(i, i + chunkSize);
@@ -1217,7 +1614,23 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     return urls.map((url, idx) => fallbackForUrl(url, idx, 'fallback_all_failed'));
   }
 
-  return urls.map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_missing'));
+  const prioritizedResults = urls
+    .map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_missing'))
+    .filter((item) => !isAggregatorUrl(item.url) || item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
+
+  if (prioritizedResults.length === 0) {
+    const nonAggregatorFallback = urls
+      .map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_all_failed'))
+      .filter((item) => !isAggregatorUrl(item.url));
+
+    if (nonAggregatorFallback.length > 0) {
+      return nonAggregatorFallback;
+    }
+
+    return urls.slice(0, 3).map((url, idx) => fallbackForUrl(url, idx, 'aggregator_fallback'));
+  }
+
+  return prioritizedResults;
 }
 
 /**
@@ -1228,9 +1641,14 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   
   const startTime = Date.now();
   
+  // Limit the number of URLs to extract to prevent timeout (max 12)
+  const limitedPrioritized = prioritized.slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
+  
+  console.log(`[optimized-orchestrator] Extracting ${limitedPrioritized.length}/${prioritized.length} URLs (limited for performance)`);
+  
   // Use parallel processing for event extraction, but throttle to respect Firecrawl limits
   const parallelProcessor = getParallelProcessor();
-  const extractionTasks = prioritized.map((item, index) =>
+  const extractionTasks = limitedPrioritized.map((item, index) =>
     createParallelTask(
       `extraction_${index}`,
       item.url,
@@ -1266,7 +1684,15 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         const url = task.data;
         console.log('[optimized-orchestrator] Deep crawling event:', url);
 
-        const crawlResults = await deepCrawlEvent(url);
+        // Add timeout for individual deep crawl (30 seconds max)
+        const crawlPromise = deepCrawlEvent(url);
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Deep crawl timeout')), 30000)
+        );
+        const crawlResults = await Promise.race([crawlPromise, timeoutPromise]).catch(err => {
+          console.warn('[optimized-orchestrator] Deep crawl timed out or failed:', url, err);
+          return [];
+        });
 
         if (!crawlResults || crawlResults.length === 0) {
           console.warn('[optimized-orchestrator] Deep crawl returned no content, skipping:', url);
@@ -1322,7 +1748,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   const events: EventCandidate[] = [];
 
   extractionResults.forEach((result, index) => {
-    const prioritizedItem = prioritized[index];
+    const prioritizedItem = limitedPrioritized[index];
     if (!prioritizedItem) {
       return;
     }
@@ -1375,13 +1801,93 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     });
   });
 
-  console.log('[optimized-orchestrator] Extraction summary:', {
+  console.log('[optimized-orchestrator] Extraction summary (before filtering):', {
     requested: prioritized.length,
     produced: events.length,
     durationMs: Date.now() - startTime
   });
   
-  return events;
+  // Filter events by content relevance to user profile
+  const filteredEvents = await filterByContentRelevance(events, params);
+  
+  console.log('[optimized-orchestrator] Content filtering summary:', {
+    beforeFiltering: events.length,
+    afterFiltering: filteredEvents.length,
+    filtered: events.length - filteredEvents.length
+  });
+  
+  return filteredEvents;
+}
+
+/**
+ * Filter events by content relevance to user profile
+ */
+async function filterByContentRelevance(events: EventCandidate[], params: OptimizedSearchParams): Promise<EventCandidate[]> {
+  if (events.length === 0) return [];
+  
+  const userProfile = await getUserProfile();
+  if (!userProfile || !userProfile.industry_terms || userProfile.industry_terms.length === 0) {
+    console.log('[optimized-orchestrator] No user profile or industry terms, skipping content filtering');
+    return events;
+  }
+  
+  const industryTerms = (userProfile.industry_terms as string[]).map(term => term.toLowerCase());
+  const icpTerms = (userProfile.icp_terms as string[] || []).map(term => term.toLowerCase());
+  
+  console.log('[optimized-orchestrator] Filtering with industry terms:', industryTerms.slice(0, 5), 'and ICP terms:', icpTerms.slice(0, 3));
+  
+  // Non-event keywords that should immediately disqualify a result
+  const NON_EVENT_KEYWORDS = [
+    'allgemeine geschäftsbedingungen',
+    'agb',
+    'general terms and conditions',
+    'terms of service',
+    'terms and conditions',
+    'privacy policy',
+    'datenschutzerklärung',
+    'cookie policy',
+    'impressum',
+    'legal notice',
+    'disclaimer'
+  ];
+  
+  return events.filter(event => {
+    const searchText = `${event.title} ${event.description}`.toLowerCase();
+    const titleLower = event.title.toLowerCase();
+    
+    // FIRST: Exclude non-event pages (legal, static pages)
+    const isNonEvent = NON_EVENT_KEYWORDS.some(keyword => titleLower.includes(keyword));
+    if (isNonEvent) {
+      console.log(`[optimized-orchestrator] ✗ Event filtered out (non-event page): "${event.title.substring(0, 80)}"`);
+      return false;
+    }
+    
+    // Check if event content contains ANY industry term
+    const hasIndustryMatch = industryTerms.some(term => {
+      // Check for word boundary matches to avoid partial matches
+      const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      return regex.test(searchText);
+    });
+    
+    if (hasIndustryMatch) {
+      console.log(`[optimized-orchestrator] ✓ Event matches industry terms: "${event.title.substring(0, 80)}"`);
+      return true;
+    }
+    
+    // Check for ICP terms as secondary filter
+    const hasIcpMatch = icpTerms.some(term => {
+      const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      return regex.test(searchText);
+    });
+    
+    if (hasIcpMatch) {
+      console.log(`[optimized-orchestrator] ✓ Event matches ICP terms: "${event.title.substring(0, 80)}"`);
+      return true;
+    }
+    
+    console.log(`[optimized-orchestrator] ✗ Event filtered out (no match): "${event.title.substring(0, 80)}"`);
+    return false;
+  });
 }
 
 /**
@@ -1400,6 +1906,8 @@ async function enhanceEventSpeakers(events: EventCandidate[]): Promise<EventCand
 function filterAndRankEvents(events: EventCandidate[]): EventCandidate[] {
   return events
     .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.confidence)
+    .filter(event => Array.isArray(event.speakers) && event.speakers.length > 0)
+    .filter(event => !isAggregatorUrl(event.url))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
 }

@@ -50,6 +50,7 @@ interface Event {
   confidence?: number | null;       // Event confidence score
   confidence_reason?: string | null; // Confidence reason
   pipeline_metadata?: any | null;   // Pipeline metadata (LLM enhanced, quality scores, etc.)
+  dateRangeSource?: 'original' | '2-weeks' | '1-month';  // Date range expansion source
 }
 
 /**
@@ -263,26 +264,49 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
     }
   }, [open, speakers, ev.speakers, loadSpeakers]);
 
+  // Determine styling based on date range source
+  const dateRangeStyles = ev.dateRangeSource === '2-weeks'
+    ? 'border-blue-200 bg-blue-50/20'
+    : ev.dateRangeSource === '1-month'
+    ? 'border-purple-200 bg-purple-50/20'
+    : watchlistMatch?.hasMatch
+    ? 'border-yellow-300 bg-yellow-50/30'
+    : 'border-slate-200';
+  
+  const dateRangeBadge = ev.dateRangeSource === '2-weeks'
+    ? { text: 'Extended 2 weeks', color: 'bg-blue-100 text-blue-800' }
+    : ev.dateRangeSource === '1-month'
+    ? { text: 'Extended 1 month', color: 'bg-purple-100 text-purple-800' }
+    : null;
+
   return (
-    <div className={`group bg-white rounded-2xl border p-6 shadow-sm hover:shadow-md transition-all duration-200 ${
-      watchlistMatch?.hasMatch 
-        ? 'border-yellow-300 bg-yellow-50/30' 
-        : 'border-slate-200'
-    }`}>
-      {/* Watchlist Match Badge */}
-      {watchlistMatch?.hasMatch && (
-        <div className="mb-3 flex items-center gap-2">
-          <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-            <Star className="w-3 h-3" />
-            <span>Watchlist Match</span>
-          </div>
-          <button
-            onClick={() => setShowWatchlistDetails(!showWatchlistDetails)}
-            className="flex items-center gap-1 px-2 py-1 text-yellow-700 hover:bg-yellow-100 rounded-full text-xs font-medium transition-colors"
-          >
-            <Eye className="w-3 h-3" />
-            <span>{watchlistMatch.totalMatches} match{watchlistMatch.totalMatches !== 1 ? 'es' : ''}</span>
-          </button>
+    <div className={`group bg-white rounded-2xl border p-6 shadow-sm hover:shadow-md transition-all duration-200 ${dateRangeStyles}`}>
+      {/* Date Range Extension Badge & Watchlist Match Badge */}
+      {(dateRangeBadge || watchlistMatch?.hasMatch) && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          {dateRangeBadge && (
+            <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${dateRangeBadge.color}`}>
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>{dateRangeBadge.text}</span>
+            </div>
+          )}
+          {watchlistMatch?.hasMatch && (
+            <>
+              <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                <Star className="w-3 h-3" />
+                <span>Watchlist Match</span>
+              </div>
+              <button
+                onClick={() => setShowWatchlistDetails(!showWatchlistDetails)}
+                className="flex items-center gap-1 px-2 py-1 text-yellow-700 hover:bg-yellow-100 rounded-full text-xs font-medium transition-colors"
+              >
+                <Eye className="w-3 h-3" />
+                <span>{watchlistMatch.totalMatches} match{watchlistMatch.totalMatches !== 1 ? 'es' : ''}</span>
+              </button>
+            </>
+          )}
         </div>
       )}
 

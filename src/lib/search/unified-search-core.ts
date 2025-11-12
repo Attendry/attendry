@@ -304,7 +304,7 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
       query: firecrawlQuery,
       limit: params.limit || 20,
       sources: ['web'],
-      timeout: 60000
+      timeout: 45000  // Reduced from 60000 to prevent long waits
     };
 
     // Add content scraping if requested
@@ -343,8 +343,8 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(body),
-        // Add timeout to prevent hanging requests
-        signal: AbortSignal.timeout(20000) // 20 second timeout
+        // Reduced timeout to prevent hanging requests
+        signal: AbortSignal.timeout(15000) // 15 second timeout (reduced from 20)
       });
 
       if (!response.ok) {
