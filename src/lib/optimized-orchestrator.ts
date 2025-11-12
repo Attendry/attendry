@@ -78,7 +78,10 @@ const geminiPrioritizationModelId =
 const AGGREGATOR_HOSTS = new Set([
   '10times.com',
   'allconferencealert.com',
+  'bigevent.io',
   'conferencealerts.co.in',
+  'conferencealerts.com',
+  'conferenceindex.org',
   'conferenceineurope.net',
   'conferenceineurope.org',
   'eventbrite.com',
@@ -89,8 +92,44 @@ const AGGREGATOR_HOSTS = new Set([
   'internationalconferencealerts.com',
   'linkedin.com',
   'researchbunny.com',
-  'vendelux.com'
+  'vendelux.com',
+  'cvent.com'
 ]);
+
+const AGGREGATOR_KEYWORDS = [
+  'conferencealert',
+  'conferenceindex',
+  'conferenceineurope',
+  'conferencealerts',
+  'freeconferencealert',
+  'allconferencealert',
+  'bigevent',
+  'globaleventslist',
+  'vendelux',
+  '10times',
+  'eventbrite',
+  'cvent',
+];
+
+function normalizeHost(hostname: string) {
+  return hostname.replace(/^www\./, '').toLowerCase();
+}
+
+function isAggregatorUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = normalizeHost(parsed.hostname);
+    if (AGGREGATOR_HOSTS.has(host)) {
+      return true;
+    }
+    if (AGGREGATOR_KEYWORDS.some((keyword) => host.includes(keyword))) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 type GenerativeModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
 
@@ -967,7 +1006,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 48,
+          maxOutputTokens: 128,
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1148,30 +1187,54 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     : `Rate ${industry} events in ${locationContext}.`;
 
   const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
-    let score = 0.4 - idx * 0.02;
-    if (url.includes('conference') || url.includes('summit') || url.includes('event')) {
-      score += 0.2;
+    const aggregator = isAggregatorUrl(url);
+    let score = aggregator ? 0.22 - idx * 0.01 : 0.48 - idx * 0.02;
+
+    if (!aggregator) {
+      const normalizedUrl = url.toLowerCase();
+      if (normalizedUrl.includes('conference') || normalizedUrl.includes('summit') || normalizedUrl.includes('event')) {
+        score += 0.18;
+      }
+      if (
+        normalizedUrl.includes('legal') ||
+        normalizedUrl.includes('compliance') ||
+        normalizedUrl.includes('regulatory') ||
+        normalizedUrl.includes('ediscovery') ||
+        normalizedUrl.includes('general-counsel') ||
+        normalizedUrl.includes('generalcounsel') ||
+        normalizedUrl.includes('gencounsel') ||
+        normalizedUrl.includes('chief-compliance') ||
+        normalizedUrl.includes('privacy')
+      ) {
+        score += 0.28;
+      }
+      if (
+        normalizedUrl.includes('de') ||
+        normalizedUrl.includes('germany') ||
+        normalizedUrl.includes('eu') ||
+        normalizedUrl.includes('berlin') ||
+        normalizedUrl.includes('munich') ||
+        normalizedUrl.includes('münchen') ||
+        normalizedUrl.includes('frankfurt')
+      ) {
+        score += 0.07;
+      }
     }
-    if (url.includes('legal') || url.includes('compliance') || url.includes('regulatory')) {
-      score += 0.25;
-    }
-    if (url.includes('de') || url.includes('germany')) {
-      score += 0.05;
-    }
-    return { url, score: Math.max(0.45, Math.min(score, 0.9)), reason };
+
+    const cappedScore = Math.min(score, aggregator ? 0.35 : 0.92);
+    const floorScore = Math.max(cappedScore, aggregator ? 0.05 : 0.4);
+    const taggedReason = aggregator && reason === 'fallback' ? 'aggregator' : reason;
+    return { url, score: floorScore, reason: taggedReason };
   };
 
+  const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
+
   const filteredUrls = urls.filter((url, idx) => {
-    try {
-      const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
-      if (AGGREGATOR_HOSTS.has(host)) {
-        if (!resultsMap.has(url)) {
-          resultsMap.set(url, fallbackForUrl(url, idx, 'agg_skip'));
-        }
-        return false;
+    if (isAggregatorUrl(url)) {
+      if (!resultsMap.has(url)) {
+        resultsMap.set(url, fallbackForUrl(url, idx, 'agg_skip'));
       }
-    } catch {
-      // keep url if parsing fails
+      return false;
     }
     return true;
   });
@@ -1186,8 +1249,6 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     contextLength: baseContext.length,
     chunkSize
   });
-
-  const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
   for (let i = 0; i < filteredUrls.length; i += chunkSize) {
     const chunk = filteredUrls.slice(i, i + chunkSize);
@@ -1217,7 +1278,23 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     return urls.map((url, idx) => fallbackForUrl(url, idx, 'fallback_all_failed'));
   }
 
-  return urls.map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_missing'));
+  const prioritizedResults = urls
+    .map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_missing'))
+    .filter((item) => !isAggregatorUrl(item.url) || item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
+
+  if (prioritizedResults.length === 0) {
+    const nonAggregatorFallback = urls
+      .map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_all_failed'))
+      .filter((item) => !isAggregatorUrl(item.url));
+
+    if (nonAggregatorFallback.length > 0) {
+      return nonAggregatorFallback;
+    }
+
+    return urls.slice(0, 3).map((url, idx) => fallbackForUrl(url, idx, 'aggregator_fallback'));
+  }
+
+  return prioritizedResults;
 }
 
 /**
@@ -1400,6 +1477,8 @@ async function enhanceEventSpeakers(events: EventCandidate[]): Promise<EventCand
 function filterAndRankEvents(events: EventCandidate[]): EventCandidate[] {
   return events
     .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.confidence)
+    .filter(event => Array.isArray(event.speakers) && event.speakers.length > 0)
+    .filter(event => !isAggregatorUrl(event.url))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
 }

@@ -314,6 +314,30 @@ type EventSpeaker = {
   [key: string]: unknown;
 };
 
+function getSpeakerSignature(speaker: EventSpeaker): string | null {
+  if (!speaker) return null;
+  const profileLink = (speaker.profile_url || speaker.linkedin || '').toString().trim().toLowerCase();
+  if (profileLink) {
+    return profileLink;
+  }
+  const name = (speaker.name || '').trim().toLowerCase();
+  if (!name) {
+    return null;
+  }
+  const organization = (
+    speaker.org ||
+    speaker.organization ||
+    speaker.company ||
+    speaker.title ||
+    ''
+  )
+    .toString()
+    .trim()
+    .toLowerCase();
+
+  return organization ? `${name}__${organization}` : name;
+}
+
 function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const [config, setConfig] = useState(QUICK_SEARCH_DEFAULTS);
   const [collapsed, setCollapsed] = useState(false);
@@ -324,9 +348,37 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const [lastRunAt, setLastRunAt] = useState<number | null>(null);
   const [savingSpeakerId, setSavingSpeakerId] = useState<string | null>(null);
   const [speakerStatus, setSpeakerStatus] = useState<Record<string, 'saved' | 'error'>>({});
-  const [totalReturned, setTotalReturned] = useState<number>(0);
+  const [savedSignatures, setSavedSignatures] = useState<Record<string, 'saved'>>({});
 
-  const resultsToShow = useMemo(() => results.slice(0, 3), [results]);
+  const prioritizedResults = useMemo(() => {
+    const withSpeakers = results.filter(
+      (event) => Array.isArray(event.speakers) && (event.speakers as EventSpeaker[]).length > 0,
+    );
+    if (withSpeakers.length > 0) {
+      return withSpeakers;
+    }
+    return results;
+  }, [results]);
+
+  const speakerOccurrences = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    prioritizedResults.forEach((event) => {
+      const eventKey = event.id || event.source_url;
+      if (!eventKey) return;
+      const eventSpeakers = Array.isArray(event.speakers) ? (event.speakers as EventSpeaker[]) : [];
+      eventSpeakers.forEach((speaker) => {
+        const signature = getSpeakerSignature(speaker);
+        if (!signature) return;
+        if (!map.has(signature)) {
+          map.set(signature, new Set());
+        }
+        map.get(signature)!.add(eventKey);
+      });
+    });
+    return map;
+  }, [prioritizedResults]);
+
+  const resultsToShow = useMemo(() => prioritizedResults.slice(0, 5), [prioritizedResults]);
 
   const locationLabel = useMemo(
     () => QUICK_SEARCH_LOCATIONS.find((location) => location.code === config.country)?.name ?? 'All Europe',
@@ -413,19 +465,10 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
         }))
         .filter((event) => !!event.source_url);
 
-      const total =
-        typeof payload?.total_results === 'number'
-          ? payload.total_results
-          : typeof payload?.totalResults === 'number'
-            ? payload.totalResults
-            : normalizedEvents.length;
-
       setResults(normalizedEvents);
-      setTotalReturned(total);
       setLastRunAt(Date.now());
     } catch (err) {
       setResults([]);
-      setTotalReturned(0);
       setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setLoading(false);
@@ -447,6 +490,11 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
     async (event: EventRec, speaker: EventSpeaker, key: string) => {
       if (!speaker?.name) {
         alert('Unable to save speaker without a name.');
+        return;
+      }
+      const signature = getSpeakerSignature(speaker);
+      if (signature && savedSignatures[signature] === 'saved') {
+        setSpeakerStatus((prev) => ({ ...prev, [key]: 'saved' }));
         return;
       }
       setSavingSpeakerId(key);
@@ -474,6 +522,9 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
           throw new Error(payload?.error || 'Failed to save speaker');
         }
         setSpeakerStatus((prev) => ({ ...prev, [key]: 'saved' }));
+        if (signature) {
+          setSavedSignatures((prev) => ({ ...prev, [signature]: 'saved' }));
+        }
         if (onSpeakerSaved) {
           await Promise.resolve(onSpeakerSaved());
         }
@@ -484,7 +535,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
         setSavingSpeakerId(null);
       }
     },
-    [onSpeakerSaved],
+    [onSpeakerSaved, savedSignatures],
   );
 
   const formatDisplayDate = useCallback((value?: string | null) => {
@@ -687,13 +738,13 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 const topSpeakers = speakers.slice(0, 3);
                 return (
                   <div key={eventKey} className="rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
                         <a
                           href={event.source_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-base font-semibold text-gray-900 hover:text-blue-600"
+                          className="line-clamp-2 text-base font-semibold text-gray-900 hover:text-blue-600"
                         >
                           {event.title}
                         </a>
@@ -703,7 +754,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                           {event.organizer && <span className="text-gray-500">Hosted by {event.organizer}</span>}
                         </div>
                       </div>
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700">
+                      <span className="mt-1 inline-flex flex-shrink-0 items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700 sm:mt-0">
                         {speakers.length > 0 ? `${speakers.length} speaker${speakers.length === 1 ? '' : 's'}` : 'Speaker data pending'}
                       </span>
                     </div>
@@ -715,20 +766,47 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                           const isSaving = savingSpeakerId === speakerKey;
                           const organization = speaker.org || speaker.organization || speaker.company || '';
                           const profileLink = speaker.linkedin || speaker.profile_url || null;
+                          const signature = getSpeakerSignature(speaker);
+                          const duplicateEventsCount = signature ? Math.max((speakerOccurrences.get(signature)?.size || 0) - 1, 0) : 0;
+                          const appearsMultiple = duplicateEventsCount > 0;
+                          const signatureSaved = signature ? savedSignatures[signature] === 'saved' : false;
+                          const savedHere = status === 'saved';
+                          const savedFromOtherEvent = signatureSaved && !savedHere;
                           return (
                             <li
                               key={speakerKey}
-                              className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 sm:flex-row sm:items-center sm:justify-between"
+                              className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                             >
-                              <div>
-                                <p className="font-medium text-gray-900">{speaker.name}</p>
-                                <p className="text-xs text-gray-600">
-                                  {[speaker.title, organization].filter(Boolean).join(' · ') || 'Role pending'}
-                                </p>
+                              <div className="min-w-0">
+                                <p className="line-clamp-1 font-medium text-gray-900">{speaker.name}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                                  <span className="truncate">
+                                    {[speaker.title, organization].filter(Boolean).join(' · ') || 'Role pending'}
+                                  </span>
+                                  {appearsMultiple && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 font-semibold text-purple-700">
+                                      <Sparkles className="h-3 w-3" />
+                                      {duplicateEventsCount === 1
+                                        ? 'Also in 1 other event'
+                                        : `Also in ${duplicateEventsCount} other events`}
+                                    </span>
+                                  )}
+                                  {savedFromOtherEvent && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">
+                                      Saved elsewhere
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                {status === 'saved' ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+                              <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-end">
+                                {savedHere || savedFromOtherEvent ? (
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+                                      savedFromOtherEvent
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-emerald-100 text-emerald-700'
+                                    }`}
+                                  >
                                     ✓ Saved
                                   </span>
                                 ) : (
@@ -736,7 +814,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                                     type="button"
                                     onClick={() => void handleSaveSpeaker(event, speaker, speakerKey)}
                                     disabled={isSaving}
-                                    className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-gray-100 whitespace-nowrap"
                                   >
                                     {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                                     Save speaker
@@ -747,7 +825,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                                     href={profileLink}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50"
+                                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50 whitespace-nowrap"
                                   >
                                     <Linkedin className="h-3.5 w-3.5" />
                                     Profile
@@ -762,9 +840,9 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                   </div>
                 );
               })}
-              {totalReturned > resultsToShow.length && (
+              {prioritizedResults.length > resultsToShow.length && (
                 <div className="text-xs text-gray-600">
-                  Showing top {resultsToShow.length} of {totalReturned} events. Visit{' '}
+                  Showing top {resultsToShow.length} of {prioritizedResults.length} curated events. Visit{' '}
                   <Link href="/events" className="font-medium text-blue-600 hover:text-blue-700">
                     full search workspace
                   </Link>{' '}
