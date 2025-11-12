@@ -661,6 +661,13 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       
       const qualityResult = isSolidHit(meta, window);
       
+      // Log why events fail quality check
+      if (!qualityResult.ok) {
+        console.log(`[quality-gate] Filtered: "${event.title?.substring(0, 60)}" | Quality: ${qualityResult.quality.toFixed(2)} | ` +
+          `Date: ${meta.dateISO || 'missing'} | City: ${meta.city || 'missing'} | Speakers: ${meta.speakersCount} | ` +
+          `Country: ${meta.country || extractHost(event.url)}`);
+      }
+      
       return {
         event,
         ...qualityResult
@@ -676,6 +683,12 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       : 0;
     
     console.log(`[orchestrator] Quality scoring: ${extracted.length} → ${solidEvents.length} solid hits (avg quality: ${avgQuality.toFixed(2)})`);
+    
+    // Log quality breakdown if all filtered
+    if (solidEvents.length === 0 && extracted.length > 0) {
+      console.warn(`[quality-gate] All ${extracted.length} events filtered! Common issues: missing dates, no German location, < 2 speakers`);
+      console.warn(`[quality-gate] To fix: Ensure events have date (YYYY-MM-DD), city/venue, and ≥2 speakers`);
+    }
 
     logs.push({
       stage: 'quality',

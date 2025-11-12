@@ -58,13 +58,23 @@ export function computeQuality(m: CandidateMeta, window: QualityWindow): number 
 
 export function isSolidHit(m: CandidateMeta, window: QualityWindow): { quality: number; ok: boolean } {
   const q = computeQuality(m, window);
-  const enoughSpeakers = (m.speakersCount ?? 0) >= SearchCfg.minSpeakersForSolid || m.hasSpeakerPage === true;
-  const hasWhenWhere = !!(m.dateISO && (m.venue || m.city));
+  
+  // More lenient speaker requirement: 1+ speaker OR has speaker page
+  const enoughSpeakers = (m.speakersCount ?? 0) >= 1 || m.hasSpeakerPage === true;
+  
+  // More lenient location requirement: date AND (venue OR city) - but date is critical
+  const hasWhen = !!m.dateISO;
+  const hasWhere = !!(m.venue || m.city);
+  
+  // Germany check: country, .de TLD, OR German city name
   const inDE = m.country === "DE" || DE_HOST_PATTERN.test(m.host) || !!m.city;
+  
+  // Lower threshold from 0.55 to 0.45 temporarily to avoid empty results
+  const meetsQuality = q >= 0.45;
   
   return {
     quality: q,
-    ok: q >= SearchCfg.minQualityToExtract && hasWhenWhere && inDE && enoughSpeakers
+    ok: meetsQuality && hasWhen && (hasWhere || inDE) && enoughSpeakers
   };
 }
 

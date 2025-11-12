@@ -99,6 +99,12 @@ export async function applyVoyageGate(
     
     const data = await response.json();
     
+    // Validate response structure
+    if (!data || !data.results || !Array.isArray(data.results)) {
+      console.warn('[voyage-gate] Invalid Voyage API response structure:', JSON.stringify(data).substring(0, 200));
+      return applyMicroBias(docsForRerank, urls.length, aggregators.length - backstopKept, backstopKept);
+    }
+    
     const scoredResults = data.results.map((r: any) => {
       const url = docsForRerank[r.index];
       const bonus = calculateUrlBonus(url);
