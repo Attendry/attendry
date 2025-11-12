@@ -395,9 +395,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
         url: eventUrl,
         formats: ['markdown'],
         onlyMainContent: true,
-        timeout: 12000  // Reduced from 20000 to 12000 (12 seconds)
+        timeout: 15000  // Increased to 15000 (15 seconds) for slow sites like haystackid.com
       }),
-      signal: AbortSignal.timeout(15000)  // Add abort signal for safety
+      signal: AbortSignal.timeout(18000)  // Add abort signal for safety (18s)
     });
     
     if (mainPageResponse.ok) {
@@ -438,9 +438,9 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
             url: subUrl,
             formats: ['markdown'],
             onlyMainContent: true,
-            timeout: 8000  // Reduced from 10000 to 8000 (8 seconds)
+            timeout: 10000  // Increased to 10000 (10 seconds) for slow sites
           }),
-          signal: AbortSignal.timeout(10000)  // Add abort signal for safety
+          signal: AbortSignal.timeout(12000)  // Add abort signal for safety (12s)
         });
         
         if (subPageResponse.ok) {
@@ -975,9 +975,10 @@ function extractSpeakerSections(content: string): Array<{
   const lines = content.split('\n');
   let currentSection: { heading: string; lines: string[]; startIndex: number } | null = null;
   
-  // Speaker heading patterns - support both markdown (##) and plain text headers (all caps or title case)
-  const speakerHeaderPattern = /^(?:#{1,3}\s*)?(SPEAKERS?|PRESENTERS?|FACULTY|KEYNOTE|PANELISTS?|REFERENTEN?|SPRECHER|MODERATOREN?|FEATURED|GUEST|Speakers?|Presenters?|Faculty|Keynote|Panelists?|Referenten?|Sprecher|Moderatoren?|Featured|Guest)(?:\s*:)?$/i;
-  const nonSpeakerHeaderPattern = /^(?:#{1,3}\s*)?(VENUE|LOCATION|HOTEL|TRAVEL|REGISTER|TICKET|SPONSOR|PARTNER|PRIVACY|TERMS|COOKIE|CONTACT|ABOUT|HOME|FAQ|PRICING|Venue|Location|Hotel|Travel|Register|Ticket|Sponsor|Partner|Privacy|Terms|Cookie|Contact|About|Home|FAQ|Pricing)(?:\s*:)?$/i;
+  // Speaker heading patterns - MORE FLEXIBLE to catch real-world headers
+  // Removed strict $ anchor, added \s* for whitespace tolerance
+  const speakerHeaderPattern = /^\s*(?:#{1,3}\s*)?(SPEAKERS?|PRESENTERS?|FACULTY|KEYNOTE|PANELISTS?|REFERENTEN?|SPRECHER|MODERATOREN?|FEATURED|GUEST)(?:\s*[:)])?/i;
+  const nonSpeakerHeaderPattern = /^\s*(?:#{1,3}\s*)?(VENUE|LOCATION|HOTEL|TRAVEL|REGISTER|TICKET|SPONSOR|PARTNER|PRIVACY|TERMS|COOKIE|CONTACT|ABOUT|HOME|FAQ|PRICING)(?:\s*[:)])?/i;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -1135,7 +1136,8 @@ function isLikelyPersonName(name: string): boolean {
     'lawyers', 'compliance', 'webinar', 'session', 'panel', 'workshop',
     'event', 'meeting', 'seminar', 'symposium', 'congress', 'convention',
     'day', 'week', 'month', 'year', 'edition', 'annual', 'international',
-    'program', 'agenda', 'schedule', 'keynote', 'presentation', 'track'
+    'program', 'agenda', 'schedule', 'keynote', 'presentation', 'track',
+    'instructor', 'trainer', 'teacher', 'tutor', 'facilitator', 'educator'  // Filter out teaching roles
   ];
   
   if (eventKeywords.some(keyword => nameLower.includes(keyword))) {
@@ -1231,7 +1233,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
         temperature: 0.2,
         topP: 0.8,
         topK: 12,
-        maxOutputTokens: 1024,  // Increased from 256 to handle thinking tokens + response
+        maxOutputTokens: 2048,  // Increased to 2048 to handle thinking tokens (up to 1023 observed) + response
         responseMimeType: 'application/json',
         responseSchema: speakerSchema
       }

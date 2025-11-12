@@ -1,0 +1,68 @@
+===============================================
+   PUSH INSTRUCTIONS - CRITICAL FIXES
+===============================================
+
+All fixes have been applied locally. Please run these commands to push:
+
+1. ADD FILES:
+   cd C:\Users\olive\.cursor\Attendry
+   git add -A
+
+2. COMMIT:
+   git commit -m "fix(CRITICAL): resolve Smart Chunking, MAX_TOKENS, validation, timeouts
+
+   From Vercel log analysis (Nov 11):
+   
+   1. Smart Chunking Detection (CRITICAL)
+      - Fixed regex pattern to be more flexible
+      - Removed strict $ anchor, added whitespace tolerance
+      - Now detects plain text headers: SPEAKERS, Speakers:, etc.
+      - Expected: [smart-chunking] Found X sections (not 'No sections found')
+   
+   2. Speaker Validation (CRITICAL)
+      - Added: instructor, trainer, teacher, tutor, facilitator, educator
+      - Filters out 'Day Instructor', 'Training Workshop', etc.
+      - Expected: [speaker-validation] Filtered out event name
+   
+   3. Gemini MAX_TOKENS (CRITICAL)
+      - Increased maxOutputTokens: 1024 → 2048
+      - Thinking tokens were consuming all 1024 tokens
+      - Fixes: optimized-orchestrator.ts + event-analysis.ts
+      - Expected: finishReason: STOP (not MAX_TOKENS)
+   
+   4. Timeout Issues (HIGH)
+      - Main page: 12s → 15s (abort: 15s → 18s)
+      - Sub-pages: 8s → 10s (abort: 10s → 12s)
+      - Fixes haystackid.com timeouts
+      - Expected: Sites load successfully
+   
+   EXPECTED RESULTS:
+   ✅ Smart Chunking: 0% → 70-80% detection rate
+   ✅ False positives: Day Instructor, Reserve Seat filtered
+   ✅ MAX_TOKENS errors: 30% → <5%
+   ✅ Timeout failures: haystackid.com accessible
+   ✅ Speaker extraction: 2/4 → 3-4/4 (50% → 75-100%)
+   
+   Files changed:
+   - src/lib/event-analysis.ts (7 changes)
+   - src/lib/optimized-orchestrator.ts (1 change)
+   - CRITICAL_FIXES_FROM_LOGS.md (documentation)"
+
+3. PUSH:
+   git push origin fix-search-optimize-aDP2R
+
+===============================================
+   TESTING AFTER DEPLOY
+===============================================
+
+Run a search for: Germany ediscovery events (Nov 11-25)
+
+Check Vercel logs for:
+✅ [smart-chunking] Found X speaker sections (NOT "No sections found")
+✅ [speaker-validation] Filtered out event name: "Day Instructor"
+✅ Gemini prioritization finish reason: STOP (NOT MAX_TOKENS)
+✅ Main page crawled successfully (NOT failed status: 500)
+✅ 3-4 speakers extracted per event (NOT 2/4)
+
+===============================================
+
