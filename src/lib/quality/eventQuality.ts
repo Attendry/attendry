@@ -59,22 +59,24 @@ export function computeQuality(m: CandidateMeta, window: QualityWindow): number 
 export function isSolidHit(m: CandidateMeta, window: QualityWindow): { quality: number; ok: boolean } {
   const q = computeQuality(m, window);
   
-  // More lenient speaker requirement: 1+ speaker OR has speaker page
+  // Lenient speaker requirement: 1+ speaker OR has speaker page
   const enoughSpeakers = (m.speakersCount ?? 0) >= 1 || m.hasSpeakerPage === true;
   
-  // More lenient location requirement: date AND (venue OR city) - but date is critical
-  const hasWhen = !!m.dateISO;
-  const hasWhere = !!(m.venue || m.city);
+  // Date requirement (critical for events)
+  const hasWhen = !!m.dateISO && m.dateISO >= window.from && m.dateISO <= window.to;
   
-  // Germany check: country, .de TLD, OR German city name
-  const inDE = m.country === "DE" || DE_HOST_PATTERN.test(m.host) || !!m.city;
+  // Germany check: country, .de TLD, OR German city name in venue/city
+  const deHost = DE_HOST_PATTERN.test(m.host);
+  const deCity = DE_CITY_PATTERN.test(`${m.city ?? ''} ${m.venue ?? ''}`);
+  const inDE = m.country === "DE" || m.country === "Germany" || deHost || deCity;
   
-  // Lower threshold from 0.55 to 0.45 temporarily to avoid empty results
-  const meetsQuality = q >= 0.45;
+  // Lower quality threshold to 0.35 to allow more candidates through
+  const meetsQuality = q >= 0.35;
   
+  // Must have: quality, date in range, Germany location, and some speaker info
   return {
     quality: q,
-    ok: meetsQuality && hasWhen && (hasWhere || inDE) && enoughSpeakers
+    ok: meetsQuality && hasWhen && inDE && enoughSpeakers
   };
 }
 

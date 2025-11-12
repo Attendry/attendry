@@ -611,9 +611,44 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     console.log('[optimized-orchestrator] Voyage gate metrics:', voyageResult.metrics);
 
+    // Step 3.7: Filter out obvious non-event URLs (documentation, PDFs, profile pages)
+    const filteredCandidates = candidates.filter(url => {
+      const urlLower = url.toLowerCase();
+      
+      // Exclude documentation pages
+      if (urlLower.includes('/docs/') || urlLower.includes('/documentation/')) return false;
+      
+      // Exclude PDFs and other documents
+      if (urlLower.endsWith('.pdf') || urlLower.endsWith('.doc') || urlLower.endsWith('.docx')) return false;
+      
+      // Exclude profile/people pages
+      if (urlLower.includes('/people/') || urlLower.includes('/person/') || urlLower.includes('/profile/')) return false;
+      
+      // Exclude legal/static pages
+      if (urlLower.includes('/privacy') || urlLower.includes('/terms') || urlLower.includes('/impressum') || urlLower.includes('/agb')) return false;
+      
+      // Exclude Microsoft Learn documentation (not events)
+      if (urlLower.includes('learn.microsoft.com') && urlLower.includes('/purview/')) return false;
+      
+      // Exclude State Department budget documents
+      if (urlLower.includes('state.gov') && urlLower.includes('/wp-content/uploads/')) return false;
+      
+      return true;
+    });
+    
+    if (filteredCandidates.length < candidates.length) {
+      console.log(`[url-filter] Filtered ${candidates.length} → ${filteredCandidates.length} URLs (removed ${candidates.length - filteredCandidates.length} non-event pages)`);
+      logs.push({
+        stage: 'url_filter',
+        message: `Filtered out ${candidates.length - filteredCandidates.length} non-event URLs`,
+        timestamp: new Date().toISOString(),
+        data: { before: candidates.length, after: filteredCandidates.length }
+      });
+    }
+
     // Step 4: Intelligent prioritization (now on pre-filtered URLs)
     const prioritizationStart = Date.now();
-    const prioritized = await prioritizeCandidates(candidates, params);
+    const prioritized = await prioritizeCandidates(filteredCandidates, params);
     const prioritizationTime = Date.now() - prioritizationStart;
     logs.push({
       stage: 'prioritization',
@@ -742,7 +777,20 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
           process.env.VOYAGE_API_KEY
         );
         const expandedCandidates = expandedVoyageResult.urls;
-        const expandedPrioritized = await prioritizeCandidates(expandedCandidates, expandedParams);
+        
+        // Filter out non-event URLs in expanded results
+        const expandedFilteredCandidates = expandedCandidates.filter(url => {
+          const urlLower = url.toLowerCase();
+          if (urlLower.includes('/docs/') || urlLower.includes('/documentation/')) return false;
+          if (urlLower.endsWith('.pdf') || urlLower.endsWith('.doc') || urlLower.endsWith('.docx')) return false;
+          if (urlLower.includes('/people/') || urlLower.includes('/person/') || urlLower.includes('/profile/')) return false;
+          if (urlLower.includes('/privacy') || urlLower.includes('/terms') || urlLower.includes('/impressum') || urlLower.includes('/agb')) return false;
+          if (urlLower.includes('learn.microsoft.com') && urlLower.includes('/purview/')) return false;
+          if (urlLower.includes('state.gov') && urlLower.includes('/wp-content/uploads/')) return false;
+          return true;
+        });
+        
+        const expandedPrioritized = await prioritizeCandidates(expandedFilteredCandidates, expandedParams);
         let expandedExtracted = await extractEventDetails(expandedPrioritized, expandedParams);
         
         // Tag expanded events
