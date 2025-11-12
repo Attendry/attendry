@@ -62,6 +62,20 @@ import {
 } from '../config/rerank';
 import { parseWithRepair } from './llm/json';
 import { filterSpeakers, type RawSpeaker } from './extract/speakers';
+import { SearchCfg } from '../config/search';
+import {
+  computeQuality,
+  isSolidHit,
+  extractHost,
+  type CandidateMeta,
+  type QualityWindow
+} from './quality/eventQuality';
+import {
+  computeExpandedWindow,
+  shouldAutoExpand,
+  type Window
+} from './search/autoExpand';
+import { applyVoyageGate } from './search/voyageGate';
 import { 
   performanceMonitor,
   recordApiPerformance,
@@ -561,16 +575,43 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     // Step 3: Multi-source discovery
     const discoveryStart = Date.now();
-    const candidates = await discoverEventCandidates(query, params, userProfile);
+    const rawCandidates = await discoverEventCandidates(query, params, userProfile);
     const discoveryTime = Date.now() - discoveryStart;
     logs.push({
       stage: 'discovery',
-      message: `Discovered ${candidates.length} candidates`,
+      message: `Discovered ${rawCandidates.length} raw candidates`,
       timestamp: new Date().toISOString(),
-      data: { candidateCount: candidates.length, duration: discoveryTime }
+      data: { candidateCount: rawCandidates.length, duration: discoveryTime }
     });
 
-    // Step 4: Intelligent prioritization
+    // Step 3.5: Voyage rerank gate (pre-filter aggregators, apply DE bias)
+    const voyageStart = Date.now();
+    const voyageResult = await applyVoyageGate(
+      rawCandidates,
+      {
+        country: params.country || 'DE',
+        dateFrom: params.dateFrom || '',
+        dateTo: params.dateTo || '',
+        industry: userProfile?.industry_terms?.[0] || params.userText
+      },
+      process.env.VOYAGE_API_KEY
+    );
+    const candidates = voyageResult.urls;
+    const voyageTime = Date.now() - voyageStart;
+
+    logs.push({
+      stage: 'rerank',
+      message: `Voyage gate: ${rawCandidates.length} → ${candidates.length} URLs`,
+      timestamp: new Date().toISOString(),
+      data: {
+        ...voyageResult.metrics,
+        duration: voyageTime
+      }
+    });
+
+    console.log('[optimized-orchestrator] Voyage gate metrics:', voyageResult.metrics);
+
+    // Step 4: Intelligent prioritization (now on pre-filtered URLs)
     const prioritizationStart = Date.now();
     const prioritized = await prioritizeCandidates(candidates, params);
     const prioritizationTime = Date.now() - prioritizationStart;
@@ -598,77 +639,141 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       data: { extractedCount: extracted.length, duration: extractionTime }
     });
     
-    // Step 5.5: Auto-expand date range if few results found
-    const MIN_RESULTS_THRESHOLD = 3;
+    // Step 5.3: Quality scoring and solid-hit gate
+    const qualityStart = Date.now();
+    const window: QualityWindow = {
+      from: params.dateFrom || '',
+      to: params.dateTo || ''
+    };
+
+    const scoredEvents = extracted.map(event => {
+      const meta: CandidateMeta = {
+        url: event.url,
+        host: extractHost(event.url),
+        country: event.country || undefined,
+        dateISO: event.date,
+        venue: event.venue || undefined,
+        city: event.city || undefined,
+        speakersCount: event.speakers?.length || 0,
+        hasSpeakerPage: (event.metadata?.analysis?.pagesCrawled || 0) > 1,
+        textSample: event.description?.substring(0, 500)
+      };
+      
+      const qualityResult = isSolidHit(meta, window);
+      
+      return {
+        event,
+        ...qualityResult
+      };
+    });
+
+    // Filter to only solid hits
+    const solidEvents = scoredEvents.filter(s => s.ok).map(s => s.event);
+    const qualityTime = Date.now() - qualityStart;
+
+    const avgQuality = scoredEvents.length > 0 
+      ? scoredEvents.reduce((sum, s) => sum + s.quality, 0) / scoredEvents.length 
+      : 0;
     
-    if (extracted.length < MIN_RESULTS_THRESHOLD && params.dateFrom && params.dateTo) {
-      console.log(`[optimized-orchestrator] Only ${extracted.length} events found. Expanding date range...`);
-      logs.push({
-        stage: 'date_expansion',
-        message: `Expanding date range: ${extracted.length} events found (threshold: ${MIN_RESULTS_THRESHOLD})`,
-        timestamp: new Date().toISOString(),
-        data: { originalResults: extracted.length, threshold: MIN_RESULTS_THRESHOLD }
-      });
+    console.log(`[orchestrator] Quality scoring: ${extracted.length} → ${solidEvents.length} solid hits (avg quality: ${avgQuality.toFixed(2)})`);
+
+    logs.push({
+      stage: 'quality',
+      message: `Quality gate: ${extracted.length} → ${solidEvents.length} solid hits`,
+      timestamp: new Date().toISOString(),
+      data: {
+        scored: extracted.length,
+        solid: solidEvents.length,
+        avgQuality: avgQuality.toFixed(2),
+        duration: qualityTime
+      }
+    });
+
+    // Update extracted to be solid events only
+    extracted = solidEvents;
+    
+    // Step 5.5: Auto-expand date range if insufficient solid hits
+    if (shouldAutoExpand(extracted.length) && params.dateFrom && params.dateTo) {
+      const prevSolidCount = extracted.length;
+      const origWindow: Window = { from: params.dateFrom, to: params.dateTo };
+      const expandedWindow = computeExpandedWindow(origWindow);
       
-      // Try 2 weeks first
-      const twoWeeksFrom = params.dateFrom;
-      const twoWeeksTo = new Date(new Date(params.dateTo).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      
-      console.log(`[optimized-orchestrator] Trying 2-week expansion: ${twoWeeksFrom} to ${twoWeeksTo}`);
-      
-      const expandedParams = { ...params, dateTo: twoWeeksTo };
-      const expandedQuery = await buildOptimizedQuery(expandedParams, userProfile);
-      const expandedCandidates = await discoverEventCandidates(expandedQuery, expandedParams, userProfile);
-      const expandedPrioritized = await prioritizeCandidates(expandedCandidates, expandedParams);
-      const expandedExtracted = await extractEventDetails(expandedPrioritized, expandedParams);
-      
-      // Tag 2-week expanded events
-      expandedExtracted.forEach(event => {
-        event.dateRangeSource = '2-weeks';
-      });
-      
-      // Merge unique events
-      const originalUrls = new Set(extracted.map(e => e.url));
-      const newEvents = expandedExtracted.filter(e => !originalUrls.has(e.url));
-      extracted = [...extracted, ...newEvents];
-      
-      console.log(`[optimized-orchestrator] After 2-week expansion: ${extracted.length} total events (${newEvents.length} new)`);
-      logs.push({
-        stage: 'date_expansion',
-        message: `2-week expansion added ${newEvents.length} events`,
-        timestamp: new Date().toISOString(),
-        data: { totalEvents: extracted.length, newEvents: newEvents.length, expandedTo: twoWeeksTo }
-      });
-      
-      // If still not enough, try 1 month
-      if (extracted.length < MIN_RESULTS_THRESHOLD) {
-        const oneMonthFrom = params.dateFrom;
-        const oneMonthTo = new Date(new Date(params.dateTo).getTime() + 23 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-        
-        console.log(`[optimized-orchestrator] Still only ${extracted.length} events. Trying 1-month expansion: ${oneMonthFrom} to ${oneMonthTo}`);
-        
-        const monthParams = { ...params, dateTo: oneMonthTo };
-        const monthQuery = await buildOptimizedQuery(monthParams, userProfile);
-        const monthCandidates = await discoverEventCandidates(monthQuery, monthParams, userProfile);
-        const monthPrioritized = await prioritizeCandidates(monthCandidates, monthParams);
-        const monthExtracted = await extractEventDetails(monthPrioritized, monthParams);
-        
-        // Tag 1-month expanded events
-        monthExtracted.forEach(event => {
-          event.dateRangeSource = '1-month';
+      // Only expand if window actually changed
+      if (expandedWindow.to !== origWindow.to) {
+        console.log(`[auto-expand] Expanding window from ${origWindow.to} to ${expandedWindow.to}`);
+        logs.push({
+          stage: 'auto_expand',
+          message: `Auto-expanding: ${prevSolidCount} solid hits < ${SearchCfg.minSolidHits} minimum`,
+          timestamp: new Date().toISOString(),
+          data: {
+            originalWindow: origWindow,
+            expandedWindow,
+            solidCountBefore: prevSolidCount
+          }
         });
         
-        // Merge unique events
-        const allUrls = new Set(extracted.map(e => e.url));
-        const monthNewEvents = monthExtracted.filter(e => !allUrls.has(e.url));
-        extracted = [...extracted, ...monthNewEvents];
+        // Re-run pipeline with expanded window
+        const expandedParams = { ...params, dateTo: expandedWindow.to };
+        const expandedQuery = await buildOptimizedQuery(expandedParams, userProfile);
         
-        console.log(`[optimized-orchestrator] After 1-month expansion: ${extracted.length} total events (${monthNewEvents.length} new)`);
+        // Discovery → Voyage gate → Prioritization → Extraction → Quality
+        const expandedRawCandidates = await discoverEventCandidates(expandedQuery, expandedParams, userProfile);
+        const expandedVoyageResult = await applyVoyageGate(
+          expandedRawCandidates,
+          {
+            country: expandedParams.country || 'DE',
+            dateFrom: expandedWindow.from,
+            dateTo: expandedWindow.to,
+            industry: userProfile?.industry_terms?.[0] || expandedParams.userText
+          },
+          process.env.VOYAGE_API_KEY
+        );
+        const expandedCandidates = expandedVoyageResult.urls;
+        const expandedPrioritized = await prioritizeCandidates(expandedCandidates, expandedParams);
+        let expandedExtracted = await extractEventDetails(expandedPrioritized, expandedParams);
+        
+        // Tag expanded events
+        expandedExtracted.forEach(event => {
+          event.dateRangeSource = '2-weeks';
+        });
+        
+        // Quality scoring on expanded events
+        const expandedScoredEvents = expandedExtracted.map(event => {
+          const meta: CandidateMeta = {
+            url: event.url,
+            host: extractHost(event.url),
+            country: event.country || undefined,
+            dateISO: event.date,
+            venue: event.venue || undefined,
+            city: event.city || undefined,
+            speakersCount: event.speakers?.length || 0,
+            hasSpeakerPage: (event.metadata?.analysis?.pagesCrawled || 0) > 1,
+            textSample: event.description?.substring(0, 500)
+          };
+          
+          return {
+            event,
+            ...isSolidHit(meta, expandedWindow)
+          };
+        });
+        
+        const expandedSolidEvents = expandedScoredEvents.filter(s => s.ok).map(s => s.event);
+        
+        // Merge unique events
+        const originalUrls = new Set(extracted.map(e => e.url));
+        const newEvents = expandedSolidEvents.filter(e => !originalUrls.has(e.url));
+        extracted = [...extracted, ...newEvents];
+        
+        console.log(`[auto-expand] After expansion: ${extracted.length} total solid hits (${newEvents.length} new)`);
         logs.push({
-          stage: 'date_expansion',
-          message: `1-month expansion added ${monthNewEvents.length} events`,
+          stage: 'auto_expand',
+          message: `Expansion added ${newEvents.length} solid events`,
           timestamp: new Date().toISOString(),
-          data: { totalEvents: extracted.length, newEvents: monthNewEvents.length, expandedTo: oneMonthTo }
+          data: {
+            totalSolid: extracted.length,
+            newSolid: newEvents.length,
+            expandedTo: expandedWindow.to
+          }
         });
       }
     }
@@ -692,11 +797,18 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       ? finalEvents.reduce((sum, event) => sum + event.confidence, 0) / finalEvents.length 
       : 0;
 
+    // Mark low confidence if we don't have enough solid hits
+    const lowConfidence = extracted.length < SearchCfg.minSolidHits;
+    if (lowConfidence) {
+      console.warn(`[orchestrator] Low confidence: only ${extracted.length} solid hits (minimum: ${SearchCfg.minSolidHits})`);
+    }
+
     // Record final search performance
     recordApiPerformance('optimized_search_complete', totalDuration, true, {
       eventsFound: finalEvents.length.toString(),
       averageConfidence: averageConfidence.toFixed(2),
-      country: params.country || 'unknown'
+      country: params.country || 'unknown',
+      lowConfidence: lowConfidence.toString()
     });
 
     // Get performance metrics
@@ -717,12 +829,13 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     return {
       events: finalEvents,
       metadata: {
-        totalCandidates: candidates.length,
+        totalCandidates: rawCandidates.length,
         prioritizedCandidates: prioritized.length,
         extractedCandidates: extracted.length,
         enhancedCandidates: enhanced.length,
         totalDuration,
         averageConfidence,
+        lowConfidence,
         sourceBreakdown: getSourceBreakdown(finalEvents),
         providersUsed: ['firecrawl', 'cse', 'database'],
         // Performance optimization data
@@ -967,33 +1080,6 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
 
   console.log(`[optimized-orchestrator] Discovered ${urls.length} unique URLs from ${queryVariations.length} query variations in ${Date.now() - startTime}ms`);
   
-  // PHASE 3: Pre-filter aggregators BEFORE prioritization/LLM
-  console.log('[optimized-orchestrator] Phase 3: Pre-filtering aggregators...');
-  const { nonAggregators, aggregators } = urls.reduce(
-    (acc, url) => {
-      if (isAggregatorUrl(url)) {
-        acc.aggregators.push(url);
-      } else {
-        acc.nonAggregators.push(url);
-      }
-      return acc;
-    },
-    { nonAggregators: [] as string[], aggregators: [] as string[] }
-  );
-  
-  let filteredUrls = nonAggregators;
-  let backstopKept = 0;
-  
-  // Keep backstop aggregators only if we have too few URLs
-  if (nonAggregators.length < RERANK_CONFIG.minNonAggregatorUrls && aggregators.length > 0) {
-    const backstop = aggregators.slice(0, RERANK_CONFIG.maxBackstopAggregators);
-    filteredUrls = [...nonAggregators, ...backstop];
-    backstopKept = backstop.length;
-    console.log(`[optimized-orchestrator] Added ${backstop.length} aggregator backstop URLs`);
-  }
-  
-  console.log(`[optimized-orchestrator] Pre-filter: ${urls.length} → ${filteredUrls.length} URLs (dropped ${aggregators.length - backstopKept} aggregators, kept ${backstopKept} backstop)`);
-  
   // Log parallel processing metrics
   const metrics = parallelProcessor.getMetrics();
   console.log(`[optimized-orchestrator] Discovery parallel processing metrics:`, {
@@ -1003,7 +1089,7 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
     resourceUtilization: metrics.resourceUtilization
   });
   
-  return filteredUrls;
+  return urls;
 }
 
 /**
