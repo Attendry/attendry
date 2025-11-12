@@ -19,6 +19,68 @@ const EU = [
   { code: 'CH', name: 'Switzerland' },
 ];
 
+// Aggregator domains that should be filtered out
+const AGGREGATOR_DOMAINS = new Set([
+  '10times.com',
+  'allconferencealert.com',
+  'conferencealerts.co.in',
+  'conferenceineurope.net',
+  'conferenceineurope.org',
+  'eventbrite.com',
+  'eventbrite.de',
+  'eventbrite.co.uk',
+  'freeconferencealerts.com',
+  'globalli.io',
+  'internationalconferencealerts.com',
+  'linkedin.com',
+  'researchbunny.com',
+  'vendelux.com',
+  'conference-service.com',
+  'eventora.com',
+  'eventsworld.com',
+  'globalriskcommunity.com',
+  'cvent.com',
+  'allinternationalconference.com',
+  'conferencenext.com',
+  'conferenceindex.org',
+]);
+
+function isAggregatorDomain(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    return AGGREGATOR_DOMAINS.has(host);
+  } catch {
+    return false;
+  }
+}
+
+function isActionableEvent(event: Event): boolean {
+  // Skip if no source URL
+  if (!event.source_url) return false;
+  
+  // Must have a real title (not generic fallback)
+  const hasRealTitle = event.title && 
+    !event.title.includes('TBD') && 
+    event.title !== 'Event' &&
+    event.title !== 'Unknown Event' &&
+    event.title.length > 5;
+  
+  // Check if it's a generic title (just "conference" or similar)
+  const isGenericTitle = event.title && (
+    event.title.toLowerCase() === 'conference' ||
+    event.title.toLowerCase() === 'business conference' ||
+    event.title.toLowerCase().startsWith('germany conference') ||
+    event.title.toLowerCase().startsWith('november conference')
+  );
+  
+  // Must have speakers OR have a specific title (not generic)
+  const hasSpeakers = event.speakers && event.speakers.length > 0;
+  const hasSpecificTitle = hasRealTitle && !isGenericTitle;
+  
+  // Event is actionable if it has speakers OR has a specific title
+  return hasSpeakers || hasSpecificTitle;
+}
+
 function todayISO(d = new Date()) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -131,21 +193,40 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || res.statusText);
 
-      const events = (data.events || data.items || []).map((e: Event) => ({
+      const allEvents = (data.events || data.items || []).map((e: Event) => ({
         ...e,
         source_url: e.source_url || e.link || '',
       }));
 
-      setSearchResults(events);
+      // Filter out aggregator sites and non-actionable events
+      const actionableEvents = allEvents.filter(event => {
+        // Skip aggregator domains
+        if (isAggregatorDomain(event.source_url)) {
+          return false;
+        }
+        // Only include events with actionable data
+        return isActionableEvent(event);
+      });
+
+      setSearchResults(actionableEvents);
       
       // Log for debugging
-      if (events.length === 0) {
-        console.log('No events found in search response:', {
-          hasEvents: !!data.events,
-          eventsLength: data.events?.length,
-          hasItems: !!data.items,
-          itemsLength: data.items?.length,
-          dataKeys: Object.keys(data),
+      if (actionableEvents.length === 0) {
+        const aggregatorCount = allEvents.filter(e => isAggregatorDomain(e.source_url)).length;
+        const nonActionableCount = allEvents.length - aggregatorCount - actionableEvents.length;
+        
+        console.log('No actionable events found:', {
+          totalEvents: allEvents.length,
+          aggregatorSites: aggregatorCount,
+          nonActionableEvents: nonActionableCount,
+          actionableEvents: actionableEvents.length,
+          sampleEvents: allEvents.slice(0, 3).map(e => ({
+            title: e.title,
+            url: e.source_url,
+            speakers: e.speakers?.length || 0,
+            isAggregator: isAggregatorDomain(e.source_url),
+            isActionable: isActionableEvent(e),
+          })),
         });
       }
     } catch (err) {
@@ -422,15 +503,25 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
       )}
 
       {!isSearching && searchResults.length === 0 && !error && (
-        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-center">
-          <p className="text-sm text-gray-600">
-            No events found for your search criteria. Try:
-          </p>
-          <ul className="mt-2 text-xs text-gray-500 space-y-1">
-            <li>• Adjusting your keywords</li>
-            <li>• Trying a different country</li>
-            <li>• Expanding the date range</li>
-          </ul>
+        <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-yellow-900 mb-1">
+                No actionable events found
+              </h4>
+              <p className="text-xs text-yellow-800 mb-2">
+                The search found results, but they were mostly aggregator/directory sites without extractable speaker data or specific event details.
+              </p>
+              <p className="text-xs text-yellow-700 font-medium mb-2">Try:</p>
+              <ul className="text-xs text-yellow-700 space-y-1 ml-4 list-disc">
+                <li>Using more specific keywords (e.g., "legal tech conference" instead of "conference")</li>
+                <li>Searching for specific event names or organizers</li>
+                <li>Trying a different country or expanding the date range</li>
+                <li>Using event-specific terms from your industry (check your saved ICP/Industry terms)</li>
+              </ul>
+            </div>
+          </div>
         </div>
       )}
 
