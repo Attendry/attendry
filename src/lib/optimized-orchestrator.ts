@@ -1280,8 +1280,8 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  const chunkSize = 1;
-  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
+  const chunkSize = 5;  // Process 5 URLs per Gemini call (was 1) - 5x faster!
+  const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON array: [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
 
