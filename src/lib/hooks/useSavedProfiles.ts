@@ -14,6 +14,9 @@ interface UpdateProfilePayload {
   notes?: string;
   tags?: string[];
   outreach_status?: OutreachStatus;
+  enhanced_data?: any;
+  speaker_data?: any;
+  last_enhanced_at?: string | null;
 }
 
 export function useSavedProfiles(initialOptions: UseSavedProfilesOptions = {}) {

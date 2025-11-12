@@ -7,6 +7,9 @@ interface UpdateProfileRequest {
   notes?: string;
   tags?: string[];
   outreach_status?: 'not_started' | 'contacted' | 'responded' | 'meeting_scheduled';
+  enhanced_data?: any;
+  speaker_data?: any;
+  last_enhanced_at?: string | null;
 }
 
 // PATCH /api/profiles/saved/[id] - Update a profile
@@ -28,13 +31,25 @@ export async function PATCH(
     const requestData: UpdateProfileRequest = await req.json();
     const { notes, tags, outreach_status } = requestData;
 
+    const updatePayload: Record<string, unknown> = {
+      ...(notes !== undefined && { notes }),
+      ...(tags !== undefined && { tags }),
+      ...(outreach_status !== undefined && { outreach_status }),
+      ...(enhanced_data !== undefined && { enhanced_data }),
+      ...(speaker_data !== undefined && { speaker_data }),
+      ...(last_enhanced_at !== undefined && { last_enhanced_at }),
+    };
+
+    if (Object.keys(updatePayload).length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: "No fields provided for update"
+      }, { status: 400 });
+    }
+
     const { data, error } = await supabase
       .from('saved_speaker_profiles')
-      .update({
-        ...(notes !== undefined && { notes }),
-        ...(tags !== undefined && { tags }),
-        ...(outreach_status !== undefined && { outreach_status })
-      })
+      .update(updatePayload)
       .eq('id', params.id)
       .eq('user_id', userRes.user.id)
       .select()
