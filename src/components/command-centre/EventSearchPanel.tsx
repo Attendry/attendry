@@ -1,11 +1,17 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
-import { Search, ChevronDown, ChevronUp, Loader2, Calendar, MapPin, ExternalLink, X, Check } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { Search, ChevronDown, ChevronUp, Loader2, Calendar, MapPin, ExternalLink, X, Check, Tag, Users } from 'lucide-react';
 import { deriveLocale, toISO2Country } from '@/lib/utils/country';
 
 interface EventSearchPanelProps {
   onSaveSpeaker?: (event: any) => void;
+}
+
+interface UserProfile {
+  industry_terms?: string[];
+  icp_terms?: string[];
+  competitors?: string[];
 }
 
 interface SearchEvent {
@@ -50,11 +56,29 @@ export function EventSearchPanel({ onSaveSpeaker }: EventSearchPanelProps) {
   const [searchResults, setSearchResults] = useState<SearchEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [savedEventIds, setSavedEventIds] = useState<Set<string>>(new Set());
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [showProfileDetails, setShowProfileDetails] = useState(false);
 
   // Search form state
   const [keywords, setKeywords] = useState('');
   const [country, setCountry] = useState('EU');
   const [days, setDays] = useState(7);
+
+  // Load user profile on mount
+  useEffect(() => {
+    async function loadUserProfile() {
+      try {
+        const response = await fetch('/api/profiles/me');
+        if (response.ok) {
+          const data = await response.json();
+          setUserProfile(data.profile);
+        }
+      } catch (error) {
+        console.error('Failed to load user profile:', error);
+      }
+    }
+    loadUserProfile();
+  }, []);
 
   // Pre-configured quick search
   const handleQuickSearch = useCallback(async () => {
@@ -114,9 +138,84 @@ export function EventSearchPanel({ onSaveSpeaker }: EventSearchPanelProps) {
       <div className="p-6">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <div>
+            <div className="flex-1">
               <h2 className="text-xl font-semibold text-gray-900">Event Search</h2>
               <p className="text-sm text-gray-600">Find and save speakers from upcoming events</p>
+              
+              {/* Search Profile Visualization */}
+              {userProfile && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => setShowProfileDetails(!showProfileDetails)}
+                    className="inline-flex items-center gap-2 text-xs text-gray-600 hover:text-gray-900 transition-colors"
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                    Search uses your profile targeting
+                    <ChevronDown className={`h-3 w-3 transition-transform ${showProfileDetails ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {showProfileDetails && (
+                    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                      {userProfile.industry_terms && userProfile.industry_terms.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Tag className="h-3 w-3 text-blue-600" />
+                            <span className="text-xs font-medium text-gray-700">Industry Terms:</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {userProfile.industry_terms.slice(0, 5).map((term, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 text-blue-800 text-xs"
+                              >
+                                {term}
+                              </span>
+                            ))}
+                            {userProfile.industry_terms.length > 5 && (
+                              <span className="text-xs text-gray-500">
+                                +{userProfile.industry_terms.length - 5} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {userProfile.icp_terms && userProfile.icp_terms.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Users className="h-3 w-3 text-green-600" />
+                            <span className="text-xs font-medium text-gray-700">Target Roles (ICP):</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {userProfile.icp_terms.slice(0, 5).map((term, idx) => (
+                              <span
+                                key={idx}
+                                className="inline-flex items-center px-2 py-0.5 rounded-md bg-green-100 text-green-800 text-xs"
+                              >
+                                {term}
+                              </span>
+                            ))}
+                            {userProfile.icp_terms.length > 5 && (
+                              <span className="text-xs text-gray-500">
+                                +{userProfile.icp_terms.length - 5} more
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="pt-1 border-t border-gray-200">
+                        <a
+                          href="/admin"
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          Manage search profile →
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <button
               onClick={() => setIsExpanded(!isExpanded)}
