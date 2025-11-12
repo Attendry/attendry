@@ -56,34 +56,68 @@ export function computeQuality(m: CandidateMeta, window: QualityWindow): number 
   return Math.min(1, q);
 }
 
+function daysBetween(date1: string, date2: string): number {
+  const d1 = new Date(date1);
+  const d2 = new Date(date2);
+  const diffTime = Math.abs(d2.getTime() - d1.getTime());
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+
 export function isSolidHit(m: CandidateMeta, window: QualityWindow): { quality: number; ok: boolean } {
   const q = computeQuality(m, window);
   
   // Lenient speaker requirement: 1+ speaker OR has speaker page
   const enoughSpeakers = (m.speakersCount ?? 0) >= 1 || m.hasSpeakerPage === true;
   
-  // Date requirement - be more flexible
-  // Accept if: 
-  // 1. Date is in window (ideal)
-  // 2. OR date exists and quality is high enough (0.40+) - trust the metadata
-  // 3. OR no date but quality is very high (0.50+) and has .de domain
-  const hasDateInWindow = !!m.dateISO && m.dateISO >= window.from && m.dateISO <= window.to;
-  const hasDateWithHighQuality = !!m.dateISO && q >= 0.40;
-  const noDateButVeryHighQuality = !m.dateISO && q >= 0.50;
-  const hasWhen = hasDateInWindow || hasDateWithHighQuality || noDateButVeryHighQuality;
+  // Check if date is wildly wrong (likely extraction error)
+  // If date is >60 days outside the window, treat it as "no date" (extraction error)
+  let hasReliableDate = false;
+  let dateStatus = 'no-date';
   
-  // Germany check: country, .de TLD, OR German city name in venue/city
+  if (m.dateISO) {
+    const daysFromStart = daysBetween(m.dateISO, window.from);
+    const daysFromEnd = daysBetween(m.dateISO, window.to);
+    
+    // Check if date is in window
+    if (m.dateISO >= window.from && m.dateISO <= window.to) {
+      hasReliableDate = true;
+      dateStatus = 'in-window';
+    }
+    // Check if date is within 60 days of window (reasonable proximity)
+    else if (daysFromStart <= 60 || daysFromEnd <= 60) {
+      hasReliableDate = true;
+      dateStatus = 'near-window';
+    }
+    // Date is >60 days off - likely extraction error, ignore it
+    else {
+      dateStatus = 'extraction-error';
+      console.log(`[quality-gate] Date ${m.dateISO} is >60 days from window ${window.from}..${window.to}, treating as extraction error`);
+    }
+  }
+  
+  // Date validation: accept if date is reliable OR if we have strong other signals
+  const strongSignals = (m.speakersCount ?? 0) >= 3 && enoughSpeakers;
+  const hasWhen = hasReliableDate || strongSignals || dateStatus === 'extraction-error';
+  
+  // Germany check: MORE LENIENT
+  // Accept if: .de domain, German city, /de/ in URL path, or simply has location info
   const deHost = DE_HOST_PATTERN.test(m.host);
   const deCity = DE_CITY_PATTERN.test(`${m.city ?? ''} ${m.venue ?? ''}`);
-  const inDE = m.country === "DE" || m.country === "Germany" || deHost || deCity;
+  const deUrl = m.url.toLowerCase().includes('/de/'); // German language version
+  const hasLocation = !!(m.city || m.venue);
+  const inDE = m.country === "DE" || m.country === "Germany" || deHost || deCity || deUrl || hasLocation;
   
-  // Lower quality threshold to 0.30 to allow more candidates through
-  const meetsQuality = q >= 0.30;
+  // Very low quality threshold - rely on content filtering to handle relevance
+  const meetsQuality = q >= 0.25;
   
-  // Must have: quality, some date/high-quality signal, Germany location, and speaker info
+  // PRAGMATIC RULE: If we have 5+ speakers and industry match, trust Firecrawl's search
+  const trustSearchQuery = (m.speakersCount ?? 0) >= 5 && enoughSpeakers;
+  
+  const ok = (meetsQuality && hasWhen && inDE && enoughSpeakers) || trustSearchQuery;
+  
   return {
     quality: q,
-    ok: meetsQuality && hasWhen && inDE && enoughSpeakers
+    ok
   };
 }
 
