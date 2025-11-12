@@ -62,6 +62,7 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+  const [savedSpeakers, setSavedSpeakers] = useState<Set<string>>(new Set());
   
   // Search form state
   const [keywords, setKeywords] = useState('');
@@ -160,11 +161,31 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
     handleSearch();
   }, [handleSearch]);
 
+  const removeSpeakerFromEvent = useCallback((eventUrl: string, speaker: any) => {
+    setSearchResults(prev => prev.map(event => {
+      if (event.source_url === eventUrl && event.speakers) {
+        const updatedSpeakers = event.speakers.filter((s: any) => 
+          !(s.name === speaker.name && (s.org || '') === (speaker.org || ''))
+        );
+        return { ...event, speakers: updatedSpeakers };
+      }
+      return event;
+    }));
+  }, []);
+
   const handleSaveSpeaker = useCallback(async (speaker: any, event: Event) => {
     try {
       // Ensure speaker has required fields
       if (!speaker.name) {
         alert('Speaker name is required');
+        return;
+      }
+
+      // Create a unique key for this speaker
+      const speakerKey = `${event.source_url}::${speaker.name}::${speaker.org || ''}`;
+      
+      // Check if already saved
+      if (savedSpeakers.has(speakerKey)) {
         return;
       }
 
@@ -198,11 +219,17 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 409) {
-          // Already saved - show a subtle message but don't error
+          // Already saved - mark as saved and remove from display
+          setSavedSpeakers(prev => new Set(prev).add(speakerKey));
+          removeSpeakerFromEvent(event.source_url, speaker);
           return;
         }
         throw new Error(data?.error || 'Save failed');
       }
+
+      // Mark as saved and remove from event display
+      setSavedSpeakers(prev => new Set(prev).add(speakerKey));
+      removeSpeakerFromEvent(event.source_url, speaker);
 
       // Notify parent component
       if (onSpeakersFound) {
@@ -211,7 +238,7 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to save speaker');
     }
-  }, [onSpeakersFound]);
+  }, [onSpeakersFound, savedSpeakers, removeSpeakerFromEvent]);
 
   const hasProfileTerms = (userProfile?.industry_terms?.length || 0) > 0 || (userProfile?.icp_terms?.length || 0) > 0;
 
@@ -442,25 +469,39 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
                     {event.speakers && event.speakers.length > 0 ? (
                       <div className="mt-2 space-y-1">
                         <p className="text-xs font-medium text-gray-700">Speakers:</p>
-                        {event.speakers.slice(0, 5).map((speaker: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between rounded bg-white px-2 py-1 text-xs"
-                          >
-                            <span className="text-gray-700">
-                              {speaker.name || 'Unknown'}
-                              {speaker.title && ` - ${speaker.title}`}
-                              {speaker.org && ` (${speaker.org})`}
-                            </span>
-                            <button
-                              onClick={() => handleSaveSpeaker(speaker, event)}
-                              className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                        {event.speakers.slice(0, 5).map((speaker: any, idx: number) => {
+                          const speakerKey = `${event.source_url}::${speaker.name}::${speaker.org || ''}`;
+                          const isSaved = savedSpeakers.has(speakerKey);
+                          
+                          return (
+                            <div
+                              key={idx}
+                              className={`flex items-center justify-between rounded px-2 py-1 text-xs ${
+                                isSaved ? 'bg-green-50 border border-green-200' : 'bg-white'
+                              }`}
                             >
-                              <Plus className="h-3 w-3" />
-                              Save
-                            </button>
-                          </div>
-                        ))}
+                              <span className={`${isSaved ? 'text-green-700 line-through' : 'text-gray-700'}`}>
+                                {speaker.name || 'Unknown'}
+                                {speaker.title && ` - ${speaker.title}`}
+                                {speaker.org && ` (${speaker.org})`}
+                              </span>
+                              {isSaved ? (
+                                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-green-600">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Saved
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleSaveSpeaker(speaker, event)}
+                                  className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  Save
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
                         {event.speakers.length > 5 && (
                           <p className="text-xs text-gray-500">
                             +{event.speakers.length - 5} more speakers
