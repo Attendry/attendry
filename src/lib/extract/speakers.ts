@@ -20,7 +20,10 @@ export type Speaker = RawSpeaker & {
 const HONORIFICS = /\b(Dr\.?|Prof\.?|RA|Rechtsanwalt|Rechtsanwältin|LL\.M\.|LLM|MBA|PhD|Ph\.D\.|M\.Sc\.|B\.Sc\.)\b/i;
 
 /** Event/session/org keywords that indicate non-person */
-const NON_PERSON_TERMS = /\b(Summit|Forum|Panel|Track|Keynote|Workshop|Session|Privacy|Compliance|Risk|Week|Faculty|Operations|Practices?|User|National|Symposium|Lawyers?|Conference|Konferenz|Tagung|Seminar|Day|Resource|Center|Centre|Library|Portal|Hub|Network|Instructor|Trainer|Teacher|Committee|Board|Team|Group|Department|Association|Institute|Foundation|Council|Society|Partner)\b/i;
+const NON_PERSON_TERMS = /\b(Summit|Forum|Panel|Track|Keynote|Workshop|Session|Privacy|Compliance|Risk|Week|Faculty|Operations|Practices?|User|National|Symposium|Lawyers?|Conference|Konferenz|Tagung|Seminar|Day|Resource|Center|Centre|Library|Portal|Hub|Network|Instructor|Trainer|Teacher|Committee|Board|Team|Group|Department|Association|Institute|Foundation|Council|Society|Partner|Discovery|eDiscovery|Litigation|Investigation|Audit|Governance|Regulation|Technology|Management|Solution|Service|Program|Project|Strategy|Initiative)\b/i;
+
+/** Action verb phrases that indicate topics/sessions, not people */
+const ACTION_VERBS = /^(Negotiating|Managing|Implementing|Understanding|Navigating|Leading|Building|Developing|Creating|Exploring|Establishing|Designing|Conducting|Planning|Organizing|Facilitating|Moderating|Presenting|Discussing|Analyzing|Reviewing|Examining|Assessing|Evaluating)\b/i;
 
 /** Organization suffixes */
 const ORG_SUFFIX = /\b(GmbH|AG|SE|KG|UG|Inc\.?|LLC|LLP|PLC|S\.?A\.?|S\.?p\.?A\.?|GmbH & Co\.? KG|e\.V\.|Corp\.?|Ltd\.?|Limited)\b/i;
@@ -80,7 +83,12 @@ export function isLikelyPerson(
     return { ok: false, reasons: ['ui_element'] };
   }
   
-  // Contains non-person keywords (Summit, Forum, etc.)
+  // Starts with action verb (e.g., "Negotiating Discovery", "Managing Compliance")
+  if (ACTION_VERBS.test(n)) {
+    return { ok: false, reasons: ['action_verb_phrase'] };
+  }
+  
+  // Contains non-person keywords (Summit, Forum, Discovery, etc.)
   if (NON_PERSON_TERMS.test(n)) {
     return { ok: false, reasons: ['non_person_keyword'] };
   }
