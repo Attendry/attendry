@@ -62,18 +62,25 @@ export function isSolidHit(m: CandidateMeta, window: QualityWindow): { quality: 
   // Lenient speaker requirement: 1+ speaker OR has speaker page
   const enoughSpeakers = (m.speakersCount ?? 0) >= 1 || m.hasSpeakerPage === true;
   
-  // Date requirement (critical for events)
-  const hasWhen = !!m.dateISO && m.dateISO >= window.from && m.dateISO <= window.to;
+  // Date requirement - be more flexible
+  // Accept if: 
+  // 1. Date is in window (ideal)
+  // 2. OR date exists and quality is high enough (0.40+) - trust the metadata
+  // 3. OR no date but quality is very high (0.50+) and has .de domain
+  const hasDateInWindow = !!m.dateISO && m.dateISO >= window.from && m.dateISO <= window.to;
+  const hasDateWithHighQuality = !!m.dateISO && q >= 0.40;
+  const noDateButVeryHighQuality = !m.dateISO && q >= 0.50;
+  const hasWhen = hasDateInWindow || hasDateWithHighQuality || noDateButVeryHighQuality;
   
   // Germany check: country, .de TLD, OR German city name in venue/city
   const deHost = DE_HOST_PATTERN.test(m.host);
   const deCity = DE_CITY_PATTERN.test(`${m.city ?? ''} ${m.venue ?? ''}`);
   const inDE = m.country === "DE" || m.country === "Germany" || deHost || deCity;
   
-  // Lower quality threshold to 0.35 to allow more candidates through
-  const meetsQuality = q >= 0.35;
+  // Lower quality threshold to 0.30 to allow more candidates through
+  const meetsQuality = q >= 0.30;
   
-  // Must have: quality, date in range, Germany location, and some speaker info
+  // Must have: quality, some date/high-quality signal, Germany location, and speaker info
   return {
     quality: q,
     ok: meetsQuality && hasWhen && inDE && enoughSpeakers

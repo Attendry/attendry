@@ -611,7 +611,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 
     console.log('[optimized-orchestrator] Voyage gate metrics:', voyageResult.metrics);
 
-    // Step 3.7: Filter out obvious non-event URLs (documentation, PDFs, profile pages)
+    // Step 3.7: Filter out obvious non-event URLs (documentation, PDFs, profile pages, generic listings)
     const filteredCandidates = candidates.filter(url => {
       const urlLower = url.toLowerCase();
       
@@ -626,6 +626,14 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       
       // Exclude legal/static pages
       if (urlLower.includes('/privacy') || urlLower.includes('/terms') || urlLower.includes('/impressum') || urlLower.includes('/agb')) return false;
+      
+      // Exclude generic event listing pages (aggregator-like) - only if URL ends with /events/ or /events
+      // Allow specific event URLs like /events/event-name-2025
+      const endsWithEvents = urlLower.endsWith('/events/') || urlLower.endsWith('/events');
+      if (endsWithEvents) {
+        console.log(`[url-filter] Excluding generic events listing: ${url}`);
+        return false;
+      }
       
       // Exclude Microsoft Learn documentation (not events)
       if (urlLower.includes('learn.microsoft.com') && urlLower.includes('/purview/')) return false;
@@ -778,17 +786,25 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         );
         const expandedCandidates = expandedVoyageResult.urls;
         
-        // Filter out non-event URLs in expanded results
+        // Filter out non-event URLs in expanded results (same logic as initial filter)
         const expandedFilteredCandidates = expandedCandidates.filter(url => {
           const urlLower = url.toLowerCase();
           if (urlLower.includes('/docs/') || urlLower.includes('/documentation/')) return false;
           if (urlLower.endsWith('.pdf') || urlLower.endsWith('.doc') || urlLower.endsWith('.docx')) return false;
           if (urlLower.includes('/people/') || urlLower.includes('/person/') || urlLower.includes('/profile/')) return false;
           if (urlLower.includes('/privacy') || urlLower.includes('/terms') || urlLower.includes('/impressum') || urlLower.includes('/agb')) return false;
+          // Exclude generic event listing pages
+          const endsWithEvents = urlLower.endsWith('/events/') || urlLower.endsWith('/events');
+          if (endsWithEvents) {
+            console.log(`[url-filter-expanded] Excluding generic events listing: ${url}`);
+            return false;
+          }
           if (urlLower.includes('learn.microsoft.com') && urlLower.includes('/purview/')) return false;
           if (urlLower.includes('state.gov') && urlLower.includes('/wp-content/uploads/')) return false;
           return true;
         });
+        
+        console.log(`[url-filter-expanded] Filtered ${expandedCandidates.length} → ${expandedFilteredCandidates.length} URLs`);
         
         const expandedPrioritized = await prioritizeCandidates(expandedFilteredCandidates, expandedParams);
         let expandedExtracted = await extractEventDetails(expandedPrioritized, expandedParams);
@@ -1754,8 +1770,31 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
   
   console.log('[optimized-orchestrator] Filtering with industry terms:', industryTerms.slice(0, 5), 'and ICP terms:', icpTerms.slice(0, 3));
   
+  // Non-event keywords that should immediately disqualify a result
+  const NON_EVENT_KEYWORDS = [
+    'allgemeine geschäftsbedingungen',
+    'agb',
+    'general terms and conditions',
+    'terms of service',
+    'terms and conditions',
+    'privacy policy',
+    'datenschutzerklärung',
+    'cookie policy',
+    'impressum',
+    'legal notice',
+    'disclaimer'
+  ];
+  
   return events.filter(event => {
     const searchText = `${event.title} ${event.description}`.toLowerCase();
+    const titleLower = event.title.toLowerCase();
+    
+    // FIRST: Exclude non-event pages (legal, static pages)
+    const isNonEvent = NON_EVENT_KEYWORDS.some(keyword => titleLower.includes(keyword));
+    if (isNonEvent) {
+      console.log(`[optimized-orchestrator] ✗ Event filtered out (non-event page): "${event.title.substring(0, 80)}"`);
+      return false;
+    }
     
     // Check if event content contains ANY industry term
     const hasIndustryMatch = industryTerms.some(term => {
