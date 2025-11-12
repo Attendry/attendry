@@ -24,6 +24,8 @@ import {
   CalendarRange,
   Maximize2,
   Minimize2,
+  Pin,
+  PinOff,
 } from 'lucide-react';
 
 import { SavedSpeakerProfile } from '@/lib/types/database';
@@ -92,6 +94,36 @@ const QUICK_SEARCH_DEFAULTS = {
   days: 14 as (typeof QUICK_SEARCH_DAY_OPTIONS)[number],
   keywords: '',
 };
+
+const PINNED_SEARCH_KEY = 'attendry_pinned_search';
+
+function loadPinnedSearch(): typeof QUICK_SEARCH_DEFAULTS | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem(PINNED_SEARCH_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePinnedSearch(config: typeof QUICK_SEARCH_DEFAULTS) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PINNED_SEARCH_KEY, JSON.stringify(config));
+  } catch {
+    // Ignore localStorage errors
+  }
+}
+
+function clearPinnedSearch() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(PINNED_SEARCH_KEY);
+  } catch {
+    // Ignore localStorage errors
+  }
+}
 
 function toDateOnlyString(date: Date) {
   const copy = new Date(date);
@@ -340,6 +372,7 @@ function getSpeakerSignature(speaker: EventSpeaker): string | null {
 
 function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const [config, setConfig] = useState(QUICK_SEARCH_DEFAULTS);
+  const [isPinned, setIsPinned] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [results, setResults] = useState<EventRec[]>([]);
@@ -349,6 +382,15 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const [savingSpeakerId, setSavingSpeakerId] = useState<string | null>(null);
   const [speakerStatus, setSpeakerStatus] = useState<Record<string, 'saved' | 'error'>>({});
   const [savedSignatures, setSavedSignatures] = useState<Record<string, 'saved'>>({});
+
+  // Load pinned search on mount
+  useEffect(() => {
+    const pinned = loadPinnedSearch();
+    if (pinned) {
+      setConfig(pinned);
+      setIsPinned(true);
+    }
+  }, []);
 
   const prioritizedResults = useMemo(() => {
     const withSpeakers = results.filter(
@@ -402,6 +444,16 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const updateConfig = (partial: Partial<typeof config>) => {
     setConfig((prev) => ({ ...prev, ...partial }));
   };
+
+  const handlePinSearch = useCallback(() => {
+    savePinnedSearch(config);
+    setIsPinned(true);
+  }, [config]);
+
+  const handleUnpinSearch = useCallback(() => {
+    clearPinnedSearch();
+    setIsPinned(false);
+  }, []);
 
   const runSearch = useCallback(async () => {
     const now = new Date();
@@ -554,19 +606,50 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-blue-600" />
             <h2 className="text-lg font-semibold text-gray-900">Event Discovery</h2>
+            {isPinned && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                <Pin className="h-3 w-3" />
+                Pinned
+              </span>
+            )}
           </div>
           <p className="mt-1 text-sm text-gray-600">
-            Run your go-to search and save speakers without leaving this page.
+            {isPinned 
+              ? 'Your default search is ready. Just hit Go!' 
+              : 'Run your go-to search and save speakers without leaving this page.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCollapsed((prev) => !prev)}
-          className="rounded-full border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50"
-          aria-label={collapsed ? 'Expand event discovery panel' : 'Collapse event discovery panel'}
-        >
-          {collapsed ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-2">
+          {isPinned ? (
+            <button
+              type="button"
+              onClick={handleUnpinSearch}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+              title="Unpin this search"
+            >
+              <PinOff className="h-3.5 w-3.5" />
+              Unpin
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handlePinSearch}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              title="Pin this search as your default"
+            >
+              <Pin className="h-3.5 w-3.5" />
+              Pin
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setCollapsed((prev) => !prev)}
+            className="rounded-full border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50"
+            aria-label={collapsed ? 'Expand event discovery panel' : 'Collapse event discovery panel'}
+          >
+            {collapsed ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
       {!collapsed && (
         <div className="space-y-5 px-6 py-5">
@@ -589,7 +672,11 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 type="button"
                 onClick={() => void runSearch()}
                 disabled={loading}
-                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                className={`inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-blue-300 ${
+                  isPinned 
+                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 shadow-md hover:from-blue-700 hover:to-blue-800' 
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
               >
                 {loading ? (
                   <>
@@ -599,10 +686,21 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Go
+                    {isPinned ? 'Go (Pinned)' : 'Go'}
                   </>
                 )}
               </button>
+              {isPinned && (
+                <button
+                  type="button"
+                  onClick={handlePinSearch}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
+                  title="Update pinned search with current settings"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Update Pin
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowAdvanced((prev) => !prev)}
