@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Search, ChevronDown, ChevronUp, X, Loader2, Plus } from 'lucide-react';
+import { Search, ChevronDown, ChevronUp, X, Loader2, Plus, Settings, CheckCircle2, AlertCircle } from 'lucide-react';
 import { deriveLocale, toISO2Country } from '@/lib/utils/country';
+import Link from 'next/link';
 
 const EU = [
   { code: 'EU', name: 'All Europe' },
@@ -48,11 +49,19 @@ interface EventSearchPanelProps {
   onSpeakersFound?: (speakers: any[], event: Event) => void;
 }
 
+interface UserProfile {
+  industry_terms?: string[];
+  icp_terms?: string[];
+  competitors?: string[];
+}
+
 export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Event[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
   
   // Search form state
   const [keywords, setKeywords] = useState('');
@@ -60,6 +69,28 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
   const [days, setDays] = useState<7 | 14 | 30>(7);
   const [from, setFrom] = useState<string>(todayISO());
   const [to, setTo] = useState<string>(todayISO(addDays(new Date(), 7)));
+
+  // Load user profile on mount
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const res = await fetch('/api/profiles/me');
+        const data = await res.json();
+        if (data.success && data.profile) {
+          setUserProfile({
+            industry_terms: data.profile.industry_terms || [],
+            icp_terms: data.profile.icp_terms || [],
+            competitors: data.profile.competitors || [],
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load user profile:', err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    }
+    loadProfile();
+  }, []);
 
   // Keep dates in sync
   useEffect(() => {
@@ -182,6 +213,8 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
     }
   }, [onSpeakersFound]);
 
+  const hasProfileTerms = (userProfile?.industry_terms?.length || 0) > 0 || (userProfile?.icp_terms?.length || 0) > 0;
+
   if (isMinimized) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
@@ -197,8 +230,17 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
                     ? `${searchResults.length} events found` 
                     : keywords 
                       ? 'No events found - click to refine search'
-                      : 'Search for events and speakers'}
+                      : hasProfileTerms
+                        ? 'Ready to search with your saved terms'
+                        : 'Search for events and speakers'}
               </p>
+              {!loadingProfile && hasProfileTerms && (
+                <div className="mt-1 flex items-center gap-2 text-xs">
+                  <span className="text-gray-500">
+                    Using {userProfile?.industry_terms?.length || 0} industry, {userProfile?.icp_terms?.length || 0} ICP terms
+                  </span>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -240,6 +282,59 @@ export function EventSearchPanel({ onSpeakersFound }: EventSearchPanelProps) {
           <ChevronDown className="h-5 w-5" />
         </button>
       </div>
+
+      {/* User Profile Terms Display */}
+      {!loadingProfile && (
+        <div className={`mb-4 rounded-lg border p-4 ${hasProfileTerms ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50'}`}>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                {hasProfileTerms ? (
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-yellow-600" />
+                )}
+                <h4 className="text-sm font-semibold text-gray-900">
+                  {hasProfileTerms ? 'Search will use your saved terms' : 'No search terms configured'}
+                </h4>
+              </div>
+              {hasProfileTerms ? (
+                <div className="space-y-2 text-xs">
+                  {userProfile?.industry_terms && userProfile.industry_terms.length > 0 && (
+                    <div>
+                      <span className="font-medium text-gray-700">Industry Terms: </span>
+                      <span className="text-gray-600">
+                        {userProfile.industry_terms.slice(0, 5).join(', ')}
+                        {userProfile.industry_terms.length > 5 && ` +${userProfile.industry_terms.length - 5} more`}
+                      </span>
+                    </div>
+                  )}
+                  {userProfile?.icp_terms && userProfile.icp_terms.length > 0 && (
+                    <div>
+                      <span className="font-medium text-gray-700">ICP Terms: </span>
+                      <span className="text-gray-600">
+                        {userProfile.icp_terms.slice(0, 5).join(', ')}
+                        {userProfile.icp_terms.length > 5 && ` +${userProfile.icp_terms.length - 5} more`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-600">
+                  Configure your Industry and ICP terms to improve search relevance. These terms will be automatically included in your searches.
+                </p>
+              )}
+            </div>
+            <Link
+              href="/admin"
+              className="ml-4 inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <Settings className="h-3.5 w-3.5" />
+              {hasProfileTerms ? 'Edit' : 'Configure'}
+            </Link>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSearch} className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row">
