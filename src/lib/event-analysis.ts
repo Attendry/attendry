@@ -1201,9 +1201,10 @@ function isLikelyPersonName(name: string): boolean {
     return false;
   }
   
-  // Check that each word looks like a name part (letters only, possibly with hyphens/apostrophes)
+  // Check that each word looks like a name part (letters, hyphens, apostrophes, or honorifics with periods)
+  const honorificPattern = /^(Dr\.?|Prof\.?|RA|LL\.M\.|PhD|Ph\.D\.|M\.Sc\.|B\.Sc\.)$/i;
   const hasValidCharacters = parts.every(part => 
-    /^[A-ZÄÖÜa-zäöüß\-']+$/.test(part)
+    /^[A-ZÄÖÜa-zäöüß\-']+$/.test(part) || honorificPattern.test(part)
   );
   
   if (!hasValidCharacters) {

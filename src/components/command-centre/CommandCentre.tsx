@@ -88,6 +88,21 @@ const QUICK_SEARCH_LOCATIONS = [
 
 const QUICK_SEARCH_DAY_OPTIONS = [7, 14, 30] as const;
 
+const SUGGESTED_KEYWORDS = [
+  { label: 'Compliance', value: 'compliance' },
+  { label: 'eDiscovery', value: 'ediscovery' },
+  { label: 'Privacy/GDPR', value: 'privacy GDPR' },
+  { label: 'Legal Tech', value: 'legal technology' },
+  { label: 'Data Protection', value: 'data protection' },
+  { label: 'Investigations', value: 'investigations' },
+  { label: 'Kartellrecht', value: 'Kartellrecht' },
+  { label: 'Wettbewerbsrecht', value: 'Wettbewerbsrecht' },
+  { label: 'Datenschutz', value: 'Datenschutz' },
+  { label: 'Corporate Counsel', value: 'corporate counsel' },
+  { label: 'Risk Management', value: 'risk management' },
+  { label: 'Cybersecurity', value: 'cybersecurity' },
+] as const;
+
 const QUICK_SEARCH_DEFAULTS = {
   country: 'EU' as typeof QUICK_SEARCH_LOCATIONS[number]['code'],
   range: 'next' as 'next' | 'past',
@@ -382,6 +397,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const [savingSpeakerId, setSavingSpeakerId] = useState<string | null>(null);
   const [speakerStatus, setSpeakerStatus] = useState<Record<string, 'saved' | 'error'>>({});
   const [savedSignatures, setSavedSignatures] = useState<Record<string, 'saved'>>({});
+  const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
 
   // Load pinned search on mount
   useEffect(() => {
@@ -803,6 +819,26 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
             </div>
           )}
 
+          {showAdvanced && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Suggested Keywords</label>
+              <p className="text-xs text-gray-500">Click to add or replace your search keywords</p>
+              <div className="flex flex-wrap gap-2">
+                {SUGGESTED_KEYWORDS.map((keyword) => (
+                  <button
+                    key={keyword.value}
+                    type="button"
+                    onClick={() => updateConfig({ keywords: keyword.value })}
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                    title={`Set keywords to: ${keyword.value}`}
+                  >
+                    {keyword.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
               {error}
@@ -833,7 +869,9 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
               {resultsToShow.map((event) => {
                 const eventKey = event.id || event.source_url;
                 const speakers = Array.isArray(event.speakers) ? (event.speakers as EventSpeaker[]) : [];
-                const topSpeakers = speakers.slice(0, 3);
+                const isExpanded = expandedEvents[eventKey] || false;
+                const hasMoreSpeakers = speakers.length > 3;
+                const displaySpeakers = isExpanded ? speakers : speakers.slice(0, 3);
                 return (
                   <div key={eventKey} className="rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -856,9 +894,9 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                         {speakers.length > 0 ? `${speakers.length} speaker${speakers.length === 1 ? '' : 's'}` : 'Speaker data pending'}
                       </span>
                     </div>
-                    {topSpeakers.length > 0 && (
+                    {displaySpeakers.length > 0 && (
                       <ul className="mt-4 space-y-2">
-                        {topSpeakers.map((speaker, index) => {
+                        {displaySpeakers.map((speaker, index) => {
                           const speakerKey = buildSpeakerKey(event, speaker, index);
                           const status = speakerStatus[speakerKey];
                           const isSaving = savingSpeakerId === speakerKey;
@@ -934,6 +972,25 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                           );
                         })}
                       </ul>
+                    )}
+                    {hasMoreSpeakers && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedEvents((prev) => ({ ...prev, [eventKey]: !isExpanded }))}
+                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                      >
+                        {isExpanded ? (
+                          <>
+                            <ChevronUp className="h-4 w-4" />
+                            Show less
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="h-4 w-4" />
+                            Show all {speakers.length} speakers
+                          </>
+                        )}
+                      </button>
                     )}
                   </div>
                 );
