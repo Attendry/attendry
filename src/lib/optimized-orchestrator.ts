@@ -1100,7 +1100,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
           topP: 0.7,
           topK: 20,
           candidateCount: 1,
-          maxOutputTokens: 2048,  // Increased to 2048 to accommodate thinking tokens (up to 1023 observed)
+          maxOutputTokens: 4096,  // Increased to 4096 to accommodate thinking tokens (up to 2047 observed!)
           responseMimeType: 'application/json',
           responseSchema: GEMINI_PRIORITIZATION_SCHEMA
         };
@@ -1280,7 +1280,7 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  const chunkSize = 5;  // Process 5 URLs per Gemini call (was 1) - 5x faster!
+  const chunkSize = 3;  // Process 3 URLs per Gemini call (was 5) - avoids MAX_TOKENS with thinking tokens
   const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON array: [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();

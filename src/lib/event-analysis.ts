@@ -975,10 +975,10 @@ function extractSpeakerSections(content: string): Array<{
   const lines = content.split('\n');
   let currentSection: { heading: string; lines: string[]; startIndex: number } | null = null;
   
-  // Speaker heading patterns - MORE FLEXIBLE to catch real-world headers
-  // Removed strict $ anchor, added \s* for whitespace tolerance
-  const speakerHeaderPattern = /^\s*(?:#{1,3}\s*)?(SPEAKERS?|PRESENTERS?|FACULTY|KEYNOTE|PANELISTS?|REFERENTEN?|SPRECHER|MODERATOREN?|FEATURED|GUEST)(?:\s*[:)])?/i;
-  const nonSpeakerHeaderPattern = /^\s*(?:#{1,3}\s*)?(VENUE|LOCATION|HOTEL|TRAVEL|REGISTER|TICKET|SPONSOR|PARTNER|PRIVACY|TERMS|COOKIE|CONTACT|ABOUT|HOME|FAQ|PRICING)(?:\s*[:)])?/i;
+  // Speaker heading patterns - ULTRA FLEXIBLE to catch all real-world variations
+  // Matches: "Speakers", "## Referenten", "Ihre Speaker/-innen", "Tagungsleitung", etc.
+  const speakerHeaderPattern = /^\s*(?:#{1,3}\s*)?(?:Ihre\s+)?(?:SPEAKERS?|PRESENTERS?|FACULTY|KEYNOTE|PANELISTS?|REFERENTEN?|SPRECHER|MODERATOREN?|FEATURED|GUEST|TAGUNGSLEITUNG|Speaker[\/-]?innen?)(?:\s*[:)])?/i;
+  const nonSpeakerHeaderPattern = /^\s*(?:#{1,3}\s*)?(VENUE|LOCATION|HOTEL|TRAVEL|REGISTER|TICKET|SPONSOR|PARTNER|PRIVACY|TERMS|COOKIE|CONTACT|ABOUT|HOME|FAQ|PRICING|IMPRESSUM|AGB)(?:\s*[:)])?/i;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
