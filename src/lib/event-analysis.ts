@@ -877,6 +877,46 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
     return fallbackMetadata;
   }
 
+  // DOM-FIRST EXTRACTION: Try to extract metadata from DOM/HTML before LLM
+  // This can skip LLM calls if sufficient information is found
+  try {
+    const { extractMetadataFromDOM } = await import('./extractors/dom-extractors');
+    const domMetadata = extractMetadataFromDOM(serializedSections, primaryUrl);
+    
+    // Check if DOM extraction found sufficient metadata
+    const hasTitle = domMetadata.name && domMetadata.name.length > 5;
+    const hasDate = domMetadata.start_date || domMetadata.end_date;
+    const hasLocation = domMetadata.city || domMetadata.venue || domMetadata.country_code;
+    
+    if (hasTitle && hasDate && hasLocation) {
+      console.log('[event-analysis] DOM extraction found sufficient metadata, skipping LLM call');
+      // Map DOM metadata to EventMetadata format
+      const locationParts = [
+        domMetadata.city,
+        domMetadata.venue,
+        domMetadata.country_code
+      ].filter((part): part is string => !!part);
+      
+      return {
+        title: domMetadata.name || fallbackMetadata.title,
+        description: fallbackMetadata.description,
+        date: domMetadata.start_date || domMetadata.end_date || fallbackMetadata.date,
+        location: locationParts.length > 0 ? locationParts.join(', ') : fallbackMetadata.location,
+        organizer: fallbackMetadata.organizer,
+        website: primaryUrl,
+        registrationUrl: undefined
+      };
+    } else if (hasTitle && hasDate) {
+      console.log('[event-analysis] DOM extraction found partial metadata (title + date), will enhance with LLM');
+      // Use DOM-extracted title and date as hints for LLM
+      eventTitle = domMetadata.name || undefined;
+      eventDate = domMetadata.start_date || domMetadata.end_date || undefined;
+    }
+  } catch (domError) {
+    // DOM extraction failed, continue with LLM
+    console.debug('[event-analysis] DOM extraction failed, continuing with LLM:', domError);
+  }
+
   try {
     console.log('Initializing Gemini for event metadata extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
@@ -985,6 +1025,24 @@ ${chunk}`;
             llmTotalResponseCount++;
             llmEmptyResponseCount++;
             
+            // CIRCUIT BREAKER: Check if circuit is open for empty responses
+            const { getCircuitBreakerState } = await import('./circuit-breaker');
+            const circuitState = getCircuitBreakerState('gemini-empty-response');
+            if (circuitState === 'OPEN') {
+              console.warn(`[event-analysis] Circuit breaker OPEN for empty LLM responses, skipping chunk ${index + 1}`);
+              return null;
+            }
+            
+            // Record empty response to circuit breaker
+            try {
+              const { executeWithAdvancedCircuitBreaker } = await import('./error-recovery');
+              await executeWithAdvancedCircuitBreaker(async () => {
+                throw new Error('Empty LLM response');
+              }, 'gemini-empty-response', async () => null);
+            } catch (err) {
+              // Circuit breaker recorded the failure, continue
+            }
+            
             retryCount++;
             if (retryCount <= maxRetries) {
               console.warn(`[event-analysis] Empty metadata response for chunk ${index + 1}, retrying with smaller chunk...`);
@@ -996,6 +1054,14 @@ ${chunk}`;
           } else {
             // METRICS: Track successful responses
             llmTotalResponseCount++;
+            
+            // Record success to circuit breaker
+            try {
+              const { executeWithAdvancedCircuitBreaker } = await import('./error-recovery');
+              await executeWithAdvancedCircuitBreaker(async () => true, 'gemini-empty-response');
+            } catch (err) {
+              // Circuit breaker recorded the success, continue
+            }
           }
         }
 

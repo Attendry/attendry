@@ -67,6 +67,15 @@ export const CIRCUIT_BREAKER_CONFIG = {
       errorThreshold: 0.35,
       slowCallThreshold: 12000,
       slowCallRatioThreshold: 0.45,
+    },
+    'gemini-empty-response': {
+      failureThreshold: 5,  // Open circuit after 5 consecutive empty responses
+      successThreshold: 2,
+      timeout: 300000,  // 5 minutes before attempting to close
+      volumeThreshold: 5,
+      errorThreshold: 0.8,  // 80% empty response rate
+      slowCallThreshold: 15000,
+      slowCallRatioThreshold: 0.5,
     }
   },
   

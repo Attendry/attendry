@@ -851,11 +851,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       
       const qualityResult = isSolidHit(meta, window);
       
-      // Add dateWindowStatus to event metadata for UI coloring
-      if (qualityResult.dateWindowStatus) {
-        event.metadata = event.metadata || {};
-        event.metadata.dateWindowStatus = qualityResult.dateWindowStatus;
-      }
+      // Add dateWindowStatus to event metadata for UI coloring (always include, even for passing events)
+      event.metadata = event.metadata || {};
+      event.metadata.dateWindowStatus = qualityResult.dateWindowStatus || 'no-date';
       
       // Log why events fail quality check
       if (!qualityResult.ok) {
@@ -986,11 +984,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
           
           const qualityResult = isSolidHit(meta, expandedWindow);
           
-          // Add dateWindowStatus to event metadata for UI coloring
-          if (qualityResult.dateWindowStatus) {
-            event.metadata = event.metadata || {};
-            event.metadata.dateWindowStatus = qualityResult.dateWindowStatus;
-          }
+          // Add dateWindowStatus to event metadata for UI coloring (always include, even for passing events)
+          event.metadata = event.metadata || {};
+          event.metadata.dateWindowStatus = qualityResult.dateWindowStatus || 'no-date';
           
           return {
             event,
@@ -1671,6 +1667,11 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
+  
+  // IN-FLIGHT CACHE: Track prioritization results to prevent duplicate work
+  // Cache key: normalized URL (same URL = same prioritization result)
+  const prioritizationCache = new Map<string, { url: string; score: number; reason: string }>();
+  const inFlightPrioritizations = new Map<string, Promise<Array<{url: string, score: number, reason: string}>>>();
 
   const fallbackForUrl = (url: string, idx: number, reason = 'fallback') => {
     const aggregator = isAggregatorUrl(url);
@@ -1742,27 +1743,118 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
   });
 
 
-  for (let i = 0; i < filteredUrls.length; i += chunkSize) {
-    const chunk = filteredUrls.slice(i, i + chunkSize);
-    const numberedList = chunk.map((url, idx) => `${idx + 1}. ${url}`).join('\n');
-    const prompt = `${baseContext}\nURLs:\n${numberedList}`;
-
-    try {
-      const chunkResults = await executeGeminiCall(prompt, chunk);
-      chunkResults.forEach((item) => {
-        if (!resultsMap.has(item.url)) {
-          resultsMap.set(item.url, item);
-        }
-      });
-    } catch (error) {
-      console.warn('[optimized-orchestrator] Gemini chunk prioritization failed, applying fallback:', error instanceof Error ? error.message : error);
-      chunk.forEach((url, localIdx) => {
-        const globalIdx = i + localIdx;
-        if (!resultsMap.has(url)) {
-          resultsMap.set(url, fallbackForUrl(url, globalIdx, 'fallback_chunk_failed'));
-        }
-      });
+  // Filter out URLs already in cache or in-flight
+  const urlsToPrioritize: string[] = [];
+  for (const url of filteredUrls) {
+    const cached = prioritizationCache.get(url);
+    if (cached) {
+      resultsMap.set(url, cached);
+      continue;
     }
+    
+    const inFlight = inFlightPrioritizations.get(url);
+    if (inFlight) {
+      // Wait for in-flight prioritization
+      try {
+        const result = await inFlight;
+        const item = result.find(r => r.url === url);
+        if (item) {
+          prioritizationCache.set(url, item);
+          resultsMap.set(url, item);
+        }
+      } catch {
+        // If in-flight failed, add to queue for prioritization
+        urlsToPrioritize.push(url);
+      }
+      continue;
+    }
+    
+    urlsToPrioritize.push(url);
+  }
+
+  // Process remaining URLs in chunks with requeue logic for timeouts
+  const requeueQueue: string[] = [];
+  let maxIterations = 3; // Prevent infinite loops
+  let currentUrls = urlsToPrioritize;
+  
+  while (currentUrls.length > 0 && maxIterations > 0) {
+    maxIterations--;
+    const nextBatch: string[] = [];
+    
+    for (let i = 0; i < currentUrls.length; i += chunkSize) {
+      const chunk = currentUrls.slice(i, i + chunkSize);
+      const numberedList = chunk.map((url, idx) => `${idx + 1}. ${url}`).join('\n');
+      const prompt = `${baseContext}\nURLs:\n${numberedList}`;
+
+      // Create in-flight promise for this chunk with timeout handling
+      const chunkPromise = (async () => {
+        try {
+          const chunkResults = await executeGeminiCall(prompt, chunk);
+          chunkResults.forEach((item) => {
+            if (!resultsMap.has(item.url)) {
+              resultsMap.set(item.url, item);
+              prioritizationCache.set(item.url, item);
+            }
+          });
+          return chunkResults;
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          const isTimeout = errorMsg.includes('timeout') || errorMsg.includes('Timeout');
+          
+          if (isTimeout) {
+            // REQUEUE: Add timed-out URLs to queue for next batch instead of failing
+            console.warn(`[optimized-orchestrator] Prioritization timeout for chunk, requeuing ${chunk.length} URLs`);
+            requeueQueue.push(...chunk);
+            return [];
+          }
+          
+          console.warn('[optimized-orchestrator] Gemini chunk prioritization failed, applying fallback:', errorMsg);
+          const fallbackResults = chunk.map((url, localIdx) => {
+            const globalIdx = i + localIdx;
+            const fallback = fallbackForUrl(url, globalIdx, 'fallback_chunk_failed');
+            if (!resultsMap.has(url)) {
+              resultsMap.set(url, fallback);
+              prioritizationCache.set(url, fallback);
+            }
+            return fallback;
+          });
+          return fallbackResults;
+        } finally {
+          // Clean up in-flight tracking
+          chunk.forEach(url => inFlightPrioritizations.delete(url));
+        }
+      })();
+
+      // Track all URLs in this chunk as in-flight
+      chunk.forEach(url => inFlightPrioritizations.set(url, chunkPromise));
+
+      try {
+        await chunkPromise;
+      } catch (error) {
+        // Error already handled in promise
+      }
+    }
+    
+    // Process requeued URLs in next iteration
+    if (requeueQueue.length > 0) {
+      console.log(`[optimized-orchestrator] Processing ${requeueQueue.length} requeued URLs`);
+      currentUrls = [...requeueQueue];
+      requeueQueue.length = 0; // Clear queue
+    } else {
+      break; // No more URLs to process
+    }
+  }
+  
+  // Apply fallback to any remaining requeued URLs
+  if (requeueQueue.length > 0) {
+    console.warn(`[optimized-orchestrator] Applying fallback to ${requeueQueue.length} URLs that couldn't be prioritized`);
+    requeueQueue.forEach((url, idx) => {
+      if (!resultsMap.has(url)) {
+        const fallback = fallbackForUrl(url, idx, 'fallback_requeue_failed');
+        resultsMap.set(url, fallback);
+        prioritizationCache.set(url, fallback);
+      }
+    });
   }
 
   if (resultsMap.size === 0) {
