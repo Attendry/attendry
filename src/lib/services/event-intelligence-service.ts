@@ -161,9 +161,11 @@ Focus on:
 Return only the JSON object, no other text.`;
 
   try {
+    console.log('[EventIntelligence] Calling LLMService.generateIntelligence for location...');
     const response = await LLMService.generateIntelligence(prompt, { event }, {
       provider: options?.provider || 'gemini'
     });
+    console.log('[EventIntelligence] LLMService returned response for location');
     
     if (typeof response.content === 'object' && response.content !== null) {
       return {
@@ -234,9 +236,11 @@ Focus on:
 Return only the JSON object, no other text.`;
 
   try {
+    console.log('[EventIntelligence] Calling LLMService.generateIntelligence for sponsors...');
     const response = await LLMService.generateIntelligence(prompt, { event, sponsors }, {
       provider: options?.provider || 'gemini'
     });
+    console.log('[EventIntelligence] LLMService returned response for sponsors');
     
     if (typeof response.content === 'object' && response.content !== null) {
       return {
@@ -307,9 +311,11 @@ Focus on:
 Return only the JSON object, no other text.`;
 
   try {
+    console.log('[EventIntelligence] Calling LLMService.generateIntelligence for location...');
     const response = await LLMService.generateIntelligence(prompt, { event }, {
       provider: options?.provider || 'gemini'
     });
+    console.log('[EventIntelligence] LLMService returned response for location');
     
     if (typeof response.content === 'object' && response.content !== null) {
       return {
@@ -393,9 +399,11 @@ Focus on:
 Return only the JSON object, no other text.`;
 
   try {
+    console.log('[EventIntelligence] Calling LLMService.generateIntelligence for outreach...');
     const response = await LLMService.generateIntelligence(prompt, { event, userContext }, {
       provider: options?.provider || 'gemini'
     });
+    console.log('[EventIntelligence] LLMService returned response for outreach');
     
     if (typeof response.content === 'object' && response.content !== null) {
       return {

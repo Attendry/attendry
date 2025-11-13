@@ -341,14 +341,32 @@ export async function POST(
     }
 
     // Generate intelligence
+    console.log('[EventIntelligence] About to generate intelligence...');
+    console.log('[EventIntelligence] Event data:', {
+      title: event.title,
+      source_url: event.source_url,
+      hasDescription: !!event.description,
+      hasTopics: !!(event.topics && event.topics.length > 0),
+      hasSpeakers: !!(event.speakers && event.speakers.length > 0),
+      hasSponsors: !!(event.sponsors && event.sponsors.length > 0)
+    });
+    
     let intelligence;
     try {
+      console.log('[EventIntelligence] Calling generateEventIntelligence...');
       intelligence = await generateEventIntelligence(
         event as any,
         userProfile || undefined
       );
+      console.log('[EventIntelligence] Intelligence generated successfully');
     } catch (genError: any) {
       console.error('[EventIntelligence] Generation failed:', genError);
+      console.error('[EventIntelligence] Error stack:', genError.stack);
+      console.error('[EventIntelligence] Error details:', {
+        message: genError.message,
+        name: genError.name,
+        cause: genError.cause
+      });
       return NextResponse.json(
         { 
           error: 'Failed to generate intelligence',
