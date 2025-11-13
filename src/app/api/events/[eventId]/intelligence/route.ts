@@ -383,6 +383,7 @@ export async function POST(
         intelligence,
         userProfile || undefined
       );
+      console.log('[EventIntelligence] Intelligence cached successfully');
     } catch (cacheError) {
       // Log but don't fail - intelligence generation succeeded
       console.warn('[EventIntelligence] Cache failed (non-fatal):', cacheError);
@@ -391,10 +392,24 @@ export async function POST(
     // Update intelligence eventId to match what was used
     intelligence.eventId = cacheKey;
 
-    return NextResponse.json({
+    const responseData = {
       ...intelligence,
       cached: false
+    };
+
+    console.log('[EventIntelligence] Returning intelligence response:', {
+      eventId: responseData.eventId,
+      hasDiscussions: !!responseData.discussions,
+      hasSponsors: !!responseData.sponsors,
+      hasLocation: !!responseData.location,
+      hasOutreach: !!responseData.outreach,
+      discussionsKeys: responseData.discussions ? Object.keys(responseData.discussions) : [],
+      sponsorsKeys: responseData.sponsors ? Object.keys(responseData.sponsors) : [],
+      locationKeys: responseData.location ? Object.keys(responseData.location) : [],
+      outreachKeys: responseData.outreach ? Object.keys(responseData.outreach) : []
     });
+
+    return NextResponse.json(responseData);
 
   } catch (error) {
     console.error('Event intelligence generation error:', error);

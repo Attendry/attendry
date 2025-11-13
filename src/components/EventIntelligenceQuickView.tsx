@@ -80,19 +80,35 @@ export function EventIntelligenceQuickView({
         
         // Check if intelligence was actually generated (not just "not_generated" status)
         if (data.status === 'not_generated') {
-          setIntelligence({
-            cached: false,
-            loading: false
+          // Only clear state if we don't already have intelligence data
+          setIntelligence(prev => {
+            if (prev.discussions || prev.sponsors || prev.location || prev.outreach) {
+              // Keep existing data if we have it
+              return { ...prev, loading: false };
+            }
+            return {
+              cached: false,
+              loading: false
+            };
           });
         } else {
-          setIntelligence({
-            discussions: data.discussions,
-            sponsors: data.sponsors,
-            location: data.location,
-            outreach: data.outreach,
-            cached: data.cached || false,
-            loading: false
-          });
+          // Only update if we have actual intelligence data
+          if (data.discussions || data.sponsors || data.location || data.outreach) {
+            setIntelligence({
+              discussions: data.discussions,
+              sponsors: data.sponsors,
+              location: data.location,
+              outreach: data.outreach,
+              cached: data.cached || false,
+              loading: false
+            });
+          } else {
+            // No intelligence data, but no error - keep existing state if we have it
+            setIntelligence(prev => ({
+              ...prev,
+              loading: false
+            }));
+          }
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -152,21 +168,31 @@ export function EventIntelligenceQuickView({
                     hasDiscussions: !!result.discussions,
                     hasSponsors: !!result.sponsors,
                     hasLocation: !!result.location,
-                    hasOutreach: !!result.outreach
+                    hasOutreach: !!result.outreach,
+                    resultKeys: Object.keys(result)
                   });
                   
                   // Update state directly with the response data
-                  setIntelligence({
-                    discussions: result.discussions,
-                    sponsors: result.sponsors,
-                    location: result.location,
-                    outreach: result.outreach,
-                    cached: result.cached || false,
-                    loading: false
-                  });
-                  
-                  // Also reload to ensure we have the latest
-                  await loadIntelligence();
+                  // Only update if we actually have intelligence data
+                  if (result.discussions || result.sponsors || result.location || result.outreach) {
+                    setIntelligence({
+                      discussions: result.discussions,
+                      sponsors: result.sponsors,
+                      location: result.location,
+                      outreach: result.outreach,
+                      cached: result.cached || false,
+                      loading: false
+                    });
+                    
+                    // Don't reload immediately - the POST response has the data
+                    // Reload after a short delay to get cached version
+                    setTimeout(async () => {
+                      await loadIntelligence();
+                    }, 1000);
+                  } else {
+                    console.warn('[EventIntelligenceQuickView] POST response missing intelligence data');
+                    setIntelligence(prev => ({ ...prev, loading: false }));
+                  }
                 } else {
                   const error = await response.json();
                   console.error('[EventIntelligenceQuickView] Failed to generate intelligence:', error);

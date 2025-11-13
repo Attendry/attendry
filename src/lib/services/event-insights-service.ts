@@ -21,16 +21,85 @@ export class EventInsightsService {
   ): Promise<EventInsightsResponse> {
     const supabase = await supabaseServer();
 
-    // Get event data
-    const { data: event, error: eventError } = await supabase
-      .from('collected_events')
-      .select('*')
-      .eq('id', eventId)
-      .single();
+    let event: any = null;
 
-    if (eventError || !event) {
+    // First, check if eventId is a board item ID
+    const { data: boardItem } = await supabase
+      .from('user_event_board')
+      .select('event_id, event_url, event_data')
+      .eq('id', eventId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (boardItem) {
+      // We have a board item - try to get event from collected_events first
+      if (boardItem.event_id) {
+        const { data: collectedEvent } = await supabase
+          .from('collected_events')
+          .select('*')
+          .eq('id', boardItem.event_id)
+          .maybeSingle();
+        
+        if (collectedEvent) {
+          event = collectedEvent;
+        }
+      }
+      
+      // If not found in collected_events, use event_data from board
+      if (!event && boardItem.event_data) {
+        event = boardItem.event_data;
+      }
+      
+      // If still not found, try to find by event_url
+      if (!event && boardItem.event_url) {
+        const { data: eventByUrl } = await supabase
+          .from('collected_events')
+          .select('*')
+          .eq('source_url', boardItem.event_url)
+          .maybeSingle();
+        
+        if (eventByUrl) {
+          event = eventByUrl;
+        }
+      }
+    } else {
+      // Not a board item ID - try to find event directly
+      // First try as UUID in collected_events
+      const { data: eventById } = await supabase
+        .from('collected_events')
+        .select('*')
+        .eq('id', eventId)
+        .maybeSingle();
+      
+      if (eventById) {
+        event = eventById;
+      } else {
+        // Try as source_url
+        const { data: eventByUrl } = await supabase
+          .from('collected_events')
+          .select('*')
+          .eq('source_url', eventId)
+          .maybeSingle();
+        
+        if (eventByUrl) {
+          event = eventByUrl;
+        }
+      }
+    }
+
+    if (!event) {
+      console.error('[EventInsightsService] Event not found for eventId:', eventId);
       throw new Error('Event not found');
     }
+
+    console.log('[EventInsightsService] Found event:', {
+      eventId: event.id || eventId,
+      title: event.title,
+      hasDescription: !!event.description,
+      hasTopics: !!(event.topics && event.topics.length > 0),
+      hasSpeakers: !!(event.speakers && event.speakers.length > 0),
+      source: boardItem ? 'board_item' : 'collected_events'
+    });
 
     // Get user profile
     const { data: profile } = await supabase
