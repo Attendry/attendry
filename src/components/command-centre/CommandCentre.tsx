@@ -581,6 +581,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const [speakerStatus, setSpeakerStatus] = useState<Record<string, 'saved' | 'error'>>({});
   const [savedSignatures, setSavedSignatures] = useState<Record<string, 'saved'>>({});
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
+  const [boardStatus, setBoardStatus] = useState<Record<string, 'saved' | 'saving'>>({});
 
   // Load pinned search on mount
   useEffect(() => {
@@ -836,6 +837,71 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
       }
     },
     [onSpeakerSaved, savedSignatures],
+  );
+
+  const handleAddEventToBoard = useCallback(
+    async (event: EventRec) => {
+      const eventKey = event.id || event.source_url;
+      if (boardStatus[eventKey] === 'saved' || boardStatus[eventKey] === 'saving') {
+        return;
+      }
+
+      setBoardStatus((prev) => ({ ...prev, [eventKey]: 'saving' }));
+      try {
+        // Validate UUID format
+        const isValidUUID = (str: string | undefined): boolean => {
+          if (!str) return false;
+          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          return uuidRegex.test(str);
+        };
+
+        const eventId = event.id && isValidUUID(event.id) ? event.id : undefined;
+
+        const response = await fetch('/api/events/board/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId,
+            eventUrl: event.source_url,
+            eventData: event,
+            columnStatus: 'interested',
+          }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          if (response.status === 401) {
+            alert('Please log in to add events to your board.');
+            if (typeof window !== 'undefined') {
+              window.location.href = '/login';
+            }
+            return;
+          }
+          throw new Error(data.error || 'Failed to add to board');
+        }
+
+        // Also add to watchlist
+        try {
+          await fetch('/api/watchlist/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              kind: 'event',
+              label: event.title,
+              ref_id: event.source_url,
+            }),
+          });
+        } catch {
+          // Don't fail if watchlist add fails
+        }
+
+        setBoardStatus((prev) => ({ ...prev, [eventKey]: 'saved' }));
+      } catch (err) {
+        setBoardStatus((prev) => ({ ...prev, [eventKey]: undefined }));
+        alert(err instanceof Error ? err.message : 'Failed to add event to board');
+      }
+    },
+    [boardStatus],
   );
 
   const formatDisplayDate = useCallback((value?: string | null) => {
@@ -1167,9 +1233,39 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                           {event.organizer && <span className="text-slate-500">Hosted by {event.organizer}</span>}
                         </div>
                       </div>
-                      <span className="mt-1 inline-flex flex-shrink-0 items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700 sm:mt-0">
-                        {speakers.length > 0 ? `${speakers.length} speaker${speakers.length === 1 ? '' : 's'}` : 'Speaker data pending'}
-                      </span>
+                      <div className="mt-1 flex flex-shrink-0 items-center gap-2 sm:mt-0">
+                        <span className="inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700">
+                          {speakers.length > 0 ? `${speakers.length} speaker${speakers.length === 1 ? '' : 's'}` : 'Speaker data pending'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAddEventToBoard(event)}
+                          disabled={boardStatus[eventKey] === 'saved' || boardStatus[eventKey] === 'saving'}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:opacity-50 ${
+                            boardStatus[eventKey] === 'saved'
+                              ? 'border-blue-200 bg-blue-50 text-blue-700'
+                              : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          }`}
+                          title={boardStatus[eventKey] === 'saved' ? 'Already in board' : 'Add to Events Board'}
+                        >
+                          {boardStatus[eventKey] === 'saving' ? (
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Adding…
+                            </>
+                          ) : boardStatus[eventKey] === 'saved' ? (
+                            <>
+                              <Check className="h-3 w-3" />
+                              In Board
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="h-3 w-3" />
+                              Add to Board
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                     {displaySpeakers.length > 0 && (
                       <ul className="mt-4 space-y-2">
