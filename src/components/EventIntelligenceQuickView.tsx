@@ -54,6 +54,7 @@ export function EventIntelligenceQuickView({
     loading: true
   });
   const [expanded, setExpanded] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     loadIntelligence();
@@ -105,7 +106,13 @@ export function EventIntelligenceQuickView({
             <span>Intelligence not yet generated</span>
           </div>
           <button
-            onClick={async () => {
+            onClick={async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              
+              if (generating) return;
+              
+              setGenerating(true);
               // Trigger generation
               const eventId = event.id || event.source_url;
               try {
@@ -125,14 +132,31 @@ export function EventIntelligenceQuickView({
                 } else {
                   const error = await response.json();
                   console.error('Failed to generate intelligence:', error);
+                  alert(`Failed to generate intelligence: ${error.error || 'Unknown error'}`);
                 }
-              } catch (error) {
+              } catch (error: any) {
                 console.error('Error generating intelligence:', error);
+                alert(`Error generating intelligence: ${error.message || 'Unknown error'}`);
+              } finally {
+                setGenerating(false);
               }
             }}
-            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+            disabled={generating}
+            className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
+              generating 
+                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                : 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+            }`}
+            style={{ pointerEvents: generating ? 'none' : 'auto' }}
           >
-            Generate
+            {generating ? (
+              <>
+                <Loader2 className="h-3 w-3 inline-block animate-spin mr-1" />
+                Generating...
+              </>
+            ) : (
+              'Generate'
+            )}
           </button>
         </div>
       </div>
