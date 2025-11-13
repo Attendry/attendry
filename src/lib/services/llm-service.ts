@@ -148,7 +148,6 @@ export class LLMService {
     }
 
     // Use model name consistent with rest of codebase
-    // Note: If gemini-2.5-flash doesn't work, try gemini-1.5-flash
     const modelName = options.model || this.DEFAULT_MODEL;
     
     console.log(`[LLMService] Calling Gemini API with model: ${modelName}`);
