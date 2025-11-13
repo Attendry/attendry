@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { executeOptimizedSearch } from '@/lib/optimized-orchestrator';
 import { deriveLocale, getCountryContext, isValidISO2Country, toISO2Country } from '@/lib/utils/country';
 import { supabaseServer } from '@/lib/supabase-server';
+import { createHash } from 'crypto';
 
 // Helper function to process Optimized Orchestrator results
 async function processOptimizedResults(
@@ -42,11 +43,14 @@ async function processOptimizedResults(
       }
     }
     
-    // Generate unique ID: include source URL hash to ensure uniqueness
-    // This prevents duplicate IDs when same timestamp is used for different events
+    // Generate unique ID: use crypto hash of URL + timestamp + index for guaranteed uniqueness
+    // This ensures each event gets a truly unique ID even if processed in same millisecond
     const sourceUrl = event.url || '';
-    const urlHash = sourceUrl ? Buffer.from(sourceUrl).toString('base64').slice(0, 8).replace(/[+/=]/g, '') : '';
-    const uniqueId = `optimized_${Date.now()}_${index}_${urlHash}`;
+    const timestamp = Date.now();
+    const urlHash = sourceUrl 
+      ? createHash('sha256').update(sourceUrl).digest('hex').slice(0, 12)
+      : createHash('sha256').update(`${timestamp}_${index}`).digest('hex').slice(0, 12);
+    const uniqueId = `optimized_${timestamp}_${index}_${urlHash}`;
     
     return {
       id: uniqueId,
