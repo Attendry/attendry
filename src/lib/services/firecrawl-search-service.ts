@@ -90,8 +90,9 @@ export class FirecrawlSearchService {
   /**
    * PHASE 1 OPTIMIZATION: Get adaptive timeout with exponential backoff and jitter
    * Timeouts: 8s → 12s → 18s with 0-20% jitter
+   * Made public for use by unified-search-core.ts
    */
-  private static getAdaptiveTimeout(attempt: number): number {
+  static getAdaptiveTimeout(attempt: number): number {
     const timeouts = [8000, 12000, 18000]; // 8s → 12s → 18s
     const attemptIndex = Math.min(attempt, timeouts.length - 1);
     const baseTimeout = timeouts[attemptIndex];
@@ -101,8 +102,9 @@ export class FirecrawlSearchService {
 
   /**
    * PHASE 1 OPTIMIZATION: Fetch with adaptive retry and exponential backoff timeouts
+   * Made public for use by unified-search-core.ts
    */
-  private static async fetchWithAdaptiveRetry(
+  static async fetchWithAdaptiveRetry(
     service: string,
     operation: string,
     url: string,
