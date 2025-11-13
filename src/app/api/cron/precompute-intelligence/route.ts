@@ -5,8 +5,37 @@
  * Configured in vercel.json to run periodically
  */
 
+export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { processIntelligenceQueue, getQueueStats } from '@/lib/services/intelligence-queue';
+
+/**
+ * Verify cron request authentication
+ * Supports both Vercel Cron (x-vercel-cron header) and manual testing (Authorization header)
+ */
+function verifyCronRequest(req: NextRequest): boolean {
+  // Check for Vercel Cron header (automatically added by Vercel)
+  const vercelCronHeader = req.headers.get('x-vercel-cron');
+  if (vercelCronHeader) {
+    return true; // Vercel automatically adds this header for cron jobs
+  }
+
+  // Fallback: Check for manual Authorization header (for testing)
+  const authHeader = req.headers.get('authorization');
+  const expectedToken = process.env.CRON_SECRET;
+  
+  if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+    return true;
+  }
+
+  // If CRON_SECRET is set but no valid auth, reject
+  if (expectedToken) {
+    return false;
+  }
+
+  // If no CRON_SECRET is set, allow (for development)
+  return true;
+}
 
 /**
  * GET /api/cron/precompute-intelligence
@@ -16,11 +45,8 @@ import { processIntelligenceQueue, getQueueStats } from '@/lib/services/intellig
  */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
-    // Verify cron secret (if configured)
-    const authHeader = req.headers.get('authorization');
-    const cronSecret = process.env.CRON_SECRET;
-    
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    // Verify this is a legitimate cron request
+    if (!verifyCronRequest(req)) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
