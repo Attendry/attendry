@@ -25,6 +25,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
+    // Validate UUID format - eventId might be a generated ID like "optimized_xxx"
+    const isValidUUID = (str: string | undefined): boolean => {
+      if (!str) return false;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      return uuidRegex.test(str);
+    };
+
+    // Try to find the event in collected_events by URL to get the real UUID
+    let actualEventId: string | null = null;
+    if (eventUrl) {
+      const { data: existingEvent } = await supabase
+        .from('collected_events')
+        .select('id')
+        .eq('source_url', eventUrl)
+        .single();
+      
+      if (existingEvent) {
+        actualEventId = existingEvent.id;
+      } else if (eventId && isValidUUID(eventId)) {
+        // Only use eventId if it's a valid UUID
+        actualEventId = eventId;
+      }
+    }
+
     // Check if event already exists in board
     const { data: existing } = await supabase
       .from('user_event_board')
@@ -38,7 +62,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       const { data, error } = await supabase
         .from('user_event_board')
         .update({
-          event_id: eventId || null,
+          event_id: actualEventId,
           column_status: columnStatus,
           updated_at: new Date().toISOString()
         })
@@ -61,7 +85,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .from('user_event_board')
       .insert({
         user_id: userRes.user.id,
-        event_id: eventId || null,
+        event_id: actualEventId,
         event_url: eventUrl,
         column_status: columnStatus,
         position: 0
