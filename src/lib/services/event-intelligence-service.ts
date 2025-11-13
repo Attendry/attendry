@@ -161,11 +161,11 @@ Focus on:
 Return only the JSON object, no other text.`;
 
   try {
-    console.log('[EventIntelligence] Calling LLMService.generateIntelligence for location...');
+    console.log('[EventIntelligence] Calling LLMService.generateIntelligence for discussions...');
     const response = await LLMService.generateIntelligence(prompt, { event }, {
       provider: options?.provider || 'gemini'
     });
-    console.log('[EventIntelligence] LLMService returned response for location');
+    console.log('[EventIntelligence] LLMService returned response for discussions');
     
     if (typeof response.content === 'object' && response.content !== null) {
       return {
