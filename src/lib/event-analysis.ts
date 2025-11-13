@@ -544,7 +544,17 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
     }
   }
   
-  return [...new Set(urls)]; // Remove duplicates
+  // Filter out empty URLs and ensure valid format
+  return [...new Set(urls)].filter(url => {
+    if (!url || url.trim().length === 0) {
+      return false;
+    }
+    // Must start with http/https
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -591,8 +601,9 @@ function prioritizeSubPagesForSpeakers(urls: string[]): string[] {
     return { url, score };
   });
   
-  // Sort by score descending and return URLs
+  // Sort by score descending, filter empty URLs, and return
   const prioritized = scored
+    .filter(s => s.url && s.url.trim().length > 0) // Filter out empty URLs
     .sort((a, b) => b.score - a.score)
     .map(s => s.url);
   
@@ -827,7 +838,9 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
     
     const sectionChunks = crawlResults.flatMap(result => {
       const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
-      return chunkText(sectionText, 1200, 150).slice(0, 2);
+      // PHASE 1 OPTIMIZATION: Increased chunk size from 1200 to 1500, overlap from 150 to 200
+      // Better context for metadata extraction, reduces empty response rate
+      return chunkText(sectionText, 1500, 200).slice(0, 2);
     });
 
     const chunks = sectionChunks.slice(0, 6);

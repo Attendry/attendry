@@ -143,6 +143,9 @@ function normalizeHost(hostname: string) {
   return hostname.replace(/^www\./, '').toLowerCase();
 }
 
+// Track seen aggregators for idempotent logging
+const seenAggregators = new Set<string>();
+
 function isAggregatorUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -154,6 +157,29 @@ function isAggregatorUrl(url: string): boolean {
       return true;
     }
     return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if URL is aggregator and log once per unique hostname
+ * @returns true if aggregator, false otherwise
+ */
+function checkAndLogAggregator(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = normalizeHost(parsed.hostname);
+    
+    const isAggr = AGGREGATOR_HOSTS.has(host) || 
+                   AGGREGATOR_KEYWORDS.some((keyword) => host.includes(keyword));
+    
+    if (isAggr && !seenAggregators.has(host)) {
+      console.log(`[aggregator-filter] Filtering domain: ${host}`);
+      seenAggregators.add(host);
+    }
+    
+    return isAggr;
   } catch {
     return false;
   }
@@ -690,6 +716,27 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       const endsWithEvents = urlLower.endsWith('/events/') || urlLower.endsWith('/events');
       if (endsWithEvents) {
         console.log(`[url-filter] Excluding generic events listing: ${url}`);
+        return false;
+      }
+      
+      // PHASE 1 OPTIMIZATION: Enhanced global roundup page filtering
+      // Filters event calendar/archive/list pages that are not specific events
+      const globalListPatterns = [
+        '/running-list',
+        '/all-events',
+        '/event-calendar',
+        '/upcoming-events',
+        '/past-events',
+        '/archive',
+        '/calendar',
+        '/event-list',
+        '/event-archive',
+        '/veranstaltungsarchiv',
+        '/veranstaltungskalender'
+      ];
+      
+      if (globalListPatterns.some(pattern => urlLower.includes(pattern))) {
+        console.log(`[url-filter] Excluding global roundup page: ${url}`);
         return false;
       }
       
@@ -1539,8 +1586,9 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
     ? buildWeightedGeminiContext(template, userProfile, urls, params.country || 'DE')
     : `Rate ${industry} events in ${locationContext}.`;
 
-  // Hybrid approach: Keep fix/qc-nov12's chunkSize=3 + feat-cc's better scoring
-  const chunkSize = 3;  // Process 3 URLs per Gemini call - avoids MAX_TOKENS with thinking tokens
+  // PHASE 1 OPTIMIZATION: Increased batch size from 3 to 6
+  // Reduces API calls by 50% while staying within token limits
+  const chunkSize = 6;  // Process 6 URLs per Gemini call - balanced latency vs token usage
   const baseContext = `${weightedContext}${timeframeLabel}${userContextText} Score each URL 0-1. Return JSON [{"url":"","score":0,"reason":""}] (reason<=10 chars, no prose).`;
 
   const resultsMap = new Map<string, { url: string; score: number; reason: string }>();
@@ -1645,7 +1693,7 @@ async function prioritizeWithGemini(urls: string[], params: OptimizedSearchParam
 
   const prioritizedResults = urls
     .map((url, idx) => resultsMap.get(url) ?? fallbackForUrl(url, idx, 'fallback_missing'))
-    .filter((item) => !isAggregatorUrl(item.url) || item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
+    .filter((item) => !checkAndLogAggregator(item.url) || item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
 
   if (prioritizedResults.length === 0) {
     const nonAggregatorFallback = urls
@@ -1936,7 +1984,7 @@ function filterAndRankEvents(events: EventCandidate[]): EventCandidate[] {
   return events
     .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.confidence)
     .filter(event => Array.isArray(event.speakers) && event.speakers.length > 0)
-    .filter(event => !isAggregatorUrl(event.url))
+    .filter(event => !checkAndLogAggregator(event.url))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
 }
