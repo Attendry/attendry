@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Edit, Trash2, ExternalLink, MapPin, Calendar, Star, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Edit, Trash2, ExternalLink, MapPin, Calendar, Star, MessageSquare, Sparkles } from 'lucide-react';
 import { SavedSpeakerProfile } from '@/lib/types/database';
+import { useSpeakerEnhancement } from '@/lib/hooks/useSpeakerEnhancement';
+import { SpeakerData } from '@/lib/types/core';
 
 interface EnhancedSavedProfileCardProps {
   profile: SavedSpeakerProfile;
@@ -26,9 +28,41 @@ export function EnhancedSavedProfileCard({
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editingNotes, setEditingNotes] = useState(profile.notes || '');
   const [isEditingStatus, setIsEditingStatus] = useState(false);
+  const [localEnhancedData, setLocalEnhancedData] = useState(profile.enhanced_data);
 
-  const enhancedData = profile.enhanced_data;
+  const enhancedData = localEnhancedData || profile.enhanced_data;
   const speakerData = profile.speaker_data;
+
+  // Convert saved profile to SpeakerData format for the enhancement hook
+  const speakerForEnhancement: SpeakerData = {
+    name: speakerData.name,
+    title: speakerData.title || undefined,
+    org: speakerData.org || undefined,
+    profile_url: speakerData.profile_url || speakerData.linkedin_url || undefined,
+    linkedin_url: speakerData.linkedin_url || undefined,
+    email: speakerData.email || undefined,
+    bio: speakerData.bio || enhancedData?.bio || undefined,
+    session: speakerData.session || undefined,
+  };
+
+  // Use the enhancement hook
+  const {
+    enhancedSpeaker,
+    enhancing,
+    enhancementError,
+    cached,
+    enhanceSpeaker,
+    hasEnhancedData: hasNewEnhancedData
+  } = useSpeakerEnhancement(speakerForEnhancement);
+
+  // Update local enhanced data when enhancement completes
+  useEffect(() => {
+    if (enhancedSpeaker) {
+      setLocalEnhancedData(enhancedSpeaker as any);
+      // Optionally update the profile in the database
+      // This could be done via a callback prop if needed
+    }
+  }, [enhancedSpeaker]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -100,7 +134,24 @@ export function EnhancedSavedProfileCard({
 
         {/* Actions */}
         {showActions && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => void enhanceSpeaker()}
+              disabled={enhancing}
+              className="text-xs px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+            >
+              {enhancing ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                  Enhancing...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3 h-3" />
+                  Enhance
+                </>
+              )}
+            </button>
             <button
               onClick={() => onEdit(profile)}
               className="text-xs px-3 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded transition-colors"
@@ -153,6 +204,18 @@ export function EnhancedSavedProfileCard({
           {showActions && (
             <div className="flex gap-1">
               <button
+                onClick={() => void enhanceSpeaker()}
+                disabled={enhancing}
+                className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title={enhancing ? "Enhancing..." : hasNewEnhancedData ? "Show enhanced details" : "Enhance profile with AI"}
+              >
+                {enhancing ? (
+                  <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+              </button>
+              <button
                 onClick={() => onEdit(profile)}
                 className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 title="Edit profile"
@@ -170,6 +233,26 @@ export function EnhancedSavedProfileCard({
           )}
         </div>
       </div>
+
+      {/* Enhancement Status */}
+      {enhancing && (
+        <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+          <div className="flex items-center gap-2 text-sm text-purple-700">
+            <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+            <span>Enhancing profile with AI...</span>
+          </div>
+        </div>
+      )}
+      {enhancementError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-700">Enhancement failed: {enhancementError}</p>
+        </div>
+      )}
+      {cached && !enhancing && (
+        <div className="mb-4 p-2 bg-green-50 border border-green-200 rounded-lg">
+          <p className="text-xs text-green-700">✓ Enhanced data loaded from cache</p>
+        </div>
+      )}
 
       {/* Enhanced Information */}
       {enhancedData?.bio && (

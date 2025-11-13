@@ -42,6 +42,8 @@ import { supabaseBrowser } from '@/lib/supabase-browser';
 import { UnauthenticatedNotice } from '@/components/UnauthenticatedNotice';
 import { deriveLocale, toISO2Country } from '@/lib/utils/country';
 import { EventRec } from '@/context/SearchResultsContext';
+import { useSpeakerEnhancement } from '@/lib/hooks/useSpeakerEnhancement';
+import { SpeakerData } from '@/lib/types/core';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',
@@ -395,6 +397,175 @@ function getSpeakerSignature(speaker: EventSpeaker): string | null {
     .toLowerCase();
 
   return organization ? `${name}__${organization}` : name;
+}
+
+interface DashboardSpeakerItemProps {
+  speaker: EventSpeaker;
+  speakerForEnhancement: SpeakerData;
+  speakerKey: string;
+  organization: string;
+  profileLink: string | null;
+  appearsMultiple: boolean;
+  duplicateEventsCount: number;
+  savedFromOtherEvent: boolean;
+  savedHere: boolean;
+  isSaving: boolean;
+  onSave: () => void;
+}
+
+function DashboardSpeakerItem({
+  speaker,
+  speakerForEnhancement,
+  speakerKey,
+  organization,
+  profileLink,
+  appearsMultiple,
+  duplicateEventsCount,
+  savedFromOtherEvent,
+  savedHere,
+  isSaving,
+  onSave,
+}: DashboardSpeakerItemProps) {
+  const [showEnhanced, setShowEnhanced] = useState(false);
+  
+  const {
+    enhancedSpeaker,
+    enhancing,
+    enhancementError,
+    cached,
+    enhanceSpeaker,
+    hasEnhancedData,
+  } = useSpeakerEnhancement(speakerForEnhancement);
+
+  const handleEnhance = async () => {
+    if (!enhancedSpeaker && !enhancing) {
+      await enhanceSpeaker();
+    }
+    setShowEnhanced(!showEnhanced);
+  };
+
+  return (
+    <li className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="min-w-0 flex-1">
+        <p className="line-clamp-1 font-medium text-slate-900">{speaker.name}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+          <span className="truncate">
+            {[speaker.title, organization].filter(Boolean).join(' · ') || 'Role pending'}
+          </span>
+          {appearsMultiple && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 font-semibold text-purple-700">
+              <Sparkles className="h-3 w-3" />
+              {duplicateEventsCount === 1
+                ? 'Also in 1 other event'
+                : `Also in ${duplicateEventsCount} other events`}
+            </span>
+          )}
+          {savedFromOtherEvent && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">
+              Saved elsewhere
+            </span>
+          )}
+        </div>
+        
+        {/* Enhanced Information */}
+        {showEnhanced && enhancedSpeaker && hasEnhancedData && (
+          <div className="mt-3 space-y-2 rounded-lg border border-purple-200 bg-purple-50 p-3 text-xs">
+            {enhancedSpeaker.bio && (
+              <p className="text-slate-700 line-clamp-2">{enhancedSpeaker.bio}</p>
+            )}
+            {enhancedSpeaker.expertise_areas && enhancedSpeaker.expertise_areas.length > 0 && (
+              <div>
+                <span className="font-medium text-slate-700">Expertise: </span>
+                <span className="text-slate-600">
+                  {enhancedSpeaker.expertise_areas.slice(0, 3).join(', ')}
+                  {enhancedSpeaker.expertise_areas.length > 3 && ` +${enhancedSpeaker.expertise_areas.length - 3} more`}
+                </span>
+              </div>
+            )}
+            {enhancedSpeaker.location && (
+              <div className="text-slate-600">
+                <span className="font-medium">Location: </span>
+                {enhancedSpeaker.location}
+              </div>
+            )}
+            {enhancedSpeaker.social_links?.linkedin && (
+              <a
+                href={enhancedSpeaker.social_links.linkedin}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+              >
+                <Linkedin className="h-3 w-3" />
+                LinkedIn Profile
+              </a>
+            )}
+          </div>
+        )}
+        
+        {enhancing && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-purple-600">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Enhancing profile...</span>
+          </div>
+        )}
+        {enhancementError && (
+          <div className="mt-2 text-xs text-red-600">
+            Enhancement failed: {enhancementError}
+          </div>
+        )}
+      </div>
+      
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-end">
+        <button
+          type="button"
+          onClick={handleEnhance}
+          disabled={enhancing}
+          className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700 transition hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
+          title={enhancing ? "Enhancing..." : hasEnhancedData ? "Show enhanced details" : "Enhance profile with AI"}
+        >
+          {enhancing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          {hasEnhancedData && !enhancing ? 'Details' : 'Enhance'}
+        </button>
+        
+        {savedHere || savedFromOtherEvent ? (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
+              savedFromOtherEvent
+                ? 'bg-amber-100 text-amber-700'
+                : 'bg-emerald-100 text-emerald-700'
+            }`}
+          >
+            ✓ Saved
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-slate-100 whitespace-nowrap"
+          >
+            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+            Save speaker
+          </button>
+        )}
+        {profileLink && (
+          <a
+            href={profileLink}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50 whitespace-nowrap"
+          >
+            <Linkedin className="h-3.5 w-3.5" />
+            Profile
+          </a>
+        )}
+      </div>
+    </li>
+  );
 }
 
 function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
@@ -1014,67 +1185,32 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                           const signatureSaved = signature ? savedSignatures[signature] === 'saved' : false;
                           const savedHere = status === 'saved';
                           const savedFromOtherEvent = signatureSaved && !savedHere;
+                          
+                          // Convert EventSpeaker to SpeakerData for enhancement
+                          const speakerForEnhancement: SpeakerData = {
+                            name: speaker.name || '',
+                            title: speaker.title || undefined,
+                            org: organization || undefined,
+                            profile_url: speaker.profile_url || undefined,
+                            linkedin_url: speaker.linkedin || undefined,
+                            email: speaker.email || undefined,
+                          };
+                          
                           return (
-                            <li
+                            <DashboardSpeakerItem
                               key={speakerKey}
-                              className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-                            >
-                              <div className="min-w-0">
-                                <p className="line-clamp-1 font-medium text-slate-900">{speaker.name}</p>
-                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                                  <span className="truncate">
-                                    {[speaker.title, organization].filter(Boolean).join(' · ') || 'Role pending'}
-                                  </span>
-                                  {appearsMultiple && (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 font-semibold text-purple-700">
-                                      <Sparkles className="h-3 w-3" />
-                                      {duplicateEventsCount === 1
-                                        ? 'Also in 1 other event'
-                                        : `Also in ${duplicateEventsCount} other events`}
-                                    </span>
-                                  )}
-                                  {savedFromOtherEvent && (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">
-                                      Saved elsewhere
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:justify-end">
-                                {savedHere || savedFromOtherEvent ? (
-                                  <span
-                                    className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
-                                      savedFromOtherEvent
-                                        ? 'bg-amber-100 text-amber-700'
-                                        : 'bg-emerald-100 text-emerald-700'
-                                    }`}
-                                  >
-                                    ✓ Saved
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleSaveSpeaker(event, speaker, speakerKey)}
-                                    disabled={isSaving}
-                                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-slate-100 whitespace-nowrap"
-                                  >
-                                    {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                                    Save speaker
-                                  </button>
-                                )}
-                                {profileLink && (
-                                  <a
-                                    href={profileLink}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50 whitespace-nowrap"
-                                  >
-                                    <Linkedin className="h-3.5 w-3.5" />
-                                    Profile
-                                  </a>
-                                )}
-                              </div>
-                            </li>
+                              speaker={speaker}
+                              speakerForEnhancement={speakerForEnhancement}
+                              speakerKey={speakerKey}
+                              organization={organization}
+                              profileLink={profileLink}
+                              appearsMultiple={appearsMultiple}
+                              duplicateEventsCount={duplicateEventsCount}
+                              savedFromOtherEvent={savedFromOtherEvent}
+                              savedHere={savedHere}
+                              isSaving={isSaving}
+                              onSave={() => void handleSaveSpeaker(event, speaker, speakerKey)}
+                            />
                           );
                         })}
                       </ul>
