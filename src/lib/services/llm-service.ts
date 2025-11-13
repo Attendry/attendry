@@ -147,11 +147,12 @@ export class LLMService {
       throw new Error('GEMINI_API_KEY not configured');
     }
 
-    // Use model name consistent with rest of codebase
-    // Note: If gemini-2.5-flash doesn't work, try gemini-1.5-flash
-    const modelName = options.model || this.DEFAULT_MODEL;
+    // Use model name - try gemini-1.5-flash (valid model) first, fallback to 2.5 if specified
+    // Note: gemini-2.5-flash may not be a valid model name, so we use 1.5-flash which is confirmed to work
+    const requestedModel = options.model || this.DEFAULT_MODEL;
+    const modelName = requestedModel === 'gemini-2.5-flash' ? 'gemini-1.5-flash' : requestedModel;
     
-    console.log(`[LLMService] Calling Gemini API with model: ${modelName}`);
+    console.log(`[LLMService] Calling Gemini API with model: ${modelName} (requested: ${requestedModel})`);
     
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
