@@ -1499,10 +1499,15 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       
       const key = name.toLowerCase();
       const existing = speakerMap.get(key);
+      
+      // Extract title and company - check multiple possible field names from Gemini response
+      const title = speaker.title?.trim?.() || speaker.role?.trim?.() || speaker.jobTitle?.trim?.() || speaker.position?.trim?.() || '';
+      const company = speaker.company?.trim?.() || speaker.org?.trim?.() || speaker.organization?.trim?.() || speaker.firm?.trim?.() || '';
+      
       const normalizedSpeaker: SpeakerData = {
         name,
-        title: speaker.title?.trim?.() ?? '',
-        company: speaker.company?.trim?.() ?? '',
+        title: title,
+        company: company,
         bio: speaker.bio?.trim?.() ?? ''
       };
 
@@ -1523,6 +1528,9 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
 
 REQUIRED: Each entry must be a REAL PERSON with a full name.
 
+CRITICAL: You MUST extract title (job title/role) and company (organization) for each speaker when available.
+These fields are ESSENTIAL and must be included in the response.
+
 DO NOT EXTRACT:
 ✗ Event names: "Privacy Summit", "Risk Forum", "Compliance Day"
 ✗ Session titles: "Practices Act", "Keynote Address", "Panel Discussion"  
@@ -1535,8 +1543,21 @@ DO NOT EXTRACT:
 
 ONLY EXTRACT:
 ✓ Full person names: "Dr. Sarah Johnson", "Michael Schmidt", "María García"
-✓ With context: job title, company, bio if available
-✓ Real individuals with first AND last names
+✓ Job title/role: "General Counsel", "Chief Compliance Officer", "Partner", "VP Legal"
+✓ Company/organization: "ABC Corporation", "XYZ Law Firm", "Legal Institute"
+✓ Bio if available: Brief professional background
+
+EXAMPLE OUTPUT:
+{
+  "speakers": [
+    {
+      "name": "Dr. Sarah Johnson",
+      "title": "General Counsel",
+      "company": "ABC Corporation",
+      "bio": "Expert in compliance and regulatory affairs"
+    }
+  ]
+}
 
 Return JSON with "speakers" array. If NO PEOPLE found, return {"speakers": []}.
 
@@ -1681,11 +1702,12 @@ ${chunk}`;
       const validatedSpeakers = filterSpeakers(rawFallbackSpeakers as RawSpeaker[]);
       
       // Map filtered speakers to SpeakerData format (filterSpeakers returns Speaker[] with name, role, org)
+      // For manual fallback, we only have name, so title and company will be empty
       const fallbackSpeakerData: SpeakerData[] = validatedSpeakers.map(speaker => ({
         name: speaker.name,
-        title: speaker.role || '',
-        company: speaker.org || '',
-        bio: '' // Bio not available from filterSpeakers output
+        title: speaker.role || '', // May be empty for manual extraction
+        company: speaker.org || '', // May be empty for manual extraction
+        bio: '' // Bio not available from manual extraction
       }));
       
       console.log(`[event-analysis] ✓ Manual extraction: ${fallbackNames.length} raw → ${fallbackSpeakerData.length} validated (filtered ${fallbackNames.length - fallbackSpeakerData.length} non-persons)`);

@@ -2014,13 +2014,16 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       return;
     }
 
+    // Map speakers ensuring title and company are preserved (required for UI)
     const mappedSpeakers = payload.speakers
       .slice(0, ORCHESTRATOR_CONFIG.limits.maxSpeakers)
       .map((speaker) => ({
         name: speaker.name,
-        title: speaker.title || undefined,
-        company: speaker.company || undefined
-      }));
+        // Preserve title and company even if empty strings (UI needs these fields)
+        title: speaker.title && speaker.title.trim().length > 0 ? speaker.title.trim() : undefined,
+        company: speaker.company && speaker.company.trim().length > 0 ? speaker.company.trim() : undefined
+      }))
+      .filter(speaker => speaker.name && speaker.name.trim().length > 0); // Only include speakers with valid names
 
     // Extract city and country from location string
     const locationParts = payload.metadata.location?.split(',').map(s => s.trim()) || [];
