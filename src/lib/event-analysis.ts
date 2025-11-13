@@ -24,6 +24,10 @@ const firecrawlKey = process.env.FIRECRAWL_KEY;
 const googleKey = process.env.GOOGLE_CSE_KEY;
 const googleCx = process.env.GOOGLE_CSE_CX;
 
+// METRICS: Track LLM empty response rate
+let llmTotalResponseCount = 0;
+let llmEmptyResponseCount = 0;
+
 // Rate limiting configuration - CONSERVATIVE FOR STABILITY
 const FIRECRAWL_RATE_LIMIT = {
   maxRequestsPerMinute: 10, // Conservative for stability
@@ -421,10 +425,21 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
     // Extract and prioritize sub-pages from the main page content
     const allSubPageUrls = extractSubPageUrls(eventUrl, results[0]?.content || '');
     const prioritizedSubPageUrls = prioritizeSubPagesForSpeakers(allSubPageUrls);
-    console.log('Found potential sub-pages:', allSubPageUrls.length, '| Prioritized:', prioritizedSubPageUrls.slice(0, 2).map(u => u.split('/').pop()));
+    // Log only valid prioritized URLs (filter out empty strings)
+    const validPrioritized = prioritizedSubPageUrls.filter(url => url && url.trim().length > 0);
+    if (validPrioritized.length > 0) {
+      console.log('Found potential sub-pages:', allSubPageUrls.length, '| Prioritized:', validPrioritized.slice(0, 2).map(u => u.split('/').pop()));
+    } else {
+      console.log('Found potential sub-pages:', allSubPageUrls.length, '| No valid prioritized URLs found');
+    }
     
     // Crawl sub-pages in parallel (OPTIMIZED FOR SPEED) - Take top 2 prioritized pages
-    const subPagePromises = prioritizedSubPageUrls.slice(0, 2).map(async (subUrl, index) => {
+    // Filter out empty/invalid URLs before crawling
+    const validSubPageUrls = prioritizedSubPageUrls
+      .filter(url => url && url.trim().length > 0 && url.startsWith('http'))
+      .slice(0, 2);
+    
+    const subPagePromises = validSubPageUrls.map(async (subUrl, index) => {
       // Stagger requests slightly to avoid overwhelming the API
       await new Promise(resolve => setTimeout(resolve, index * 200)); // 200ms stagger
       
@@ -512,34 +527,58 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
       }
       
       try {
+        // Clean up malformed URLs (remove trailing parentheses, fragments, etc.)
+        urlString = urlString.replace(/[)#]+$/, '').trim();
+        
+        // Skip if empty after cleaning
+        if (!urlString || urlString.length === 0) {
+          continue;
+        }
+        
+        // Must have protocol for URL parsing
+        if (!urlString.startsWith('http://') && !urlString.startsWith('https://')) {
+          // Try to add protocol if it looks like a domain
+          if (urlString.startsWith('/')) {
+            urlString = baseDomain + urlString;
+          } else if (urlString.includes('://')) {
+            // Already has protocol but malformed, skip
+            continue;
+          } else {
+            // Relative path
+            urlString = baseDomain + '/' + urlString.replace(/^\/+/, '');
+          }
+        }
+        
         const url = new URL(urlString);
         // Only include URLs from the same domain
         if (url.origin === baseDomain) {
           // Check if URL contains speaker-related keywords
           const urlLower = url.pathname.toLowerCase();
           if (speakerKeywords.some(keyword => urlLower.includes(keyword))) {
-            urls.push(urlString);
+            urls.push(url.href); // Use normalized href
           }
         }
       } catch (e) {
         // Invalid URL, skip
+        continue;
       }
     }
   }
   
-  // Also add common speaker page patterns if not found
-  const commonSpeakerPaths = [
-    '/referenten/',
-    '/speakers/',
-    '/agenda/',
-    '/programm/',
-    '/presenters/',
-    '/faculty/'
-  ];
-  
-  for (const path of commonSpeakerPaths) {
-    const fullUrl = baseDomain + path;
-    if (!urls.includes(fullUrl)) {
+  // Also add common speaker page patterns if not found (only if we haven't found any URLs yet)
+  // This prevents adding non-existent paths that will fail
+  if (urls.length === 0) {
+    const commonSpeakerPaths = [
+      '/referenten/',
+      '/speakers/',
+      '/agenda/',
+      '/programm/',
+      '/presenters/',
+      '/faculty/'
+    ];
+    
+    for (const path of commonSpeakerPaths) {
+      const fullUrl = baseDomain + path;
       urls.push(fullUrl);
     }
   }
@@ -887,8 +926,8 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
 
     const desiredFields: Array<keyof typeof aggregatedMetadata> = ['title', 'description', 'date', 'location', 'organizer', 'website'];
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    // PARALLELIZE METADATA EXTRACTION: Process chunks in parallel for speed
+    const processMetadataChunk = async (chunk: string, index: number): Promise<any> => {
       const prompt = `Extract factual event metadata as JSON using the provided schema. Only return fields you can confirm from this content chunk. Use null when unsure.
 
 **Date Extraction Guidelines:**
@@ -902,18 +941,18 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
 - Look for venue names and addresses
 - Return format: "City, Country" (e.g., "Berlin, Germany")
 
-Chunk ${i + 1}/${chunks.length}:
+Chunk ${index + 1}/${chunks.length}:
 ${chunk}`;
 
-      console.log(`[event-analysis] Calling Gemini for metadata chunk ${i + 1}/${chunks.length}`);
+      console.log(`[event-analysis] Calling Gemini for metadata chunk ${index + 1}/${chunks.length}`);
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Gemini metadata chunk timeout after 15 seconds')), 15000);
       });
 
       try {
         if (chunk.trim().length < 200) {
-          console.warn(`[event-analysis] Skipping metadata chunk ${i + 1} due to insufficient content`);
-          continue;
+          console.warn(`[event-analysis] Skipping metadata chunk ${index + 1} due to insufficient content`);
+          return null;
         }
 
         // LLM EMPTY-RESPONSE RETRY: Retry with smaller chunks if empty response
@@ -928,11 +967,11 @@ ${chunk}`;
             // Reduce chunk size on retry
             const newSize = Math.floor(currentChunk.length * chunkReductionFactor);
             currentChunk = currentChunk.substring(0, newSize);
-            console.log(`[event-analysis] Retry ${retryCount}/${maxRetries} for chunk ${i + 1} with reduced size: ${newSize} chars`);
+            console.log(`[event-analysis] Retry ${retryCount}/${maxRetries} for chunk ${index + 1} with reduced size: ${newSize} chars`);
           }
           
           // Build prompt with current chunk (replace only the chunk placeholder, not all occurrences)
-          const currentPrompt = prompt.replace(`Chunk ${i + 1}/${chunks.length}:\n${chunk}`, `Chunk ${i + 1}/${chunks.length}:\n${currentChunk}`);
+          const currentPrompt = prompt.replace(`Chunk ${index + 1}/${chunks.length}:\n${chunk}`, `Chunk ${index + 1}/${chunks.length}:\n${currentChunk}`);
           
           const geminiPromise = model.generateContent({
             contents: [{ role: 'user', parts: [{ text: currentPrompt }] }]
@@ -942,20 +981,27 @@ ${chunk}`;
           text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
           
           if (!text || !text.trim()) {
+            // METRICS: Track empty LLM responses
+            llmTotalResponseCount++;
+            llmEmptyResponseCount++;
+            
             retryCount++;
             if (retryCount <= maxRetries) {
-              console.warn(`[event-analysis] Empty metadata response for chunk ${i + 1}, retrying with smaller chunk...`);
+              console.warn(`[event-analysis] Empty metadata response for chunk ${index + 1}, retrying with smaller chunk...`);
               // Wait a bit before retry to avoid rate limiting
               await new Promise(resolve => setTimeout(resolve, 500));
             } else {
-              console.warn(`[event-analysis] Empty metadata response for chunk ${i + 1} after ${maxRetries} retries`);
+              console.warn(`[event-analysis] Empty metadata response for chunk ${index + 1} after ${maxRetries} retries`);
             }
+          } else {
+            // METRICS: Track successful responses
+            llmTotalResponseCount++;
           }
         }
 
         if (!text || !text.trim()) {
-          console.warn(`[event-analysis] Skipping chunk ${i + 1} after all retries failed`);
-          continue;
+          console.warn(`[event-analysis] Skipping chunk ${index + 1} after all retries failed`);
+          return null;
         }
 
         // PHASE 1: Safe JSON parsing with auto-repair
@@ -968,40 +1014,49 @@ ${chunk}`;
           if (jsonMatch) {
             try {
               metadata = JSON.parse(jsonMatch[0]);
-              console.log(`[event-analysis] Recovered JSON from chunk ${i + 1} using regex extraction`);
+              console.log(`[event-analysis] Recovered JSON from chunk ${index + 1} using regex extraction`);
             } catch (retryError) {
-              console.warn(`[event-analysis] Metadata chunk ${i + 1} JSON parsing failed completely:`, jsonError);
-              continue;
+              console.warn(`[event-analysis] Metadata chunk ${index + 1} JSON parsing failed completely:`, jsonError);
+              return null;
             }
           } else {
-            console.warn(`[event-analysis] Metadata chunk ${i + 1} JSON parsing failed:`, jsonError);
-            continue;
+            console.warn(`[event-analysis] Metadata chunk ${index + 1} JSON parsing failed:`, jsonError);
+            return null;
           }
         }
         
-        if (metadata) {
-          aggregatedMetadata.title = selectBetterValue(aggregatedMetadata.title, metadata.title);
-          aggregatedMetadata.description = selectBetterValue(aggregatedMetadata.description, metadata.description);
-          aggregatedMetadata.date = selectBetterValue(aggregatedMetadata.date, metadata.date);
-          aggregatedMetadata.location = selectBetterValue(aggregatedMetadata.location, metadata.location);
-          aggregatedMetadata.organizer = selectBetterValue(aggregatedMetadata.organizer, metadata.organizer);
-          aggregatedMetadata.website = selectBetterValue(aggregatedMetadata.website, metadata.website);
-          const registrationCandidate = metadata.registrationUrl ?? metadata.registration_url ?? metadata.registrationurl;
-          aggregatedMetadata.registrationUrl = selectBetterValue(aggregatedMetadata.registrationUrl, registrationCandidate);
-        }
-
-        const allSatisfied = desiredFields.every(field => isMeaningfulValue(aggregatedMetadata[field]));
-        if (allSatisfied) {
-          break;
-        }
+        return metadata;
       } catch (chunkError) {
-        console.warn(`[event-analysis] Metadata chunk ${i + 1} failed`, chunkError);
+        console.warn(`[event-analysis] Metadata chunk ${index + 1} failed`, chunkError);
         // Check if it's a MAX_TOKENS error
         if (chunkError instanceof Error && chunkError.message.includes('MAX_TOKENS')) {
-          console.warn(`[event-analysis] Chunk ${i + 1} hit MAX_TOKENS limit, may need to reduce chunk size`);
+          console.warn(`[event-analysis] Chunk ${index + 1} hit MAX_TOKENS limit, may need to reduce chunk size`);
         }
+        return null;
       }
-    }
+    };
+
+    // Process all chunks in parallel
+    console.log('[event-analysis] Processing metadata chunks in parallel for speed...');
+    const chunkPromises = chunks.map((chunk, i) => processMetadataChunk(chunk, i));
+    const chunkResults = await Promise.allSettled(chunkPromises);
+
+    // Aggregate results from all chunks
+    chunkResults.forEach((result, i) => {
+      if (result.status === 'fulfilled' && result.value) {
+        const metadata = result.value;
+        aggregatedMetadata.title = selectBetterValue(aggregatedMetadata.title, metadata.title);
+        aggregatedMetadata.description = selectBetterValue(aggregatedMetadata.description, metadata.description);
+        aggregatedMetadata.date = selectBetterValue(aggregatedMetadata.date, metadata.date);
+        aggregatedMetadata.location = selectBetterValue(aggregatedMetadata.location, metadata.location);
+        aggregatedMetadata.organizer = selectBetterValue(aggregatedMetadata.organizer, metadata.organizer);
+        aggregatedMetadata.website = selectBetterValue(aggregatedMetadata.website, metadata.website);
+        const registrationCandidate = metadata.registrationUrl ?? metadata.registration_url ?? metadata.registrationurl;
+        aggregatedMetadata.registrationUrl = selectBetterValue(aggregatedMetadata.registrationUrl, registrationCandidate);
+      } else if (result.status === 'rejected') {
+        console.warn(`[event-analysis] Metadata chunk ${i + 1} rejected:`, result.reason);
+      }
+    });
 
     // Return aggregated metadata
     return {
@@ -1458,8 +1513,13 @@ ${chunk}`;
             text = typeof retryResponse.text === 'function' ? await retryResponse.text() : retryResponse?.candidates?.[0]?.content?.parts?.[0]?.text || '';
             
             if (!text || !text.trim()) {
+              // METRICS: Track empty LLM responses
+              llmTotalResponseCount++;
+              llmEmptyResponseCount++;
               console.warn(`[event-analysis] Empty speaker response for chunk ${index + 1} after retry`);
               return [];
+            } else {
+              llmTotalResponseCount++;
             }
           } catch (retryError) {
             console.warn(`[event-analysis] Speaker extraction retry failed for chunk ${index + 1}:`, retryError);
@@ -1468,7 +1528,12 @@ ${chunk}`;
         }
         
         if (!text || !text.trim()) {
+          // METRICS: Track empty LLM responses
+          llmTotalResponseCount++;
+          llmEmptyResponseCount++;
           return [];
+        } else {
+          llmTotalResponseCount++;
         }
 
         let parsed;
@@ -1711,3 +1776,17 @@ export async function analyzeEventRequest(request: EventAnalysisRequest): Promis
     };
   }
 }
+
+/**
+ * METRICS: Get LLM empty response rate
+ */
+export function getLLMMetrics() {
+  return {
+    empty_response_rate: llmTotalResponseCount > 0 
+      ? (llmEmptyResponseCount / llmTotalResponseCount) * 100 
+      : 0,
+    total_responses: llmTotalResponseCount,
+    empty_responses: llmEmptyResponseCount
+  };
+}
+

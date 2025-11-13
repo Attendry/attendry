@@ -143,6 +143,11 @@ const cacheStore = new MemorySafeStore<any>(1000, 60000);
 // This prevents duplicate API calls when multiple query variations produce the same narrative query
 const inFlightRequests = new Map<string, Promise<UnifiedSearchResult>>();
 
+// METRICS: Track Firecrawl requests in flight
+let firecrawlRequestsInFlight = 0;
+let firecrawlRequestsTotal = 0;
+let firecrawlRequestsFailed = 0;
+
 /**
  * Normalize query for deduplication (remove variations that don't affect Firecrawl query)
  */
@@ -433,12 +438,26 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
     // Store the promise in the in-flight map for deduplication
     inFlightRequests.set(dedupKey, apiCallPromise);
+    
+    // METRICS: Track in-flight requests
+    firecrawlRequestsInFlight++;
+    firecrawlRequestsTotal++;
 
     // Await the promise and return the result
-    return await apiCallPromise;
+    try {
+      const result = await apiCallPromise;
+      firecrawlRequestsInFlight--;
+      return result;
+    } catch (error) {
+      firecrawlRequestsInFlight--;
+      firecrawlRequestsFailed++;
+      throw error;
+    }
   } catch (error) {
     // Clean up in-flight request on error
     inFlightRequests.delete(dedupKey);
+    firecrawlRequestsInFlight = Math.max(0, firecrawlRequestsInFlight - 1);
+    firecrawlRequestsFailed++;
     console.error('[unified-firecrawl] Request failed:', error);
     return {
       items: [],
@@ -447,6 +466,20 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
       metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
     };
   }
+}
+
+/**
+ * METRICS: Get Firecrawl metrics
+ */
+export function getFirecrawlMetrics() {
+  return {
+    requests_in_flight: firecrawlRequestsInFlight,
+    requests_total: firecrawlRequestsTotal,
+    requests_failed: firecrawlRequestsFailed,
+    success_rate: firecrawlRequestsTotal > 0 
+      ? ((firecrawlRequestsTotal - firecrawlRequestsFailed) / firecrawlRequestsTotal) * 100 
+      : 100
+  };
 }
 
 /**

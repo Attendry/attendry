@@ -15,7 +15,8 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { unifiedSearch } from './search/unified-search-core';
+import { unifiedSearch, getFirecrawlMetrics } from './search/unified-search-core';
+import { getLLMMetrics } from './event-analysis';
 import { executeWithRetry, executeWithGracefulDegradation, executeWithCircuitBreaker } from './error-recovery';
 import { supabaseServer } from './supabase-server';
 import { getCountryContext } from './utils/country';
@@ -654,17 +655,28 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     const discoveryStart = Date.now();
     const rawCandidates = await discoverEventCandidates(query, params, userProfile, narrativeQuery);
     const discoveryTime = Date.now() - discoveryStart;
+    
+    // BACKPRESSURE QUEUE: Limit discovery results to prevent memory bloat
+    // Drop oldest URLs if we exceed the limit (max 50 URLs)
+    const MAX_DISCOVERY_URLS = 50;
+    const boundedCandidates = rawCandidates.length > MAX_DISCOVERY_URLS
+      ? rawCandidates.slice(0, MAX_DISCOVERY_URLS)
+      : rawCandidates;
+    
+    if (rawCandidates.length > MAX_DISCOVERY_URLS) {
+      console.warn(`[optimized-orchestrator] Discovery returned ${rawCandidates.length} URLs, limiting to ${MAX_DISCOVERY_URLS} (dropped ${rawCandidates.length - MAX_DISCOVERY_URLS} oldest)`);
+    }
     logs.push({
       stage: 'discovery',
-      message: `Discovered ${rawCandidates.length} raw candidates`,
+      message: `Discovered ${boundedCandidates.length} raw candidates (${rawCandidates.length} total, ${rawCandidates.length > MAX_DISCOVERY_URLS ? `limited to ${MAX_DISCOVERY_URLS}` : 'all included'})`,
       timestamp: new Date().toISOString(),
-      data: { candidateCount: rawCandidates.length, duration: discoveryTime }
+      data: { candidateCount: boundedCandidates.length, totalCandidates: rawCandidates.length, duration: discoveryTime }
     });
 
     // Step 3.5: Voyage rerank gate (pre-filter aggregators, apply DE bias)
     const voyageStart = Date.now();
     const voyageResult = await applyVoyageGate(
-      rawCandidates,
+      boundedCandidates,
       {
         country: params.country || 'DE',
         dateFrom: params.dateFrom || '',
@@ -732,8 +744,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         return false;
       }
       
-      // PHASE 1 OPTIMIZATION: Enhanced global roundup page filtering
+      // PHASE 1 OPTIMIZATION: Enhanced global roundup page filtering (FILTER EARLIER)
       // Filters event calendar/archive/list pages that are not specific events
+      // This prevents wasting extraction time (25-45s) on non-event pages
       const globalListPatterns = [
         '/running-list',
         '/all-events',
@@ -748,8 +761,15 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         '/veranstaltungskalender'
       ];
       
-      if (globalListPatterns.some(pattern => urlLower.includes(pattern))) {
-        console.log(`[url-filter] Excluding global roundup page: ${url}`);
+      // Check if URL matches any global list pattern
+      const isGlobalList = globalListPatterns.some(pattern => urlLower.includes(pattern)) ||
+        // Also match /events or /events/ at end of URL (but not /events/event-name)
+        /\/events?\/?$/.test(urlLower) ||
+        /\/conferences?\/?$/.test(urlLower) ||
+        /\/veranstaltungen?\/?$/.test(urlLower);
+      
+      if (isGlobalList) {
+        console.log(`[url-filter] Excluding global roundup page (filtered early): ${url}`);
         return false;
       }
       
@@ -1035,6 +1055,23 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     // Get performance metrics
     const performanceMetrics = performanceMonitor.getMetrics();
     const resourceMetrics = resourceOptimizer.getResourceMetrics();
+    
+    // METRICS: Log Firecrawl and LLM metrics
+    const firecrawlMetrics = getFirecrawlMetrics();
+    const llmMetrics = getLLMMetrics();
+    console.log('[optimized-orchestrator] Performance metrics:', {
+      firecrawl: {
+        requests_in_flight: firecrawlMetrics.requests_in_flight,
+        requests_total: firecrawlMetrics.requests_total,
+        requests_failed: firecrawlMetrics.requests_failed,
+        success_rate: `${firecrawlMetrics.success_rate.toFixed(1)}%`
+      },
+      llm: {
+        empty_response_rate: `${llmMetrics.empty_response_rate.toFixed(1)}%`,
+        total_responses: llmMetrics.total_responses,
+        empty_responses: llmMetrics.empty_responses
+      }
+    });
     const cacheAnalytics = {
       search: searchCache.getAnalytics(),
       analysis: analysisCache.getAnalytics(),
@@ -1857,7 +1894,9 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       }, 'firecrawl');
     },
     {
-      maxConcurrency: Math.min(ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions, 3),
+      // BACKPRESSURE: Reduce concurrency to 2 to prevent exceeding Firecrawl capacity
+      // With 8 extractions × 2 concurrent × 3 calls (main + 2 sub) = 48 max Firecrawl calls (within 50 limit)
+      maxConcurrency: Math.min(ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions, 2),
       enableEarlyTermination: false,
       qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.parseQuality,
       minResults: 1
