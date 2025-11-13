@@ -64,25 +64,68 @@ export class EventInsightsService {
       }
     } else {
       // Not a board item ID - try to find event directly
-      // First try as UUID in collected_events
-      const { data: eventById } = await supabase
-        .from('collected_events')
-        .select('*')
-        .eq('id', eventId)
-        .maybeSingle();
       
-      if (eventById) {
-        event = eventById;
-      } else {
-        // Try as source_url
-        const { data: eventByUrl } = await supabase
-          .from('collected_events')
-          .select('*')
-          .eq('source_url', eventId)
+      // Check if this is an optimized event ID (format: optimized_{timestamp}_{index})
+      const isOptimizedId = eventId.startsWith('optimized_');
+      
+      if (isOptimizedId) {
+        // For optimized IDs, try to find in board by event_url or event_data
+        // First, try to find board item that might have this event
+        const { data: boardItems } = await supabase
+          .from('user_event_board')
+          .select('event_id, event_url, event_data')
+          .eq('user_id', userId)
           .maybeSingle();
         
-        if (eventByUrl) {
-          event = eventByUrl;
+        if (boardItems?.event_data) {
+          // Check if event_data has a matching ID or URL
+          const eventData = boardItems.event_data as any;
+          if (eventData.id === eventId || eventData.source_url) {
+            event = eventData;
+          }
+        }
+        
+        // If still not found, try to find by URL pattern
+        // Optimized events typically have source_url in their metadata
+        if (!event) {
+          // Try to extract URL from optimized ID or search board items
+          const { data: allBoardItems } = await supabase
+            .from('user_event_board')
+            .select('event_data')
+            .eq('user_id', userId);
+          
+          if (allBoardItems) {
+            for (const item of allBoardItems) {
+              const eventData = item.event_data as any;
+              if (eventData && (eventData.id === eventId || eventData.source_url)) {
+                event = eventData;
+                break;
+              }
+            }
+          }
+        }
+      } else {
+        // Regular UUID or URL - try to find event directly
+        // First try as UUID in collected_events
+        const { data: eventById } = await supabase
+          .from('collected_events')
+          .select('*')
+          .eq('id', eventId)
+          .maybeSingle();
+        
+        if (eventById) {
+          event = eventById;
+        } else {
+          // Try as source_url
+          const { data: eventByUrl } = await supabase
+            .from('collected_events')
+            .select('*')
+            .eq('source_url', eventId)
+            .maybeSingle();
+          
+          if (eventByUrl) {
+            event = eventByUrl;
+          }
         }
       }
     }

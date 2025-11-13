@@ -17,6 +17,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createHash } from "crypto";
 import { supabaseServer } from "@/lib/supabase-server";
 import { filterSpeakers, type RawSpeaker } from "./extract/speakers";
+import { normalizeOrg, orgSimilarity } from "@/lib/utils/org-normalizer";
+import { normalizeTopics } from "@/lib/utils/topic-normalizer";
+import { levenshteinSimilarity } from "@/lib/utils/levenshtein";
 
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
@@ -1591,6 +1594,19 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
 
     const speakerMap = new Map<string, SpeakerData>();
 
+    // PHASE 2: Normalize speaker name for fuzzy matching
+    const normalizeSpeakerNameForMatching = (name: string): string => {
+      if (!name || typeof name !== 'string') return '';
+      let normalized = name.trim();
+      // Remove common titles
+      normalized = normalized.replace(/^(dr\.?|prof\.?|professor|mr\.?|mrs\.?|ms\.?|miss)\s+/i, '');
+      // Expand single-letter initials (J. Smith → J Smith)
+      normalized = normalized.replace(/\b([A-Z])\.\s+/g, '$1 ');
+      // Normalize whitespace and lowercase
+      normalized = normalized.replace(/\s+/g, ' ').trim().toLowerCase();
+      return normalized;
+    };
+
     // Upsert speaker with validation
     const upsertSpeaker = (speaker: any) => {
       if (!speaker) return;
@@ -1608,7 +1624,10 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       
       // Extract title and company - check multiple possible field names from Gemini response
       const title = speaker.title?.trim?.() || speaker.role?.trim?.() || speaker.jobTitle?.trim?.() || speaker.position?.trim?.() || '';
-      const company = speaker.company?.trim?.() || speaker.org?.trim?.() || speaker.organization?.trim?.() || speaker.firm?.trim?.() || '';
+      const rawCompany = speaker.company?.trim?.() || speaker.org?.trim?.() || speaker.organization?.trim?.() || speaker.firm?.trim?.() || '';
+      
+      // PHASE 2: Normalize organization name
+      const company = rawCompany ? normalizeOrg(rawCompany) : '';
       
       const normalizedSpeaker: SpeakerData = {
         name,
@@ -1617,11 +1636,51 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
         bio: speaker.bio?.trim?.() ?? ''
       };
 
+      // PHASE 2: Fuzzy speaker matching - check if this speaker matches an existing one
+      if (existing) {
+        // Use fuzzy matching to check if it's the same speaker
+        const normName1 = normalizeSpeakerNameForMatching(name);
+        const normName2 = normalizeSpeakerNameForMatching(existing.name);
+        const nameSimilarity = levenshteinSimilarity(normName1, normName2);
+        
+        if (nameSimilarity >= 0.8) {
+          // Name is similar, check org similarity if both have orgs
+          if (company && existing.company) {
+            const orgSim = orgSimilarity(company, existing.company);
+            if (orgSim >= 0.6) {
+              // Same speaker - merge data
+              console.log('[phase2-fuzzy-matching] Merging duplicate speaker:', {
+                name1: existing.name,
+                name2: name,
+                nameSimilarity: nameSimilarity.toFixed(2),
+                orgSimilarity: orgSim.toFixed(2),
+                org1: existing.company,
+                org2: company
+              });
+              existing.title = selectBetterValue(existing.title, normalizedSpeaker.title);
+              existing.company = selectBetterValue(existing.company, normalizedSpeaker.company);
+              existing.bio = selectBetterValue(existing.bio, normalizedSpeaker.bio);
+              speakerMap.set(key, existing);
+              return;
+            }
+          } else {
+            // Same name, no org conflict - merge
+            existing.title = selectBetterValue(existing.title, normalizedSpeaker.title);
+            existing.company = selectBetterValue(existing.company, normalizedSpeaker.company);
+            existing.bio = selectBetterValue(existing.bio, normalizedSpeaker.bio);
+            speakerMap.set(key, existing);
+            return;
+          }
+        }
+      }
+
+      // New speaker or not a match - add to map
       if (!existing) {
         speakerMap.set(key, normalizedSpeaker);
         return;
       }
 
+      // Exact key match (same normalized name) - merge
       existing.title = selectBetterValue(existing.title, normalizedSpeaker.title);
       existing.company = selectBetterValue(existing.company, normalizedSpeaker.company);
       existing.bio = selectBetterValue(existing.bio, normalizedSpeaker.bio);
