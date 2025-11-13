@@ -785,6 +785,112 @@ function extractSpeakerNamesManually(text: string): string[] {
   return filteredNames.slice(0, 10); // Reduced to 10 speakers for faster processing
 }
 
+/**
+ * Enhanced manual extraction that extracts name, title, and company from text
+ * Used as fallback when Gemini extraction fails
+ */
+function extractSpeakerDataManually(text: string): Array<{name: string, title?: string, company?: string}> {
+  const speakers: Array<{name: string, title?: string, company?: string}> = [];
+  const seenNames = new Set<string>();
+  
+  // Common job title patterns (English and German)
+  const titlePatterns = [
+    /\b(?:CEO|CTO|CFO|COO|VP|Director|Manager|Head|Senior|Chief|General Counsel|Compliance Officer|Partner|Associate|Counsel|Attorney|Lawyer|Advocate|Solicitor)\b/gi,
+    /\b(?:Geschäftsführer|Direktor|Leiter|Manager|Partner|Rechtsanwalt|Anwalt|Justiziar|Compliance Officer|General Counsel)\b/gi,
+    /\b(?:Professor|Prof\.|Dr\.|PhD|MBA|LL\.M\.)\b/gi
+  ];
+  
+  // Patterns to extract structured speaker information
+  const patterns = [
+    // Pattern: "Name, Title, Company" or "Name - Title at Company"
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß]+)?)(?:\s*[,\-|]\s*)([^,\-|]+?)(?:\s*[,\-|]\s*)?(?:at\s+|@\s+|,\s*)?([A-ZÄÖÜ][A-Za-zäöüß\s&]+(?:GmbH|AG|Inc|LLC|Corp|Ltd|Company|Corporation|Firm|Law|Legal|Partners)?)/gi,
+    // Pattern: "Name | Title | Company"
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)\s*\|\s*([^|]+?)\s*\|\s*([^|]+)/gi,
+    // Pattern: "Name (Title at Company)"
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)\s*\(([^)]+?)(?:\s+at\s+|\s+@\s+)([^)]+)\)/gi,
+    // Pattern: "Name\nTitle\nCompany" (multi-line)
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)\s*\n\s*([^\n]+?)\s*\n\s*([A-ZÄÖÜ][A-Za-zäöüß\s&]+(?:GmbH|AG|Inc|LLC|Corp|Ltd)?)/gi,
+    // Pattern: "Name, Title" (no company)
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*,\s*)([A-ZÄÖÜ][^,\n]+?)(?:\s*$|\s*[,\n])/gi,
+    // Pattern: "Name - Title" (no company)
+    /([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*-\s*)([A-ZÄÖÜ][^-\n]+?)(?:\s*$|\s*[-,\n])/gi,
+    // Pattern: "Title: Name, Company"
+    /(?:Title|Position|Role):\s*([^:,\n]+?)\s*[:\-]\s*([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*,\s*)?([A-ZÄÖÜ][A-Za-zäöüß\s&]+(?:GmbH|AG|Inc|LLC)?)?/gi,
+    // Pattern: German format "Referent: Name, Titel, Firma"
+    /(?:Referent|Referentin|Sprecher|Sprecherin):\s*([A-ZÄÖÜ][a-zäöüß]+ [A-ZÄÖÜ][a-zäöüß]+)(?:\s*,\s*)([^,\n]+?)(?:\s*,\s*)?([A-ZÄÖÜ][A-Za-zäöüß\s&]+(?:GmbH|AG)?)?/gi
+  ];
+  
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const name = (match[1] || match[2] || '').trim();
+      const title = (match[2] || match[3] || '').trim();
+      const company = (match[3] || match[4] || '').trim();
+      
+      // Clean name
+      const cleanName = name
+        .replace(/^[^A-ZÄÖÜ]*/, '')
+        .replace(/[^A-ZÄÖÜa-zäöüß\s].*$/, '')
+        .trim();
+      
+      if (cleanName && cleanName.split(' ').length >= 2 && cleanName.length > 5 && cleanName.length < 50) {
+        // Check if name contains title keywords (false positive)
+        const hasTitleInName = titlePatterns.some(tp => tp.test(cleanName));
+        if (hasTitleInName) continue;
+        
+        // Clean title - remove common prefixes and validate
+        let cleanTitle = title
+          .replace(/^(?:Title|Position|Role|Job):\s*/i, '')
+          .replace(/\s*at\s+[A-ZÄÖÜ].*$/i, '') // Remove "at Company" from title
+          .trim();
+        
+        // Clean company - remove common suffixes and validate
+        let cleanCompany = company
+          .replace(/^(?:Company|Organization|Firm):\s*/i, '')
+          .replace(/\s*\([^)]+\)$/, '') // Remove parenthetical info
+          .trim();
+        
+        // Validate title (should contain job-related keywords or be short)
+        if (cleanTitle && cleanTitle.length > 50) cleanTitle = '';
+        if (cleanTitle && !titlePatterns.some(tp => tp.test(cleanTitle)) && cleanTitle.length > 30) cleanTitle = '';
+        
+        // Validate company (should look like a company name)
+        if (cleanCompany && (cleanCompany.length < 3 || cleanCompany.length > 100)) cleanCompany = '';
+        if (cleanCompany && /^(the|a|an)\s+/i.test(cleanCompany)) {
+          cleanCompany = cleanCompany.replace(/^(the|a|an)\s+/i, '');
+        }
+        
+        const key = cleanName.toLowerCase();
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          speakers.push({
+            name: cleanName,
+            title: cleanTitle || undefined,
+            company: cleanCompany || undefined
+          });
+        }
+      }
+    }
+  }
+  
+  // Fallback: if no structured data found, extract just names
+  if (speakers.length === 0) {
+    const names = extractSpeakerNamesManually(text);
+    return names.map(name => ({ name }));
+  }
+  
+  // Filter out common false positives
+  return speakers.filter(s => 
+    !s.name.toLowerCase().includes('event') &&
+    !s.name.toLowerCase().includes('conference') &&
+    !s.name.toLowerCase().includes('compliance') &&
+    !s.name.toLowerCase().includes('berlin') &&
+    !s.name.toLowerCase().includes('bundeskongress') &&
+    !s.name.toLowerCase().includes('tickets') &&
+    !s.name.toLowerCase().includes('programm')
+  ).slice(0, 10);
+}
+
 export async function fallbackToGoogleCSE(eventTitle: string, eventUrl: string): Promise<CrawlResult[]> {
   const results: CrawlResult[] = [];
   
@@ -1698,31 +1804,41 @@ ${chunk}`;
       return speakerData;
     }
 
-    console.log('[event-analysis] No speakers found via Gemini, trying manual extraction fallback...');
-    const fallbackNames = extractSpeakerNamesManually(serializedSections);
-    if (fallbackNames.length > 0) {
-      console.log(`[event-analysis] Manual extraction found ${fallbackNames.length} potential names`);
+    console.log('[event-analysis] No speakers found via Gemini, trying enhanced manual extraction fallback...');
+    const fallbackSpeakers = extractSpeakerDataManually(serializedSections);
+    if (fallbackSpeakers.length > 0) {
+      console.log(`[event-analysis] Enhanced manual extraction found ${fallbackSpeakers.length} speakers with ${fallbackSpeakers.filter(s => s.title || s.company).length} having title/company`);
       
       // PHASE 2: Use same comprehensive filtering as Gemini results
-      const rawFallbackSpeakers = fallbackNames.map(name => ({
-        name,
-        title: '',
-        company: '',
+      const rawFallbackSpeakers = fallbackSpeakers.map(speaker => ({
+        name: speaker.name,
+        title: speaker.title || '',
+        company: speaker.company || '',
         bio: ''
       }));
       
       const validatedSpeakers = filterSpeakers(rawFallbackSpeakers as RawSpeaker[]);
       
       // Map filtered speakers to SpeakerData format (filterSpeakers returns Speaker[] with name, role, org)
-      // For manual fallback, we only have name, so title and company will be empty
-      const fallbackSpeakerData: SpeakerData[] = validatedSpeakers.map(speaker => ({
-        name: speaker.name,
-        title: speaker.role || '', // May be empty for manual extraction
-        company: speaker.org || '', // May be empty for manual extraction
-        bio: '' // Bio not available from manual extraction
-      }));
+      // Preserve manually extracted title/company, fallback to filterSpeakers role/org if available
+      const fallbackSpeakerData: SpeakerData[] = validatedSpeakers.map(speaker => {
+        // Find original manually extracted data
+        const originalData = fallbackSpeakers.find(s => s.name.toLowerCase() === speaker.name.toLowerCase());
+        
+        return {
+          name: speaker.name,
+          // Prefer manually extracted title/company, fallback to filterSpeakers role/org
+          title: (originalData?.title && originalData.title.trim().length > 0)
+            ? originalData.title.trim()
+            : (speaker.role || ''),
+          company: (originalData?.company && originalData.company.trim().length > 0)
+            ? originalData.company.trim()
+            : (speaker.org || ''),
+          bio: '' // Bio not available from manual extraction
+        };
+      });
       
-      console.log(`[event-analysis] ✓ Manual extraction: ${fallbackNames.length} raw → ${fallbackSpeakerData.length} validated (filtered ${fallbackNames.length - fallbackSpeakerData.length} non-persons)`);
+      console.log(`[event-analysis] ✓ Enhanced manual extraction: ${fallbackSpeakers.length} raw → ${fallbackSpeakerData.length} validated (filtered ${fallbackSpeakers.length - fallbackSpeakerData.length} non-persons)`);
       
       if (fallbackSpeakerData.length > 0) {
         return fallbackSpeakerData;
