@@ -143,12 +143,19 @@ export class LLMService {
     const apiKey = process.env.GEMINI_API_KEY;
     
     if (!apiKey) {
+      console.error('[LLMService] GEMINI_API_KEY not configured');
       throw new Error('GEMINI_API_KEY not configured');
     }
 
+    // Use model name consistent with rest of codebase
+    // Note: If gemini-2.5-flash doesn't work, try gemini-1.5-flash
+    const modelName = options.model || this.DEFAULT_MODEL;
+    
+    console.log(`[LLMService] Calling Gemini API with model: ${modelName}`);
+    
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
-      model: options.model || 'gemini-2.5-flash',
+      model: modelName,
       generationConfig: {
         responseMimeType: options.responseFormat === 'json' ? 'application/json' : undefined,
         temperature: options.temperature ?? this.DEFAULT_TEMPERATURE,
@@ -161,19 +168,30 @@ export class LLMService {
       ? `${prompt}\n\nData:\n${JSON.stringify(data, null, 2)}`
       : prompt;
 
+    console.log(`[LLMService] Prompt length: ${fullPrompt.length} characters`);
+
     try {
-      const result = await RetryService.executeWithRetry(
+      const retryResult = await RetryService.executeWithRetry(
         'gemini',
         'llm_call',
         async () => {
+          console.log('[LLMService] Making Gemini API call...');
           const response = await model.generateContent(fullPrompt);
-          return response.response.text();
+          const text = response.response.text();
+          console.log(`[LLMService] Gemini API call successful, response length: ${text.length}`);
+          return text;
         }
-      ).then(r => r.data);
+      );
+      
+      const result = retryResult.data;
 
       let content: any;
       if (options.responseFormat === 'json') {
-        content = safeParseJson(result) || result;
+        content = safeParseJson(result);
+        if (!content) {
+          console.warn('[LLMService] Failed to parse JSON response, using raw text');
+          content = result;
+        }
       } else {
         content = result;
       }
@@ -181,15 +199,22 @@ export class LLMService {
       // Estimate tokens (rough: 1 token ≈ 4 characters)
       const tokensUsed = Math.ceil((fullPrompt.length + result.length) / 4);
 
+      console.log(`[LLMService] Intelligence generation complete, tokens: ~${tokensUsed}, time: ${Date.now() - startTime}ms`);
+
       return {
         content,
         tokensUsed,
         provider: 'gemini',
-        model: options.model || 'gemini-2.5-flash',
+        model: modelName,
         processingTime: Date.now() - startTime
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('[LLMService] Gemini call failed:', error);
+      console.error('[LLMService] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       throw error;
     }
   }

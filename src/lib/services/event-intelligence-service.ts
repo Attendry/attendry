@@ -440,14 +440,36 @@ export async function generateEventIntelligence(
   options?: { provider?: 'gemini' | 'claude' }
 ): Promise<EventIntelligence> {
   const startTime = Date.now();
+  console.log(`[EventIntelligence] Starting intelligence generation for event: ${event.title || event.source_url}`);
   
   // Generate all intelligence components in parallel
-  const [discussions, sponsors, location, outreach] = await Promise.all([
-    analyzeEventDiscussions(event, options),
-    analyzeSponsors(event, options),
-    analyzeLocationContext(event, options),
-    generateOutreachRecommendations(event, userProfile, options)
-  ]);
+  console.log('[EventIntelligence] Generating intelligence components in parallel...');
+  let discussions, sponsors, location, outreach;
+  
+  try {
+    [discussions, sponsors, location, outreach] = await Promise.all([
+      analyzeEventDiscussions(event, options).catch(err => {
+        console.error('[EventIntelligence] Failed to analyze discussions:', err);
+        throw err;
+      }),
+      analyzeSponsors(event, options).catch(err => {
+        console.error('[EventIntelligence] Failed to analyze sponsors:', err);
+        throw err;
+      }),
+      analyzeLocationContext(event, options).catch(err => {
+        console.error('[EventIntelligence] Failed to analyze location:', err);
+        throw err;
+      }),
+      generateOutreachRecommendations(event, userProfile, options).catch(err => {
+        console.error('[EventIntelligence] Failed to generate outreach:', err);
+        throw err;
+      })
+    ]);
+    console.log('[EventIntelligence] All intelligence components generated successfully');
+  } catch (error) {
+    console.error('[EventIntelligence] Failed to generate intelligence components:', error);
+    throw error;
+  }
   
   // Calculate confidence based on data completeness
   const hasDescription = !!event.description;
