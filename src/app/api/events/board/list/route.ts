@@ -18,7 +18,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
 
-    // Build query
+    // Build query - get both collected_events and event_data
     let query = supabase
       .from('user_event_board')
       .select(`
@@ -61,9 +61,21 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
+    // Transform data to ensure event information is available
+    const transformedItems = (data || []).map((item: any) => {
+      // If we have collected_events, use that; otherwise use event_data
+      const eventInfo = item.collected_events || item.event_data || null;
+      
+      return {
+        ...item,
+        // Ensure event data is available for frontend
+        event: eventInfo,
+      };
+    });
+
     return NextResponse.json({ 
       success: true,
-      items: data || [] 
+      items: transformedItems 
     });
   } catch (e: any) {
     return NextResponse.json({ 

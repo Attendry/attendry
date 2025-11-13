@@ -958,6 +958,26 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventExtracti
     
     trace.push({ step: "quality_filter", stats: qualityStats });
     
+    // Queue intelligence generation for extracted events (non-blocking)
+    // Only queue high-quality events to avoid overwhelming the queue
+    const highQualityEvents = filteredEvents.filter((ev: any) => 
+      ev.confidence && ev.confidence > 0.7
+    );
+    
+    for (const event of highQualityEvents.slice(0, 5)) { // Limit to top 5
+      const eventId = event.id || event.source_url;
+      if (eventId) {
+        // Use dynamic import to avoid blocking
+        import('@/lib/services/intelligence-queue').then(({ queueIntelligenceGeneration }) => {
+          queueIntelligenceGeneration(eventId, 6).catch(err => {
+            console.warn('Failed to queue intelligence for extracted event:', err);
+          });
+        }).catch(() => {
+          // Ignore import errors
+        });
+      }
+    }
+    
     return NextResponse.json({ 
       version: "extract_v5", 
       events: filteredEvents, 

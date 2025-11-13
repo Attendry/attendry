@@ -6,6 +6,7 @@ import {
   WatchlistAddResponse, 
   ErrorResponse 
 } from "@/lib/types/api";
+import { queueIntelligenceGeneration } from "@/lib/services/intelligence-queue";
 
 export async function POST(req: NextRequest): Promise<NextResponse<WatchlistAddResponse | ErrorResponse>> {
   try {
@@ -29,6 +30,13 @@ export async function POST(req: NextRequest): Promise<NextResponse<WatchlistAddR
       success: false,
       error: error.message 
     }, { status: 400 });
+
+    // Queue intelligence generation for events (non-blocking)
+    if (kind === "event" && ref_id) {
+      queueIntelligenceGeneration(ref_id, 7).catch(err => {
+        console.warn('Failed to queue intelligence for watchlist event:', err);
+      });
+    }
 
     return NextResponse.json({ success: true, id: data ?? undefined });
   } catch (e: any) {

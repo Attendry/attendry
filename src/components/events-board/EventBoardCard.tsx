@@ -13,7 +13,10 @@ import {
   Edit, 
   Trash2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Users,
+  Tag,
+  Award
 } from "lucide-react";
 
 interface EventBoardCardProps {
@@ -118,6 +121,68 @@ export function EventBoardCard({
           {event?.organizer && (
             <div className="text-sm text-gray-600">
               <span className="font-medium">Organizer:</span> {event.organizer}
+            </div>
+          )}
+
+          {/* Topics/What */}
+          {event?.topics && Array.isArray(event.topics) && event.topics.length > 0 && (
+            <div className="flex items-start gap-2 text-sm">
+              <Tag className="h-4 w-4 mt-0.5 text-gray-500" />
+              <div className="flex-1">
+                <span className="font-medium text-gray-700">Topics: </span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {event.topics.map((topic: string, idx: number) => (
+                    <Badge key={idx} variant="secondary" className="text-xs">
+                      {topic}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Speakers/Who */}
+          {event?.speakers && Array.isArray(event.speakers) && event.speakers.length > 0 && (
+            <div className="flex items-start gap-2 text-sm">
+              <Users className="h-4 w-4 mt-0.5 text-gray-500" />
+              <div className="flex-1">
+                <span className="font-medium text-gray-700">Speakers ({event.speakers.length}): </span>
+                <div className="mt-1 space-y-1">
+                  {event.speakers.slice(0, 3).map((speaker: any, idx: number) => (
+                    <div key={idx} className="text-xs text-gray-600">
+                      {speaker.name || speaker.title || 'Speaker'}
+                      {speaker.org && <span className="text-gray-400"> • {speaker.org}</span>}
+                    </div>
+                  ))}
+                  {event.speakers.length > 3 && (
+                    <div className="text-xs text-gray-400">
+                      +{event.speakers.length - 3} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Sponsors/Who */}
+          {event?.sponsors && Array.isArray(event.sponsors) && event.sponsors.length > 0 && (
+            <div className="flex items-start gap-2 text-sm">
+              <Award className="h-4 w-4 mt-0.5 text-gray-500" />
+              <div className="flex-1">
+                <span className="font-medium text-gray-700">Sponsors ({event.sponsors.length}): </span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {event.sponsors.slice(0, 5).map((sponsor: any, idx: number) => (
+                    <Badge key={idx} variant="outline" className="text-xs">
+                      {typeof sponsor === 'string' ? sponsor : sponsor.name || 'Sponsor'}
+                    </Badge>
+                  ))}
+                  {event.sponsors.length > 5 && (
+                    <Badge variant="outline" className="text-xs">
+                      +{event.sponsors.length - 5} more
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

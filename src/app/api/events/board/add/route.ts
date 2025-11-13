@@ -59,13 +59,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (existing) {
       // Update existing board item
+      const updateData: any = {
+        event_id: actualEventId,
+        column_status: columnStatus,
+        updated_at: new Date().toISOString()
+      };
+      // Update event_data if provided
+      if (eventData) {
+        updateData.event_data = eventData;
+      }
+      
       const { data, error } = await supabase
         .from('user_event_board')
-        .update({
-          event_id: actualEventId,
-          column_status: columnStatus,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', existing.id)
         .select()
         .single();
@@ -87,6 +93,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         user_id: userRes.user.id,
         event_id: actualEventId,
         event_url: eventUrl,
+        event_data: eventData || null, // Store full event data
         column_status: columnStatus,
         position: 0
       })

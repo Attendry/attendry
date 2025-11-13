@@ -11,6 +11,7 @@ import {
   useSensors,
   DragStartEvent,
   DragEndEvent,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -79,6 +80,27 @@ function SortableItem({
         onRemove={onRemove}
         onStatusChange={onStatusChange}
       />
+    </div>
+  );
+}
+
+function DroppableColumn({
+  id,
+  children,
+}: {
+  id: ColumnStatus;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={isOver ? "bg-blue-100 rounded-lg" : ""}
+    >
+      {children}
     </div>
   );
 }
@@ -213,44 +235,46 @@ export function EventBoardKanban({
           const itemIds = columnItems.map((item) => item.id);
 
           return (
-            <div key={column.id} className="flex-shrink-0 w-80">
-              <Card className={`h-full ${column.color}`}>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-semibold">
-                      {column.label}
-                    </CardTitle>
-                    <Badge variant="outline" className="text-xs">
-                      {columnItems.length}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <SortableContext
-                    items={itemIds}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    <div className="space-y-3 min-h-[200px]">
-                      {columnItems.map((item) => (
-                        <SortableItem
-                          key={item.id}
-                          item={item}
-                          onViewInsights={onViewInsights}
-                          onEdit={onEdit}
-                          onRemove={onRemove}
-                          onStatusChange={onStatusChange}
-                        />
-                      ))}
-                      {columnItems.length === 0 && (
-                        <div className="text-center py-8 text-gray-400 text-sm">
-                          No events
-                        </div>
-                      )}
+            <DroppableColumn key={column.id} id={column.id}>
+              <div className="flex-shrink-0 w-80">
+                <Card className={`h-full ${column.color}`}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm font-semibold">
+                        {column.label}
+                      </CardTitle>
+                      <Badge variant="outline" className="text-xs">
+                        {columnItems.length}
+                      </Badge>
                     </div>
-                  </SortableContext>
-                </CardContent>
-              </Card>
-            </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <SortableContext
+                      items={itemIds}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-3 min-h-[200px]">
+                        {columnItems.map((item) => (
+                          <SortableItem
+                            key={item.id}
+                            item={item}
+                            onViewInsights={onViewInsights}
+                            onEdit={onEdit}
+                            onRemove={onRemove}
+                            onStatusChange={onStatusChange}
+                          />
+                        ))}
+                        {columnItems.length === 0 && (
+                          <div className="text-center py-8 text-gray-400 text-sm">
+                            No events
+                          </div>
+                        )}
+                      </div>
+                    </SortableContext>
+                  </CardContent>
+                </Card>
+              </div>
+            </DroppableColumn>
           );
         })}
       </div>

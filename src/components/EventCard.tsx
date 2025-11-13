@@ -21,8 +21,10 @@ import React, { useState, useMemo, useCallback, memo, useEffect } from "react";
 import AttendeeCard from "./AttendeeCard";
 import DynamicSpeakerLayout from "./DynamicSpeakerLayout"; // Dynamic speaker layout component
 import CompanyCard from "./CompanyCard"; // Company/sponsor card component
+import { EventIntelligenceQuickView } from "./EventIntelligenceQuickView"; // Event intelligence quick view
 import { SpeakerData } from "@/lib/types/core";
 import { Star, Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 /**
  * Event data structure interface
@@ -89,6 +91,8 @@ interface EventCardProps {
  * @returns JSX element representing the event card
  */
 const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToComparison, watchlistMatch }: EventCardProps) {
+  const router = useRouter();
+  
   // ============================================================================
   // STATE MANAGEMENT
   // ============================================================================
@@ -608,6 +612,15 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
           )}
         </div>
       )}
+
+      {/* Event Intelligence Quick View */}
+      <EventIntelligenceQuickView
+        event={ev as EventData}
+        onViewFull={() => {
+          const eventId = ev.id || ev.source_url;
+          router.push(`/events/${encodeURIComponent(eventId)}`);
+        }}
+      />
 
       {open && (
         <div className="mt-6 border-t border-slate-200 pt-4">

@@ -36,26 +36,36 @@ export default function EventsBoardPage() {
       const data = await response.json();
       
       // Transform the data to include event data
+      // The API now returns event field, but we ensure it's properly structured
       const transformedItems: BoardItemWithEvent[] = (data.items || []).map((item: any) => {
-        const event = item.collected_events ? {
-          id: item.collected_events.id,
-          title: item.collected_events.title,
-          starts_at: item.collected_events.starts_at,
-          ends_at: item.collected_events.ends_at,
-          city: item.collected_events.city,
-          country: item.collected_events.country,
-          venue: item.collected_events.venue,
-          organizer: item.collected_events.organizer,
-          description: item.collected_events.description,
-          topics: item.collected_events.topics,
-          speakers: item.collected_events.speakers,
-          sponsors: item.collected_events.sponsors,
-          participating_organizations: item.collected_events.participating_organizations,
-          partners: item.collected_events.partners,
-          competitors: item.collected_events.competitors,
-          source_url: item.collected_events.source_url,
-          confidence: item.collected_events.confidence,
-        } : null;
+        // Use event from API (which uses collected_events or event_data)
+        // If not available, try to construct from available data
+        let event = item.event;
+        
+        if (!event && item.collected_events) {
+          event = {
+            id: item.collected_events.id,
+            title: item.collected_events.title,
+            starts_at: item.collected_events.starts_at,
+            ends_at: item.collected_events.ends_at,
+            city: item.collected_events.city,
+            country: item.collected_events.country,
+            venue: item.collected_events.venue,
+            organizer: item.collected_events.organizer,
+            description: item.collected_events.description,
+            topics: item.collected_events.topics,
+            speakers: item.collected_events.speakers,
+            sponsors: item.collected_events.sponsors,
+            participating_organizations: item.collected_events.participating_organizations,
+            partners: item.collected_events.partners,
+            competitors: item.collected_events.competitors,
+            source_url: item.collected_events.source_url,
+            confidence: item.collected_events.confidence,
+          };
+        } else if (!event && item.event_data) {
+          // Use stored event_data as fallback
+          event = item.event_data;
+        }
 
         return {
           ...item,

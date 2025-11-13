@@ -20,23 +20,61 @@ interface TrendingCategory {
 }
 
 /**
+ * Hot topic interface
+ */
+interface HotTopic {
+  topic: string;
+  mentionCount: number;
+  growthRate: number;
+  momentum: number;
+  relatedEvents: string[];
+  category: string;
+  relevanceScore: number;
+}
+
+/**
+ * Emerging theme interface
+ */
+interface EmergingTheme {
+  theme: string;
+  description: string;
+  growth: number;
+  events: EventData[];
+  relevanceScore: number;
+}
+
+/**
  * Trending Events Component
  */
 const TrendingEvents = memo(function TrendingEvents() {
   const [trendingCategories, setTrendingCategories] = useState<TrendingCategory[]>([]);
   const [trendingEvents, setTrendingEvents] = useState<EventData[]>([]);
+  const [hotTopics, setHotTopics] = useState<HotTopic[]>([]);
+  const [emergingThemes, setEmergingThemes] = useState<EmergingTheme[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [timeWindow, setTimeWindow] = useState<'week' | 'month' | 'quarter'>('month');
+  const [showHotTopics, setShowHotTopics] = useState(false);
+  const [personalization, setPersonalization] = useState<{
+    userIndustry: string[];
+    filteredEventCount: number;
+    totalEventCount: number;
+  } | null>(null);
 
   // Load trending data
   useEffect(() => {
     const loadTrendingData = async () => {
       try {
-        const response = await fetch('/api/events/trending');
+        setIsLoading(true);
+        const url = `/api/events/trending?includeHotTopics=${showHotTopics}&timeWindow=${timeWindow}`;
+        const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
           setTrendingCategories(data.categories || []);
           setTrendingEvents(data.events || []);
+          setHotTopics(data.hotTopics || []);
+          setEmergingThemes(data.emergingThemes || []);
+          setPersonalization(data.personalization || null);
         }
       } catch (error) {
         console.error('Failed to load trending data:', error);
@@ -46,7 +84,7 @@ const TrendingEvents = memo(function TrendingEvents() {
     };
 
     loadTrendingData();
-  }, []);
+  }, [showHotTopics, timeWindow]);
 
   // Filter events by category
   const filteredEvents = useMemo(() => {
@@ -88,9 +126,102 @@ const TrendingEvents = memo(function TrendingEvents() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Trending Events</h1>
-        <p className="text-slate-600">Discover what's popular and trending in the event space</p>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Trending Events</h1>
+            <p className="text-slate-600">Discover what's popular and trending in the event space</p>
+          </div>
+          {personalization && personalization.userIndustry.length > 0 && (
+            <div className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded">
+              Personalized for your industry
+            </div>
+          )}
+        </div>
+        
+        {/* Time Window & Hot Topics Toggle */}
+        <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-slate-600">Time Window:</label>
+            <select
+              value={timeWindow}
+              onChange={(e) => setTimeWindow(e.target.value as 'week' | 'month' | 'quarter')}
+              className="text-sm border border-slate-300 rounded px-2 py-1"
+            >
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+              <option value="quarter">Quarter</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={showHotTopics}
+              onChange={(e) => setShowHotTopics(e.target.checked)}
+              className="w-4 h-4 text-blue-600 border-slate-300 rounded"
+            />
+            Show Hot Topics & Emerging Themes
+          </label>
+        </div>
       </div>
+
+      {/* Hot Topics Section */}
+      {showHotTopics && hotTopics.length > 0 && (
+        <div className="mb-8 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4 flex items-center gap-2">
+            <span className="text-2xl">🔥</span>
+            Hot Topics
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {hotTopics.slice(0, 6).map((topic, idx) => (
+              <div key={idx} className="bg-white rounded-lg p-4 border border-orange-200">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="font-medium text-slate-900">{topic.topic}</h3>
+                  <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                    {topic.momentum.toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mb-2">
+                  {topic.mentionCount} events • {topic.category}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-green-600">
+                    +{topic.growthRate.toFixed(1)}% growth
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    Relevance: {(topic.relevanceScore * 100).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Emerging Themes Section */}
+      {showHotTopics && emergingThemes.length > 0 && (
+        <div className="mb-8 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4 flex items-center gap-2">
+            <span className="text-2xl">🌱</span>
+            Emerging Themes
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {emergingThemes.slice(0, 4).map((theme, idx) => (
+              <div key={idx} className="bg-white rounded-lg p-4 border border-blue-200">
+                <div className="flex items-start justify-between mb-2">
+                  <h3 className="font-medium text-slate-900">{theme.theme}</h3>
+                  <span className={`text-sm font-medium ${getGrowthColor(theme.growth)}`}>
+                    {formatGrowth(theme.growth)}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600 mb-2">{theme.description}</p>
+                <p className="text-xs text-slate-500">
+                  {theme.events.length} related events
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Trending Categories */}
       <div className="mb-8">

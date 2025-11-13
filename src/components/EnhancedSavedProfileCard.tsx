@@ -30,22 +30,24 @@ export function EnhancedSavedProfileCard({
   const [isEditingStatus, setIsEditingStatus] = useState(false);
   const [localEnhancedData, setLocalEnhancedData] = useState(profile.enhanced_data);
 
-  const enhancedData = localEnhancedData || profile.enhanced_data;
-  const speakerData = profile.speaker_data;
+  const enhancedData = localEnhancedData || profile.enhanced_data || {};
+  const speakerData = profile.speaker_data || {};
 
   // Convert saved profile to SpeakerData format for the enhancement hook
+  // Add proper null checks and fallbacks
+  const speakerName = speakerData?.name || speakerData?.speaker_name || 'Unknown Speaker';
   const speakerForEnhancement: SpeakerData = {
-    name: speakerData.name,
-    title: speakerData.title || undefined,
-    org: speakerData.org || undefined,
-    profile_url: speakerData.profile_url || speakerData.linkedin_url || undefined,
-    linkedin_url: speakerData.linkedin_url || undefined,
-    email: speakerData.email || undefined,
-    bio: speakerData.bio || enhancedData?.bio || undefined,
-    session: speakerData.session || undefined,
+    name: speakerName,
+    title: speakerData?.title || speakerData?.speaker_title || undefined,
+    org: speakerData?.org || speakerData?.organization || speakerData?.company || speakerData?.speaker_org || undefined,
+    profile_url: speakerData?.profile_url || speakerData?.linkedin_url || speakerData?.linkedin || undefined,
+    linkedin_url: speakerData?.linkedin_url || speakerData?.linkedin || undefined,
+    email: speakerData?.email || undefined,
+    bio: speakerData?.bio || enhancedData?.bio || undefined,
+    session: speakerData?.session || speakerData?.session_title || undefined,
   };
 
-  // Use the enhancement hook
+  // Use the enhancement hook - ensure we have a valid speaker name
   const {
     enhancedSpeaker,
     enhancing,
@@ -57,10 +59,12 @@ export function EnhancedSavedProfileCard({
 
   // Update local enhanced data when enhancement completes
   useEffect(() => {
-    if (enhancedSpeaker) {
-      setLocalEnhancedData(enhancedSpeaker as any);
-      // Optionally update the profile in the database
-      // This could be done via a callback prop if needed
+    if (enhancedSpeaker && enhancedSpeaker.name) {
+      try {
+        setLocalEnhancedData(enhancedSpeaker as any);
+      } catch (error) {
+        console.error('Error updating local enhanced data:', error);
+      }
     }
   }, [enhancedSpeaker]);
 
@@ -102,13 +106,13 @@ export function EnhancedSavedProfileCard({
         <div className="flex items-start justify-between mb-3">
           <div className="flex-1">
             <h3 className="font-semibold text-lg text-slate-900 mb-1">
-              {speakerData.name}
+              {speakerData?.name || 'Unknown Speaker'}
             </h3>
             <p className="text-slate-700 font-medium text-sm">
-              {enhancedData?.title || speakerData.title || "Title not available"}
+              {enhancedData?.title || speakerData?.title || "Title not available"}
             </p>
             <p className="text-slate-600 text-sm">
-              {enhancedData?.organization || speakerData.org || "Organization not available"}
+              {enhancedData?.organization || speakerData?.org || speakerData?.organization || speakerData?.company || "Organization not available"}
             </p>
           </div>
           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(profile.outreach_status)}`}>
@@ -136,8 +140,19 @@ export function EnhancedSavedProfileCard({
         {showActions && (
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() => void enhanceSpeaker()}
-              disabled={enhancing}
+              onClick={async () => {
+                try {
+                  if (speakerName && speakerName !== 'Unknown Speaker') {
+                    await enhanceSpeaker();
+                  } else {
+                    alert('Cannot enhance: Speaker name is missing');
+                  }
+                } catch (error) {
+                  console.error('Error enhancing speaker:', error);
+                  alert('Failed to enhance speaker profile. Please try again.');
+                }
+              }}
+              disabled={enhancing || !speakerName || speakerName === 'Unknown Speaker'}
               className="text-xs px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-800 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
             >
               {enhancing ? (
@@ -180,14 +195,14 @@ export function EnhancedSavedProfileCard({
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <h3 className="font-semibold text-xl text-slate-900 mb-2">
-            {speakerData.name}
+            {speakerData?.name || 'Unknown Speaker'}
           </h3>
           <div className="space-y-1">
             <p className="text-slate-700 font-medium">
-              {enhancedData?.title || speakerData.title || "Title not available"}
+              {enhancedData?.title || speakerData?.title || "Title not available"}
             </p>
             <p className="text-slate-600 text-sm">
-              {enhancedData?.organization || speakerData.org || "Organization not available"}
+              {enhancedData?.organization || speakerData?.org || speakerData?.organization || speakerData?.company || "Organization not available"}
             </p>
             {enhancedData?.location && (
               <div className="flex items-center gap-1 text-sm text-slate-500">
@@ -204,8 +219,19 @@ export function EnhancedSavedProfileCard({
           {showActions && (
             <div className="flex gap-1">
               <button
-                onClick={() => void enhanceSpeaker()}
-                disabled={enhancing}
+                onClick={async () => {
+                  try {
+                    if (speakerName && speakerName !== 'Unknown Speaker') {
+                      await enhanceSpeaker();
+                    } else {
+                      alert('Cannot enhance: Speaker name is missing');
+                    }
+                  } catch (error) {
+                    console.error('Error enhancing speaker:', error);
+                    alert('Failed to enhance speaker profile. Please try again.');
+                  }
+                }}
+                disabled={enhancing || !speakerName || speakerName === 'Unknown Speaker'}
                 className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title={enhancing ? "Enhancing..." : hasNewEnhancedData ? "Show enhanced details" : "Enhance profile with AI"}
               >
