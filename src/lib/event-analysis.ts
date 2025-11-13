@@ -1675,12 +1675,24 @@ ${chunk}`;
       const validSpeakers = filterSpeakers(rawSpeakers as RawSpeaker[]);
       
       // Map filtered speakers to SpeakerData format (filterSpeakers returns Speaker[] with name, role, org)
-      const speakerData: SpeakerData[] = validSpeakers.map(speaker => ({
-        name: speaker.name,
-        title: speaker.role || '',
-        company: speaker.org || '',
-        bio: '' // Bio not available from filterSpeakers output
-      }));
+      // Preserve title and company from Gemini extraction when available
+      const speakerData: SpeakerData[] = validSpeakers.map(speaker => {
+        // Check if we have the original speaker data from Gemini with title/company
+        const key = speaker.name.toLowerCase();
+        const originalSpeaker = speakerMap.get(key);
+        
+        return {
+          name: speaker.name,
+          // Prefer Gemini-extracted title/company, fallback to filterSpeakers role/org
+          title: originalSpeaker?.title && originalSpeaker.title.trim().length > 0
+            ? originalSpeaker.title
+            : (speaker.role || ''),
+          company: originalSpeaker?.company && originalSpeaker.company.trim().length > 0
+            ? originalSpeaker.company
+            : (speaker.org || ''),
+          bio: originalSpeaker?.bio || '' // Bio from Gemini if available
+        };
+      });
       
       console.log(`[event-analysis] ✓ Speaker extraction: ${rawSpeakers.length} raw → ${speakerData.length} validated (filtered ${rawSpeakers.length - speakerData.length} non-persons)`);
       return speakerData;
