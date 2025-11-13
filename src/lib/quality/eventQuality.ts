@@ -63,16 +63,19 @@ function daysBetween(date1: string, date2: string): number {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
 
-export function isSolidHit(m: CandidateMeta, window: QualityWindow): { quality: number; ok: boolean } {
+export function isSolidHit(m: CandidateMeta, window: QualityWindow): { 
+  quality: number; 
+  ok: boolean;
+  dateWindowStatus?: 'in-window' | 'within-month' | 'extraction-error' | 'no-date';
+} {
   const q = computeQuality(m, window);
   
-  // Lenient speaker requirement: 1+ speaker OR has speaker page
-  const enoughSpeakers = (m.speakersCount ?? 0) >= 1 || m.hasSpeakerPage === true;
+  // Speaker requirement: ≥2 speakers (as requested by user)
+  const enoughSpeakers = (m.speakersCount ?? 0) >= 2;
   
-  // Check if date is wildly wrong (likely extraction error)
-  // If date is >60 days outside the window, treat it as "no date" (extraction error)
+  // Date validation: Allow ±1 month from window (30 days)
   let hasReliableDate = false;
-  let dateStatus = 'no-date';
+  let dateWindowStatus: 'in-window' | 'within-month' | 'extraction-error' | 'no-date' = 'no-date';
   
   if (m.dateISO) {
     const daysFromStart = daysBetween(m.dateISO, window.from);
@@ -81,31 +84,32 @@ export function isSolidHit(m: CandidateMeta, window: QualityWindow): { quality: 
     // Check if date is in window
     if (m.dateISO >= window.from && m.dateISO <= window.to) {
       hasReliableDate = true;
-      dateStatus = 'in-window';
+      dateWindowStatus = 'in-window';
     }
-    // Check if date is within 60 days of window (reasonable proximity)
-    else if (daysFromStart <= 60 || daysFromEnd <= 60) {
+    // Check if date is within 1 month (30 days) of window - SOFTENED REQUIREMENT
+    else if (daysFromStart <= 30 || daysFromEnd <= 30) {
       hasReliableDate = true;
-      dateStatus = 'near-window';
+      dateWindowStatus = 'within-month';
+      console.log(`[quality-gate] Date ${m.dateISO} is within 1 month of window ${window.from}..${window.to}, allowing with flag`);
     }
-    // Date is >60 days off - likely extraction error, ignore it
+    // Date is >30 days off - likely extraction error, ignore it
     else {
-      dateStatus = 'extraction-error';
-      console.log(`[quality-gate] Date ${m.dateISO} is >60 days from window ${window.from}..${window.to}, treating as extraction error`);
+      dateWindowStatus = 'extraction-error';
+      console.log(`[quality-gate] Date ${m.dateISO} is >30 days from window ${window.from}..${window.to}, treating as extraction error`);
     }
   }
   
   // Date validation: accept if date is reliable OR if we have strong other signals
   const strongSignals = (m.speakersCount ?? 0) >= 3 && enoughSpeakers;
-  const hasWhen = hasReliableDate || strongSignals || dateStatus === 'extraction-error';
+  const hasWhen = hasReliableDate || strongSignals || dateWindowStatus === 'extraction-error';
   
-  // Germany check: MORE LENIENT
-  // Accept if: .de domain, German city, /de/ in URL path, or simply has location info
+  // Germany check: SOFTENED - Accept if event is in Germany (country code, .de domain, or /de/ path)
+  // No longer requires specific city/venue - just needs to be in Germany
   const deHost = DE_HOST_PATTERN.test(m.host);
-  const deCity = DE_CITY_PATTERN.test(`${m.city ?? ''} ${m.venue ?? ''}`);
   const deUrl = m.url.toLowerCase().includes('/de/'); // German language version
-  const hasLocation = !!(m.city || m.venue);
-  const inDE = m.country === "DE" || m.country === "Germany" || deHost || deCity || deUrl || hasLocation;
+  const deCountry = m.country === "DE" || m.country === "Germany";
+  // Accept if any Germany indicator is present
+  const inDE = deCountry || deHost || deUrl;
   
   // Very low quality threshold - rely on content filtering to handle relevance
   const meetsQuality = q >= 0.25;
@@ -117,7 +121,8 @@ export function isSolidHit(m: CandidateMeta, window: QualityWindow): { quality: 
   
   return {
     quality: q,
-    ok
+    ok,
+    dateWindowStatus
   };
 }
 

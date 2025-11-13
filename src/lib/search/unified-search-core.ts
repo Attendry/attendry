@@ -139,8 +139,23 @@ class MemorySafeStore<T> {
 const rateLimitStore = new MemorySafeStore<{ count: number; resetTime: number }>(500, 60000);
 const cacheStore = new MemorySafeStore<any>(1000, 60000);
 
+// In-flight request deduplication: track active Firecrawl requests by normalized query
+// This prevents duplicate API calls when multiple query variations produce the same narrative query
+const inFlightRequests = new Map<string, Promise<UnifiedSearchResult>>();
+
+/**
+ * Normalize query for deduplication (remove variations that don't affect Firecrawl query)
+ */
+function normalizeQueryForDedup(query: string, params: UnifiedSearchParams): string {
+  // Use narrative query if provided, otherwise use base query
+  const effectiveQuery = params.narrativeQuery || query;
+  // Normalize: lowercase, trim, remove extra whitespace
+  return effectiveQuery.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
 export interface UnifiedSearchParams {
   q: string;
+  narrativeQuery?: string; // Optional narrative query for Firecrawl (prioritizes user search term)
   dateFrom?: string;
   dateTo?: string;
   country?: string;
@@ -265,6 +280,30 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
     }
   }
 
+  // IN-FLIGHT DEDUPLICATION: Check if identical request is already in progress
+  const normalizedQuery = normalizeQueryForDedup(params.q, params);
+  const dedupKey = `firecrawl:${normalizedQuery}:${params.country || ''}:${params.dateFrom || ''}:${params.dateTo || ''}`;
+  
+  if (inFlightRequests.has(dedupKey)) {
+    console.log(`[unified-firecrawl] Deduplicating in-flight request: ${dedupKey.substring(0, 80)}...`);
+    const existingRequest = inFlightRequests.get(dedupKey)!;
+    try {
+      const result = await existingRequest;
+      // Return a copy with updated metrics to reflect this was a deduplicated call
+      return {
+        ...result,
+        metrics: {
+          ...result.metrics,
+          responseTime: Date.now() - startTime,
+          deduplicated: true
+        }
+      };
+    } catch (error) {
+      // If the in-flight request failed, remove it and continue with new request
+      inFlightRequests.delete(dedupKey);
+    }
+  }
+
   // Check rate limit
   if (!checkRateLimit('firecrawl')) {
     return {
@@ -276,27 +315,31 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
   }
 
   try {
-    // Use narrative query for Firecrawl if available, otherwise fallback to regular query
-    let firecrawlQuery = params.q;
+    // Use provided narrative query if available (prioritizes user search term), otherwise build one
+    let firecrawlQuery = params.narrativeQuery || params.q;
     
-    // Try to get narrative query from unified query builder with user profile
-    try {
-      const { buildUnifiedQuery } = await import('../unified-query-builder');
-      const queryResult = await buildUnifiedQuery({
-        userText: params.q,
-        country: params.country,
-        dateFrom: params.dateFrom,
-        dateTo: params.dateTo,
-        language: 'en',
-        userProfile: params.userProfile // Pass user profile to query builder
-      });
-      
-      if (queryResult.narrativeQuery) {
-        firecrawlQuery = queryResult.narrativeQuery;
-        console.log('[unified-firecrawl] Using narrative query with user profile:', firecrawlQuery);
+    // Only build narrative query if not provided
+    if (!params.narrativeQuery) {
+      try {
+        const { buildUnifiedQuery } = await import('../unified-query-builder');
+        const queryResult = await buildUnifiedQuery({
+          userText: params.q,
+          country: params.country,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          language: 'en',
+          userProfile: params.userProfile // Pass user profile to query builder
+        });
+        
+        if (queryResult.narrativeQuery) {
+          firecrawlQuery = queryResult.narrativeQuery;
+          console.log('[unified-firecrawl] Using built narrative query with user profile:', firecrawlQuery);
+        }
+      } catch (error) {
+        console.warn('[unified-firecrawl] Failed to get narrative query, using original:', error);
       }
-    } catch (error) {
-      console.warn('[unified-firecrawl] Failed to get narrative query, using original:', error);
+    } else {
+      console.log('[unified-firecrawl] Using provided narrative query:', firecrawlQuery);
     }
     
     // Build optimized search body based on Firecrawl v2 API
@@ -334,53 +377,68 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
     console.log('[unified-firecrawl] Making request with body:', JSON.stringify(body, null, 2));
 
-    // Use advanced circuit breaker for Firecrawl API calls with better error handling
-    const data = await executeWithAdvancedCircuitBreaker(async () => {
-      const response = await fetch('https://api.firecrawl.dev/v2/search', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${firecrawlKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body),
-        // Reduced timeout to prevent hanging requests
-        signal: AbortSignal.timeout(15000) // 15 second timeout (reduced from 20)
-      });
+    // Create the actual API call promise and store it for deduplication
+    const apiCallPromise = (async (): Promise<UnifiedSearchResult> => {
+      try {
+        // Use advanced circuit breaker for Firecrawl API calls with better error handling
+        const data = await executeWithAdvancedCircuitBreaker(async () => {
+          const response = await fetch('https://api.firecrawl.dev/v2/search', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body),
+            // Reduced timeout to prevent hanging requests
+            signal: AbortSignal.timeout(15000) // 15 second timeout (reduced from 20)
+          });
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        console.warn(`[unified-firecrawl] API error ${response.status}:`, errorText);
-        throw new Error(`Firecrawl error: ${response.status}`);
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.warn(`[unified-firecrawl] API error ${response.status}:`, errorText);
+            throw new Error(`Firecrawl error: ${response.status}`);
+          }
+
+          return await response.json();
+        }, 'firecrawl');
+
+        console.log('[unified-firecrawl] Response received, items:', data?.data?.web?.length || 0);
+
+        // Parse Firecrawl v2 API response structure: data.data.web[]
+        const webResults = data?.data?.web || [];
+        const items: string[] = Array.isArray(webResults) 
+          ? webResults
+              .map((item: any) => item?.url)
+              .filter((url: string) => typeof url === 'string' && url.startsWith('http'))
+          : [];
+
+        const result: UnifiedSearchResult = {
+          items,
+          provider: 'firecrawl',
+          debug: { rawCount: items.length, responseKeys: Object.keys(data) },
+          metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
+        };
+
+        // Cache the result using advanced cache
+        if (params.useCache !== false) {
+          await searchCache.set(cacheKey, result, CACHE_DURATION, []);
+        }
+
+        return result;
+      } finally {
+        // Always clean up the in-flight request after completion (success or failure)
+        inFlightRequests.delete(dedupKey);
       }
+    })();
 
-      return await response.json();
-    }, 'firecrawl');
+    // Store the promise in the in-flight map for deduplication
+    inFlightRequests.set(dedupKey, apiCallPromise);
 
-    console.log('[unified-firecrawl] Response received, items:', data?.data?.web?.length || 0);
-
-    // Parse Firecrawl v2 API response structure: data.data.web[]
-    const webResults = data?.data?.web || [];
-    const items: string[] = Array.isArray(webResults) 
-      ? webResults
-          .map((item: any) => item?.url)
-          .filter((url: string) => typeof url === 'string' && url.startsWith('http'))
-      : [];
-
-    const result: UnifiedSearchResult = {
-      items,
-      provider: 'firecrawl',
-      debug: { rawCount: items.length, responseKeys: Object.keys(data) },
-      metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
-    };
-
-    // Cache the result using advanced cache
-    if (params.useCache !== false) {
-      await searchCache.set(cacheKey, result, CACHE_DURATION, []);
-    }
-
-    return result;
-
+    // Await the promise and return the result
+    return await apiCallPromise;
   } catch (error) {
+    // Clean up in-flight request on error
+    inFlightRequests.delete(dedupKey);
     console.error('[unified-firecrawl] Request failed:', error);
     return {
       items: [],

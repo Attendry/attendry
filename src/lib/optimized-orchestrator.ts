@@ -54,7 +54,7 @@ import {
   getCacheWarmingStats
 } from './cache-optimizer';
 import { 
-  isAggregatorUrl, 
+  isAggregatorUrl as isAggregatorUrlFromConfig, 
   calculateUrlBonus, 
   RERANK_CONFIG,
   createRerankMetrics,
@@ -143,10 +143,11 @@ function normalizeHost(hostname: string) {
   return hostname.replace(/^www\./, '').toLowerCase();
 }
 
-// Track seen aggregators for idempotent logging
-const seenAggregators = new Set<string>();
+// Track seen aggregators for idempotent logging (per search run)
+// Cleared at start of each search to allow fresh logging per run
+let seenAggregators = new Set<string>();
 
-function isAggregatorUrl(url: string): boolean {
+function isLocalAggregatorUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     const host = normalizeHost(parsed.hostname);
@@ -161,6 +162,9 @@ function isAggregatorUrl(url: string): boolean {
     return false;
   }
 }
+
+// Use imported function as primary, fallback to local
+const isAggregatorUrl = isAggregatorUrlFromConfig || isLocalAggregatorUrl;
 
 /**
  * Check if URL is aggregator and log once per unique hostname
@@ -432,6 +436,8 @@ export interface EventCandidate {
   date?: string;
   location?: string;
   venue?: string;
+  city?: string; // Add city property
+  country?: string; // Add country property
   speakers?: SpeakerInfo[];
   sponsors?: SponsorInfo[];
   confidence: number;
@@ -441,6 +447,7 @@ export interface EventCandidate {
     originalQuery: string;
     country: string | null;
     processingTime: number;
+    dateWindowStatus?: 'in-window' | 'within-month' | 'extraction-error' | 'no-date'; // For UI coloring
     stageTimings: {
       discovery?: number;
       prioritization?: number;
@@ -623,7 +630,9 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     
     // Step 2: Build optimized query with user profile
     const queryBuildStart = Date.now();
-    const query = await buildOptimizedQuery(params, userProfile);
+    const queryResult = await buildOptimizedQuery(params, userProfile);
+    const query = typeof queryResult === 'string' ? queryResult : queryResult.query;
+    const narrativeQuery = typeof queryResult === 'object' ? queryResult.narrativeQuery : undefined;
     const queryBuildTime = Date.now() - queryBuildStart;
     logs.push({
       stage: 'query_build',
@@ -631,6 +640,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       timestamp: new Date().toISOString(),
       data: { 
         query: query.substring(0, 100) + '...', 
+        hasNarrativeQuery: !!narrativeQuery,
         duration: queryBuildTime,
         userProfileLoaded: !!userProfile,
         userProfileDuration: userProfileTime
@@ -638,8 +648,11 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     });
 
     // Step 3: Multi-source discovery
+    // Clear aggregator tracking for this search run (idempotent filtering)
+    seenAggregators.clear();
+    
     const discoveryStart = Date.now();
-    const rawCandidates = await discoverEventCandidates(query, params, userProfile);
+    const rawCandidates = await discoverEventCandidates(query, params, userProfile, narrativeQuery);
     const discoveryTime = Date.now() - discoveryStart;
     logs.push({
       stage: 'discovery',
@@ -818,11 +831,18 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       
       const qualityResult = isSolidHit(meta, window);
       
+      // Add dateWindowStatus to event metadata for UI coloring
+      if (qualityResult.dateWindowStatus) {
+        event.metadata = event.metadata || {};
+        event.metadata.dateWindowStatus = qualityResult.dateWindowStatus;
+      }
+      
       // Log why events fail quality check
       if (!qualityResult.ok) {
-        console.log(`[quality-gate] Filtered: "${event.title?.substring(0, 60)}" | Quality: ${qualityResult.quality.toFixed(2)} | ` +
+        const titlePreview = event.title ? event.title.substring(0, 60) : 'Untitled Event';
+        console.log(`[quality-gate] Filtered: "${titlePreview}" | Quality: ${qualityResult.quality.toFixed(2)} | ` +
           `Date: ${meta.dateISO || 'missing'} | City: ${meta.city || 'missing'} | Speakers: ${meta.speakersCount} | ` +
-          `Country: ${meta.country || extractHost(event.url)}`);
+          `Country: ${meta.country || extractHost(event.url)} | DateStatus: ${qualityResult.dateWindowStatus || 'unknown'}`);
       }
       
       return {
@@ -884,10 +904,12 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         
         // Re-run pipeline with expanded window
         const expandedParams = { ...params, dateTo: expandedWindow.to };
-        const expandedQuery = await buildOptimizedQuery(expandedParams, userProfile);
+        const expandedQueryResult = await buildOptimizedQuery(expandedParams, userProfile);
+        const expandedQuery = typeof expandedQueryResult === 'string' ? expandedQueryResult : expandedQueryResult.query;
+        const expandedNarrativeQuery = typeof expandedQueryResult === 'object' ? expandedQueryResult.narrativeQuery : undefined;
         
         // Discovery → Voyage gate → Prioritization → Extraction → Quality
-        const expandedRawCandidates = await discoverEventCandidates(expandedQuery, expandedParams, userProfile);
+        const expandedRawCandidates = await discoverEventCandidates(expandedQuery, expandedParams, userProfile, expandedNarrativeQuery);
         const expandedVoyageResult = await applyVoyageGate(
           expandedRawCandidates,
           {
@@ -942,9 +964,17 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
             textSample: event.description?.substring(0, 500)
           };
           
+          const qualityResult = isSolidHit(meta, expandedWindow);
+          
+          // Add dateWindowStatus to event metadata for UI coloring
+          if (qualityResult.dateWindowStatus) {
+            event.metadata = event.metadata || {};
+            event.metadata.dateWindowStatus = qualityResult.dateWindowStatus;
+          }
+          
           return {
             event,
-            ...isSolidHit(meta, expandedWindow)
+            ...qualityResult
           };
         });
         
@@ -1026,7 +1056,6 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         enhancedCandidates: enhanced.length,
         totalDuration,
         averageConfidence,
-        lowConfidence,
         sourceBreakdown: getSourceBreakdown(finalEvents),
         providersUsed: ['firecrawl', 'cse', 'database'],
         // Performance optimization data
@@ -1129,7 +1158,7 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
 /**
  * Build optimized search query using weighted templates with user profile integration
  */
-async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: any): Promise<string> {
+async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: any): Promise<{ query: string; narrativeQuery?: string }> {
   // Get search configuration to determine industry
   const searchConfig = await getSearchConfig();
   const industry = searchConfig?.industry || 'legal-compliance';
@@ -1151,10 +1180,14 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
       weights: weightedResult.weights,
       queryLength: weightedResult.query.length,
       negativeFilters: weightedResult.negativeFilters.length,
-      geographicTerms: weightedResult.geographicTerms.length
+      geographicTerms: weightedResult.geographicTerms.length,
+      hasNarrativeQuery: !!weightedResult.narrativeQuery
     });
     
-    return weightedResult.query;
+    return {
+      query: weightedResult.query,
+      narrativeQuery: weightedResult.narrativeQuery
+    };
   } else {
     // Fallback to unified query builder if no weighted template available
     const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
@@ -1195,14 +1228,22 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
       language: 'en' // Default to English for optimized orchestrator
     });
     
-    return result.query;
+    return {
+      query: result.query,
+      narrativeQuery: result.narrativeQuery
+    };
   }
 }
 
 /**
  * Discover event candidates from multiple sources using parallel processing
  */
-async function discoverEventCandidates(query: string, params: OptimizedSearchParams, userProfile?: any): Promise<string[]> {
+async function discoverEventCandidates(
+  query: string, 
+  params: OptimizedSearchParams, 
+  userProfile?: any,
+  narrativeQuery?: string
+): Promise<string[]> {
   const startTime = Date.now();
   
   // Create multiple query variations for parallel discovery
@@ -1231,6 +1272,7 @@ async function discoverEventCandidates(query: string, params: OptimizedSearchPar
         console.log('[optimized-orchestrator] Executing discovery with query:', task.data.substring(0, 100) + '...');
         const result = await unifiedSearch({
           q: task.data,
+          narrativeQuery: narrativeQuery, // Pass narrative query for first variation, undefined for others
           dateFrom: params.dateFrom,
           dateTo: params.dateTo,
           country: params.country || undefined,
@@ -1324,7 +1366,7 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
     const industryTerms = (userProfile?.industry_terms as string[]) || [];
     const icpTerms = (userProfile?.icp_terms as string[]) || [];
     
-    return nonAggregatorUrls.map((url, idx) => {
+    return urls.map((url, idx) => {
       let score = 0.3 - idx * 0.02; // Base score with degradation
       
       const urlLower = url.toLowerCase();
@@ -1412,14 +1454,14 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         };
 
         const requestPayload = {
-          systemInstruction: { parts: [{ text: systemInstruction }] },
+          systemInstruction: systemInstruction, // Pass as string, SDK will handle it
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig,
           safetySettings: [
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' }
+            { category: 'HARM_CATEGORY_HARASSMENT' as const, threshold: 'BLOCK_MEDIUM_AND_ABOVE' as const },
+            { category: 'HARM_CATEGORY_HATE_SPEECH' as const, threshold: 'BLOCK_MEDIUM_AND_ABOVE' as const },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT' as const, threshold: 'BLOCK_MEDIUM_AND_ABOVE' as const },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT' as const, threshold: 'BLOCK_MEDIUM_AND_ABOVE' as const }
           ]
         };
 
@@ -1428,7 +1470,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
         });
 
         const result = await Promise.race([
-          geminiPrioritizationModel!.generateContent(requestPayload),
+          geminiPrioritizationModel!.generateContent(requestPayload as any),
           timeoutPromise
         ]) as Awaited<ReturnType<GenerativeModel['generateContent']>>;
 
@@ -1849,6 +1891,11 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         company: speaker.company || undefined
       }));
 
+    // Extract city and country from location string
+    const locationParts = payload.metadata.location?.split(',').map(s => s.trim()) || [];
+    const city = locationParts.length > 0 ? locationParts[0] : undefined;
+    const country = locationParts.length > 1 ? locationParts[1] : (params.country || undefined);
+    
     events.push({
       url: prioritizedItem.url,
       title: payload.metadata.title || 'Untitled Event',
@@ -1856,6 +1903,8 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       date: payload.metadata.date || '',
       location: payload.metadata.location || '',
       venue: '',
+      city: city,
+      country: country,
       speakers: mappedSpeakers,
       sponsors: [],
       confidence: prioritizedItem.score,
@@ -1929,13 +1978,14 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
   ];
   
   return events.filter(event => {
-    const searchText = `${event.title} ${event.description}`.toLowerCase();
-    const titleLower = event.title.toLowerCase();
+    const eventTitle = event.title || 'Untitled Event';
+    const searchText = `${eventTitle} ${event.description || ''}`.toLowerCase();
+    const titleLower = eventTitle.toLowerCase();
     
     // FIRST: Exclude non-event pages (legal, static pages)
     const isNonEvent = NON_EVENT_KEYWORDS.some(keyword => titleLower.includes(keyword));
     if (isNonEvent) {
-      console.log(`[optimized-orchestrator] ✗ Event filtered out (non-event page): "${event.title.substring(0, 80)}"`);
+      console.log(`[optimized-orchestrator] ✗ Event filtered out (non-event page): "${eventTitle.substring(0, 80)}"`);
       return false;
     }
     
@@ -1947,7 +1997,7 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
     });
     
     if (hasIndustryMatch) {
-      console.log(`[optimized-orchestrator] ✓ Event matches industry terms: "${event.title.substring(0, 80)}"`);
+      console.log(`[optimized-orchestrator] ✓ Event matches industry terms: "${eventTitle.substring(0, 80)}"`);
       return true;
     }
     
@@ -1958,11 +2008,11 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
     });
     
     if (hasIcpMatch) {
-      console.log(`[optimized-orchestrator] ✓ Event matches ICP terms: "${event.title.substring(0, 80)}"`);
+      console.log(`[optimized-orchestrator] ✓ Event matches ICP terms: "${eventTitle.substring(0, 80)}"`);
       return true;
     }
     
-    console.log(`[optimized-orchestrator] ✗ Event filtered out (no match): "${event.title.substring(0, 80)}"`);
+    console.log(`[optimized-orchestrator] ✗ Event filtered out (no match): "${eventTitle.substring(0, 80)}"`);
     return false;
   });
 }

@@ -374,7 +374,23 @@ function buildNarrativeQuery(params: {
     temporalDescription = 'scheduled through the upcoming 12 months';
   }
   
-  // Build user-specific context for narrative query
+  // PRIORITY: Include user's search term if provided (this is the actual search query)
+  let searchTermContext = '';
+  if (baseQuery && baseQuery.trim()) {
+    // Only add if baseQuery is a simple search term (not a complex structured query)
+    const isSimpleTerm = !baseQuery.includes(' OR ') && 
+                         !baseQuery.includes(' AND ') &&
+                         !baseQuery.includes('(') &&
+                         baseQuery.length < 100 &&
+                         baseQuery.trim().split(/\s+/).length <= 5;
+    
+    if (isSimpleTerm) {
+      const cleanTerm = baseQuery.trim();
+      searchTermContext = ` related to ${cleanTerm}`;
+    }
+  }
+  
+  // Build user-specific context for narrative query (secondary to search term)
   let userContext = '';
   if (userProfile) {
     const industryTerms = userProfile.industry_terms || [];
@@ -401,22 +417,22 @@ function buildNarrativeQuery(params: {
   if (language === 'de') {
     if (hasSpecificIndustry) {
       const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Finde ${primaryIndustry} Events und Konferenzen in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}${userContext}.`;
+      return `Finde ${primaryIndustry} Events und Konferenzen in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}${searchTermContext}${userContext}.`;
     }
-    return `Finde Geschäftsveranstaltungen und professionelle Events in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
+    return `Finde Geschäftsveranstaltungen und professionelle Events in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}${searchTermContext}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
   } else if (language === 'fr') {
     if (hasSpecificIndustry) {
       const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Trouvez des événements et conférences ${primaryIndustry} en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}${userContext}.`;
+      return `Trouvez des événements et conférences ${primaryIndustry} en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}${searchTermContext}${userContext}.`;
     }
-    return `Trouvez des événements d'affaires et professionnels en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}. Focus sur les affaires et le développement professionnel${userContext}.`;
+    return `Trouvez des événements d'affaires et professionnels en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}${searchTermContext}. Focus sur les affaires et le développement professionnel${userContext}.`;
   } else {
     if (hasSpecificIndustry) {
       // Lead with specific industry terms, not generic "business"
       const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Find ${primaryIndustry} events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}${userContext}.`;
+      return `Find ${primaryIndustry} events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}${searchTermContext}${userContext}.`;
     }
-    return `Find business events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}. Focus on business and professional development${userContext}.`;
+    return `Find business events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}${searchTermContext}. Focus on business and professional development${userContext}.`;
   }
 }
 

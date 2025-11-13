@@ -561,7 +561,38 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
  * Prioritize sub-pages that are most likely to contain speaker information
  */
 function prioritizeSubPagesForSpeakers(urls: string[]): string[] {
-  const scored = urls.map(url => {
+  // SUB-PAGE URL NORMALIZATION: Filter out empty/invalid URLs and normalize
+  const validUrls = urls
+    .filter(url => {
+      // Reject empty or whitespace-only URLs
+      if (!url || url.trim().length === 0) {
+        console.warn('[event-analysis] Rejecting empty sub-page URL');
+        return false;
+      }
+      // Must be valid HTTP/HTTPS URL
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return false;
+      }
+      // Validate URL format
+      try {
+        new URL(url);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+    .map(url => {
+      // Normalize URL: trim, preserve locale-specific paths like /de/
+      try {
+        const parsed = new URL(url.trim());
+        // Preserve locale paths (e.g., /de/, /en/, /fr/)
+        return parsed.href;
+      } catch {
+        return url.trim();
+      }
+    });
+  
+  const scored = validUrls.map(url => {
     const urlLower = url.toLowerCase();
     const pathAndQuery = urlLower.split('//')[1] || urlLower; // Get path after domain
     let score = 0;
@@ -811,15 +842,15 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
     console.log('Initializing Gemini for event metadata extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
     const metadataSchema = {
-      type: 'object',
+      type: 'object' as const,
       properties: {
-        title: { type: 'string' },
-        description: { type: 'string' },
-        date: { type: 'string', nullable: true },
-        location: { type: 'string', nullable: true },
-        organizer: { type: 'string', nullable: true },
-        website: { type: 'string', nullable: true },
-        registrationUrl: { type: 'string', nullable: true }
+        title: { type: 'string' as const },
+        description: { type: 'string' as const },
+        date: { type: 'string' as const, nullable: true },
+        location: { type: 'string' as const, nullable: true },
+        organizer: { type: 'string' as const, nullable: true },
+        website: { type: 'string' as const, nullable: true },
+        registrationUrl: { type: 'string' as const, nullable: true }
       }
     };
 
@@ -831,7 +862,7 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
         topK: 12,
         maxOutputTokens: 2048, // Increased to handle JSON responses properly
         responseMimeType: 'application/json',
-        responseSchema: metadataSchema
+        responseSchema: metadataSchema as any // Type assertion needed for Gemini SDK compatibility
       }
     });
     console.log('Gemini model initialized for metadata extraction');
@@ -885,15 +916,45 @@ ${chunk}`;
           continue;
         }
 
-        const geminiPromise = model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }]
-        });
-        const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
-        const response = await result.response;
-        const text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        // LLM EMPTY-RESPONSE RETRY: Retry with smaller chunks if empty response
+        let text = '';
+        let currentChunk = chunk;
+        let retryCount = 0;
+        const maxRetries = 2;
+        const chunkReductionFactor = 0.7; // Reduce chunk size by 30% on retry
+        
+        while (retryCount <= maxRetries && (!text || !text.trim())) {
+          if (retryCount > 0) {
+            // Reduce chunk size on retry
+            const newSize = Math.floor(currentChunk.length * chunkReductionFactor);
+            currentChunk = currentChunk.substring(0, newSize);
+            console.log(`[event-analysis] Retry ${retryCount}/${maxRetries} for chunk ${i + 1} with reduced size: ${newSize} chars`);
+          }
+          
+          // Build prompt with current chunk (replace only the chunk placeholder, not all occurrences)
+          const currentPrompt = prompt.replace(`Chunk ${i + 1}/${chunks.length}:\n${chunk}`, `Chunk ${i + 1}/${chunks.length}:\n${currentChunk}`);
+          
+          const geminiPromise = model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: currentPrompt }] }]
+          });
+          const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+          const response = await result.response;
+          text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          
+          if (!text || !text.trim()) {
+            retryCount++;
+            if (retryCount <= maxRetries) {
+              console.warn(`[event-analysis] Empty metadata response for chunk ${i + 1}, retrying with smaller chunk...`);
+              // Wait a bit before retry to avoid rate limiting
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              console.warn(`[event-analysis] Empty metadata response for chunk ${i + 1} after ${maxRetries} retries`);
+            }
+          }
+        }
 
         if (!text || !text.trim()) {
-          console.warn(`[event-analysis] Empty metadata response for chunk ${i + 1}`);
+          console.warn(`[event-analysis] Skipping chunk ${i + 1} after all retries failed`);
           continue;
         }
 
@@ -1138,7 +1199,7 @@ function createSmartChunks(
   console.log('[smart-chunking] No speaker sections found, using generic chunking');
   const sectionChunks = crawlResults.flatMap(result => {
     const sectionText = `Page: ${result.title || 'Unknown'}\nURL: ${result.url}\nContent:\n${result.content || ''}`;
-    return chunkText(sectionText, 1200, 150).slice(0, 2);
+    return chunkText(sectionText, 1500, 200).slice(0, 2); // Increased from 1200 to 1500 for better context
   });
   
   return sectionChunks.slice(0, maxChunks);
@@ -1242,18 +1303,18 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
     console.log('Initializing Gemini for speaker extraction...');
     const genAI = new GoogleGenerativeAI(geminiKey);
     const speakerSchema = {
-      type: 'object',
+      type: 'object' as const,
       properties: {
         speakers: {
-          type: 'array',
+          type: 'array' as const,
           maxItems: 15,
           items: {
-            type: 'object',
+            type: 'object' as const,
             properties: {
-              name: { type: 'string' },
-              title: { type: 'string', nullable: true },
-              company: { type: 'string', nullable: true },
-              bio: { type: 'string', nullable: true }
+              name: { type: 'string' as const },
+              title: { type: 'string' as const, nullable: true },
+              company: { type: 'string' as const, nullable: true },
+              bio: { type: 'string' as const, nullable: true }
             },
             required: ['name']
           }
@@ -1270,7 +1331,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
         topK: 12,
         maxOutputTokens: 2048,  // Increased to 2048 to handle thinking tokens (up to 1023 observed) + response
         responseMimeType: 'application/json',
-        responseSchema: speakerSchema
+        responseSchema: speakerSchema as any // Type assertion needed for Gemini SDK compatibility
       }
     });
     console.log('Gemini model initialized successfully');
@@ -1377,10 +1438,36 @@ ${chunk}`;
 
         const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
         const response = await result.response;
-        const text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        let text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
         if (!text || !text.trim()) {
-          console.warn(`[event-analysis] Empty speaker response for chunk ${index + 1}`);
+          // LLM EMPTY-RESPONSE RETRY: Retry with smaller chunk if empty response
+          console.warn(`[event-analysis] Empty speaker response for chunk ${index + 1}, retrying with smaller chunk...`);
+          
+          // Retry with reduced chunk size
+          const reducedChunk = chunk.substring(0, Math.floor(chunk.length * 0.7));
+          // Replace only the chunk placeholder in the prompt, not all occurrences
+          const retryPrompt = prompt.replace(`Content chunk ${index + 1}/${chunks.length}:\n${chunk}`, `Content chunk ${index + 1}/${chunks.length}:\n${reducedChunk}`);
+          
+          try {
+            await new Promise(resolve => setTimeout(resolve, 500)); // Wait before retry
+            const retryResult = await model.generateContent({
+              contents: [{ role: 'user', parts: [{ text: retryPrompt }] }]
+            });
+            const retryResponse = await retryResult.response;
+            text = typeof retryResponse.text === 'function' ? await retryResponse.text() : retryResponse?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            
+            if (!text || !text.trim()) {
+              console.warn(`[event-analysis] Empty speaker response for chunk ${index + 1} after retry`);
+              return [];
+            }
+          } catch (retryError) {
+            console.warn(`[event-analysis] Speaker extraction retry failed for chunk ${index + 1}:`, retryError);
+            return [];
+          }
+        }
+        
+        if (!text || !text.trim()) {
           return [];
         }
 
@@ -1435,8 +1522,16 @@ ${chunk}`;
       // PHASE 2: Filter speakers to only include persons
       const validSpeakers = filterSpeakers(rawSpeakers as RawSpeaker[]);
       
-      console.log(`[event-analysis] ✓ Speaker extraction: ${rawSpeakers.length} raw → ${validSpeakers.length} validated (filtered ${rawSpeakers.length - validSpeakers.length} non-persons)`);
-      return validSpeakers as SpeakerData[];
+      // Map filtered speakers to SpeakerData format (filterSpeakers returns Speaker[] with name, role, org)
+      const speakerData: SpeakerData[] = validSpeakers.map(speaker => ({
+        name: speaker.name,
+        title: speaker.role || '',
+        company: speaker.org || '',
+        bio: '' // Bio not available from filterSpeakers output
+      }));
+      
+      console.log(`[event-analysis] ✓ Speaker extraction: ${rawSpeakers.length} raw → ${speakerData.length} validated (filtered ${rawSpeakers.length - speakerData.length} non-persons)`);
+      return speakerData;
     }
 
     console.log('[event-analysis] No speakers found via Gemini, trying manual extraction fallback...');
@@ -1454,10 +1549,18 @@ ${chunk}`;
       
       const validatedSpeakers = filterSpeakers(rawFallbackSpeakers as RawSpeaker[]);
       
-      console.log(`[event-analysis] ✓ Manual extraction: ${fallbackNames.length} raw → ${validatedSpeakers.length} validated (filtered ${fallbackNames.length - validatedSpeakers.length} non-persons)`);
+      // Map filtered speakers to SpeakerData format (filterSpeakers returns Speaker[] with name, role, org)
+      const fallbackSpeakerData: SpeakerData[] = validatedSpeakers.map(speaker => ({
+        name: speaker.name,
+        title: speaker.role || '',
+        company: speaker.org || '',
+        bio: '' // Bio not available from filterSpeakers output
+      }));
       
-      if (validatedSpeakers.length > 0) {
-        return validatedSpeakers as SpeakerData[];
+      console.log(`[event-analysis] ✓ Manual extraction: ${fallbackNames.length} raw → ${fallbackSpeakerData.length} validated (filtered ${fallbackNames.length - fallbackSpeakerData.length} non-persons)`);
+      
+      if (fallbackSpeakerData.length > 0) {
+        return fallbackSpeakerData;
       }
     }
 
