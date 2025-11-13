@@ -36,6 +36,14 @@ export function normalizeTopicToTaxonomy(
   for (const [topicId, definition] of Object.entries(TOPIC_TAXONOMY)) {
     // Check exact alias match
     if (definition.aliases.some(alias => alias.toLowerCase() === topicLower)) {
+      if (topicId !== topicLower) {
+        console.log('[phase2-topic-normalization]', {
+          original: topic,
+          normalized: topicId,
+          method: 'exact_alias_match',
+          version
+        });
+      }
       return topicId;
     }
     
@@ -44,11 +52,27 @@ export function normalizeTopicToTaxonomy(
       const aliasLower = alias.toLowerCase();
       return topicLower.includes(aliasLower) || aliasLower.includes(topicLower);
     })) {
+      if (topicId !== topicLower) {
+        console.log('[phase2-topic-normalization]', {
+          original: topic,
+          normalized: topicId,
+          method: 'fuzzy_alias_match',
+          version
+        });
+      }
       return topicId;
     }
   }
   
   // No match found
+  if (topicLower !== 'unknown') {
+    console.log('[phase2-topic-normalization]', {
+      original: topic,
+      normalized: 'unknown',
+      method: 'no_match',
+      version
+    });
+  }
   return 'unknown';
 }
 

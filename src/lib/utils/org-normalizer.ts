@@ -205,6 +205,13 @@ export function normalizeOrg(org: string | null | undefined): string {
   // Direct lookup (exact match)
   for (const [canonical, aliases] of Object.entries(ORG_ALIASES)) {
     if (aliases.some(alias => alias.toLowerCase() === orgLower)) {
+      if (canonical !== org) {
+        console.log('[phase2-org-normalization]', {
+          original: org,
+          normalized: canonical,
+          method: 'exact_alias_match'
+        });
+      }
       return canonical;
     }
   }
@@ -215,16 +222,37 @@ export function normalizeOrg(org: string | null | undefined): string {
   
   for (const [canonical, aliases] of Object.entries(ORG_ALIASES)) {
     if (aliases.some(alias => alias.toLowerCase() === normalizedLower)) {
+      if (canonical !== org) {
+        console.log('[phase2-org-normalization]', {
+          original: org,
+          normalized: canonical,
+          method: 'normalized_alias_match'
+        });
+      }
       return canonical;
     }
     
     // Also check if normalized input matches canonical
     if (canonical.toLowerCase() === normalizedLower) {
+      if (canonical !== org) {
+        console.log('[phase2-org-normalization]', {
+          original: org,
+          normalized: canonical,
+          method: 'canonical_match'
+        });
+      }
       return canonical;
     }
   }
   
   // No match found, return normalized version
+  if (normalized !== org) {
+    console.log('[phase2-org-normalization]', {
+      original: org,
+      normalized: normalized,
+      method: 'suffix_removed'
+    });
+  }
   return normalized || org;
 }
 

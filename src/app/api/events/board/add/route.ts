@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { AddEventToBoardRequest } from "@/lib/types/event-board";
+import { linkSpeakerToEvent } from "@/lib/services/speaker-service";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
@@ -83,6 +84,50 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }, { status: 400 });
       }
 
+      // PHASE 2: Link speakers to event in history (if speakers available)
+      if (actualEventId && eventData?.speakers && Array.isArray(eventData.speakers)) {
+        let linkedCount = 0;
+        for (const speaker of eventData.speakers) {
+          if (speaker?.name) {
+            try {
+              const historyEntry = await linkSpeakerToEvent(
+                {
+                  name: speaker.name,
+                  org: speaker.org,
+                  title: speaker.title
+                },
+                actualEventId,
+                {
+                  talk_title: speaker.speech_title || speaker.talk_title || null,
+                  session_name: speaker.session || null,
+                  speech_title: speaker.speech_title || speaker.talk_title || null
+                },
+                speaker.confidence || null
+              );
+              
+              if (historyEntry) {
+                linkedCount++;
+              }
+            } catch (historyError) {
+              // Don't fail board add if history linking fails
+              console.error('[phase2-speaker-history] Failed to link speaker to event:', {
+                speaker: speaker.name,
+                eventId: actualEventId,
+                error: historyError
+              });
+            }
+          }
+        }
+        
+        if (linkedCount > 0) {
+          console.log('[phase2-speaker-history] Linked speakers to event:', {
+            eventId: actualEventId,
+            speakersLinked: linkedCount,
+            totalSpeakers: eventData.speakers.length
+          });
+        }
+      }
+
       return NextResponse.json({ success: true, boardItem: data });
     }
 
@@ -105,6 +150,50 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         success: false,
         error: error.message 
       }, { status: 400 });
+    }
+
+    // PHASE 2: Link speakers to event in history (if speakers available)
+    if (actualEventId && eventData?.speakers && Array.isArray(eventData.speakers)) {
+      let linkedCount = 0;
+      for (const speaker of eventData.speakers) {
+        if (speaker?.name) {
+          try {
+            const historyEntry = await linkSpeakerToEvent(
+              {
+                name: speaker.name,
+                org: speaker.org,
+                title: speaker.title
+              },
+              actualEventId,
+              {
+                talk_title: speaker.speech_title || speaker.talk_title || null,
+                session_name: speaker.session || null,
+                speech_title: speaker.speech_title || speaker.talk_title || null
+              },
+              speaker.confidence || null
+            );
+            
+            if (historyEntry) {
+              linkedCount++;
+            }
+          } catch (historyError) {
+            // Don't fail board add if history linking fails
+            console.error('[phase2-speaker-history] Failed to link speaker to event:', {
+              speaker: speaker.name,
+              eventId: actualEventId,
+              error: historyError
+            });
+          }
+        }
+      }
+      
+      if (linkedCount > 0) {
+        console.log('[phase2-speaker-history] Linked speakers to event:', {
+          eventId: actualEventId,
+          speakersLinked: linkedCount,
+          totalSpeakers: eventData.speakers.length
+        });
+      }
     }
 
     return NextResponse.json({ success: true, boardItem: data });

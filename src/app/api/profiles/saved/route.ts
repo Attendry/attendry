@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { SavedSpeakerProfile } from "@/lib/types/database";
+import { linkSpeakerToEvent } from "@/lib/services/speaker-service";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,12 @@ interface SaveProfileRequest {
   enhanced_data: any;
   notes?: string;
   tags?: string[];
+  metadata?: {
+    event_id?: string;
+    event_source_url?: string;
+    event_title?: string;
+    confidence?: number;
+  };
 }
 
 interface UpdateProfileRequest {
@@ -66,6 +73,54 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         success: false,
         error: error.message 
       }, { status: 400 });
+    }
+
+    // PHASE 2: Link speaker to event in history (if event context available)
+    if (speaker_data?.name && (requestData.metadata?.event_id || requestData.metadata?.event_source_url)) {
+      try {
+        // Try to resolve event_id from URL if not provided directly
+        let eventId = requestData.metadata?.event_id;
+        
+        if (!eventId && requestData.metadata?.event_source_url) {
+          const { data: eventData } = await supabase
+            .from('collected_events')
+            .select('id')
+            .eq('source_url', requestData.metadata.event_source_url)
+            .single();
+          
+          if (eventData?.id) {
+            eventId = eventData.id;
+          }
+        }
+        
+        if (eventId) {
+          const historyEntry = await linkSpeakerToEvent(
+            {
+              name: speaker_data.name,
+              org: speaker_data.org,
+              title: speaker_data.title
+            },
+            eventId,
+            {
+              talk_title: speaker_data.speech_title || speaker_data.talk_title || null,
+              session_name: speaker_data.session || null,
+              speech_title: speaker_data.speech_title || speaker_data.talk_title || null
+            },
+            requestData.metadata.confidence || null
+          );
+          
+          if (historyEntry) {
+            console.log('[phase2-speaker-history] Linked speaker to event:', {
+              speaker: speaker_data.name,
+              eventId,
+              historyId: historyEntry.id
+            });
+          }
+        }
+      } catch (historyError) {
+        // Don't fail the save if history linking fails
+        console.error('[phase2-speaker-history] Failed to link speaker to event:', historyError);
+      }
     }
 
     return NextResponse.json({ 

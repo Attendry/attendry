@@ -139,6 +139,10 @@ function getFieldsWithData(event: EventWithEvidence): string[] {
  */
 export function calculateConfidence(event: EventWithEvidence): number {
   if (!event.evidence || event.evidence.length === 0) {
+    console.log('[phase2-evidence-confidence] No evidence provided, using low confidence:', {
+      eventTitle: event.title,
+      confidence: 0.3
+    });
     return 0.3; // Low confidence if no evidence
   }
   
@@ -161,8 +165,18 @@ export function calculateConfidence(event: EventWithEvidence): number {
   const penalty = missingEvidenceCount * 0.05;
   
   const confidence = Math.min(1.0, Math.max(0.0, avgEvidenceConfidence + bonus - penalty));
+  const finalConfidence = Math.round(confidence * 100) / 100;
   
-  return Math.round(confidence * 100) / 100;
+  console.log('[phase2-evidence-confidence] Calculated confidence:', {
+    eventTitle: event.title,
+    avgEvidenceConfidence: avgEvidenceConfidence.toFixed(2),
+    bonus: bonus.toFixed(2),
+    penalty: penalty.toFixed(2),
+    missingEvidenceCount,
+    finalConfidence
+  });
+  
+  return finalConfidence;
 }
 
 /**
@@ -178,6 +192,7 @@ export function applyHallucinationGuard(
 ): EventWithEvidence {
   const guarded = { ...event };
   const evidenceFields = new Set(evidence.map(tag => tag.field));
+  const nulledFields: string[] = [];
   
   // Fields that require evidence (if they have data)
   const fieldsToCheck = [
@@ -192,6 +207,7 @@ export function applyHallucinationGuard(
         if (!evidenceFields.has(field)) {
           // No evidence for this field - null it out
           (guarded as any)[field] = null;
+          nulledFields.push(field);
         }
       }
     }
@@ -205,9 +221,18 @@ export function applyHallucinationGuard(
       if (!evidenceFields.has(field)) {
         // No evidence for this array field - clear it
         (guarded as any)[field] = [];
+        nulledFields.push(field);
       }
     }
   });
+  
+  if (nulledFields.length > 0) {
+    console.log('[phase2-hallucination-guard] Nulled fields without evidence:', {
+      eventTitle: event.title,
+      nulledFields,
+      evidenceFields: Array.from(evidenceFields)
+    });
+  }
   
   return guarded;
 }

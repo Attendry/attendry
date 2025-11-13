@@ -343,13 +343,44 @@ export class EventExtractor {
     
     // Name similarity check (Levenshtein)
     const nameSimilarity = levenshteinSimilarity(normName1, normName2);
-    if (nameSimilarity < 0.8) return false;
+    if (nameSimilarity < 0.8) {
+      if (nameSimilarity >= 0.7) {
+        // Log near-misses for debugging
+        console.log('[phase2-fuzzy-matching] Name similarity below threshold:', {
+          name1,
+          name2,
+          similarity: nameSimilarity.toFixed(2),
+          threshold: 0.8
+        });
+      }
+      return false;
+    }
     
     // If both have orgs, require org similarity > 0.6
     if (org1 && org2) {
       const orgSim = orgSimilarity(org1, org2);
-      if (orgSim < 0.6) return false;
+      if (orgSim < 0.6) {
+        console.log('[phase2-fuzzy-matching] Org similarity below threshold:', {
+          name1,
+          name2,
+          org1,
+          org2,
+          orgSimilarity: orgSim.toFixed(2),
+          threshold: 0.6
+        });
+        return false;
+      }
     }
+    
+    // Match found
+    console.log('[phase2-fuzzy-matching] Speaker match found:', {
+      name1,
+      name2,
+      nameSimilarity: nameSimilarity.toFixed(2),
+      orgSimilarity: org1 && org2 ? orgSimilarity(org1, org2).toFixed(2) : 'N/A',
+      org1: org1 || 'N/A',
+      org2: org2 || 'N/A'
+    });
     
     return true;
   }
