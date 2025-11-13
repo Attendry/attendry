@@ -69,19 +69,38 @@ export function EventIntelligenceQuickView({
       
       if (response.ok) {
         const data = await response.json();
-        setIntelligence({
-          discussions: data.discussions,
-          sponsors: data.sponsors,
-          location: data.location,
-          outreach: data.outreach,
-          cached: data.cached || false,
-          loading: false
+        console.log('[EventIntelligenceQuickView] Received intelligence data:', {
+          hasDiscussions: !!data.discussions,
+          hasSponsors: !!data.sponsors,
+          hasLocation: !!data.location,
+          hasOutreach: !!data.outreach,
+          status: data.status,
+          cached: data.cached
         });
+        
+        // Check if intelligence was actually generated (not just "not_generated" status)
+        if (data.status === 'not_generated') {
+          setIntelligence({
+            cached: false,
+            loading: false
+          });
+        } else {
+          setIntelligence({
+            discussions: data.discussions,
+            sponsors: data.sponsors,
+            location: data.location,
+            outreach: data.outreach,
+            cached: data.cached || false,
+            loading: false
+          });
+        }
       } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('[EventIntelligenceQuickView] Failed to load intelligence:', errorData);
         setIntelligence(prev => ({ ...prev, loading: false }));
       }
     } catch (error) {
-      console.error('Failed to load intelligence:', error);
+      console.error('[EventIntelligenceQuickView] Error loading intelligence:', error);
       setIntelligence(prev => ({ ...prev, loading: false }));
     }
   };
@@ -128,10 +147,29 @@ export function EventIntelligenceQuickView({
                 });
                 
                 if (response.ok) {
+                  const result = await response.json();
+                  console.log('[EventIntelligenceQuickView] Generation response:', {
+                    hasDiscussions: !!result.discussions,
+                    hasSponsors: !!result.sponsors,
+                    hasLocation: !!result.location,
+                    hasOutreach: !!result.outreach
+                  });
+                  
+                  // Update state directly with the response data
+                  setIntelligence({
+                    discussions: result.discussions,
+                    sponsors: result.sponsors,
+                    location: result.location,
+                    outreach: result.outreach,
+                    cached: result.cached || false,
+                    loading: false
+                  });
+                  
+                  // Also reload to ensure we have the latest
                   await loadIntelligence();
                 } else {
                   const error = await response.json();
-                  console.error('Failed to generate intelligence:', error);
+                  console.error('[EventIntelligenceQuickView] Failed to generate intelligence:', error);
                   alert(`Failed to generate intelligence: ${error.error || 'Unknown error'}`);
                 }
               } catch (error: any) {
