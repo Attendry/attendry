@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { supabaseServer } from '@/lib/supabase-server';
+import { supabaseBrowser } from '@/lib/supabase-browser';
 import { EventData } from '@/lib/types/core';
 import { EventIntelligencePanel } from '@/components/EventIntelligencePanel';
 import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
@@ -30,7 +30,7 @@ export default function EventDetailPage() {
   const loadEvent = async () => {
     try {
       setLoading(true);
-      const supabase = await supabaseServer();
+      const supabase = supabaseBrowser();
       
       const { data, error: fetchError } = await supabase
         .from('collected_events')

@@ -7,7 +7,6 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { cookies } from "next/headers";
 
 // Connection pool configuration
 const POOL_CONFIG = {
@@ -105,6 +104,8 @@ class DatabaseConnectionPool {
       throw new Error('Supabase environment variables not configured');
     }
     
+    // Dynamically import cookies to avoid issues when this module is imported in client components
+    const { cookies } = await import("next/headers");
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const jar = await cookies();
