@@ -59,16 +59,53 @@ export async function GET(
       // Continue without personalization
     }
 
+    // Check if eventId is an optimized_ ID (temporary ID, not in DB)
+    const isOptimizedId = eventId.startsWith('optimized_');
+    
     // Get event from database
-    const { data: event, error: eventError } = await supabase
-      .from('collected_events')
-      .select('*')
-      .or(`id.eq.${eventId},source_url.eq.${eventId}`)
-      .single();
+    let event: any = null;
+    let eventError: any = null;
+    
+    if (isOptimizedId) {
+      // For optimized IDs, we can't query by ID (it's not a UUID)
+      // Check cache by source_url if we can extract it from the event
+      // For now, return not found - POST will handle generation with event data
+      return NextResponse.json({
+        eventId,
+        status: 'not_generated',
+        message: 'Intelligence not yet generated. Use POST to generate.',
+        cached: false,
+        isOptimized: true
+      });
+    } else {
+      // Try to find by UUID first, then by source_url
+      const { data: eventById, error: errorById } = await supabase
+        .from('collected_events')
+        .select('*')
+        .eq('id', eventId)
+        .maybeSingle();
+      
+      if (eventById) {
+        event = eventById;
+      } else {
+        // Try by source_url
+        const { data: eventByUrl, error: errorByUrl } = await supabase
+          .from('collected_events')
+          .select('*')
+          .eq('source_url', eventId)
+          .maybeSingle();
+        
+        if (eventByUrl) {
+          event = eventByUrl;
+        } else {
+          eventError = errorByUrl || errorById;
+        }
+      }
+    }
 
     if (eventError || !event) {
       return NextResponse.json(
-        { error: 'Event not found' },
+        { error: 'Event not found in database' },
         { status: 404 }
       );
     }
@@ -144,22 +181,101 @@ export async function POST(
       // Continue without personalization
     }
 
-    // Get event from database
-    const { data: event, error: eventError } = await supabase
-      .from('collected_events')
-      .select('*')
-      .or(`id.eq.${eventId},source_url.eq.${eventId}`)
-      .single();
+    // Check if eventId is an optimized_ ID (temporary ID, not in DB)
+    const isOptimizedId = eventId.startsWith('optimized_');
+    
+    // Get event from database or request body
+    let event: any = null;
+    let eventError: any = null;
+    
+    if (isOptimizedId) {
+      // For optimized IDs, try to get event data from request body
+      try {
+        const body = await req.json().catch(() => ({}));
+        if (body.event) {
+          event = body.event;
+        } else {
+          // Try to find by source_url if available
+          if (body.source_url) {
+            const { data: eventByUrl } = await supabase
+              .from('collected_events')
+              .select('*')
+              .eq('source_url', body.source_url)
+              .maybeSingle();
+            
+            if (eventByUrl) {
+              event = eventByUrl;
+            } else {
+              // Use the event data from body if available
+              event = body;
+            }
+          } else {
+            return NextResponse.json(
+              { error: 'Event data required for optimized events. Please provide event data in request body.' },
+              { status: 400 }
+            );
+          }
+        }
+      } catch (error) {
+        return NextResponse.json(
+          { error: 'Failed to parse event data from request body' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Try to find by UUID first, then by source_url
+      const { data: eventById, error: errorById } = await supabase
+        .from('collected_events')
+        .select('*')
+        .eq('id', eventId)
+        .maybeSingle();
+      
+      if (eventById) {
+        event = eventById;
+      } else {
+        // Try by source_url
+        const { data: eventByUrl, error: errorByUrl } = await supabase
+          .from('collected_events')
+          .select('*')
+          .eq('source_url', eventId)
+          .maybeSingle();
+        
+        if (eventByUrl) {
+          event = eventByUrl;
+        } else {
+          eventError = errorByUrl || errorById;
+        }
+      }
+    }
 
     if (eventError || !event) {
       return NextResponse.json(
-        { error: 'Event not found' },
+        { error: 'Event not found in database' },
         { status: 404 }
       );
     }
 
+    // Determine cache key - try to find actual UUID if event is in database
+    let cacheKey = eventId;
+    if (isOptimizedId && event.source_url) {
+      // For optimized events, try to find the event in database by source_url
+      const { data: dbEvent } = await supabase
+        .from('collected_events')
+        .select('id')
+        .eq('source_url', event.source_url)
+        .maybeSingle();
+      
+      if (dbEvent) {
+        cacheKey = dbEvent.id; // Use UUID if found
+      } else {
+        cacheKey = event.source_url; // Use source_url as fallback
+      }
+    } else if (event.id && typeof event.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event.id)) {
+      cacheKey = event.id; // Use UUID from event object
+    }
+    
     // Check cache first
-    const cachedIntelligence = await getEventIntelligence(eventId, userProfile || undefined);
+    const cachedIntelligence = await getEventIntelligence(cacheKey, userProfile || undefined);
     
     if (cachedIntelligence) {
       return NextResponse.json({
@@ -174,12 +290,15 @@ export async function POST(
       userProfile || undefined
     );
 
-    // Cache the result
+    // Cache the result using the cache key (will look up UUID if needed)
     await cacheEventIntelligence(
-      eventId,
+      cacheKey,
       intelligence,
       userProfile || undefined
     );
+    
+    // Update intelligence eventId to match what was cached
+    intelligence.eventId = cacheKey;
 
     return NextResponse.json({
       ...intelligence,

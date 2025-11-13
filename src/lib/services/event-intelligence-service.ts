@@ -76,18 +76,38 @@ export async function getEventIntelligence(
   const supabase = supabaseAdmin();
   const profileHash = hashUserProfile(userProfile);
   
+  // If eventId is not a UUID (e.g., optimized_xxx or source_url), try to find the event first
+  let actualEventId = eventId;
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
+  
+  if (!isUUID) {
+    // Try to find event by source_url
+    const { data: event } = await supabase
+      .from('collected_events')
+      .select('id')
+      .eq('source_url', eventId)
+      .maybeSingle();
+    
+    if (event) {
+      actualEventId = event.id;
+    } else {
+      // Event not in database, can't cache - return null
+      return null;
+    }
+  }
+  
   // Check cache
   const { data: cached } = await supabase
     .from('event_intelligence')
     .select('*')
-    .eq('event_id', eventId)
+    .eq('event_id', actualEventId)
     .eq('user_profile_hash', profileHash)
     .gt('expires_at', new Date().toISOString())
-    .single();
+    .maybeSingle();
   
   if (cached) {
     return {
-      eventId,
+      eventId: actualEventId,
       discussions: cached.discussions || { themes: [], summary: '', keyTopics: [], speakerInsights: [] },
       sponsors: cached.sponsors || { analysis: '', tiers: [], industries: [], strategicSignificance: 0 },
       location: cached.location || { venueContext: '', accessibility: '', localMarketInsights: '' },
@@ -469,10 +489,31 @@ export async function cacheEventIntelligence(
   const profileHash = hashUserProfile(userProfile);
   const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000);
   
+  // If eventId is not a UUID (e.g., optimized_xxx or source_url), try to find the event first
+  let actualEventId = eventId;
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
+  
+  if (!isUUID) {
+    // Try to find event by source_url
+    const { data: event } = await supabase
+      .from('collected_events')
+      .select('id')
+      .eq('source_url', eventId)
+      .maybeSingle();
+    
+    if (event) {
+      actualEventId = event.id;
+    } else {
+      // Event not in database, can't cache - skip caching
+      console.warn(`[EventIntelligence] Cannot cache intelligence for event ${eventId} - event not found in database`);
+      return;
+    }
+  }
+  
   await supabase
     .from('event_intelligence')
     .upsert({
-      event_id: eventId,
+      event_id: actualEventId,
       user_profile_hash: profileHash,
       discussions: intelligence.discussions,
       sponsors: intelligence.sponsors,

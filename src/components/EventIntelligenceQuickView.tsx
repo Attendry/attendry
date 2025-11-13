@@ -105,11 +105,30 @@ export function EventIntelligenceQuickView({
             <span>Intelligence not yet generated</span>
           </div>
           <button
-            onClick={() => {
+            onClick={async () => {
               // Trigger generation
-              fetch(`/api/events/${encodeURIComponent(event.id || event.source_url)}/intelligence`, {
-                method: 'POST'
-              }).then(() => loadIntelligence());
+              const eventId = event.id || event.source_url;
+              try {
+                const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/intelligence`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    event: event,
+                    source_url: event.source_url
+                  })
+                });
+                
+                if (response.ok) {
+                  await loadIntelligence();
+                } else {
+                  const error = await response.json();
+                  console.error('Failed to generate intelligence:', error);
+                }
+              } catch (error) {
+                console.error('Error generating intelligence:', error);
+              }
             }}
             className="text-xs text-blue-600 hover:text-blue-700 font-medium"
           >
