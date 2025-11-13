@@ -42,8 +42,14 @@ async function processOptimizedResults(
       }
     }
     
+    // Generate unique ID: include source URL hash to ensure uniqueness
+    // This prevents duplicate IDs when same timestamp is used for different events
+    const sourceUrl = event.url || '';
+    const urlHash = sourceUrl ? Buffer.from(sourceUrl).toString('base64').slice(0, 8).replace(/[+/=]/g, '') : '';
+    const uniqueId = `optimized_${Date.now()}_${index}_${urlHash}`;
+    
     return {
-      id: `optimized_${Date.now()}_${index}`,
+      id: uniqueId,
       title: eventTitle,
       source_url: event.url,
       starts_at: event.date || new Date().toISOString().split('T')[0],
