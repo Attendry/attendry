@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/Navigation/Sidebar";
+import { EnhancedSidebar } from "@/components/Navigation/EnhancedSidebar";
 import { MobileNavigation, MobileMenuButton } from "@/components/Navigation/MobileNavigation";
 import { SkipLinks } from "@/components/Navigation/SkipLinks";
 import { TopBar } from "@/components/TopBar";
@@ -44,10 +45,19 @@ export function Layout({ children }: LayoutProps) {
       <div className="flex">
         {/* Desktop Sidebar */}
         <div className="hidden lg:block">
-          <Sidebar 
+          {/* Enhanced Sidebar - Testing version with theme switcher enabled */}
+          <EnhancedSidebar 
+            isCollapsed={isSidebarCollapsed} 
+            onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            enableThemeSwitcher={true}
+            enableAuth={true}
+            enableAdminSection={true}
+          />
+          {/* Original Sidebar - Uncomment to revert */}
+          {/* <Sidebar 
             isCollapsed={isSidebarCollapsed} 
             onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
-          />
+          /> */}
         </div>
 
         {/* Mobile Navigation */}
