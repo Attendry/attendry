@@ -26,6 +26,8 @@ import {
   Minimize2,
   Pin,
   PinOff,
+  Check,
+  X,
 } from 'lucide-react';
 
 import { SavedSpeakerProfile } from '@/lib/types/database';
@@ -108,7 +110,10 @@ const QUICK_SEARCH_DEFAULTS = {
   range: 'next' as 'next' | 'past',
   days: 14 as (typeof QUICK_SEARCH_DAY_OPTIONS)[number],
   keywords: '',
+  selectedKeywordTags: [] as string[],
 };
+
+const MAX_SELECTED_TAGS = 3;
 
 const PINNED_SEARCH_KEY = 'attendry_pinned_search';
 
@@ -116,7 +121,14 @@ function loadPinnedSearch(): typeof QUICK_SEARCH_DEFAULTS | null {
   if (typeof window === 'undefined') return null;
   try {
     const stored = localStorage.getItem(PINNED_SEARCH_KEY);
-    return stored ? JSON.parse(stored) : null;
+    if (!stored) return null;
+    
+    const parsed = JSON.parse(stored);
+    // Backwards compatibility: add selectedKeywordTags if not present
+    if (parsed && !Array.isArray(parsed.selectedKeywordTags)) {
+      parsed.selectedKeywordTags = [];
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -408,6 +420,35 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
     }
   }, []);
 
+  // Keyword tag selection handlers
+  const toggleKeywordTag = useCallback((value: string) => {
+    setConfig(prev => {
+      const currentTags = prev.selectedKeywordTags || [];
+      if (currentTags.includes(value)) {
+        // Remove if already selected
+        return {
+          ...prev,
+          selectedKeywordTags: currentTags.filter(v => v !== value)
+        };
+      } else if (currentTags.length < MAX_SELECTED_TAGS) {
+        // Add if under limit
+        return {
+          ...prev,
+          selectedKeywordTags: [...currentTags, value]
+        };
+      }
+      // At max, do nothing
+      return prev;
+    });
+  }, []);
+
+  const removeKeywordTag = useCallback((value: string) => {
+    setConfig(prev => ({
+      ...prev,
+      selectedKeywordTags: (prev.selectedKeywordTags || []).filter(v => v !== value)
+    }));
+  }, []);
+
   const prioritizedResults = useMemo(() => {
     const withSpeakers = results.filter(
       (event) => Array.isArray(event.speakers) && (event.speakers as EventSpeaker[]).length > 0,
@@ -486,13 +527,33 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
     setError(null);
     setSpeakerStatus({});
     try {
+      // Smart combination of free-text keywords and selected tags with deduplication
+      const freeTextKeywords = config.keywords.trim();
+      const selectedTags = config.selectedKeywordTags || [];
+      
+      // Smart deduplication: combine and remove duplicates (case-insensitive)
+      const freeTextTerms = freeTextKeywords.toLowerCase().split(/\s+/).filter(Boolean);
+      const tagTerms = selectedTags.map(t => t.toLowerCase());
+      const allTerms = [...freeTextTerms, ...tagTerms];
+      const uniqueTermsLower = [...new Set(allTerms)];
+      
+      // Map back to original casing from selected tags where possible
+      const combinedKeywords = uniqueTermsLower.map(term => {
+        // Find original casing from selected tags
+        const originalTag = selectedTags.find(t => t.toLowerCase() === term);
+        if (originalTag) return originalTag;
+        // Find original casing from free text
+        const originalFreeText = freeTextKeywords.split(/\s+/).find(t => t.toLowerCase() === term);
+        return originalFreeText || term;
+      }).join(' ');
+
       const normalizedCountry = toISO2Country(config.country) ?? 'EU';
       const locale = deriveLocale(normalizedCountry);
       const response = await fetch('/api/events/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userText: config.keywords.trim(),
+          userText: combinedKeywords,
           country: normalizedCountry,
           dateFrom: from,
           dateTo: to,
@@ -688,11 +749,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 type="button"
                 onClick={() => void runSearch()}
                 disabled={loading}
-                className={`inline-flex items-center justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-blue-300 ${
-                  isPinned 
-                    ? 'bg-gradient-to-r from-blue-600 to-blue-700 shadow-md hover:from-blue-700 hover:to-blue-800' 
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
+                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
               >
                 {loading ? (
                   <>
@@ -702,29 +759,24 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-4 w-4" />
-                    {isPinned ? 'Go (Pinned)' : 'Go'}
+                    Go
                   </>
                 )}
               </button>
-              {isPinned && (
-                <button
-                  type="button"
-                  onClick={handlePinSearch}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2.5 text-sm font-medium text-blue-700 transition hover:bg-blue-50"
-                  title="Update pinned search with current settings"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Update Pin
-                </button>
-              )}
               <button
                 type="button"
-                onClick={() => setShowAdvanced((prev) => !prev)}
+                onClick={() => {
+                  setShowAdvanced((prev) => !prev);
+                  // If pinned and closing advanced, update the pin with current settings
+                  if (isPinned && showAdvanced) {
+                    handlePinSearch();
+                  }
+                }}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
               >
                 {showAdvanced ? (
                   <>
-                    Hide options
+                    {isPinned ? 'Update & Close' : 'Hide options'}
                     <ChevronUp className="h-4 w-4" />
                   </>
                 ) : (
@@ -820,21 +872,75 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
           )}
 
           {showAdvanced && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Suggested Keywords</label>
-              <p className="text-xs text-gray-500">Click to add or replace your search keywords</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Quick Keywords</label>
+                  <p className="text-xs text-gray-500">Select up to 3 keywords to enhance your search</p>
+                </div>
+                <span className="text-xs font-medium text-gray-500">
+                  {config.selectedKeywordTags?.length || 0}/{MAX_SELECTED_TAGS}
+                </span>
+              </div>
+              
+              {/* Selected Tags Display */}
+              {config.selectedKeywordTags && config.selectedKeywordTags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {config.selectedKeywordTags.map((tagValue) => {
+                    const keyword = SUGGESTED_KEYWORDS.find(k => k.value === tagValue);
+                    return (
+                      <span
+                        key={tagValue}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"
+                      >
+                        <Check className="h-3 w-3" />
+                        {keyword?.label || tagValue}
+                        <button
+                          type="button"
+                          onClick={() => removeKeywordTag(tagValue)}
+                          className="ml-0.5 rounded-full hover:bg-blue-200 transition"
+                          aria-label={`Remove ${keyword?.label || tagValue}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              
+              {/* Keyword Selection Buttons */}
               <div className="flex flex-wrap gap-2">
-                {SUGGESTED_KEYWORDS.map((keyword) => (
-                  <button
-                    key={keyword.value}
-                    type="button"
-                    onClick={() => updateConfig({ keywords: keyword.value })}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                    title={`Set keywords to: ${keyword.value}`}
-                  >
-                    {keyword.label}
-                  </button>
-                ))}
+                {SUGGESTED_KEYWORDS.map((keyword) => {
+                  const isSelected = config.selectedKeywordTags?.includes(keyword.value);
+                  const isDisabled = !isSelected && (config.selectedKeywordTags?.length || 0) >= MAX_SELECTED_TAGS;
+                  
+                  return (
+                    <button
+                      key={keyword.value}
+                      type="button"
+                      onClick={() => toggleKeywordTag(keyword.value)}
+                      disabled={isDisabled}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-500 text-white shadow-sm hover:bg-blue-600'
+                          : isDisabled
+                          ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                      }`}
+                      title={
+                        isSelected 
+                          ? `Remove ${keyword.label}` 
+                          : isDisabled 
+                          ? 'Maximum 3 keywords selected' 
+                          : `Add ${keyword.label}`
+                      }
+                    >
+                      {isSelected && <Check className="h-3 w-3" />}
+                      {keyword.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
