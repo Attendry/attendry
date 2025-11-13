@@ -13,6 +13,7 @@ import {
   Calendar,
   CalendarDays,
   House,
+  LayoutGrid,
   Search,
   Settings,
   TrendingUp,
@@ -72,6 +73,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         items: [
           { href: "/dashboard", label: "Command Centre", icon: House },
           { href: "/events", label: "Event Hub", icon: Calendar },
+          { href: "/events-board", label: "Events Board", icon: LayoutGrid },
           { href: "/watchlist", label: "Watchlist", icon: Bookmark },
           { href: "/activity", label: "Event Insights", icon: BarChart3 },
           {

@@ -95,6 +95,8 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   
   const [saved, setSaved] = useState(initiallySaved);           // Whether event is saved to watchlist
   const [busy, setBusy] = useState(false);                     // Loading state for save operation
+  const [inBoard, setInBoard] = useState(false);                // Whether event is in board
+  const [boardBusy, setBoardBusy] = useState(false);           // Loading state for board operation
   const [open, setOpen] = useState(false);                     // Whether event details are expanded
   const [includePast, setIncludePast] = useState(false);       // Whether to include past speakers
   const [loadingSpeakers, setLoadingSpeakers] = useState(false); // Loading state for speaker extraction
@@ -182,6 +184,42 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       setBusy(false);
     }
   }, [busy, saved, ev.title, ev.source_url]);
+
+  /**
+   * Add event to board
+   */
+  const addToBoard = useCallback(async () => {
+    if (boardBusy) return;
+    setBoardBusy(true);
+    try {
+      const res = await fetch("/api/events/board/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: ev.id,
+          eventUrl: ev.source_url,
+          eventData: ev,
+          columnStatus: 'interested'
+        })
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        if (res.status === 401) {
+          alert("Please log in to add events to your board.");
+          if (typeof window !== 'undefined') {
+            window.location.href = "/login";
+          }
+          return;
+        }
+        throw new Error(j.error || "Failed to add to board");
+      }
+      setInBoard(true);
+    } catch (e: any) {
+      alert(e.message || "Failed to add to board");
+    } finally {
+      setBoardBusy(false);
+    }
+  }, [boardBusy, ev]);
 
   /**
    * Add a company to watchlist
@@ -372,6 +410,44 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
             className="text-sm font-medium rounded-lg px-3 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-200"
           >
             {open ? "Collapse" : "Speakers"}
+          </button>
+          <button
+            onClick={addToBoard}
+            disabled={boardBusy || inBoard}
+            className={`text-sm font-medium rounded-lg px-3 py-2 border transition-all duration-200 disabled:opacity-50 ${
+              inBoard 
+                ? "bg-blue-50 border-blue-200 text-blue-700" 
+                : "border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400"
+            }`}
+            title={inBoard ? "Already in board" : "Add to Events Board"}
+          >
+            {boardBusy ? (
+              <div className="flex items-center gap-1">
+                <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Adding…
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                {inBoard ? (
+                  <>
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    In Board
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
+                    </svg>
+                    Add to Board
+                  </>
+                )}
+              </div>
+            )}
           </button>
           <button
             onClick={toggleSave}

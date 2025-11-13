@@ -17,7 +17,8 @@ import {
   Activity,
   TrendingUp,
   Briefcase,
-  CalendarDays
+  CalendarDays,
+  LayoutGrid
 } from 'lucide-react';
 
 interface NavigationItem {
@@ -48,6 +49,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
       icon: Calendar,
       children: [
         { href: '/events', label: 'All Events', icon: Calendar },
+        { href: '/events-board', label: 'Events Board', icon: LayoutGrid },
         { href: '/watchlist', label: 'My Watchlist', icon: Bookmark },
         { href: '/calendar', label: 'Relevant Events', icon: CalendarDays }
       ]

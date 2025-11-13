@@ -63,7 +63,7 @@ export class RelevanceService {
   /**
    * Calculate relevance score for a single event
    */
-  private static calculateEventRelevance(
+  static calculateEventRelevance(
     event: EventData,
     userProfile: UserProfile
   ): RelevanceScore {

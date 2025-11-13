@@ -141,6 +141,22 @@ export interface Watchlist {
 }
 
 /**
+ * User event board table structure
+ */
+export interface UserEventBoardItem {
+  id: string;
+  user_id: string;
+  event_id: string | null;
+  event_url: string;
+  column_status: 'interested' | 'researching' | 'attending' | 'follow-up' | 'archived';
+  position: number;
+  notes: string | null;
+  tags: string[] | null;
+  added_at: string;
+  updated_at: string;
+}
+
+/**
  * AI decisions table structure (for caching AI filtering decisions)
  */
 export interface AiDecision {
