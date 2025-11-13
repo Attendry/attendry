@@ -284,6 +284,62 @@ export async function POST(
       });
     }
 
+    // If event is not in database, try to save it first (for caching purposes)
+    let actualEventId = cacheKey;
+    if (isOptimizedId || !event.id || typeof event.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event.id)) {
+      // Event not in database, try to save it
+      try {
+        const { data: existing } = await supabase
+          .from('collected_events')
+          .select('id')
+          .eq('source_url', event.source_url || cacheKey)
+          .maybeSingle();
+        
+        if (existing) {
+          actualEventId = existing.id;
+        } else if (event.source_url) {
+          // Save event to database for future caching
+          const eventData = {
+            title: event.title || 'Event',
+            starts_at: event.starts_at || null,
+            ends_at: event.ends_at || null,
+            city: event.city || null,
+            country: event.country || null,
+            venue: event.venue || null,
+            organizer: event.organizer || null,
+            description: event.description || null,
+            topics: event.topics || [],
+            speakers: event.speakers || [],
+            sponsors: event.sponsors || [],
+            participating_organizations: event.participating_organizations || [],
+            partners: event.partners || [],
+            competitors: event.competitors || [],
+            source_url: event.source_url,
+            source_domain: event.source_url ? new URL(event.source_url).hostname : null,
+            extraction_method: 'search',
+            confidence: event.confidence || 0.7,
+            verification_status: 'unverified'
+          };
+          
+          const { data: savedEvent, error: saveError } = await supabase
+            .from('collected_events')
+            .insert(eventData)
+            .select('id')
+            .single();
+          
+          if (savedEvent && !saveError) {
+            actualEventId = savedEvent.id;
+            console.log(`[EventIntelligence] Saved event to database: ${actualEventId}`);
+          }
+        }
+      } catch (saveError) {
+        // Log but continue - we can still generate intelligence without saving
+        console.warn('[EventIntelligence] Failed to save event to database:', saveError);
+      }
+    } else {
+      actualEventId = event.id;
+    }
+
     // Generate intelligence
     let intelligence;
     try {
@@ -302,10 +358,10 @@ export async function POST(
       );
     }
 
-    // Try to cache the result (may fail if event not in database - that's OK)
+    // Try to cache the result using the actual event ID
     try {
       await cacheEventIntelligence(
-        cacheKey,
+        actualEventId,
         intelligence,
         userProfile || undefined
       );
