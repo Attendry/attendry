@@ -156,6 +156,46 @@ function cleanVenueText(s?: string | null): string | null {
   return cleaned || null;
 }
 
+// PHASE 1 OPTIMIZATION: Enhanced city validation with comprehensive whitelist/blacklist
+// Valid city names (expanded whitelist for DE, FR, NL, UK, etc.)
+const VALID_CITIES = new Set([
+  // German cities
+  'berlin', 'hamburg', 'münchen', 'munich', 'köln', 'cologne', 'frankfurt', 'stuttgart',
+  'düsseldorf', 'dortmund', 'essen', 'leipzig', 'bremen', 'dresden', 'hannover',
+  'nürnberg', 'nuremberg', 'duisburg', 'bochum', 'wuppertal', 'bonn', 'bielefeld',
+  'mannheim', 'karlsruhe', 'münster', 'wiesbaden', 'augsburg', 'aachen', 'freiburg',
+  'krefeld', 'lübeck', 'oberhausen', 'erfurt', 'mainz', 'rostock', 'kiel', 'halle',
+  'magdeburg', 'braunschweig', 'chemnitz', 'mönchengladbach', 'gelsenkirchen',
+  // French cities
+  'paris', 'lyon', 'marseille', 'toulouse', 'nice', 'nantes', 'strasbourg', 'montpellier',
+  'bordeaux', 'lille', 'rennes', 'reims', 'saint-étienne', 'toulon', 'grenoble',
+  // Dutch cities
+  'amsterdam', 'rotterdam', 'the hague', 'den haag', 'utrecht', 'eindhoven', 'groningen',
+  'tilburg', 'almere', 'breda', 'nijmegen', 'enschede', 'haarlem', 'arnhem',
+  // UK cities
+  'london', 'birmingham', 'manchester', 'glasgow', 'liverpool', 'leeds', 'sheffield',
+  'edinburgh', 'bristol', 'cardiff', 'belfast', 'newcastle', 'nottingham', 'leicester',
+  // Other European cities
+  'vienna', 'wien', 'zurich', 'brussels', 'brussel', 'copenhagen', 'stockholm', 'oslo',
+  'helsinki', 'dublin', 'madrid', 'barcelona', 'rome', 'milan', 'warsaw', 'prague',
+  // Common misspellings/variations
+  'muenchen', 'koeln', 'duesseldorf', 'nuernberg', 'moenchengladbach'
+].map(c => c.toLowerCase()));
+
+// Invalid terms that should never be treated as cities (expanded blacklist)
+const INVALID_CITY_TERMS = new Set([
+  // German topic words
+  'praxisnah', 'whistleblowing', 'politik', 'forschung', 'innovation', 'entwicklung',
+  // Business/legal terms
+  'compliance', 'legal', 'investigation', 'ediscovery', 'audit', 'risk', 'governance',
+  'regulation', 'policy', 'framework', 'standard', 'procedure', 'process',
+  'management', 'strategy', 'implementation', 'monitoring', 'reporting',
+  'training', 'education', 'certification', 'accreditation', 'assessment',
+  // Common false positives
+  'online', 'virtual', 'hybrid', 'webinar', 'conference', 'summit', 'workshop',
+  'seminar', 'event', 'meeting', 'session', 'track', 'agenda', 'program'
+].map(t => t.toLowerCase()));
+
 // Clean city-specific text
 function cleanCityText(s?: string | null): string | null {
   if (!s) return null;
@@ -179,31 +219,34 @@ function cleanCityText(s?: string | null): string | null {
     return null;
   }
   
+  const cleanedLower = lc(cleaned);
+  
+  // PHASE 1: Check blacklist first (strict rejection)
+  if (INVALID_CITY_TERMS.has(cleanedLower) || 
+      Array.from(INVALID_CITY_TERMS).some(term => cleanedLower.includes(term))) {
+    return null;
+  }
+  
   // If it contains job titles or non-city words, it's probably not a city
   if (/\b(Vorständ|Mitarbeiter|Studenten|Teilnehmer|Personen|up to|bis zu|Compliance|Officer)\b/i.test(cleaned)) {
     return null;
   }
   
-  // Additional validation: reject common non-city terms that were being extracted
-  const invalidCityTerms = [
-    'praxisnah', 'whistleblowing', 'politik', 'forschung', 'compliance', 
-    'legal', 'investigation', 'ediscovery', 'audit', 'risk', 'governance',
-    'regulation', 'policy', 'framework', 'standard', 'procedure', 'process',
-    'management', 'strategy', 'implementation', 'monitoring', 'reporting',
-    'training', 'education', 'certification', 'accreditation', 'assessment'
-  ];
+  // PHASE 1: Check whitelist (known valid cities)
+  if (VALID_CITIES.has(cleanedLower)) {
+    return cleaned; // Return original case for known cities
+  }
   
-  if (invalidCityTerms.some(term => (cleaned || '').toLowerCase().includes((term || '').toLowerCase()))) {
+  // If it's not a known city, be more strict - only allow if it looks like a proper city name
+  // Must be alphabetic (with umlauts), 3-50 chars, no numbers, no special business terms
+  if (!/^[A-Za-zäöüÄÖÜß\s-]+$/.test(cleaned) || cleaned.length < 3) {
     return null;
   }
   
-  // Check if it's a known German city (case-insensitive)
-  const knownCities = DE_CITIES.map(city => lc(city));
-  if (!knownCities.includes(lc(cleaned))) {
-    // If it's not a known city, be more strict - only allow if it looks like a proper city name
-    if (!/^[A-Za-zäöüÄÖÜß\s-]+$/.test(cleaned) || cleaned.length < 3) {
-      return null;
-    }
+  // Additional check: reject if it contains common business/event terms
+  const businessTerms = /\b(conference|summit|workshop|seminar|event|meeting|session|track|agenda|program|online|virtual|hybrid)\b/i;
+  if (businessTerms.test(cleaned)) {
+    return null;
   }
   
   return cleaned || null;
@@ -414,7 +457,7 @@ const DE_CITIES = ["Berlin","München","Munich","Hamburg","Köln","Cologne","Fra
 const CITY_RE = new RegExp("\\b(" + DE_CITIES.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")\\b","i");
 const pad2 = (n: string | number) => String(n).padStart(2,"0");
 function parseDates(text: string) {
-  // German/European date formats
+  // PHASE 1 OPTIMIZATION: Enhanced date parsing for German/European formats
   const germanMonths = {
     'januar': '01', 'februar': '02', 'märz': '03', 'april': '04', 'mai': '05', 'juni': '06',
     'juli': '07', 'august': '08', 'september': '09', 'oktober': '10', 'november': '11', 'dezember': '12'
@@ -444,24 +487,47 @@ function parseDates(text: string) {
     }
   }
   
-  // dd.mm.yyyy
+  // dd.mm.yyyy (German format: 25.09.2025)
   m = text.match(/\b(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b/);
   if (m) {
     const d = pad2(m[1]), mo = pad2(m[2]), y = m[3].length === 2 ? "20"+m[3] : m[3];
     return { starts_at: `${y}-${mo}-${d}`, ends_at: null };
   }
-  // dd–dd.mm.yyyy  OR  dd- dd.mm.yyyy
+  
+  // dd/mm/yyyy (European format: 25/09/2025)
+  m = text.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{2,4})\b/);
+  if (m) {
+    const d = pad2(m[1]), mo = pad2(m[2]), y = m[3].length === 2 ? "20"+m[3] : m[3];
+    // Validate month (1-12)
+    if (parseInt(mo) >= 1 && parseInt(mo) <= 12) {
+      return { starts_at: `${y}-${mo}-${d}`, ends_at: null };
+    }
+  }
+  
+  // dd-mm-yyyy (European format: 25-09-2025)
+  m = text.match(/\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/);
+  if (m) {
+    const d = pad2(m[1]), mo = pad2(m[2]), y = m[3].length === 2 ? "20"+m[3] : m[3];
+    // Validate month (1-12)
+    if (parseInt(mo) >= 1 && parseInt(mo) <= 12) {
+      return { starts_at: `${y}-${mo}-${d}`, ends_at: null };
+    }
+  }
+  
+  // dd–dd.mm.yyyy  OR  dd- dd.mm.yyyy (date ranges)
   m = text.match(/\b(\d{1,2})\s*[–-]\s*(\d{1,2})\.(\d{1,2})\.(\d{4})\b/);
   if (m) {
     const d1 = pad2(m[1]), d2 = pad2(m[2]), mo = pad2(m[3]), y = m[4];
     return { starts_at: `${y}-${mo}-${d1}`, ends_at: `${y}-${mo}-${d2}` };
   }
+  
   // dd./dd.mm.yyyy  (German sites often write 18./19.09.2025)
   m = text.match(/\b(\d{1,2})\.\s*\/\s*(\d{1,2})\.(\d{1,2})\.(\d{4})\b/);
   if (m) {
     const d1 = pad2(m[1]), d2 = pad2(m[2]), mo = pad2(m[3]), y = m[4];
     return { starts_at: `${y}-${mo}-${d1}`, ends_at: `${y}-${mo}-${d2}` };
   }
+  
   // dd. bis dd. Month yyyy
   m = text.match(/\b(\d{1,2})\.\s*bis\s*(\d{1,2})\.\s*([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/i);
   if (m) {
@@ -469,6 +535,7 @@ function parseDates(text: string) {
     const mon = lc(m[3]).replace(/\./g,""); const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[4]}-${mm}-${d1}`, ends_at: `${m[4]}-${mm}-${d2}` };
   }
+  
   // dd Month yyyy  (de/en)  e.g., 12 März 2026 / 12 Sep 2025
   m = text.match(/\b(\d{1,2})\s+([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/);
   if (m) {
@@ -477,6 +544,7 @@ function parseDates(text: string) {
     const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[3]}-${mm}-${d}`, ends_at: null };
   }
+  
   // dd–dd Month yyyy
   m = text.match(/\b(\d{1,2})\s*[–-]\s*(\d{1,2})\s+([A-Za-zÄÖÜäöüß\.]+)\s+(\d{4})\b/);
   if (m) {
@@ -485,6 +553,29 @@ function parseDates(text: string) {
     const mm = MONTHS[mon];
     if (mm) return { starts_at: `${m[4]}-${mm}-${d1}`, ends_at: `${m[4]}-${mm}-${d2}` };
   }
+  
+  // English format: September 25, 2025 or Sep 25, 2025
+  m = text.match(/\b([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})\b/i);
+  if (m) {
+    const mon = lc(m[1]);
+    const mm = MONTHS[mon];
+    if (mm) {
+      const d = pad2(m[2]);
+      return { starts_at: `${m[3]}-${mm}-${d}`, ends_at: null };
+    }
+  }
+  
+  // English format: 25 September 2025
+  m = text.match(/\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b/i);
+  if (m) {
+    const mon = lc(m[2]);
+    const mm = MONTHS[mon];
+    if (mm) {
+      const d = pad2(m[1]);
+      return { starts_at: `${m[3]}-${mm}-${d}`, ends_at: null };
+    }
+  }
+  
   return { starts_at: null, ends_at: null };
 }
 
@@ -705,59 +796,108 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
     const industryContext = context.industryTerms.length > 0 
       ? ` Focus on ${context.industry} industry events. Key terms: ${context.industryTerms.slice(0, 5).join(', ')}.`
       : '';
-    const enhancedPrompt = `Extract comprehensive event information from this page with high precision. Normalize dates to YYYY-MM-DD format.${industryContext}
-    
-    CRITICAL EXTRACTION GUIDELINES:
-    1. DATES: Convert all dates to YYYY-MM-DD format. Look for:
-       - German formats: "25. September 2025", "25. September", "25.09.2025"
-       - European formats: "25/09/2025", "25-09-2025"
-       - English formats: "September 25, 2025", "25 September 2025"
-       - ISO formats: "2025-09-25"
-       - If only year is mentioned, use null.
-    2. LOCATIONS: Extract ONLY actual city names (Berlin, Munich, Hamburg, etc.). 
-       - DO NOT use event themes, topics, or descriptions as city names
-       - DO NOT use words like "Praxisnah", "Whistleblowing", "Politik", "Forschung"
-       - If no clear city is mentioned, use null for city field
-       - Clean venue names of extra text and addresses
-    3. ORGANIZATIONS: Categorize precisely based on their role in the event.
-    4. SPEAKERS: Extract complete professional information with context.
-    
-    EXTRACT THESE ELEMENTS:
-    
-    📅 EVENT DETAILS:
-    - title: Main event title (clean, no extra text)
-    - starts_at: Start date in YYYY-MM-DD format
-    - ends_at: End date in YYYY-MM-DD format
-    - city: Primary city name only
-    - country: Country name (full name, not code)
-    - venue: Venue name (clean, no addresses or extra text)
-    - organizer: Primary event organizer company/organization
-    - topics: Array of main themes/topics (3-5 key topics)
-    
-    👥 SPEAKERS (extract ALL speakers mentioned):
-    - name: Full name
-    - org: Organization/company
-    - title: Job title/position
-    - speech_title: Title of their presentation/speech
-    - session: Session name or track
-    - bio: Brief professional summary (1-2 sentences)
-    
-    🏢 ORGANIZATIONS (categorize by role):
-    - sponsors: Financial supporters with sponsorship level (Platinum, Gold, Silver, Bronze, etc.)
-    - participating_organizations: Companies sending attendees or mentioned as participants
-    - partners: Co-organizers, collaborators, media partners, technology partners
-    - competitors: Rival companies in the same industry space
-    
-    QUALITY STANDARDS:
-    - Only extract information explicitly mentioned on the page
-    - Clean all text of extra formatting, addresses, or metadata
-    - Use null for missing information, not empty strings
-    - For dates, if only year is mentioned, use null
-    - For venues, extract only the venue name, not full addresses
-    - For speakers, only include people explicitly listed as speakers/presenters
-    
-    Locale: ${locale || hostCountry || "DE"}
-    Return structured JSON matching the schema exactly.`;
+    // PHASE 1 OPTIMIZATION: Enhanced prompt with evidence tagging requirements
+    const enhancedPrompt = `You are an expert event data extractor. Extract ONLY information explicitly stated on the page.
+
+CRITICAL RULES:
+1. If information is NOT found, use null (not empty string, not "Unknown", not guesses)
+2. For each extracted field, cite the source section and snippet in the evidence array
+3. Normalize dates to YYYY-MM-DD format (handle German: 25.09.2025, European: 25/09/2025, English: September 25, 2025)
+4. Normalize topics to the provided taxonomy (see below)
+5. Extract speakers ONLY if explicitly listed as speakers/presenters/keynote speakers
+6. Extract cities ONLY if they are actual city names (not topics like "Praxisnah" or "Whistleblowing")
+
+FEW-SHOT EXAMPLES:
+
+Example 1:
+Input: "Legal Tech Conference 2025, Berlin, September 15-17, 2025. Organized by LegalTech GmbH."
+Output: {
+  "title": "Legal Tech Conference 2025",
+  "starts_at": "2025-09-15",
+  "ends_at": "2025-09-17",
+  "city": "Berlin",
+  "country": "DE",
+  "organizer": "LegalTech GmbH",
+  "topics": ["Legal Tech", "Technology"],
+  "evidence": [
+    {"field": "title", "source_section": "title", "snippet": "Legal Tech Conference 2025"},
+    {"field": "dates", "source_section": "title", "snippet": "September 15-17, 2025"},
+    {"field": "city", "source_section": "title", "snippet": "Berlin"},
+    {"field": "organizer", "source_section": "title", "snippet": "Organized by LegalTech GmbH"}
+  ]
+}
+
+Example 2:
+Input: "Conference about AI and Machine Learning"
+Output: {
+  "title": "Conference about AI and Machine Learning",
+  "starts_at": null,  // NOT FOUND - do not guess
+  "city": null,       // NOT FOUND - do not guess
+  "country": null,   // NOT FOUND - do not guess
+  "topics": ["AI", "Machine Learning"],
+  "evidence": [
+    {"field": "title", "source_section": "title", "snippet": "Conference about AI and Machine Learning"}
+  ]
+}
+
+EXTRACTION GUIDELINES:
+1. DATES: Convert all dates to YYYY-MM-DD format. Look for:
+   - German formats: "25. September 2025", "25. September", "25.09.2025"
+   - European formats: "25/09/2025", "25-09-2025"
+   - English formats: "September 25, 2025", "25 September 2025"
+   - ISO formats: "2025-09-25"
+   - If only year is mentioned, use null.
+2. LOCATIONS: Extract ONLY actual city names (Berlin, Munich, Hamburg, etc.). 
+   - DO NOT use event themes, topics, or descriptions as city names
+   - DO NOT use words like "Praxisnah", "Whistleblowing", "Politik", "Forschung"
+   - If no clear city is mentioned, use null for city field
+   - Clean venue names of extra text and addresses
+3. ORGANIZATIONS: Categorize precisely based on their role in the event.
+4. SPEAKERS: Extract complete professional information with context.
+
+EXTRACT THESE ELEMENTS:
+
+📅 EVENT DETAILS:
+- title: Main event title (clean, no extra text)
+- starts_at: Start date in YYYY-MM-DD format
+- ends_at: End date in YYYY-MM-DD format
+- city: Primary city name only
+- country: Country name (full name, not code)
+- venue: Venue name (clean, no addresses or extra text)
+- organizer: Primary event organizer company/organization
+- topics: Array of main themes/topics (3-5 key topics)
+
+👥 SPEAKERS (extract ALL speakers mentioned):
+- name: Full name
+- org: Organization/company
+- title: Job title/position
+- speech_title: Title of their presentation/speech
+- session: Session name or track
+- bio: Brief professional summary (1-2 sentences)
+
+🏢 ORGANIZATIONS (categorize by role):
+- sponsors: Financial supporters with sponsorship level (Platinum, Gold, Silver, Bronze, etc.)
+- participating_organizations: Companies sending attendees or mentioned as participants
+- partners: Co-organizers, collaborators, media partners, technology partners
+- competitors: Rival companies in the same industry space
+
+EVIDENCE REQUIREMENT:
+For each non-null field, include an evidence tag in the evidence array with:
+- field: The field name (e.g., "title", "city", "starts_at")
+- source_section: Where it was found (e.g., "title", "description", "header", "body")
+- snippet: The exact text snippet that contains the information (max 200 characters)
+
+QUALITY STANDARDS:
+- Only extract information explicitly mentioned on the page
+- Clean all text of extra formatting, addresses, or metadata
+- Use null for missing information, not empty strings
+- For dates, if only year is mentioned, use null
+- For venues, extract only the venue name, not full addresses
+- For speakers, only include people explicitly listed as speakers/presenters
+- Every non-null field MUST have a corresponding evidence tag
+
+Locale: ${locale || hostCountry || "DE"}${industryContext}
+Return structured JSON matching the schema exactly. Include evidence array for all extracted fields.`;
 
     const kicked = await fetchWithRetry("https://api.firecrawl.dev/v2/extract", {
       method: "POST",
