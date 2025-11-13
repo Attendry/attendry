@@ -504,8 +504,8 @@ export async function cacheEventIntelligence(
     if (event) {
       actualEventId = event.id;
     } else {
-      // Event not in database, can't cache - skip caching
-      console.warn(`[EventIntelligence] Cannot cache intelligence for event ${eventId} - event not found in database`);
+      // Event not in database, can't cache - skip caching silently
+      // This is expected for optimized events that haven't been saved yet
       return;
     }
   }

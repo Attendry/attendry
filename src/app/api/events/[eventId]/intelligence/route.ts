@@ -285,19 +285,36 @@ export async function POST(
     }
 
     // Generate intelligence
-    const intelligence = await generateEventIntelligence(
-      event as any,
-      userProfile || undefined
-    );
+    let intelligence;
+    try {
+      intelligence = await generateEventIntelligence(
+        event as any,
+        userProfile || undefined
+      );
+    } catch (genError: any) {
+      console.error('[EventIntelligence] Generation failed:', genError);
+      return NextResponse.json(
+        { 
+          error: 'Failed to generate intelligence',
+          details: genError.message || 'Unknown error'
+        },
+        { status: 500 }
+      );
+    }
 
-    // Cache the result using the cache key (will look up UUID if needed)
-    await cacheEventIntelligence(
-      cacheKey,
-      intelligence,
-      userProfile || undefined
-    );
+    // Try to cache the result (may fail if event not in database - that's OK)
+    try {
+      await cacheEventIntelligence(
+        cacheKey,
+        intelligence,
+        userProfile || undefined
+      );
+    } catch (cacheError) {
+      // Log but don't fail - intelligence generation succeeded
+      console.warn('[EventIntelligence] Cache failed (non-fatal):', cacheError);
+    }
     
-    // Update intelligence eventId to match what was cached
+    // Update intelligence eventId to match what was used
     intelligence.eventId = cacheKey;
 
     return NextResponse.json({
