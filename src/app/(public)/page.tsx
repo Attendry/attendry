@@ -154,7 +154,7 @@ export default async function LandingPage() {
           </p>
           <Link 
             href="/login" 
-            className="inline-flex items-center justify-center px-8 py-4 bg-white text-blue-600 font-semibold rounded-lg hover:bg-gray-50 transition-colors duration-200 shadow-lg hover:shadow-xl"
+            className="inline-flex items-center justify-center px-8 py-4 bg-white text-blue-600 font-semibold rounded-lg hover:bg-slate-50 transition-colors duration-200 shadow-lg hover:shadow-xl"
           >
             Get Started Today
           </Link>

@@ -433,13 +433,13 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search events..."
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -448,7 +448,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                 name="country"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
-                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 {EU.map(country => (
                   <option key={country.code} value={country.code}>
@@ -482,7 +482,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           {/* Time Range Controls */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Time Range</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Time Range</label>
               <div className="space-y-3">
                 {/* Range Selection (Next/Past) */}
                 <div className="grid grid-cols-2 gap-3">
@@ -492,7 +492,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                     className={`px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
                       range === "next" 
                         ? "bg-blue-600 text-white shadow-sm" 
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                        : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                     }`}
                   >
                     Next {days} days
@@ -503,7 +503,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                     className={`px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
                       range === "past" 
                         ? "bg-blue-600 text-white shadow-sm" 
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover-bg-gray-600"
+                        : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover-bg-slate-600"
                     }`}
                   >
                     Past {days} days
@@ -520,7 +520,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                       className={`px-3 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
                         days === window
                           ? "bg-green-600 text-white shadow-sm"
-                          : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+                          : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                       }`}
                     >
                       {window} days
@@ -532,31 +532,31 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
 
             {/* Advanced Date Range */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Custom Date Range</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Custom Date Range</label>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">From</label>
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">From</label>
                   <input
                     type="date"
                     value={from}
                     onChange={(e) => setFrom(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">To</label>
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1">To</label>
                   <input
                     type="date"
                     value={to}
                     onChange={(e) => setTo(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
               </div>
             </div>
           </div>
         </form>
-        <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+        <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
           <span>Need to adjust your search profile?</span>
           <button
             type="button"
@@ -618,7 +618,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         <div className="py-6">
           {/* Show search timestamp if we have cached results */}
           {state.hasResults && state.lastSearchTimestamp && (
-            <div className="mb-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+            <div className="mb-4 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
               <Clock className="w-4 h-4" />
               <span>
                 Showing results from {new Date(state.lastSearchTimestamp).toLocaleString()}
@@ -649,7 +649,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
                   {state.pagination.totalResults} event{state.pagination.totalResults !== 1 ? 's' : ''} found
                 </h2>
               </div>

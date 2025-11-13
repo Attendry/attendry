@@ -126,7 +126,7 @@ export function GeographicAutoSuggestion({
                   className={`flex items-center space-x-2 p-2 rounded-lg border cursor-pointer transition-colors ${
                     selectedCities.includes(city.name)
                       ? 'bg-blue-50 border-blue-300'
-                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
                   <input
@@ -172,7 +172,7 @@ export function GeographicAutoSuggestion({
                   className={`flex items-center space-x-2 p-2 rounded-lg border cursor-pointer transition-colors ${
                     selectedRegions.includes(region.name)
                       ? 'bg-blue-50 border-blue-300'
-                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                      : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                   }`}
                 >
                   <input
@@ -217,7 +217,7 @@ export function GeographicAutoSuggestion({
       )}
 
       {/* Selected Items Summary */}
-      <div className="bg-gray-50 rounded-lg p-3">
+      <div className="bg-slate-50 rounded-lg p-3">
         <h5 className="font-medium text-slate-700 mb-2">Selected Coverage</h5>
         <div className="space-y-1">
           <div className="text-sm">

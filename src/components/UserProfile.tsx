@@ -197,11 +197,11 @@ const UserProfile = memo(function UserProfile() {
     return (
       <div className="max-w-4xl mx-auto p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
           <div className="space-y-4">
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+            <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+            <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+            <div className="h-4 bg-slate-200 rounded w-2/3"></div>
           </div>
         </div>
       </div>
@@ -211,15 +211,15 @@ const UserProfile = memo(function UserProfile() {
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">User Profile</h1>
-        <p className="text-gray-600">Customize your experience and preferences</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">User Profile</h1>
+        <p className="text-slate-600">Customize your experience and preferences</p>
       </div>
 
       <div className="space-y-8">
         {/* Industry Preferences */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Industry Interests</h2>
-          <p className="text-gray-600 mb-4">Select the industries you're most interested in to receive relevant event recommendations.</p>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Industry Interests</h2>
+          <p className="text-slate-600 mb-4">Select the industries you're most interested in to receive relevant event recommendations.</p>
           
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {INDUSTRIES.map((industry) => (
@@ -228,18 +228,18 @@ const UserProfile = memo(function UserProfile() {
                   type="checkbox"
                   checked={preferences.industries.includes(industry)}
                   onChange={(e) => handleArrayPreferenceChange('industries', 'industries', industry, e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">{industry}</span>
+                <span className="text-sm text-slate-700">{industry}</span>
               </label>
             ))}
           </div>
         </div>
 
         {/* Event Type Preferences */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Preferred Event Types</h2>
-          <p className="text-gray-600 mb-4">Choose the types of events you're most interested in attending.</p>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Preferred Event Types</h2>
+          <p className="text-slate-600 mb-4">Choose the types of events you're most interested in attending.</p>
           
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {EVENT_TYPES.map((eventType) => (
@@ -248,78 +248,78 @@ const UserProfile = memo(function UserProfile() {
                   type="checkbox"
                   checked={preferences.eventTypes.includes(eventType)}
                   onChange={(e) => handleArrayPreferenceChange('eventTypes', 'eventTypes', eventType, e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">{eventType}</span>
+                <span className="text-sm text-slate-700">{eventType}</span>
               </label>
             ))}
           </div>
         </div>
 
         {/* Notification Settings */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Notification Preferences</h2>
-          <p className="text-gray-600 mb-4">Configure how and when you want to receive notifications.</p>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Notification Preferences</h2>
+          <p className="text-slate-600 mb-4">Configure how and when you want to receive notifications.</p>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Email Notifications</label>
-                <p className="text-sm text-gray-500">Receive notifications via email</p>
+                <label className="text-sm font-medium text-slate-700">Email Notifications</label>
+                <p className="text-sm text-slate-500">Receive notifications via email</p>
               </div>
               <input
                 type="checkbox"
                 checked={preferences.notificationSettings.email}
                 onChange={(e) => handlePreferenceChange('notificationSettings', 'email', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">In-App Notifications</label>
-                <p className="text-sm text-gray-500">Receive notifications within the application</p>
+                <label className="text-sm font-medium text-slate-700">In-App Notifications</label>
+                <p className="text-sm text-slate-500">Receive notifications within the application</p>
               </div>
               <input
                 type="checkbox"
                 checked={preferences.notificationSettings.inApp}
                 onChange={(e) => handlePreferenceChange('notificationSettings', 'inApp', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Event Reminders</label>
-                <p className="text-sm text-gray-500">Get reminded about saved events</p>
+                <label className="text-sm font-medium text-slate-700">Event Reminders</label>
+                <p className="text-sm text-slate-500">Get reminded about saved events</p>
               </div>
               <input
                 type="checkbox"
                 checked={preferences.notificationSettings.eventReminders}
                 onChange={(e) => handlePreferenceChange('notificationSettings', 'eventReminders', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">New Event Alerts</label>
-                <p className="text-sm text-gray-500">Get notified about new events matching your interests</p>
+                <label className="text-sm font-medium text-slate-700">New Event Alerts</label>
+                <p className="text-sm text-slate-500">Get notified about new events matching your interests</p>
               </div>
               <input
                 type="checkbox"
                 checked={preferences.notificationSettings.newEventAlerts}
                 onChange={(e) => handlePreferenceChange('notificationSettings', 'newEventAlerts', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Notification Frequency</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Notification Frequency</label>
               <select
                 value={preferences.notificationSettings.frequency}
                 onChange={(e) => handlePreferenceChange('notificationSettings', 'frequency', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="immediate">Immediate</option>
                 <option value="daily">Daily Digest</option>
@@ -330,17 +330,17 @@ const UserProfile = memo(function UserProfile() {
         </div>
 
         {/* Search Preferences */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Search Preferences</h2>
-          <p className="text-gray-600 mb-4">Customize your default search behavior.</p>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Search Preferences</h2>
+          <p className="text-slate-600 mb-4">Customize your default search behavior.</p>
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Default Date Range (days)</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Default Date Range (days)</label>
               <select
                 value={preferences.searchPreferences.defaultDateRange}
                 onChange={(e) => handlePreferenceChange('searchPreferences', 'defaultDateRange', parseInt(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value={7}>7 days</option>
                 <option value={14}>14 days</option>
@@ -351,44 +351,44 @@ const UserProfile = memo(function UserProfile() {
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Auto-save Searches</label>
-                <p className="text-sm text-gray-500">Automatically save your search history</p>
+                <label className="text-sm font-medium text-slate-700">Auto-save Searches</label>
+                <p className="text-sm text-slate-500">Automatically save your search history</p>
               </div>
               <input
                 type="checkbox"
                 checked={preferences.searchPreferences.autoSaveSearches}
                 onChange={(e) => handlePreferenceChange('searchPreferences', 'autoSaveSearches', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Show Advanced Filters by Default</label>
-                <p className="text-sm text-gray-500">Display advanced search options immediately</p>
+                <label className="text-sm font-medium text-slate-700">Show Advanced Filters by Default</label>
+                <p className="text-sm text-slate-500">Display advanced search options immediately</p>
               </div>
               <input
                 type="checkbox"
                 checked={preferences.searchPreferences.showAdvancedFilters}
                 onChange={(e) => handlePreferenceChange('searchPreferences', 'showAdvancedFilters', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
           </div>
         </div>
 
         {/* Privacy Settings */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Privacy Settings</h2>
-          <p className="text-gray-600 mb-4">Control your privacy and data sharing preferences.</p>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Privacy Settings</h2>
+          <p className="text-slate-600 mb-4">Control your privacy and data sharing preferences.</p>
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Profile Visibility</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Profile Visibility</label>
               <select
                 value={preferences.privacySettings.profileVisibility}
                 onChange={(e) => handlePreferenceChange('privacySettings', 'profileVisibility', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="private">Private</option>
                 <option value="public">Public</option>
@@ -397,27 +397,27 @@ const UserProfile = memo(function UserProfile() {
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Show Activity</label>
-                <p className="text-sm text-gray-500">Allow others to see your event activity</p>
+                <label className="text-sm font-medium text-slate-700">Show Activity</label>
+                <p className="text-sm text-slate-500">Allow others to see your event activity</p>
               </div>
               <input
                 type="checkbox"
                 checked={preferences.privacySettings.showActivity}
                 onChange={(e) => handlePreferenceChange('privacySettings', 'showActivity', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Allow Recommendations</label>
-                <p className="text-sm text-gray-500">Use your data to provide personalized recommendations</p>
+                <label className="text-sm font-medium text-slate-700">Allow Recommendations</label>
+                <p className="text-sm text-slate-500">Use your data to provide personalized recommendations</p>
               </div>
               <input
                 type="checkbox"
                 checked={preferences.privacySettings.allowRecommendations}
                 onChange={(e) => handlePreferenceChange('privacySettings', 'allowRecommendations', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
           </div>

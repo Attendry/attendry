@@ -186,7 +186,7 @@ export default function DarkWatchlistPage() {
                   <span>{items.filter(i => i.status === "active").length} Active</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                  <div className="w-2 h-2 rounded-full bg-slate-400"></div>
                   <span>{items.filter(i => i.status === "completed").length} Completed</span>
                 </div>
               </div>
@@ -223,7 +223,7 @@ export default function DarkWatchlistPage() {
                             <span className={`text-xs px-2 py-1 rounded-full ${
                               item.status === "active" 
                                 ? "bg-green-500/20 text-green-400" 
-                                : "bg-gray-500/20 text-gray-400"
+                                : "bg-slate-500/20 text-slate-400"
                             }`}>
                               {item.status}
                             </span>

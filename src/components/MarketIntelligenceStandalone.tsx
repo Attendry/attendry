@@ -164,28 +164,28 @@ function TrendDeepDive({ categories, events, loading, error }: TrendDeepDiveProp
     <div className="grid gap-6 lg:grid-cols-3">
       <div className="lg:col-span-2 space-y-4">
         <div className="flex items-center gap-2">
-          <BarChart3 className="h-5 w-5 text-gray-700" />
-          <h2 className="text-lg font-semibold text-gray-900">Category momentum</h2>
+          <BarChart3 className="h-5 w-5 text-slate-700" />
+          <h2 className="text-lg font-semibold text-slate-900">Category momentum</h2>
         </div>
         {loading && categories.length === 0 ? (
-          <div className="flex items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 p-10 text-gray-500">
+          <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-slate-500">
             <Loader2 className="mr-3 h-5 w-5 animate-spin" /> Syncing trend data…
           </div>
         ) : categories.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-10 text-sm text-gray-500">
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-sm text-slate-500">
             Connect your event inputs to activate category tracking.
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {categories.map((category) => (
-              <div key={category.name} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div key={category.name} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-900">{category.name}</h3>
+                  <h3 className="text-sm font-medium text-slate-900">{category.name}</h3>
                   <span className={`text-xs font-medium ${category.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {category.growth >= 0 ? '+' : ''}{category.growth.toFixed(1)}%
                   </span>
                 </div>
-                <p className="mt-2 text-xs text-gray-500">{category.count} events in focus this week.</p>
+                <p className="mt-2 text-xs text-slate-500">{category.count} events in focus this week.</p>
               </div>
             ))}
           </div>
@@ -194,8 +194,8 @@ function TrendDeepDive({ categories, events, loading, error }: TrendDeepDiveProp
 
       <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <Flame className="h-5 w-5 text-gray-700" />
-          <h2 className="text-lg font-semibold text-gray-900">Signal-rich events</h2>
+          <Flame className="h-5 w-5 text-slate-700" />
+          <h2 className="text-lg font-semibold text-slate-900">Signal-rich events</h2>
         </div>
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -203,30 +203,30 @@ function TrendDeepDive({ categories, events, loading, error }: TrendDeepDiveProp
           </div>
         )}
         {loading && events.length === 0 ? (
-          <div className="flex items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-gray-500">
+          <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-slate-500">
             <Loader2 className="mr-3 h-5 w-5 animate-spin" /> Aggregating event signals…
           </div>
         ) : events.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-500">
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-sm text-slate-500">
             Save events or enable auto-ingest to populate signal-rich opportunities.
           </div>
         ) : (
           <ul className="space-y-3">
             {events.slice(0, 5).map((event) => (
-              <li key={event.id || event.title} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+              <li key={event.id || event.title} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-slate-900">
                       {event.title}
                     </p>
                     {event.city || event.country ? (
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-slate-500">
                         {[event.city, event.country].filter(Boolean).join(', ')}
                       </p>
                     ) : null}
                   </div>
                   {event.starts_at && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-slate-500">
                       {new Date(event.starts_at).toLocaleDateString()}
                     </span>
                   )}

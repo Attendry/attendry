@@ -57,18 +57,18 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
       />
       
       {/* Mobile Menu */}
-      <div className="fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 z-50 lg:hidden">
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="fixed left-0 top-0 h-full w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 z-50 lg:hidden">
+        <div className="flex items-center justify-between h-16 px-4 border-b border-slate-200 dark:border-slate-700">
           <Link 
             href="/" 
-            className="font-bold text-xl text-gray-900 dark:text-white"
+            className="font-bold text-xl text-slate-900 dark:text-white"
             onClick={onClose}
           >
             Attendry
           </Link>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             aria-label="Close menu"
           >
             <X size={20} />
@@ -87,7 +87,7 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
                     transition-colors duration-200
                     ${isActive(item.href)
                       ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 border-r-2 border-blue-700 dark:border-blue-400'
-                      : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                      : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
                     }
                   `}
                 >
@@ -97,7 +97,7 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
                       flex-shrink-0
                       ${isActive(item.href) 
                         ? 'text-blue-700 dark:text-blue-400' 
-                        : 'text-gray-500 dark:text-gray-400'
+                        : 'text-slate-500 dark:text-slate-400'
                       }
                     `}
                   />
@@ -113,8 +113,8 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
           </ul>
         </nav>
 
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+          <div className="text-xs text-slate-500 dark:text-slate-400 text-center">
             v2.0 • Premium
           </div>
         </div>
@@ -128,7 +128,7 @@ export function MobileMenuButton({ onClick }: { onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      className="lg:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
       aria-label="Open menu"
     >
       <Menu size={20} />

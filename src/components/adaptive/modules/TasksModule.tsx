@@ -98,7 +98,7 @@ export const TasksModule = () => {
       case 'high': return 'text-red-500';
       case 'medium': return 'text-yellow-500';
       case 'low': return 'text-green-500';
-      default: return 'text-gray-500';
+      default: return 'text-slate-500';
     }
   };
 
@@ -121,12 +121,12 @@ export const TasksModule = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className={`text-2xl font-bold ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
+              theme === 'dark' ? 'text-white' : 'text-slate-900'
             }`}>
               Tasks
             </h2>
             <p className={`text-sm ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
             }`}>
               {completedTasks} of {totalTasks} tasks completed
             </p>
@@ -151,7 +151,7 @@ export const TasksModule = () => {
 
         {/* Progress bar */}
         <div className={`w-full h-2 rounded-full ${
-          theme === 'dark' ? 'bg-gray-700' : 'bg-gray-200'
+          theme === 'dark' ? 'bg-slate-700' : 'bg-slate-200'
         }`}>
           <motion.div
             initial={{ width: 0 }}
@@ -182,10 +182,10 @@ export const TasksModule = () => {
           animate={{ opacity: 1, y: 0 }}
           className={`mb-6 p-4 rounded-lg border ${
             theme === 'dark'
-              ? 'bg-gray-800 border-gray-700'
+              ? 'bg-slate-800 border-slate-700'
               : theme === 'high-contrast'
-              ? 'bg-gray-900 border-gray-600'
-              : 'bg-white border-gray-200'
+              ? 'bg-slate-900 border-slate-600'
+              : 'bg-white border-slate-200'
           }`}
         >
           <div className="flex space-x-3">
@@ -196,10 +196,10 @@ export const TasksModule = () => {
               placeholder="Enter task title..."
               className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${
                 theme === 'dark'
-                  ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
+                  ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500'
                   : theme === 'high-contrast'
-                  ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-400'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                  ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-400'
+                  : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500'
               }`}
               onKeyPress={(e) => e.key === 'Enter' && handleAddTask()}
               autoFocus
@@ -220,10 +220,10 @@ export const TasksModule = () => {
               onClick={() => setShowNewTask(false)}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 theme === 'dark'
-                  ? 'bg-gray-600 hover:bg-gray-700 text-white'
+                  ? 'bg-slate-600 hover:bg-slate-700 text-white'
                   : theme === 'high-contrast'
-                  ? 'bg-gray-700 hover:bg-gray-800 text-white'
-                  : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                  ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                  : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
               }`}
             >
               Cancel
@@ -244,15 +244,15 @@ export const TasksModule = () => {
               className={`p-4 rounded-lg border transition-all duration-200 ${
                 task.completed
                   ? theme === 'dark'
-                    ? 'bg-gray-800/50 border-gray-700 opacity-60'
+                    ? 'bg-slate-800/50 border-slate-700 opacity-60'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-900/50 border-gray-600 opacity-60'
-                    : 'bg-gray-50 border-gray-200 opacity-60'
+                    ? 'bg-slate-900/50 border-slate-600 opacity-60'
+                    : 'bg-slate-50 border-slate-200 opacity-60'
                   : theme === 'dark'
-                  ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
+                  ? 'bg-slate-800 border-slate-700 hover:bg-slate-750'
                   : theme === 'high-contrast'
-                  ? 'bg-gray-900 border-gray-600 hover:bg-gray-800'
-                  : 'bg-white border-gray-200 hover:bg-gray-50'
+                  ? 'bg-slate-900 border-slate-600 hover:bg-slate-800'
+                  : 'bg-white border-slate-200 hover:bg-slate-50'
               }`}
             >
               <div className="flex items-center space-x-3">
@@ -264,8 +264,8 @@ export const TasksModule = () => {
                         ? 'text-green-500'
                         : 'text-green-600'
                       : theme === 'dark'
-                      ? 'text-gray-400 hover:text-green-500'
-                      : 'text-gray-400 hover:text-green-600'
+                      ? 'text-slate-400 hover:text-green-500'
+                      : 'text-slate-400 hover:text-green-600'
                   }`}
                 >
                   {task.completed ? <CheckSquare size={20} /> : <Square size={20} />}
@@ -277,25 +277,25 @@ export const TasksModule = () => {
                       ? 'line-through opacity-60'
                       : theme === 'dark'
                       ? 'text-white'
-                      : 'text-gray-900'
+                      : 'text-slate-900'
                   }`}>
                     {task.title}
                   </h3>
                   <div className="flex items-center space-x-4 mt-1">
                     <span className={`text-xs flex items-center space-x-1 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                     }`}>
                       <span>{getPriorityIcon(task.priority)}</span>
                       <span className="capitalize">{task.priority}</span>
                     </span>
                     <span className={`text-xs ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                     }`}>
                       {task.category}
                     </span>
                     {task.dueDate && (
                       <span className={`text-xs flex items-center space-x-1 ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                       }`}>
                         <Calendar size={12} />
                         <span>{new Date(task.dueDate).toLocaleDateString()}</span>
@@ -307,8 +307,8 @@ export const TasksModule = () => {
                 <button
                   className={`p-1 rounded transition-colors ${
                     theme === 'dark'
-                      ? 'text-gray-400 hover:text-gray-300'
-                      : 'text-gray-400 hover:text-gray-600'
+                      ? 'text-slate-400 hover:text-slate-300'
+                      : 'text-slate-400 hover:text-slate-600'
                   }`}
                 >
                   <MoreHorizontal size={16} />

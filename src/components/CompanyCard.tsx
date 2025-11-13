@@ -52,12 +52,12 @@ export default function CompanyCard({ company, isSponsor = false }: CompanyCardP
    * Get tier badge styling based on sponsorship level
    */
   const getTierBadgeStyle = (level: string | null | undefined) => {
-    if (!level) return "bg-gray-100 text-gray-800";
+    if (!level) return "bg-slate-100 text-slate-800";
     
     const tier = level.toLowerCase();
     if (tier.includes('platinum')) return "bg-purple-100 text-purple-800";
     if (tier.includes('gold')) return "bg-yellow-100 text-yellow-800";
-    if (tier.includes('silver')) return "bg-gray-100 text-gray-800";
+    if (tier.includes('silver')) return "bg-slate-100 text-slate-800";
     if (tier.includes('bronze')) return "bg-orange-100 text-orange-800";
     if (tier.includes('diamond')) return "bg-blue-100 text-blue-800";
     if (tier.includes('premium')) return "bg-indigo-100 text-indigo-800";

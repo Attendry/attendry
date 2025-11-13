@@ -124,7 +124,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Sidebar */}
       <aside className={`
-        fixed left-0 top-0 h-screen bg-white border-r border-gray-200 z-50
+        fixed left-0 top-0 h-screen bg-white border-r border-slate-200 z-50
         transform transition-all duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         lg:translate-x-0 lg:static lg:z-auto lg:h-screen
@@ -135,10 +135,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       `}>
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-gray-200 h-16 px-3 lg:px-6">
+          <div className="flex items-center justify-between border-b border-slate-200 h-16 px-3 lg:px-6">
             <Link 
               href="/" 
-              className="font-bold text-gray-900 hover:text-blue-600 transition-colors text-lg lg:text-xl"
+              className="font-bold text-slate-900 hover:text-blue-600 transition-colors text-lg lg:text-xl"
               onClick={onClose}
               title="Attendry"
             >
@@ -147,7 +147,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </Link>
             <button
               onClick={onClose}
-              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="lg:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -160,7 +160,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {navigationGroups.map((group) => (
               <div key={group.label}>
                 <div className="hidden lg:flex items-center justify-between px-4 mb-2">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     {group.label}
                   </h3>
                 </div>
@@ -177,7 +177,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                           justify-center lg:justify-start px-2 lg:px-4 py-3 lg:gap-3
                           ${isActive(item.href)
                             ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                            : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
                           }
                         `}
                         title={item.label}
@@ -194,7 +194,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {authReady && user && (
               <div>
                 <div className="hidden lg:flex items-center justify-between px-4 mb-2">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     {adminGroup.label}
                   </h3>
                 </div>
@@ -211,7 +211,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                           justify-center lg:justify-start px-2 lg:px-4 py-3 lg:gap-3
                           ${isActive(item.href)
                             ? 'bg-blue-50 text-blue-700 border-r-2 border-blue-700'
-                            : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                            : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
                           }
                         `}
                         title={item.label}

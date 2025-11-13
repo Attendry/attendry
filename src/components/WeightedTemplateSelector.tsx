@@ -47,7 +47,7 @@ export function WeightedTemplateSelector({
       case 'technical': return 'bg-green-100 text-green-800';
       case 'business': return 'bg-purple-100 text-purple-800';
       case 'academic': return 'bg-orange-100 text-orange-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -67,7 +67,7 @@ export function WeightedTemplateSelector({
               className={`border rounded-lg p-4 cursor-pointer transition-all ${
                 selectedTemplate === templateId
                   ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-slate-200 hover:border-slate-300'
               }`}
               onClick={() => onSelectTemplate(templateId)}
             >
@@ -145,7 +145,7 @@ export function WeightedTemplateSelector({
 
       {/* Template Selection Summary */}
       {selectedTemplate && templates[selectedTemplate] && (
-        <div className="bg-gray-50 rounded-lg p-4">
+        <div className="bg-slate-50 rounded-lg p-4">
           <h4 className="font-medium text-slate-900 mb-2">Selected Template Summary</h4>
           <div className="text-sm text-slate-600 space-y-1">
             <div><strong>Template:</strong> {templates[selectedTemplate].name}</div>

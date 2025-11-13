@@ -187,12 +187,12 @@ export const MarketIntelligenceModule = memo(() => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className={`text-2xl font-bold ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
+              theme === 'dark' ? 'text-white' : 'text-slate-900'
             }`}>
               Market Intelligence
             </h2>
             <p className={`text-sm ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
             }`}>
               Pipeline-ready event recommendations and strategic account monitoring
             </p>
@@ -232,10 +232,10 @@ export const MarketIntelligenceModule = memo(() => {
                   ? 'bg-blue-500 text-white'
                   : 'bg-blue-100 text-blue-700'
                 : theme === 'dark'
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 : theme === 'high-contrast'
-                ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             <div className="flex items-center gap-2">
@@ -253,10 +253,10 @@ export const MarketIntelligenceModule = memo(() => {
                   ? 'bg-blue-500 text-white'
                   : 'bg-blue-100 text-blue-700'
                 : theme === 'dark'
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 : theme === 'high-contrast'
-                ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             <div className="flex items-center gap-2">
@@ -287,104 +287,104 @@ export const MarketIntelligenceModule = memo(() => {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className={`p-4 rounded-lg border ${
                   theme === 'dark'
-                    ? 'bg-gray-800 border-gray-700'
+                    ? 'bg-slate-800 border-slate-700'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-900 border-gray-600'
-                    : 'bg-white border-gray-200'
+                    ? 'bg-slate-900 border-slate-600'
+                    : 'bg-white border-slate-200'
                 }`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className={`text-sm font-medium ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         Total Accounts
                       </p>
                       <p className={`text-2xl font-bold ${
-                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        theme === 'dark' ? 'text-white' : 'text-slate-900'
                       }`}>
                         {stats.totalAccounts}
                       </p>
                     </div>
                     <Building2 className={`h-8 w-8 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                     }`} />
                   </div>
                 </div>
 
                 <div className={`p-4 rounded-lg border ${
                   theme === 'dark'
-                    ? 'bg-gray-800 border-gray-700'
+                    ? 'bg-slate-800 border-slate-700'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-900 border-gray-600'
-                    : 'bg-white border-gray-200'
+                    ? 'bg-slate-900 border-slate-600'
+                    : 'bg-white border-slate-200'
                 }`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className={`text-sm font-medium ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         Total Speakers
                       </p>
                       <p className={`text-2xl font-bold ${
-                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        theme === 'dark' ? 'text-white' : 'text-slate-900'
                       }`}>
                         {stats.totalSpeakers}
                       </p>
                     </div>
                     <Users className={`h-8 w-8 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                     }`} />
                   </div>
                 </div>
 
                 <div className={`p-4 rounded-lg border ${
                   theme === 'dark'
-                    ? 'bg-gray-800 border-gray-700'
+                    ? 'bg-slate-800 border-slate-700'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-900 border-gray-600'
-                    : 'bg-white border-gray-200'
+                    ? 'bg-slate-900 border-slate-600'
+                    : 'bg-white border-slate-200'
                 }`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className={`text-sm font-medium ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         Event Insights
                       </p>
                       <p className={`text-2xl font-bold ${
-                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        theme === 'dark' ? 'text-white' : 'text-slate-900'
                       }`}>
                         {stats.totalEvents}
                       </p>
                     </div>
                     <Calendar className={`h-8 w-8 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                     }`} />
                   </div>
                 </div>
 
                 <div className={`p-4 rounded-lg border ${
                   theme === 'dark'
-                    ? 'bg-gray-800 border-gray-700'
+                    ? 'bg-slate-800 border-slate-700'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-900 border-gray-600'
-                    : 'bg-white border-gray-200'
+                    ? 'bg-slate-900 border-slate-600'
+                    : 'bg-white border-slate-200'
                 }`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className={`text-sm font-medium ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         Recent Activity
                       </p>
                       <p className={`text-2xl font-bold ${
-                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        theme === 'dark' ? 'text-white' : 'text-slate-900'
                       }`}>
                         {stats.recentActivity}
                       </p>
                     </div>
                     <TrendingUp className={`h-8 w-8 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                     }`} />
                   </div>
                 </div>
@@ -395,7 +395,7 @@ export const MarketIntelligenceModule = memo(() => {
                 <div className="flex-1">
                   <div className="relative">
                     <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                     }`} />
                     <input
                       type="text"
@@ -404,10 +404,10 @@ export const MarketIntelligenceModule = memo(() => {
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className={`w-full pl-10 pr-4 py-2 rounded-lg border ${
                         theme === 'dark'
-                          ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-400'
+                          ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-400'
                           : theme === 'high-contrast'
-                          ? 'bg-gray-900 border-gray-600 text-white placeholder-gray-300'
-                          : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
+                          ? 'bg-slate-900 border-slate-600 text-white placeholder-slate-300'
+                          : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
                       }`}
                     />
                   </div>
@@ -417,10 +417,10 @@ export const MarketIntelligenceModule = memo(() => {
                   onChange={(e) => setSelectedIndustry(e.target.value)}
                   className={`px-3 py-2 rounded-lg border ${
                     theme === 'dark'
-                      ? 'bg-gray-800 border-gray-700 text-white'
+                      ? 'bg-slate-800 border-slate-700 text-white'
                       : theme === 'high-contrast'
-                      ? 'bg-gray-900 border-gray-600 text-white'
-                      : 'bg-white border-gray-300 text-gray-900'
+                      ? 'bg-slate-900 border-slate-600 text-white'
+                      : 'bg-white border-slate-300 text-slate-900'
                   }`}
                 >
                   <option value="">All Industries</option>
@@ -448,21 +448,21 @@ export const MarketIntelligenceModule = memo(() => {
               {filteredAccounts.length === 0 && (
                 <div className={`p-8 rounded-lg border text-center ${
                   theme === 'dark'
-                    ? 'bg-gray-800 border-gray-700'
+                    ? 'bg-slate-800 border-slate-700'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-900 border-gray-600'
-                    : 'bg-white border-gray-200'
+                    ? 'bg-slate-900 border-slate-600'
+                    : 'bg-white border-slate-200'
                 }`}>
                   <Building2 className={`h-12 w-12 mx-auto mb-4 ${
-                    theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                    theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                   }`} />
                   <h3 className={`text-lg font-semibold mb-2 ${
-                    theme === 'dark' ? 'text-white' : 'text-gray-900'
+                    theme === 'dark' ? 'text-white' : 'text-slate-900'
                   }`}>
                     No accounts found
                   </h3>
                   <p className={`text-sm mb-4 ${
-                    theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                    theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                     {searchTerm || selectedIndustry 
                       ? 'Try adjusting your search criteria'
@@ -522,21 +522,21 @@ const AccountCard = memo(({ account, summary, theme }: AccountCardProps) => {
   return (
     <div className={`p-4 rounded-lg border transition-shadow hover:shadow-md ${
       theme === 'dark'
-        ? 'bg-gray-800 border-gray-700'
+        ? 'bg-slate-800 border-slate-700'
         : theme === 'high-contrast'
-        ? 'bg-gray-900 border-gray-600'
-        : 'bg-white border-gray-200'
+        ? 'bg-slate-900 border-slate-600'
+        : 'bg-white border-slate-200'
     }`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <h3 className={`text-lg font-semibold ${
-            theme === 'dark' ? 'text-white' : 'text-gray-900'
+            theme === 'dark' ? 'text-white' : 'text-slate-900'
           }`}>
             {account.company_name}
           </h3>
           {account.domain && (
             <div className={`flex items-center mt-1 text-sm ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
             }`}>
               <Globe className="h-3 w-3 mr-1" />
               {account.domain}
@@ -553,8 +553,8 @@ const AccountCard = memo(({ account, summary, theme }: AccountCardProps) => {
       {account.industry && (
         <span className={`inline-block px-2 py-1 text-xs rounded-full mb-3 ${
           theme === 'dark'
-            ? 'bg-gray-700 text-gray-300'
-            : 'bg-gray-100 text-gray-600'
+            ? 'bg-slate-700 text-slate-300'
+            : 'bg-slate-100 text-slate-600'
         }`}>
           {account.industry}
         </span>
@@ -565,24 +565,24 @@ const AccountCard = memo(({ account, summary, theme }: AccountCardProps) => {
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div className="flex items-center">
               <Users className={`h-4 w-4 mr-2 ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
               }`} />
-              <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}>
+              <span className={theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}>
                 {summary.total_speakers} speakers
               </span>
             </div>
             <div className="flex items-center">
               <BarChart3 className={`h-4 w-4 mr-2 ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
               }`} />
-              <span className={theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}>
+              <span className={theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}>
                 {summary.total_intelligence_data} insights
               </span>
             </div>
           </div>
           
           <div className={`flex items-center text-sm ${
-            theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+            theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
           }`}>
             <Clock className="h-4 w-4 mr-2" />
             <span>
@@ -595,10 +595,10 @@ const AccountCard = memo(({ account, summary, theme }: AccountCardProps) => {
             disabled={isAnalyzing}
             className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               theme === 'dark'
-                ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-600'
+                ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-600'
                 : theme === 'high-contrast'
-                ? 'bg-blue-500 hover:bg-blue-600 text-white disabled:bg-gray-600'
-                : 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400'
+                ? 'bg-blue-500 hover:bg-blue-600 text-white disabled:bg-slate-600'
+                : 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-400'
             }`}
           >
             {isAnalyzing ? (
@@ -612,7 +612,7 @@ const AccountCard = memo(({ account, summary, theme }: AccountCardProps) => {
       ) : (
         <div className="space-y-3">
           <div className={`flex items-center text-sm ${
-            theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+            theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
           }`}>
             <AlertCircle className="h-4 w-4 mr-2" />
             <span>No data available</span>
@@ -622,10 +622,10 @@ const AccountCard = memo(({ account, summary, theme }: AccountCardProps) => {
             disabled={isAnalyzing}
             className={`w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               theme === 'dark'
-                ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-600'
+                ? 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-600'
                 : theme === 'high-contrast'
-                ? 'bg-blue-500 hover:bg-blue-600 text-white disabled:bg-gray-600'
-                : 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400'
+                ? 'bg-blue-500 hover:bg-blue-600 text-white disabled:bg-slate-600'
+                : 'bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-400'
             }`}
           >
             {isAnalyzing ? (

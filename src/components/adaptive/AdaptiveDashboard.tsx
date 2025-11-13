@@ -183,10 +183,10 @@ const AdaptiveProvider = ({ children }: AdaptiveProviderProps) => {
         <AdaptiveErrorBoundary>
           <div className={`min-h-screen transition-colors duration-300 ${
             theme === 'dark' 
-              ? 'bg-gray-900 text-white' 
+              ? 'bg-slate-900 text-white' 
               : theme === 'high-contrast'
               ? 'bg-black text-white'
-              : 'bg-gray-50 text-gray-900'
+              : 'bg-slate-50 text-slate-900'
           }`}>
             <div className="flex h-screen">
               <AnimatePresence>

@@ -91,14 +91,14 @@ const SearchHistory = memo(function SearchHistory({
   }
 
   return (
-    <div className={`bg-white border border-gray-200 rounded-lg shadow-sm ${className}`}>
+    <div className={`bg-white border border-slate-200 rounded-lg shadow-sm ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        <h3 className="text-sm font-medium text-gray-900">Recent Searches</h3>
+      <div className="flex items-center justify-between p-4 border-b border-slate-200">
+        <h3 className="text-sm font-medium text-slate-900">Recent Searches</h3>
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            className="text-sm text-slate-500 hover:text-slate-700 transition-colors"
           >
             {isExpanded ? 'Show Less' : 'Show All'}
           </button>
@@ -117,25 +117,25 @@ const SearchHistory = memo(function SearchHistory({
           <button
             key={item.id}
             onClick={() => handleSearchSelect(item)}
-            className="w-full flex items-center justify-between p-2 text-left hover:bg-gray-50 rounded-md transition-colors group"
+            className="w-full flex items-center justify-between p-2 text-left hover:bg-slate-50 rounded-md transition-colors group"
           >
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+              <p className="text-sm text-slate-900 truncate group-hover:text-blue-600 transition-colors">
                 {item.query}
               </p>
               <div className="flex items-center space-x-2 mt-1">
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-slate-500">
                   {formatTimestamp(item.timestamp)}
                 </span>
                 {item.resultCount && (
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-slate-400">
                     • {item.resultCount} results
                   </span>
                 )}
               </div>
             </div>
             <svg
-              className="w-4 h-4 text-gray-400 group-hover:text-blue-600 transition-colors"
+              className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition-colors"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"

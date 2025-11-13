@@ -185,7 +185,7 @@ const AdvancedSearch = memo(function AdvancedSearch({
     <div className={`relative ${className}`}>
       {/* Search Input */}
       <div className="relative">
-        <div className="flex items-center bg-white border border-gray-300 rounded-lg shadow-sm">
+        <div className="flex items-center bg-white border border-slate-300 rounded-lg shadow-sm">
           <div className="flex-1 relative">
             <input
               type="text"
@@ -194,7 +194,7 @@ const AdvancedSearch = memo(function AdvancedSearch({
               onFocus={() => setShowSuggestions(true)}
               onKeyPress={handleKeyPress}
               placeholder={placeholder}
-              className="w-full px-4 py-3 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent rounded-l-lg"
+              className="w-full px-4 py-3 text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent rounded-l-lg"
             />
             
             {/* Loading indicator */}
@@ -216,16 +216,16 @@ const AdvancedSearch = memo(function AdvancedSearch({
 
         {/* Suggestions dropdown */}
         {showSuggestions && suggestionsList.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
             {suggestionsList.map((suggestion) => (
               <button
                 key={suggestion.id}
                 onClick={() => handleSuggestionSelect(suggestion)}
-                className="w-full px-4 py-3 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50 transition-colors"
+                className="w-full px-4 py-3 text-left hover:bg-slate-50 focus:outline-none focus:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-900">{suggestion.text}</span>
-                  <span className="text-xs text-gray-500 capitalize">
+                  <span className="text-slate-900">{suggestion.text}</span>
+                  <span className="text-xs text-slate-500 capitalize">
                     {suggestion.type}
                   </span>
                 </div>
@@ -239,7 +239,7 @@ const AdvancedSearch = memo(function AdvancedSearch({
       <div className="mt-4">
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center text-sm text-gray-600 hover:text-gray-800 transition-colors"
+          className="flex items-center text-sm text-slate-600 hover:text-slate-800 transition-colors"
         >
           <svg
             className={`w-4 h-4 mr-2 transition-transform ${showFilters ? 'rotate-180' : ''}`}
@@ -253,11 +253,11 @@ const AdvancedSearch = memo(function AdvancedSearch({
         </button>
 
         {showFilters && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+          <div className="mt-4 p-4 bg-slate-50 rounded-lg">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Date Range */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   Date Range
                 </label>
                 <div className="space-y-2">
@@ -268,7 +268,7 @@ const AdvancedSearch = memo(function AdvancedSearch({
                       ...filters.dateRange,
                       from: e.target.value,
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <input
                     type="date"
@@ -277,14 +277,14 @@ const AdvancedSearch = memo(function AdvancedSearch({
                       ...filters.dateRange,
                       to: e.target.value,
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               {/* Location */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   Location
                 </label>
                 <input
@@ -292,20 +292,20 @@ const AdvancedSearch = memo(function AdvancedSearch({
                   placeholder="Enter location..."
                   value={filters.location.join(', ')}
                   onChange={(e) => handleFilterChange('location', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               {/* Industry */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
                   Industry
                 </label>
                 <select
                   multiple
                   value={filters.industry}
                   onChange={(e) => handleFilterChange('industry', Array.from(e.target.selectedOptions, option => option.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="legal-compliance">Legal & Compliance</option>
                   <option value="fintech">FinTech</option>
@@ -326,7 +326,7 @@ const AdvancedSearch = memo(function AdvancedSearch({
                   eventType: [],
                   priceRange: { min: 0, max: 1000 },
                 })}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors"
               >
                 Clear Filters
               </button>

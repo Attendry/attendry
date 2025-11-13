@@ -135,21 +135,21 @@ export default function CalendarPage() {
       >
         <div className="mb-6">
           {/* Filter Controls */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 p-4">
             <div className="flex items-center gap-2 mb-4">
-              <Filter className="w-4 h-4 text-gray-500" />
-              <h3 className="text-sm font-medium text-gray-900 dark:text-white">Filters</h3>
+              <Filter className="w-4 h-4 text-slate-500" />
+              <h3 className="text-sm font-medium text-slate-900 dark:text-white">Filters</h3>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Days Ahead
                 </label>
                 <select
                   value={filters.daysAhead}
                   onChange={(e) => handleFilterChange('daysAhead', parseInt(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value={30}>Next 30 days</option>
                   <option value={60}>Next 60 days</option>
@@ -159,13 +159,13 @@ export default function CalendarPage() {
               </div>
               
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Min Relevance Score
                 </label>
                 <select
                   value={filters.minScore}
                   onChange={(e) => handleFilterChange('minScore', parseFloat(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value={0.05}>Low (0.05+)</option>
                   <option value={0.1}>Medium (0.1+)</option>
@@ -175,13 +175,13 @@ export default function CalendarPage() {
               </div>
               
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
                   Max Results
                 </label>
                 <select
                   value={filters.limit}
                   onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value={25}>25 events</option>
                   <option value={50}>50 events</option>

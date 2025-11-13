@@ -94,11 +94,11 @@ const EventPrediction = memo(function EventPrediction() {
     return (
       <div className="max-w-6xl mx-auto p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
           <div className="space-y-4">
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+            <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+            <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+            <div className="h-4 bg-slate-200 rounded w-2/3"></div>
           </div>
         </div>
       </div>
@@ -108,18 +108,18 @@ const EventPrediction = memo(function EventPrediction() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Event Predictions</h1>
-        <p className="text-gray-600">AI-powered predictions of future events based on historical data and trends</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Event Predictions</h1>
+        <p className="text-slate-600">AI-powered predictions of future events based on historical data and trends</p>
       </div>
 
       {/* Filters */}
       <div className="mb-6 flex flex-wrap gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Industry</label>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Industry</label>
           <select
             value={selectedIndustry}
             onChange={(e) => setSelectedIndustry(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Industries</option>
             {industries.map((industry) => (
@@ -129,11 +129,11 @@ const EventPrediction = memo(function EventPrediction() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
+          <label className="block text-sm font-medium text-slate-700 mb-2">Location</label>
           <select
             value={selectedLocation}
             onChange={(e) => setSelectedLocation(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Locations</option>
             {locations.map((location) => (
@@ -147,21 +147,21 @@ const EventPrediction = memo(function EventPrediction() {
       <div className="space-y-6">
         {filteredPredictions.length === 0 ? (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No predictions available</h3>
-            <p className="text-gray-600">Check back later for event predictions</p>
+            <h3 className="text-lg font-medium text-slate-900 mb-2">No predictions available</h3>
+            <p className="text-slate-600">Check back later for event predictions</p>
           </div>
         ) : (
           filteredPredictions.map((prediction) => (
-            <div key={prediction.id} className="bg-white border border-gray-200 rounded-lg p-6">
+            <div key={prediction.id} className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-start justify-between mb-4">
                 <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">{prediction.title}</h3>
-                  <div className="flex items-center space-x-4 text-sm text-gray-600">
+                  <h3 className="text-xl font-semibold text-slate-900 mb-2">{prediction.title}</h3>
+                  <div className="flex items-center space-x-4 text-sm text-slate-600">
                     <div className="flex items-center space-x-1">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -189,7 +189,7 @@ const EventPrediction = memo(function EventPrediction() {
               </div>
 
               <div className="mb-4">
-                <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">
+                <p className="text-sm text-slate-700 bg-slate-50 rounded-lg p-3">
                   <strong>Prediction reasoning:</strong> {prediction.reasoning}
                 </p>
               </div>

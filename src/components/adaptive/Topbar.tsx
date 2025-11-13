@@ -49,10 +49,10 @@ const Topbar = memo(() => {
       transition={{ duration: 0.3, ease: 'easeInOut' }}
       className={`border-b transition-colors duration-300 ${
         theme === 'dark' 
-          ? 'bg-gray-800 border-gray-700' 
+          ? 'bg-slate-800 border-slate-700' 
           : theme === 'high-contrast'
-          ? 'bg-gray-900 border-gray-600'
-          : 'bg-white border-gray-200'
+          ? 'bg-slate-900 border-slate-600'
+          : 'bg-white border-slate-200'
       }`}
     >
       <div className="px-6 py-4">
@@ -63,10 +63,10 @@ const Topbar = memo(() => {
               onClick={handleSidebarToggle}
               className={`p-2 rounded-lg transition-colors ${
                 theme === 'dark' 
-                  ? 'hover:bg-gray-700 text-gray-300' 
+                  ? 'hover:bg-slate-700 text-slate-300' 
                   : theme === 'high-contrast'
-                  ? 'hover:bg-gray-800 text-white'
-                  : 'hover:bg-gray-100 text-gray-600'
+                  ? 'hover:bg-slate-800 text-white'
+                  : 'hover:bg-slate-100 text-slate-600'
               }`}
             >
               <Menu size={20} />
@@ -74,12 +74,12 @@ const Topbar = memo(() => {
             
             <div>
               <h1 className={`text-xl font-semibold ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 {moduleTitle}
               </h1>
               <p className={`text-sm ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 {moduleDescription}
               </p>
@@ -92,7 +92,7 @@ const Topbar = memo(() => {
               <Search 
                 size={20} 
                 className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                  theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                 }`} 
               />
               <input
@@ -100,10 +100,10 @@ const Topbar = memo(() => {
                 placeholder="Search..."
                 className={`w-full pl-10 pr-4 py-2 rounded-lg border transition-colors ${
                   theme === 'dark'
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
+                    ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-400'
-                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                    ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-400'
+                    : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500'
                 }`}
               />
             </div>
@@ -118,10 +118,10 @@ const Topbar = memo(() => {
                   ? 'bg-yellow-500' 
                   : userBehavior.searchCount > 0 || userBehavior.eventClicks > 0
                   ? 'bg-green-500'
-                  : 'bg-gray-400'
+                  : 'bg-slate-400'
               }`} />
               <span className={`text-xs ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 {userBehavior.idleTime > 10000 ? 'Idle' : 'Discovering'}
               </span>
@@ -131,10 +131,10 @@ const Topbar = memo(() => {
             <button
               className={`p-2 rounded-lg transition-colors relative ${
                 theme === 'dark' 
-                  ? 'hover:bg-gray-700 text-gray-300' 
+                  ? 'hover:bg-slate-700 text-slate-300' 
                   : theme === 'high-contrast'
-                  ? 'hover:bg-gray-800 text-white'
-                  : 'hover:bg-gray-100 text-gray-600'
+                  ? 'hover:bg-slate-800 text-white'
+                  : 'hover:bg-slate-100 text-slate-600'
               }`}
             >
               <Bell size={20} />
@@ -145,10 +145,10 @@ const Topbar = memo(() => {
             <button
               className={`p-2 rounded-lg transition-colors ${
                 theme === 'dark' 
-                  ? 'hover:bg-gray-700 text-gray-300' 
+                  ? 'hover:bg-slate-700 text-slate-300' 
                   : theme === 'high-contrast'
-                  ? 'hover:bg-gray-800 text-white'
-                  : 'hover:bg-gray-100 text-gray-600'
+                  ? 'hover:bg-slate-800 text-white'
+                  : 'hover:bg-slate-100 text-slate-600'
               }`}
             >
               <User size={20} />

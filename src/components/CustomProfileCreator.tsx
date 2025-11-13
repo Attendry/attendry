@@ -98,7 +98,7 @@ export function CustomProfileCreator({
         <h3 className="text-lg font-medium text-slate-900">Create Custom Profile</h3>
         <button
           onClick={onCancel}
-          className="text-gray-400 hover:text-gray-600"
+          className="text-slate-400 hover:text-slate-600"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -117,7 +117,7 @@ export function CustomProfileCreator({
             value={profileName}
             onChange={(e) => setProfileName(e.target.value)}
             placeholder="e.g., My Legal Tech Profile"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
 
@@ -128,7 +128,7 @@ export function CustomProfileCreator({
           <select
             value={industry}
             onChange={(e) => setIndustry(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">Select an industry</option>
             {industries.map(ind => (
@@ -141,7 +141,7 @@ export function CustomProfileCreator({
           <label className="block text-sm font-medium text-slate-700 mb-2">
             Country
           </label>
-          <div className="px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-slate-600">
+          <div className="px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-slate-600">
             {selectedCountry}
           </div>
         </div>
@@ -159,7 +159,7 @@ export function CustomProfileCreator({
             onChange={(e) => setNewIndustryTerm(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && addIndustryTerm()}
             placeholder="e.g., compliance, legal tech"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
           <button
             onClick={addIndustryTerm}
@@ -198,7 +198,7 @@ export function CustomProfileCreator({
             onChange={(e) => setNewIcpTerm(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && addIcpTerm()}
             placeholder="e.g., general counsel, compliance officer"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
           <button
             onClick={addIcpTerm}
@@ -237,7 +237,7 @@ export function CustomProfileCreator({
             onChange={(e) => setNewCompetitor(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && addCompetitor()}
             placeholder="e.g., Epiq, Relativity"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
           <button
             onClick={addCompetitor}
@@ -274,7 +274,7 @@ export function CustomProfileCreator({
         </button>
         <button
           onClick={onCancel}
-          className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-medium"
+          className="px-6 py-2 bg-slate-300 text-slate-700 rounded-lg hover:bg-slate-400 font-medium"
         >
           Cancel
         </button>

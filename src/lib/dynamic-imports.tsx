@@ -24,7 +24,7 @@ const ErrorFallback = ({ error }: { error: Error }) => (
   <div className="flex items-center justify-center p-8 text-red-600">
     <div className="text-center">
       <p className="font-medium">Failed to load component</p>
-      <p className="text-sm text-gray-500 mt-1">{error.message}</p>
+      <p className="text-sm text-slate-500 mt-1">{error.message}</p>
     </div>
   </div>
 );

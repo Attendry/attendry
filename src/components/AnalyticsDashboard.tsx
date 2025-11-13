@@ -293,10 +293,10 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
     return (
       <div className="max-w-7xl mx-auto p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+              <div key={i} className="h-32 bg-slate-200 rounded-lg"></div>
             ))}
           </div>
         </div>
@@ -308,16 +308,16 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
     <div className="max-w-7xl mx-auto p-6 space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Analytics Dashboard</h1>
-          <p className="text-gray-600">Executive overview across adoption, pipeline influence, and operational health.</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Analytics Dashboard</h1>
+          <p className="text-slate-600">Executive overview across adoption, pipeline influence, and operational health.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center space-x-2">
-            <label className="text-sm font-medium text-gray-700">Time Range</label>
+            <label className="text-sm font-medium text-slate-700">Time Range</label>
             <select
               value={selectedTimeRange}
               onChange={(e) => setSelectedTimeRange(e.target.value as any)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="7d">Last 7 days</option>
               <option value="30d">Last 30 days</option>
@@ -327,11 +327,11 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
           </div>
           <button
             onClick={() => setShowTargetOverlay(!showTargetOverlay)}
-            className="px-3 py-2 text-sm font-medium border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors"
+            className="px-3 py-2 text-sm font-medium border border-slate-300 rounded-md text-slate-700 hover:bg-slate-100 transition-colors"
           >
             {showTargetOverlay ? 'Hide Targets' : 'Show Targets'}
           </button>
-          <button className="px-3 py-2 text-sm font-medium bg-white border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition-colors">
+          <button className="px-3 py-2 text-sm font-medium bg-white border border-slate-300 rounded-md text-slate-700 hover:bg-slate-100 transition-colors">
             Export CSV
           </button>
           <button className="px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
@@ -343,25 +343,25 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
       {executiveSummary && showExecSummary && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           {executiveSummary.map((tile) => (
-            <div key={tile.label} className="bg-white border border-gray-200 rounded-lg p-5 space-y-2">
+            <div key={tile.label} className="bg-white border border-slate-200 rounded-lg p-5 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-500">{tile.label}</span>
+                <span className="text-sm font-medium text-slate-500">{tile.label}</span>
                 <span
                   className={`text-xs font-semibold px-2 py-0.5 rounded ${
                     tile.deltaStatus === 'positive'
                       ? 'bg-green-50 text-green-700'
                       : tile.deltaStatus === 'warning'
                       ? 'bg-yellow-50 text-yellow-700'
-                      : 'bg-gray-100 text-gray-600'
+                      : 'bg-slate-100 text-slate-600'
                   }`}
                 >
                   {tile.delta}
                 </span>
               </div>
-              <div className="text-2xl font-semibold text-gray-900">{tile.value}</div>
-              <p className="text-xs text-gray-600 leading-relaxed">{tile.insight}</p>
+              <div className="text-2xl font-semibold text-slate-900">{tile.value}</div>
+              <p className="text-xs text-slate-600 leading-relaxed">{tile.insight}</p>
               {showTargetOverlay && (
-                <div className="mt-2 text-xs text-gray-500">
+                <div className="mt-2 text-xs text-slate-500">
                   Target: {tile.label === 'Pipeline Influence' ? '$3.1M' : tile.label === 'Marketing Qualified Leads' ? '2.5K' : tile.label === 'Adoption Velocity' ? '45%' : '99.9%'}
                 </div>
               )}
@@ -374,11 +374,11 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
       {userAnalytics && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">User Analytics</h2>
-            <span className="text-xs text-gray-500">Benchmarks from CRM & Product analytics (mock)</span>
+            <h2 className="text-xl font-semibold text-slate-900">User Analytics</h2>
+            <span className="text-xs text-slate-500">Benchmarks from CRM & Product analytics (mock)</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -386,13 +386,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(userAnalytics.totalUsers)}</p>
+                  <p className="text-sm font-medium text-slate-600">Total Users</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatNumber(userAnalytics.totalUsers)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -400,13 +400,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Active Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(userAnalytics.activeUsers)}</p>
+                  <p className="text-sm font-medium text-slate-600">Active Users</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatNumber(userAnalytics.activeUsers)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-purple-100 rounded-lg">
                   <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -414,13 +414,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">New Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(userAnalytics.newUsers)}</p>
+                  <p className="text-sm font-medium text-slate-600">New Users</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatNumber(userAnalytics.newUsers)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-orange-100 rounded-lg">
                   <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -428,47 +428,47 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Avg Session Time</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatTime(userAnalytics.userEngagement.averageSessionTime)}</p>
+                  <p className="text-sm font-medium text-slate-600">Avg Session Time</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatTime(userAnalytics.userEngagement.averageSessionTime)}</p>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">User Growth</h3>
-                <span className="text-xs text-gray-500">Goal: 5% MoM</span>
+                <h3 className="text-lg font-medium text-slate-900">User Growth</h3>
+                <span className="text-xs text-slate-500">Goal: 5% MoM</span>
               </div>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Daily</span>
+                  <span className="text-sm text-slate-600">Daily</span>
                   <span className="text-sm font-medium">{formatNumber(userAnalytics.userGrowth.daily)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Weekly</span>
+                  <span className="text-sm text-slate-600">Weekly</span>
                   <span className="text-sm font-medium">{formatNumber(userAnalytics.userGrowth.weekly)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Monthly</span>
+                  <span className="text-sm text-slate-600">Monthly</span>
                   <span className="text-sm font-medium">{formatNumber(userAnalytics.userGrowth.monthly)}</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-gray-900">User Engagement</h3>
-                <span className="text-xs text-gray-500">Target: 38% bounce</span>
+                <h3 className="text-lg font-medium text-slate-900">User Engagement</h3>
+                <span className="text-xs text-slate-500">Target: 38% bounce</span>
               </div>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Page Views</span>
+                  <span className="text-sm text-slate-600">Page Views</span>
                   <span className="text-sm font-medium">{formatNumber(userAnalytics.userEngagement.pageViews)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Bounce Rate</span>
+                  <span className="text-sm text-slate-600">Bounce Rate</span>
                   <span className="text-sm font-medium">{formatPercentage(userAnalytics.userEngagement.bounceRate)}</span>
                 </div>
               </div>
@@ -481,11 +481,11 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
       {eventAnalytics && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Event Analytics</h2>
-            <span className="text-xs text-gray-500">Enriched by field marketing (mock)</span>
+            <h2 className="text-xl font-semibold text-slate-900">Event Analytics</h2>
+            <span className="text-xs text-slate-500">Enriched by field marketing (mock)</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -493,13 +493,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Events</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(eventAnalytics.totalEvents)}</p>
+                  <p className="text-sm font-medium text-slate-600">Total Events</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatNumber(eventAnalytics.totalEvents)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -507,13 +507,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Events Collected</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(eventAnalytics.eventsCollected)}</p>
+                  <p className="text-sm font-medium text-slate-600">Events Collected</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatNumber(eventAnalytics.eventsCollected)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-purple-100 rounded-lg">
                   <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -521,30 +521,30 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Events Processed</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(eventAnalytics.eventsProcessed)}</p>
+                  <p className="text-sm font-medium text-slate-600">Events Processed</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatNumber(eventAnalytics.eventsProcessed)}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="bg-white border border-slate-200 rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Event Categories</h3>
-              <span className="text-xs text-gray-500">Weighted by ICP fit</span>
+              <h3 className="text-lg font-medium text-slate-900">Event Categories</h3>
+              <span className="text-xs text-slate-500">Weighted by ICP fit</span>
             </div>
             <div className="space-y-3">
               {eventAnalytics.eventCategories.map((category) => (
                 <div key={category.category} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700">{category.category}</span>
+                  <span className="text-sm text-slate-700">{category.category}</span>
                   <div className="flex items-center space-x-3">
-                    <div className="w-32 bg-gray-200 rounded-full h-2">
+                    <div className="w-32 bg-slate-200 rounded-full h-2">
                       <div 
                         className="bg-blue-600 h-2 rounded-full" 
                         style={{ width: `${category.percentage}%` }}
                       ></div>
                     </div>
-                    <span className="text-sm font-medium text-gray-900 w-12 text-right">
+                    <span className="text-sm font-medium text-slate-900 w-12 text-right">
                       {formatNumber(category.count)}
                     </span>
                   </div>
@@ -559,11 +559,11 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
       {searchAnalytics && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Search Analytics</h2>
-            <span className="text-xs text-gray-500">Includes CRM attribution mock</span>
+            <h2 className="text-xl font-semibold text-slate-900">Search Analytics</h2>
+            <span className="text-xs text-slate-500">Includes CRM attribution mock</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -571,13 +571,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Searches</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(searchAnalytics.totalSearches)}</p>
+                  <p className="text-sm font-medium text-slate-600">Total Searches</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatNumber(searchAnalytics.totalSearches)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -585,13 +585,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Avg Response Time</p>
-                  <p className="text-2xl font-bold text-gray-900">{searchAnalytics.searchPerformance.averageResponseTime}ms</p>
+                  <p className="text-sm font-medium text-slate-600">Avg Response Time</p>
+                  <p className="text-2xl font-bold text-slate-900">{searchAnalytics.searchPerformance.averageResponseTime}ms</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-purple-100 rounded-lg">
                   <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -599,27 +599,27 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Success Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatPercentage(searchAnalytics.searchPerformance.successRate)}</p>
+                  <p className="text-sm font-medium text-slate-600">Success Rate</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatPercentage(searchAnalytics.searchPerformance.successRate)}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="bg-white border border-slate-200 rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-gray-900">Popular Search Queries</h3>
-              <span className="text-xs text-gray-500">Conversion-optimized phrasing</span>
+              <h3 className="text-lg font-medium text-slate-900">Popular Search Queries</h3>
+              <span className="text-xs text-slate-500">Conversion-optimized phrasing</span>
             </div>
             <div className="space-y-3">
               {searchAnalytics.popularQueries.slice(0, 10).map((query, index) => (
                 <div key={query.query} className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <span className="text-sm font-medium text-gray-500 w-6">#{index + 1}</span>
-                    <span className="text-sm text-gray-700">{query.query}</span>
+                    <span className="text-sm font-medium text-slate-500 w-6">#{index + 1}</span>
+                    <span className="text-sm text-slate-700">{query.query}</span>
                   </div>
                   <div className="flex items-center space-x-3">
-                    <span className="text-sm text-gray-500">{formatNumber(query.count)} searches</span>
+                    <span className="text-sm text-slate-500">{formatNumber(query.count)} searches</span>
                     <span className="text-sm font-medium text-green-600">
                       {formatPercentage(query.successRate)} success
                     </span>
@@ -635,11 +635,11 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
       {systemAnalytics && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">System Analytics</h2>
-            <span className="text-xs text-gray-500">Ops observability (mock)</span>
+            <h2 className="text-xl font-semibold text-slate-900">System Analytics</h2>
+            <span className="text-xs text-slate-500">Ops observability (mock)</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -647,13 +647,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Avg Response Time</p>
-                  <p className="text-2xl font-bold text-gray-900">{systemAnalytics.performance.averageResponseTime}ms</p>
+                  <p className="text-sm font-medium text-slate-600">Avg Response Time</p>
+                  <p className="text-2xl font-bold text-slate-900">{systemAnalytics.performance.averageResponseTime}ms</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -661,13 +661,13 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Uptime</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatPercentage(systemAnalytics.performance.uptime)}</p>
+                  <p className="text-sm font-medium text-slate-600">Uptime</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatPercentage(systemAnalytics.performance.uptime)}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-red-100 rounded-lg">
                   <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -675,49 +675,49 @@ const AnalyticsDashboard = memo(function AnalyticsDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Error Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatPercentage(systemAnalytics.performance.errorRate)}</p>
+                  <p className="text-sm font-medium text-slate-600">Error Rate</p>
+                  <p className="text-2xl font-bold text-slate-900">{formatPercentage(systemAnalytics.performance.errorRate)}</p>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <div className="bg-white border border-slate-200 rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-gray-900">API Usage</h3>
-              <span className="text-xs text-gray-500">Latency targets under 450ms</span>
+              <h3 className="text-lg font-medium text-slate-900">API Usage</h3>
+              <span className="text-xs text-slate-500">Latency targets under 450ms</span>
             </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Endpoint
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Requests
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Avg Response Time
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Error Rate
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-slate-200">
                   {systemAnalytics.apiUsage.map((api) => (
                     <tr key={api.endpoint}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                         {api.endpoint}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                         {formatNumber(api.requests)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                         {api.averageResponseTime}ms
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                         {formatPercentage(api.errorRate)}
                       </td>
                     </tr>

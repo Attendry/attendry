@@ -67,18 +67,18 @@ const TrendingEvents = memo(function TrendingEvents() {
   const getGrowthColor = useCallback((growth: number) => {
     if (growth > 0) return 'text-green-600';
     if (growth < 0) return 'text-red-600';
-    return 'text-gray-600';
+    return 'text-slate-600';
   }, []);
 
   if (isLoading) {
     return (
       <div className="max-w-6xl mx-auto p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
           <div className="space-y-4">
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+            <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+            <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+            <div className="h-4 bg-slate-200 rounded w-2/3"></div>
           </div>
         </div>
       </div>
@@ -88,13 +88,13 @@ const TrendingEvents = memo(function TrendingEvents() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Trending Events</h1>
-        <p className="text-gray-600">Discover what's popular and trending in the event space</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Trending Events</h1>
+        <p className="text-slate-600">Discover what's popular and trending in the event space</p>
       </div>
 
       {/* Trending Categories */}
       <div className="mb-8">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Trending Categories</h2>
+        <h2 className="text-xl font-semibold text-slate-900 mb-4">Trending Categories</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {trendingCategories.map((category) => (
             <div
@@ -102,17 +102,17 @@ const TrendingEvents = memo(function TrendingEvents() {
               className={`bg-white border rounded-lg p-4 cursor-pointer transition-all ${
                 selectedCategory === category.name
                   ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-slate-200 hover:border-slate-300'
               }`}
               onClick={() => setSelectedCategory(category.name)}
             >
               <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium text-gray-900">{category.name}</h3>
+                <h3 className="font-medium text-slate-900">{category.name}</h3>
                 <span className={`text-sm font-medium ${getGrowthColor(category.growth)}`}>
                   {formatGrowth(category.growth)}
                 </span>
               </div>
-              <p className="text-sm text-gray-600">{category.count} events</p>
+              <p className="text-sm text-slate-600">{category.count} events</p>
             </div>
           ))}
         </div>
@@ -126,7 +126,7 @@ const TrendingEvents = memo(function TrendingEvents() {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               selectedCategory === 'all'
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
             All Trending
@@ -138,7 +138,7 @@ const TrendingEvents = memo(function TrendingEvents() {
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 selectedCategory === category.name
                   ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               {category.name}
@@ -149,27 +149,27 @@ const TrendingEvents = memo(function TrendingEvents() {
 
       {/* Trending Events */}
       <div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">
+        <h2 className="text-xl font-semibold text-slate-900 mb-4">
           {selectedCategory === 'all' ? 'All Trending Events' : `Trending ${selectedCategory} Events`}
         </h2>
         
         {filteredEvents.length === 0 ? (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No trending events</h3>
-            <p className="text-gray-600">Check back later for trending events in this category</p>
+            <h3 className="text-lg font-medium text-slate-900 mb-2">No trending events</h3>
+            <p className="text-slate-600">Check back later for trending events in this category</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredEvents.map((event, index) => (
-              <div key={event.id || index} className="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div key={event.id || index} className="bg-white border border-slate-200 rounded-lg p-6 hover:shadow-md transition-shadow">
                 <div className="flex items-start justify-between mb-4">
-                  <h3 className="font-semibold text-gray-900 line-clamp-2">{event.title}</h3>
-                  <div className="flex items-center space-x-1 text-sm text-gray-500">
+                  <h3 className="font-semibold text-slate-900 line-clamp-2">{event.title}</h3>
+                  <div className="flex items-center space-x-1 text-sm text-slate-500">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
@@ -179,10 +179,10 @@ const TrendingEvents = memo(function TrendingEvents() {
 
                 {event.starts_at && (
                   <div className="flex items-center space-x-2 mb-3">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-slate-600">
                       {new Date(event.starts_at).toLocaleDateString()}
                     </span>
                   </div>
@@ -190,18 +190,18 @@ const TrendingEvents = memo(function TrendingEvents() {
 
                 {(event.city || event.country) && (
                   <div className="flex items-center space-x-2 mb-3">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-slate-600">
                       {[event.city, event.country].filter(Boolean).join(', ')}
                     </span>
                   </div>
                 )}
 
                 {event.description && (
-                  <p className="text-sm text-gray-600 mb-4 line-clamp-3">{event.description}</p>
+                  <p className="text-sm text-slate-600 mb-4 line-clamp-3">{event.description}</p>
                 )}
 
                 <div className="flex items-center justify-between">
@@ -213,7 +213,7 @@ const TrendingEvents = memo(function TrendingEvents() {
                   >
                     View Event
                   </a>
-                  <button className="text-sm text-gray-600 hover:text-gray-800 transition-colors">
+                  <button className="text-sm text-slate-600 hover:text-slate-800 transition-colors">
                     Save
                   </button>
                 </div>

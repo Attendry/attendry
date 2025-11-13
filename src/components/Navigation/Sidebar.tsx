@@ -107,8 +107,8 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
     <aside 
       ref={sidebarRef}
       className={`
-        fixed left-0 top-0 h-screen bg-white dark:bg-gray-900 
-        border-r border-gray-200 dark:border-gray-700 z-50
+        fixed left-0 top-0 h-screen bg-white dark:bg-slate-900 
+        border-r border-slate-200 dark:border-slate-700 z-50
         transition-all duration-300 ease-in-out
         ${shouldShowExpanded ? 'w-64' : 'w-16'}
         lg:static lg:z-auto
@@ -123,18 +123,18 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Header */}
-      <div className={`flex items-center h-16 px-4 border-b border-gray-200 dark:border-gray-700 ${shouldShowExpanded ? 'justify-between' : 'justify-center'}`}>
+      <div className={`flex items-center h-16 px-4 border-b border-slate-200 dark:border-slate-700 ${shouldShowExpanded ? 'justify-between' : 'justify-center'}`}>
         {shouldShowExpanded ? (
           <Link 
             href="/" 
-            className="font-bold text-xl text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            className="font-bold text-xl text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
           >
             Attendry
           </Link>
         ) : (
           <Link 
             href="/" 
-            className="font-bold text-lg text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            className="font-bold text-lg text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
             title="Attendry"
           >
             A
@@ -145,7 +145,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
             setIsManuallyCollapsed(!isManuallyCollapsed);
             onToggle?.();
           }}
-          className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           aria-label={isManuallyCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {isManuallyCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
@@ -164,7 +164,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
                   transition-all duration-200 group
                   ${isActive(item.href)
                     ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 border-r-2 border-blue-700 dark:border-blue-400'
-                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
                   }
                   ${shouldShowExpanded ? 'justify-start' : 'justify-center'}
                 `}
@@ -176,7 +176,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
                     flex-shrink-0
                     ${isActive(item.href) 
                       ? 'text-blue-700 dark:text-blue-400' 
-                      : 'text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300'
+                      : 'text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300'
                     }
                   `}
                 />
@@ -210,7 +210,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
                           transition-colors duration-200
                           ${isActive(child.href)
                             ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                            : 'text-gray-600 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800'
+                            : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
                           }
                         `}
                       >
@@ -228,8 +228,8 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
 
       {/* Footer */}
       {shouldShowExpanded && (
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+          <div className="text-xs text-slate-500 dark:text-slate-400 text-center">
             v2.0 • Premium
           </div>
         </div>

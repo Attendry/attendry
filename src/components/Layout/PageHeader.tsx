@@ -26,30 +26,30 @@ export function PageHeader({
   children 
 }: PageHeaderProps) {
   return (
-    <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <div className="border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
       <div className="px-4 py-6 sm:px-6 lg:px-8">
         {/* Breadcrumbs */}
         {breadcrumbs.length > 0 && (
-          <nav className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400 mb-4" aria-label="Breadcrumb">
+          <nav className="flex items-center space-x-2 text-sm text-slate-500 dark:text-slate-400 mb-4" aria-label="Breadcrumb">
             <Link 
               href="/" 
-              className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+              className="hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
               aria-label="Home"
             >
               <Home size={16} />
             </Link>
             {breadcrumbs.map((item, index) => (
               <div key={index} className="flex items-center space-x-2">
-                <ChevronRight size={16} className="text-gray-400" />
+                <ChevronRight size={16} className="text-slate-400" />
                 {item.href ? (
                   <Link 
                     href={item.href}
-                    className="hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                    className="hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
                   >
                     {item.label}
                   </Link>
                 ) : (
-                  <span className="text-gray-900 dark:text-gray-100 font-medium">
+                  <span className="text-slate-900 dark:text-slate-100 font-medium">
                     {item.label}
                   </span>
                 )}
@@ -61,11 +61,11 @@ export function PageHeader({
         {/* Header Content */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white sm:text-3xl">
               {title}
             </h1>
             {subtitle && (
-              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                 {subtitle}
               </p>
             )}

@@ -265,7 +265,7 @@ export function CommandCentre() {
   if (!authReady) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-6 py-4 text-sm text-gray-600 shadow-sm">
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-sm">
           <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
           Checking your session...
         </div>
@@ -288,15 +288,15 @@ export function CommandCentre() {
     <div className="space-y-8">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Command Centre</h1>
-          <p className="mt-2 text-gray-600">
+          <h1 className="text-3xl font-bold text-slate-900">Command Centre</h1>
+          <p className="mt-2 text-slate-600">
             Your cockpit for targeted outreach. Prioritize speakers, monitor accounts, and act on market signals.
           </p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={() => refreshProfiles()}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             <RefreshCw className="h-4 w-4" /> Refresh
           </button>
@@ -677,12 +677,12 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   }, []);
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-6 py-4">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
         <div>
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Event Discovery</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Event Discovery</h2>
             {isPinned && (
               <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
                 <Pin className="h-3 w-3" />
@@ -690,7 +690,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
               </span>
             )}
           </div>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-slate-600">
             {isPinned 
               ? 'Your default search is ready. Just hit Go!' 
               : 'Run your go-to search and save speakers without leaving this page.'}
@@ -711,7 +711,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
             <button
               type="button"
               onClick={handlePinSearch}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               title="Pin this search as your default"
             >
               <Pin className="h-3.5 w-3.5" />
@@ -721,7 +721,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
           <button
             type="button"
             onClick={() => setCollapsed((prev) => !prev)}
-            className="rounded-full border border-gray-200 p-2 text-gray-500 transition hover:bg-gray-50"
+            className="rounded-full border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
             aria-label={collapsed ? 'Expand event discovery panel' : 'Collapse event discovery panel'}
           >
             {collapsed ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
@@ -732,15 +732,15 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
         <div className="space-y-5 px-6 py-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-end">
             <div className="flex-1">
-              <label className="mb-2 block text-sm font-medium text-gray-700">Focus keywords</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Focus keywords</label>
               <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={config.keywords}
                   onChange={(event) => updateConfig({ keywords: event.target.value })}
                   placeholder="e.g. legal operations, privacy, fintech"
-                  className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
@@ -772,7 +772,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                     handlePinSearch();
                   }
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 {showAdvanced ? (
                   <>
@@ -789,7 +789,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 font-medium text-blue-700">
               <Globe2 className="h-3.5 w-3.5" />
               {locationLabel}
@@ -798,11 +798,11 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
               <CalendarRange className="h-3.5 w-3.5" />
               {config.range === 'next' ? `Next ${config.days} days` : `Past ${config.days} days`}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-600">
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
               {dateRangeSummary.from} → {dateRangeSummary.to}
             </span>
             {lastRunAt && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-600">
+              <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
                 Refreshed {new Date(lastRunAt).toLocaleTimeString()}
               </span>
             )}
@@ -811,11 +811,11 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
           {showAdvanced && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">Location</label>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Location</label>
                 <select
                   value={config.country}
                   onChange={(event) => updateConfig({ country: event.target.value as typeof QUICK_SEARCH_DEFAULTS.country })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 >
                   {QUICK_SEARCH_LOCATIONS.map((location) => (
                     <option key={location.code} value={location.code}>
@@ -825,7 +825,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 </select>
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">Time frame</label>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Time frame</label>
                 <div className="grid grid-cols-2 gap-2">
                   {(['next', 'past'] as const).map((rangeOption) => {
                     const isActive = config.range === rangeOption;
@@ -837,7 +837,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                         className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
                           isActive
                             ? 'border-blue-200 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
                         {rangeOption === 'next' ? 'Upcoming' : 'Look back'}
@@ -847,7 +847,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 </div>
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">Days</label>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Days</label>
                 <div className="grid grid-cols-3 gap-2">
                   {QUICK_SEARCH_DAY_OPTIONS.map((option) => {
                     const isActive = config.days === option;
@@ -859,7 +859,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                         className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
                           isActive
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
                         {option}
@@ -875,10 +875,10 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Quick Keywords</label>
-                  <p className="text-xs text-gray-500">Select up to 3 keywords to enhance your search</p>
+                  <label className="block text-sm font-medium text-slate-700">Quick Keywords</label>
+                  <p className="text-xs text-slate-500">Select up to 3 keywords to enhance your search</p>
                 </div>
-                <span className="text-xs font-medium text-gray-500">
+                <span className="text-xs font-medium text-slate-500">
                   {config.selectedKeywordTags?.length || 0}/{MAX_SELECTED_TAGS}
                 </span>
               </div>
@@ -925,8 +925,8 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                         isSelected
                           ? 'border-blue-500 bg-blue-500 text-white shadow-sm hover:bg-blue-600'
                           : isDisabled
-                          ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
-                          : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+                          ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
                       }`}
                       title={
                         isSelected 
@@ -952,20 +952,20 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
           )}
 
           {loading && (
-            <div className="flex items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 text-sm text-gray-600">
+            <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 py-12 text-sm text-slate-600">
               <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
               Gathering events…
             </div>
           )}
 
           {!loading && !error && resultsToShow.length === 0 && !lastRunAt && (
-            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-8 text-center text-sm text-gray-600">
-              Configure your defaults and tap <span className="font-medium text-gray-800">Go</span> to fetch fresh events.
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600">
+              Configure your defaults and tap <span className="font-medium text-slate-800">Go</span> to fetch fresh events.
             </div>
           )}
 
           {!loading && !error && resultsToShow.length === 0 && lastRunAt && (
-            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-600">
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-600">
               No events matched the current filter. Try widening the time frame or adding broader keywords.
             </div>
           )}
@@ -979,21 +979,21 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 const hasMoreSpeakers = speakers.length > 3;
                 const displaySpeakers = isExpanded ? speakers : speakers.slice(0, 3);
                 return (
-                  <div key={eventKey} className="rounded-xl border border-gray-200 bg-gray-50 p-4 shadow-sm">
+                  <div key={eventKey} className="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
                         <a
                           href={event.source_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="line-clamp-2 text-base font-semibold text-gray-900 hover:text-blue-600"
+                          className="line-clamp-2 text-base font-semibold text-slate-900 hover:text-blue-600"
                         >
                           {event.title}
                         </a>
-                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-600">
                           <span>{formatDisplayDate(event.starts_at)}</span>
                           {event.city || event.country ? <span>{[event.city, event.country].filter(Boolean).join(', ')}</span> : null}
-                          {event.organizer && <span className="text-gray-500">Hosted by {event.organizer}</span>}
+                          {event.organizer && <span className="text-slate-500">Hosted by {event.organizer}</span>}
                         </div>
                       </div>
                       <span className="mt-1 inline-flex flex-shrink-0 items-center rounded-full bg-white px-3 py-1 text-xs font-medium text-blue-700 sm:mt-0">
@@ -1017,11 +1017,11 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                           return (
                             <li
                               key={speakerKey}
-                              className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                              className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                             >
                               <div className="min-w-0">
-                                <p className="line-clamp-1 font-medium text-gray-900">{speaker.name}</p>
-                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                                <p className="line-clamp-1 font-medium text-slate-900">{speaker.name}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                                   <span className="truncate">
                                     {[speaker.title, organization].filter(Boolean).join(' · ') || 'Role pending'}
                                   </span>
@@ -1056,7 +1056,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                                     type="button"
                                     onClick={() => void handleSaveSpeaker(event, speaker, speakerKey)}
                                     disabled={isSaving}
-                                    className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-gray-100 whitespace-nowrap"
+                                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-slate-100 whitespace-nowrap"
                                   >
                                     {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                                     Save speaker
@@ -1067,7 +1067,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                                     href={profileLink}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50 whitespace-nowrap"
+                                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50 whitespace-nowrap"
                                   >
                                     <Linkedin className="h-3.5 w-3.5" />
                                     Profile
@@ -1083,7 +1083,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                       <button
                         type="button"
                         onClick={() => setExpandedEvents((prev) => ({ ...prev, [eventKey]: !isExpanded }))}
-                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                       >
                         {isExpanded ? (
                           <>
@@ -1102,7 +1102,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                 );
               })}
               {prioritizedResults.length > resultsToShow.length && (
-                <div className="text-xs text-gray-600">
+                <div className="text-xs text-slate-600">
                   Showing top {resultsToShow.length} of {prioritizedResults.length} curated events. Visit{' '}
                   <Link href="/events" className="font-medium text-blue-600 hover:text-blue-700">
                     full search workspace
@@ -1137,11 +1137,11 @@ function OutreachStatusPanel({ statusFilter, setStatusFilter, counts, loading }:
   }, [counts]);
 
   return (
-    <div className="h-full rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="h-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Outreach Focus</h2>
-          <p className="mt-1 text-sm text-gray-600">Pick a stage to see prioritised contacts.</p>
+          <h2 className="text-lg font-semibold text-slate-900">Outreach Focus</h2>
+          <p className="mt-1 text-sm text-slate-600">Pick a stage to see prioritised contacts.</p>
         </div>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-blue-600" aria-label="Loading outreach states" />}
       </div>
@@ -1151,7 +1151,7 @@ function OutreachStatusPanel({ statusFilter, setStatusFilter, counts, loading }:
           const colorClasses =
             option.value !== 'all'
               ? STATUS_COLORS[option.value as OutreachStatus]
-              : 'bg-gray-100 text-gray-700';
+              : 'bg-slate-100 text-slate-700';
           return (
             <button
               key={option.value}
@@ -1160,13 +1160,13 @@ function OutreachStatusPanel({ statusFilter, setStatusFilter, counts, loading }:
               className={`w-full rounded-xl border px-4 py-3 text-left transition ${
                 isActive
                   ? 'border-blue-200 bg-blue-50 shadow-sm'
-                  : 'border-gray-200 bg-white hover:bg-gray-50'
+                  : 'border-slate-200 bg-white hover:bg-slate-50'
               }`}
             >
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">{option.label}</p>
-                  <p className="text-xs text-gray-600">{option.helper}</p>
+                  <p className="text-sm font-semibold text-slate-900">{option.label}</p>
+                  <p className="text-xs text-slate-600">{option.helper}</p>
                 </div>
                 <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${colorClasses}`}>
                   {option.count}
@@ -1191,11 +1191,11 @@ function CommandMetrics({ metrics, loading }: MetricsCardProps) {
       {metrics.map((metric) => {
         const Icon = metric.icon;
         return (
-          <div key={metric.label} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div key={metric.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">{metric.label}</p>
-                <div className="mt-2 text-2xl font-semibold text-gray-900">
+                <p className="text-sm font-medium text-slate-600">{metric.label}</p>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
                   {loading ? <Loader2 className="h-5 w-5 animate-spin text-blue-600" /> : metric.value}
                 </div>
               </div>
@@ -1241,17 +1241,17 @@ function TargetedSpeakersPanel({
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Targeted Speakers</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-xl font-semibold text-slate-900">Targeted Speakers</h2>
+          <p className="text-sm text-slate-600">
             {statusFilter === 'all'
               ? 'Top matches prioritized for outreach based on engagement signals.'
               : `Focused on ${STATUS_LABELS[statusFilter]} contacts.`}
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+        <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
           <Target className="h-4 w-4 text-blue-600" />
           <span>
             Showing {profiles.length} {profiles.length === 1 ? 'profile' : 'profiles'}
@@ -1268,14 +1268,14 @@ function TargetedSpeakersPanel({
       )}
 
       {loading && profiles.length === 0 ? (
-        <div className="flex items-center justify-center py-16 text-gray-500">
+        <div className="flex items-center justify-center py-16 text-slate-500">
           <Loader2 className="mr-3 h-5 w-5 animate-spin" />
           Loading targeted speakers...
         </div>
       ) : profiles.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-10 text-center">
-          <h3 className="text-lg font-semibold text-gray-900">No speakers found</h3>
-          <p className="mt-2 text-sm text-gray-600">
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+          <h3 className="text-lg font-semibold text-slate-900">No speakers found</h3>
+          <p className="mt-2 text-sm text-slate-600">
             {statusFilter === 'all'
               ? 'Save speakers from event pages to build your outreach list.'
               : 'Try selecting a different status or save new speakers to target.'}
@@ -1321,24 +1321,24 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
   const confidence = enhanced_data.confidence;
 
   return (
-    <div className="rounded-xl border border-gray-200 p-4 shadow-sm transition-shadow hover:shadow-md">
+    <div className="rounded-xl border border-slate-200 p-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">{speaker_data.name}</h3>
-          <p className="text-sm text-gray-600">
-            {displayTitle ? <span className="font-medium text-gray-700">{displayTitle}</span> : 'Role TBD'}
-            {displayOrg && <span className="text-gray-400"> · </span>}
+          <h3 className="text-lg font-semibold text-slate-900">{speaker_data.name}</h3>
+          <p className="text-sm text-slate-600">
+            {displayTitle ? <span className="font-medium text-slate-700">{displayTitle}</span> : 'Role TBD'}
+            {displayOrg && <span className="text-slate-400"> · </span>}
             {displayOrg}
           </p>
           {location && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+            <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
               <MapPinSmall />
               {location}
             </p>
           )}
           {confidence != null && (
-            <p className="mt-2 text-xs text-gray-500">
-              Data confidence: <span className="font-medium text-gray-700">{Math.round(confidence * 100)}%</span>
+            <p className="mt-2 text-xs text-slate-500">
+              Data confidence: <span className="font-medium text-slate-700">{Math.round(confidence * 100)}%</span>
             </p>
           )}
         </div>
@@ -1351,7 +1351,7 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
         {speaker_data.email && (
           <a
             href={`mailto:${speaker_data.email}`}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50"
           >
             <Mail className="h-4 w-4" /> Email
           </a>
@@ -1361,7 +1361,7 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
             href={enhanced_data.social_links?.linkedin || speaker_data.linkedin_url || '#'}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50"
           >
             <Linkedin className="h-4 w-4" /> LinkedIn
           </a>
@@ -1369,15 +1369,15 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
       </div>
 
       {profile.notes && (
-        <p className="mt-3 line-clamp-3 text-sm text-gray-600">{profile.notes}</p>
+        <p className="mt-3 line-clamp-3 text-sm text-slate-600">{profile.notes}</p>
       )}
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="w-full sm:max-w-xs">
-          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
             <label
               htmlFor={`status-${profile.id}`}
-              className="block text-xs font-semibold uppercase tracking-wide text-gray-500"
+              className="block text-xs font-semibold uppercase tracking-wide text-slate-500"
             >
               Outreach status
             </label>
@@ -1386,7 +1386,7 @@ function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) 
               value={outreach_status}
               onChange={(event) => onStatusChange(profile.id, event.target.value as SavedSpeakerProfile['outreach_status'])}
               disabled={isUpdating}
-              className="mt-2 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed"
+              className="mt-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed"
             >
               {Object.entries(STATUS_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -1415,32 +1415,32 @@ interface SpeakerInsightsPanelProps {
 
 function SpeakerInsightsPanel({ profiles, loading }: SpeakerInsightsPanelProps) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h3 className="text-lg font-semibold text-gray-900">Recent Speaker Activity</h3>
-      <p className="mt-2 text-sm text-gray-600">Latest additions and status changes from your saved speakers.</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h3 className="text-lg font-semibold text-slate-900">Recent Speaker Activity</h3>
+      <p className="mt-2 text-sm text-slate-600">Latest additions and status changes from your saved speakers.</p>
 
       {loading && profiles.length === 0 ? (
-        <div className="flex items-center justify-center py-12 text-gray-500">
+        <div className="flex items-center justify-center py-12 text-slate-500">
           <Loader2 className="mr-3 h-5 w-5 animate-spin" />
           Loading activity...
         </div>
       ) : profiles.length === 0 ? (
-        <p className="mt-4 text-sm text-gray-500">No recent activity yet. Save speakers to populate this feed.</p>
+        <p className="mt-4 text-sm text-slate-500">No recent activity yet. Save speakers to populate this feed.</p>
       ) : (
         <ul className="mt-4 space-y-3">
           {profiles.map((profile) => (
-            <li key={profile.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+            <li key={profile.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{profile.speaker_data.name}</p>
-                  <p className="text-xs text-gray-600">{STATUS_LABELS[profile.outreach_status]}</p>
+                  <p className="text-sm font-medium text-slate-900">{profile.speaker_data.name}</p>
+                  <p className="text-xs text-slate-600">{STATUS_LABELS[profile.outreach_status]}</p>
                 </div>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-slate-500">
                   {new Date(profile.saved_at).toLocaleDateString()}
                 </span>
               </div>
               {profile.enhanced_data.title && (
-                <p className="mt-1 text-xs text-gray-500">{profile.enhanced_data.title}</p>
+                <p className="mt-1 text-xs text-slate-500">{profile.enhanced_data.title}</p>
               )}
             </li>
           ))}
@@ -1459,11 +1459,11 @@ interface TrendHighlightsPanelProps {
 
 function TrendHighlightsPanel({ categories, events, loading, error }: TrendHighlightsPanelProps) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
     <div className="flex items-center justify-between">
       <div>
-        <h3 className="text-lg font-semibold text-gray-900">Trend Signals</h3>
-        <p className="mt-1 text-sm text-gray-600">Top categories and events influencing your outreach focus.</p>
+        <h3 className="text-lg font-semibold text-slate-900">Trend Signals</h3>
+        <p className="mt-1 text-sm text-slate-600">Top categories and events influencing your outreach focus.</p>
       </div>
       <TrendingUp className="h-5 w-5 text-blue-600" />
     </div>
@@ -1476,20 +1476,20 @@ function TrendHighlightsPanel({ categories, events, loading, error }: TrendHighl
     )}
 
     {loading && categories.length === 0 ? (
-      <div className="flex items-center justify-center py-12 text-gray-500">
+      <div className="flex items-center justify-center py-12 text-slate-500">
         <Loader2 className="mr-3 h-5 w-5 animate-spin" />
         Loading trends...
       </div>
     ) : categories.length === 0 ? (
-      <p className="mt-4 text-sm text-gray-500">Trend data will appear here once event engagement builds.</p>
+      <p className="mt-4 text-sm text-slate-500">Trend data will appear here once event engagement builds.</p>
     ) : (
       <div className="mt-4 space-y-4">
         {categories.slice(0, 3).map((category) => (
-          <div key={category.name} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+          <div key={category.name} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-900">{category.name}</p>
-                <p className="text-xs text-gray-500">{category.count} events</p>
+                <p className="text-sm font-medium text-slate-900">{category.name}</p>
+                <p className="text-xs text-slate-500">{category.count} events</p>
               </div>
               <span className={`text-xs font-medium ${category.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {category.growth >= 0 ? '+' : ''}{category.growth.toFixed(1)}%
@@ -1502,13 +1502,13 @@ function TrendHighlightsPanel({ categories, events, loading, error }: TrendHighl
 
     {events.length > 0 && (
       <div className="mt-6">
-        <h4 className="text-sm font-semibold text-gray-700">High-signal events</h4>
-        <ul className="mt-3 space-y-2 text-sm text-gray-600">
+        <h4 className="text-sm font-semibold text-slate-700">High-signal events</h4>
+        <ul className="mt-3 space-y-2 text-sm text-slate-600">
           {events.slice(0, 3).map((event) => (
             <li key={event.id || event.title} className="flex justify-between">
-              <span className="truncate pr-2 font-medium text-gray-800">{event.title}</span>
+              <span className="truncate pr-2 font-medium text-slate-800">{event.title}</span>
               {event.starts_at && (
-                <span className="text-xs text-gray-500">{new Date(event.starts_at).toLocaleDateString()}</span>
+                <span className="text-xs text-slate-500">{new Date(event.starts_at).toLocaleDateString()}</span>
               )}
             </li>
           ))}
@@ -1579,16 +1579,16 @@ function AccountIntelligencePanel({
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900">Account Intelligence</h2>
-          <p className="text-sm text-gray-600">Monitor strategic accounts, speaker activity, and event participation patterns.</p>
+          <h2 className="text-xl font-semibold text-slate-900">Account Intelligence</h2>
+          <p className="text-sm text-slate-600">Monitor strategic accounts, speaker activity, and event participation patterns.</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={() => onRefresh()}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             <RefreshCw className="h-4 w-4" /> Refresh
           </button>
@@ -1616,13 +1616,13 @@ function AccountIntelligencePanel({
               placeholder="Search accounts..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
             />
           </div>
           <select
             value={selectedIndustry}
             onChange={(event) => setSelectedIndustry(event.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
             <option value="all">All industries</option>
             {industries.map((industry) => (
@@ -1642,14 +1642,14 @@ function AccountIntelligencePanel({
       )}
 
       {loading && filteredAccounts.length === 0 ? (
-        <div className="flex items-center justify-center py-16 text-gray-500">
+        <div className="flex items-center justify-center py-16 text-slate-500">
           <Loader2 className="mr-3 h-5 w-5 animate-spin" />
           Loading accounts...
         </div>
       ) : filteredAccounts.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-12 text-center">
-          <h3 className="text-lg font-semibold text-gray-900">No accounts found</h3>
-          <p className="mt-2 text-sm text-gray-600">Add your first account to start tracking intelligence.</p>
+        <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-12 text-center">
+          <h3 className="text-lg font-semibold text-slate-900">No accounts found</h3>
+          <p className="mt-2 text-sm text-slate-600">Add your first account to start tracking intelligence.</p>
         </div>
       ) : (
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1683,11 +1683,11 @@ function StatCard({
   loading: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-          <div className="mt-2 text-xl font-semibold text-gray-900">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
+          <div className="mt-2 text-xl font-semibold text-slate-900">
             {loading ? <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> : value}
           </div>
         </div>
@@ -1701,11 +1701,11 @@ function StatCard({
 
 function AccountCard({ account, summary }: { account: Account; summary?: AccountSummary }) {
   return (
-    <div className="rounded-xl border border-gray-200 p-4 shadow-sm transition-shadow hover:shadow-md">
+    <div className="rounded-xl border border-slate-200 p-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">{account.company_name}</h3>
-          {account.domain && <p className="text-sm text-gray-500">{account.domain}</p>}
+          <h3 className="text-lg font-semibold text-slate-900">{account.company_name}</h3>
+          {account.domain && <p className="text-sm text-slate-500">{account.domain}</p>}
         </div>
         {summary && (
           <span className="rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
@@ -1714,29 +1714,29 @@ function AccountCard({ account, summary }: { account: Account; summary?: Account
         )}
       </div>
       {account.industry && (
-        <span className="mt-3 inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700">
+        <span className="mt-3 inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
           {account.industry}
         </span>
       )}
       {summary ? (
-        <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-gray-600">
+        <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-600">
           <div>
-            <p className="text-xs text-gray-500">Speakers</p>
-            <p className="font-medium text-gray-800">{summary.total_speakers}</p>
+            <p className="text-xs text-slate-500">Speakers</p>
+            <p className="font-medium text-slate-800">{summary.total_speakers}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Insights</p>
-            <p className="font-medium text-gray-800">{summary.total_intelligence_data}</p>
+            <p className="text-xs text-slate-500">Insights</p>
+            <p className="font-medium text-slate-800">{summary.total_intelligence_data}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-500">Last activity</p>
-            <p className="font-medium text-gray-800">
+            <p className="text-xs text-slate-500">Last activity</p>
+            <p className="font-medium text-slate-800">
               {summary.latest_activity ? new Date(summary.latest_activity).toLocaleDateString() : '—'}
             </p>
           </div>
         </div>
       ) : (
-        <p className="mt-4 text-sm text-gray-500">Intelligence data pending. Start tracking speakers to populate insights.</p>
+        <p className="mt-4 text-sm text-slate-500">Intelligence data pending. Start tracking speakers to populate insights.</p>
       )}
     </div>
   );
@@ -1772,41 +1772,41 @@ function AddAccountModal({ submitting, onClose, onSubmit }: AddAccountModalProps
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Add Strategic Account</h3>
-          <button onClick={onClose} className="rounded-full p-1 text-gray-500 hover:bg-gray-100">
+          <h3 className="text-lg font-semibold text-slate-900">Add Strategic Account</h3>
+          <button onClick={onClose} className="rounded-full p-1 text-slate-500 hover:bg-slate-100">
             ✕
           </button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-gray-700">Company name *</label>
+            <label className="text-sm font-medium text-slate-700">Company name *</label>
             <input
               name="company_name"
               value={formState.company_name}
               onChange={handleChange}
               required
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               placeholder="e.g. Contoso Ltd"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-sm font-medium text-gray-700">Domain</label>
+              <label className="text-sm font-medium text-slate-700">Domain</label>
               <input
                 name="domain"
                 value={formState.domain}
                 onChange={handleChange}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 placeholder="contoso.com"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700">Industry</label>
+              <label className="text-sm font-medium text-slate-700">Industry</label>
               <select
                 name="industry"
                 value={formState.industry}
                 onChange={handleChange}
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               >
                 <option value="">Select industry</option>
                 <option value="Technology">Technology</option>
@@ -1821,13 +1821,13 @@ function AddAccountModal({ submitting, onClose, onSubmit }: AddAccountModalProps
             </div>
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Description</label>
+            <label className="text-sm font-medium text-slate-700">Description</label>
             <textarea
               name="description"
               value={formState.description}
               onChange={handleChange}
               rows={3}
-              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
               placeholder="What makes this account strategic?"
             />
           </div>
@@ -1835,7 +1835,7 @@ function AddAccountModal({ submitting, onClose, onSubmit }: AddAccountModalProps
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
             >
               Cancel
             </button>

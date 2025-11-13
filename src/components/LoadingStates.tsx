@@ -15,22 +15,22 @@ const LoadingStates = memo(function LoadingStates() {
   return (
     <div className="space-y-6">
       {/* Skeleton Card */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
         <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
-          <div className="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
-          <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+          <div className="h-4 bg-slate-200 rounded w-3/4 mb-4"></div>
+          <div className="h-3 bg-slate-200 rounded w-1/2 mb-2"></div>
+          <div className="h-3 bg-slate-200 rounded w-2/3"></div>
         </div>
       </div>
 
       {/* Skeleton List */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
         <div className="animate-pulse">
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="flex items-center space-x-3">
-                <div className="h-4 bg-gray-200 rounded w-4"></div>
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-slate-200 rounded w-4"></div>
+                <div className="h-4 bg-slate-200 rounded w-3/4"></div>
               </div>
             ))}
           </div>
@@ -38,16 +38,16 @@ const LoadingStates = memo(function LoadingStates() {
       </div>
 
       {/* Skeleton Table */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="bg-white border border-slate-200 rounded-lg p-6">
         <div className="animate-pulse">
           <div className="space-y-3">
-            <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+            <div className="h-4 bg-slate-200 rounded w-1/4"></div>
             <div className="space-y-2">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="flex space-x-4">
-                  <div className="h-3 bg-gray-200 rounded w-1/4"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/3"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/5"></div>
+                  <div className="h-3 bg-slate-200 rounded w-1/4"></div>
+                  <div className="h-3 bg-slate-200 rounded w-1/3"></div>
+                  <div className="h-3 bg-slate-200 rounded w-1/5"></div>
                 </div>
               ))}
             </div>
@@ -63,11 +63,11 @@ const LoadingStates = memo(function LoadingStates() {
  */
 export const SkeletonCard = memo(function SkeletonCard() {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <div className="bg-white border border-slate-200 rounded-lg p-6">
       <div className="animate-pulse">
-        <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
-        <div className="h-3 bg-gray-200 rounded w-1/2 mb-2"></div>
-        <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+        <div className="h-4 bg-slate-200 rounded w-3/4 mb-4"></div>
+        <div className="h-3 bg-slate-200 rounded w-1/2 mb-2"></div>
+        <div className="h-3 bg-slate-200 rounded w-2/3"></div>
       </div>
     </div>
   );
@@ -78,13 +78,13 @@ export const SkeletonCard = memo(function SkeletonCard() {
  */
 export const SkeletonList = memo(function SkeletonList({ items = 5 }: { items?: number }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <div className="bg-white border border-slate-200 rounded-lg p-6">
       <div className="animate-pulse">
         <div className="space-y-3">
           {[...Array(items)].map((_, i) => (
             <div key={i} className="flex items-center space-x-3">
-              <div className="h-4 bg-gray-200 rounded w-4"></div>
-              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              <div className="h-4 bg-slate-200 rounded w-4"></div>
+              <div className="h-4 bg-slate-200 rounded w-3/4"></div>
             </div>
           ))}
         </div>
@@ -98,15 +98,15 @@ export const SkeletonList = memo(function SkeletonList({ items = 5 }: { items?: 
  */
 export const SkeletonTable = memo(function SkeletonTable({ rows = 3, cols = 3 }: { rows?: number; cols?: number }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <div className="bg-white border border-slate-200 rounded-lg p-6">
       <div className="animate-pulse">
         <div className="space-y-3">
-          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          <div className="h-4 bg-slate-200 rounded w-1/4"></div>
           <div className="space-y-2">
             {[...Array(rows)].map((_, i) => (
               <div key={i} className="flex space-x-4">
                 {[...Array(cols)].map((_, j) => (
-                  <div key={j} className="h-3 bg-gray-200 rounded w-1/4"></div>
+                  <div key={j} className="h-3 bg-slate-200 rounded w-1/4"></div>
                 ))}
               </div>
             ))}
@@ -123,7 +123,7 @@ export const SkeletonTable = memo(function SkeletonTable({ rows = 3, cols = 3 }:
 export const SkeletonButton = memo(function SkeletonButton() {
   return (
     <div className="animate-pulse">
-      <div className="h-10 bg-gray-200 rounded w-24"></div>
+      <div className="h-10 bg-slate-200 rounded w-24"></div>
     </div>
   );
 });
@@ -134,7 +134,7 @@ export const SkeletonButton = memo(function SkeletonButton() {
 export const SkeletonInput = memo(function SkeletonInput() {
   return (
     <div className="animate-pulse">
-      <div className="h-10 bg-gray-200 rounded w-full"></div>
+      <div className="h-10 bg-slate-200 rounded w-full"></div>
     </div>
   );
 });
@@ -145,7 +145,7 @@ export const SkeletonInput = memo(function SkeletonInput() {
 export const SkeletonAvatar = memo(function SkeletonAvatar() {
   return (
     <div className="animate-pulse">
-      <div className="h-10 w-10 bg-gray-200 rounded-full"></div>
+      <div className="h-10 w-10 bg-slate-200 rounded-full"></div>
     </div>
   );
 });
@@ -158,7 +158,7 @@ export const SkeletonText = memo(function SkeletonText({ lines = 3 }: { lines?: 
     <div className="animate-pulse">
       <div className="space-y-2">
         {[...Array(lines)].map((_, i) => (
-          <div key={i} className="h-3 bg-gray-200 rounded w-full"></div>
+          <div key={i} className="h-3 bg-slate-200 rounded w-full"></div>
         ))}
       </div>
     </div>
@@ -198,7 +198,7 @@ export const LoadingDots = memo(function LoadingDots() {
  */
 export const LoadingBar = memo(function LoadingBar({ progress = 0 }: { progress?: number }) {
   return (
-    <div className="w-full bg-gray-200 rounded-full h-2">
+    <div className="w-full bg-slate-200 rounded-full h-2">
       <div 
         className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
         style={{ width: `${progress}%` }}
@@ -210,12 +210,20 @@ export const LoadingBar = memo(function LoadingBar({ progress = 0 }: { progress?
 /**
  * Loading Overlay Component
  */
-export const LoadingOverlay = memo(function LoadingOverlay({ message = 'Loading...' }: { message?: string }) {
+export const LoadingOverlay = memo(function LoadingOverlay({ message, context }: { message?: string; context?: 'search' | 'save' | 'fetch' | 'load' | 'default' }) {
+  const contextMessages = {
+    search: 'Searching...',
+    save: 'Saving...',
+    fetch: 'Fetching...',
+    load: 'Loading...',
+    default: 'Loading...'
+  };
+  const displayMessage = message || contextMessages[context || 'default'];
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 flex items-center space-x-3">
         <LoadingSpinner />
-        <span className="text-gray-700">{message}</span>
+        <span className="text-slate-700">{displayMessage}</span>
       </div>
     </div>
   );

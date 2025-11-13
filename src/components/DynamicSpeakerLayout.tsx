@@ -85,8 +85,8 @@ export default function DynamicSpeakerLayout({ speakers, sessionTitle }: Dynamic
           <div className="w-80 flex-shrink-0">
             <div className="sticky top-6">
               {/* List Header */}
-              <div className="mb-4 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div className="mb-4 p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
                   <Users size={16} />
                   <span>All Speakers ({listSpeakers.length + 1})</span>
                 </div>
@@ -97,30 +97,30 @@ export default function DynamicSpeakerLayout({ speakers, sessionTitle }: Dynamic
                 {listSpeakers.map((speaker, listIndex) => {
                   const originalIndex = speakers.findIndex(s => s.name === speaker.name);
                   return (
-                    <div key={originalIndex} className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200 group">
+                    <div key={originalIndex} className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200 group">
                       <div 
                         onClick={() => handleListCardClick(originalIndex)}
                         className="flex items-center justify-between cursor-pointer"
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                          <div className="font-medium text-sm text-slate-900 dark:text-white truncate">
                             {speaker.name}
                           </div>
-                          <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                          <div className="text-xs text-slate-600 dark:text-slate-400 truncate">
                             {speaker.title || 'Title not provided'}
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-500 truncate">
+                          <div className="text-xs text-slate-500 dark:text-slate-500 truncate">
                             {speaker.org || 'Organization not provided'}
                           </div>
                         </div>
                         <ChevronRight 
                           size={16} 
-                          className="text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex-shrink-0 ml-2" 
+                          className="text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex-shrink-0 ml-2" 
                         />
                       </div>
                       
                       {/* Quick LinkedIn Search */}
-                      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                      <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                         <a
                           href={`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(speaker.name + (speaker.org ? ` ${speaker.org}` : ''))}`}
                           target="_blank"

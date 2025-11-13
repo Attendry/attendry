@@ -106,7 +106,7 @@ export const InsightsModule = () => {
       case 'trend': return 'text-purple-500';
       case 'alert': return 'text-orange-500';
       case 'preference': return 'text-yellow-500';
-      default: return 'text-gray-500';
+      default: return 'text-slate-500';
     }
   };
 
@@ -115,7 +115,7 @@ export const InsightsModule = () => {
       case 'high': return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
       case 'medium': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
       case 'low': return 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
+      default: return 'bg-slate-100 text-slate-800 dark:bg-slate-900/20 dark:text-slate-400';
     }
   };
 
@@ -143,12 +143,12 @@ export const InsightsModule = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className={`text-2xl font-bold ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
+              theme === 'dark' ? 'text-white' : 'text-slate-900'
             }`}>
               Insights
             </h2>
             <p className={`text-sm ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
             }`}>
               AI-powered analytics and suggestions
             </p>
@@ -177,10 +177,10 @@ export const InsightsModule = () => {
           transition={{ delay: 0.1 }}
           className={`p-4 rounded-lg border ${
             theme === 'dark'
-              ? 'bg-gray-800 border-gray-700'
+              ? 'bg-slate-800 border-slate-700'
               : theme === 'high-contrast'
-              ? 'bg-gray-900 border-gray-600'
-              : 'bg-white border-gray-200'
+              ? 'bg-slate-900 border-slate-600'
+              : 'bg-white border-slate-200'
           }`}
         >
           <div className="flex items-center space-x-3">
@@ -189,12 +189,12 @@ export const InsightsModule = () => {
             </div>
             <div>
               <p className={`text-sm ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 Events Saved
               </p>
               <p className={`text-2xl font-bold ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 {stats.eventsSaved}
               </p>
@@ -208,10 +208,10 @@ export const InsightsModule = () => {
           transition={{ delay: 0.2 }}
           className={`p-4 rounded-lg border ${
             theme === 'dark'
-              ? 'bg-gray-800 border-gray-700'
+              ? 'bg-slate-800 border-slate-700'
               : theme === 'high-contrast'
-              ? 'bg-gray-900 border-gray-600'
-              : 'bg-white border-gray-200'
+              ? 'bg-slate-900 border-slate-600'
+              : 'bg-white border-slate-200'
           }`}
         >
           <div className="flex items-center space-x-3">
@@ -220,12 +220,12 @@ export const InsightsModule = () => {
             </div>
             <div>
               <p className={`text-sm ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 Discovery Rate
               </p>
               <p className={`text-2xl font-bold ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 {stats.discoveryRate}%
               </p>
@@ -239,10 +239,10 @@ export const InsightsModule = () => {
           transition={{ delay: 0.3 }}
           className={`p-4 rounded-lg border ${
             theme === 'dark'
-              ? 'bg-gray-800 border-gray-700'
+              ? 'bg-slate-800 border-slate-700'
               : theme === 'high-contrast'
-              ? 'bg-gray-900 border-gray-600'
-              : 'bg-white border-gray-200'
+              ? 'bg-slate-900 border-slate-600'
+              : 'bg-white border-slate-200'
           }`}
         >
           <div className="flex items-center space-x-3">
@@ -251,12 +251,12 @@ export const InsightsModule = () => {
             </div>
             <div>
               <p className={`text-sm ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 Events Clicked
               </p>
               <p className={`text-2xl font-bold ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 {stats.eventsClicked}
               </p>
@@ -270,10 +270,10 @@ export const InsightsModule = () => {
           transition={{ delay: 0.4 }}
           className={`p-4 rounded-lg border ${
             theme === 'dark'
-              ? 'bg-gray-800 border-gray-700'
+              ? 'bg-slate-800 border-slate-700'
               : theme === 'high-contrast'
-              ? 'bg-gray-900 border-gray-600'
-              : 'bg-white border-gray-200'
+              ? 'bg-slate-900 border-slate-600'
+              : 'bg-white border-slate-200'
           }`}
         >
           <div className="flex items-center space-x-3">
@@ -282,12 +282,12 @@ export const InsightsModule = () => {
             </div>
             <div>
               <p className={`text-sm ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 Total Searches
               </p>
               <p className={`text-2xl font-bold ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 {stats.totalSearches}
               </p>
@@ -311,10 +311,10 @@ export const InsightsModule = () => {
                     ? 'bg-blue-500 text-white'
                     : 'bg-blue-100 text-blue-700'
                   : theme === 'dark'
-                  ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                   : theme === 'high-contrast'
-                  ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               {category === 'all' ? 'All Insights' : category}
@@ -337,15 +337,15 @@ export const InsightsModule = () => {
                 transition={{ delay: index * 0.1 }}
                 className={`p-6 rounded-lg border transition-all duration-200 ${
                   theme === 'dark'
-                    ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
+                    ? 'bg-slate-800 border-slate-700 hover:bg-slate-750'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-900 border-gray-600 hover:bg-gray-800'
-                    : 'bg-white border-gray-200 hover:bg-gray-50'
+                    ? 'bg-slate-900 border-slate-600 hover:bg-slate-800'
+                    : 'bg-white border-slate-200 hover:bg-slate-50'
                 }`}
               >
                 <div className="flex items-start space-x-4">
                   <div className={`p-3 rounded-lg ${
-                    theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
+                    theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'
                   }`}>
                     <Icon className={`w-6 h-6 ${getInsightColor(insight.type)}`} />
                   </div>
@@ -353,7 +353,7 @@ export const InsightsModule = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-2">
                       <h3 className={`font-semibold ${
-                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        theme === 'dark' ? 'text-white' : 'text-slate-900'
                       }`}>
                         {insight.title}
                       </h3>
@@ -363,7 +363,7 @@ export const InsightsModule = () => {
                     </div>
                     
                     <p className={`text-sm mb-3 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                     }`}>
                       {insight.description}
                     </p>
@@ -371,8 +371,8 @@ export const InsightsModule = () => {
                     <div className="flex items-center justify-between">
                       <span className={`text-xs px-2 py-1 rounded-full ${
                         theme === 'dark'
-                          ? 'bg-gray-700 text-gray-300'
-                          : 'bg-gray-100 text-gray-600'
+                          ? 'bg-slate-700 text-slate-300'
+                          : 'bg-slate-100 text-slate-600'
                       }`}>
                         {insight.category}
                       </span>

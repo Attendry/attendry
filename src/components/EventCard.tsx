@@ -280,7 +280,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
     : null;
 
   return (
-    <div className={`group bg-white rounded-2xl border p-6 shadow-sm hover:shadow-md transition-all duration-200 ${dateRangeStyles}`}>
+    <div className={`group bg-white rounded-lg border p-6 shadow-sm hover:shadow-lg transition-all duration-200 ${dateRangeStyles}`}>
       {/* Date Range Extension Badge & Watchlist Match Badge */}
       {(dateRangeBadge || watchlistMatch?.hasMatch) && (
         <div className="mb-3 flex items-center gap-2 flex-wrap">
@@ -340,7 +340,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         </div>
       )}
 
-      <div className="flex items-start justify-between gap-4 mb-4">
+      <div className="flex items-start justify-between gap-4 mb-3">
         <div className="flex-1 min-w-0">
           <a 
             href={ev.source_url} 
@@ -371,7 +371,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
             onClick={toggleOpen}
             className="text-sm font-medium rounded-lg px-3 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-200"
           >
-            {open ? "Hide speakers" : "View speakers"}
+            {open ? "Collapse" : "Speakers"}
           </button>
           <button
             onClick={toggleSave}
@@ -444,7 +444,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         {/* Enhanced Speaker Summary */}
         {(speakers && speakers.length > 0 ? speakers : ev.speakers) && (speakers && speakers.length > 0 ? speakers : ev.speakers)!.length > 0 && (
           <div>
-            <div className="text-sm font-medium text-slate-700 mb-2">🎤 Speakers ({speakers && speakers.length > 0 ? speakers.length : ev.speakers!.length}):</div>
+            <div className="text-sm font-medium text-slate-700 mb-2">Speakers ({speakers && speakers.length > 0 ? speakers.length : ev.speakers!.length}):</div>
             <div className="space-y-1">
               {(speakers && speakers.length > 0 ? speakers : ev.speakers)!.slice(0, 3).map((speaker: any, idx: number) => (
                 <div key={idx} className="text-sm text-slate-600">
@@ -468,7 +468,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
             <div className="text-sm font-medium text-slate-700 mb-1">Sponsors ({ev.sponsors.length}):</div>
             <div className="flex flex-wrap gap-1">
               {ev.sponsors.slice(0, 4).map((sponsor, idx) => (
-                <span key={idx} className="text-xs font-medium rounded-full bg-green-100 text-green-800 px-2 py-1">
+                <span key={idx} className="text-xs font-medium rounded-md bg-slate-100 text-slate-700 px-2 py-0.5">
                   {typeof sponsor === 'string' ? sponsor : sponsor?.name || sponsor?.tier || 'Sponsor'}
                 </span>
               ))}
@@ -487,7 +487,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
             <div className="text-sm font-medium text-slate-700 mb-1">Participating Organizations ({ev.participating_organizations.length}):</div>
             <div className="flex flex-wrap gap-1">
               {ev.participating_organizations.slice(0, 4).map((org: string, idx: number) => (
-                <span key={idx} className="text-xs font-medium rounded-full bg-blue-100 text-blue-800 px-2 py-1">
+                <span key={idx} className="text-xs font-medium rounded-md bg-slate-100 text-slate-700 px-2 py-0.5">
                   {org}
                 </span>
               ))}
@@ -507,7 +507,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
             <div className="text-sm font-medium text-slate-700 mb-1">Partners:</div>
             <div className="flex flex-wrap gap-2">
               {ev.partners.slice(0, 4).map((partner: string, idx: number) => (
-                <span key={idx} className="text-xs font-medium rounded-full bg-purple-100 text-purple-800 px-2 py-1">
+                <span key={idx} className="text-xs font-medium rounded-md bg-slate-100 text-slate-700 px-2 py-0.5">
                   {partner}
                 </span>
               ))}
@@ -526,7 +526,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
             <div className="text-sm font-medium text-slate-700 mb-1">Industry Competitors:</div>
             <div className="flex flex-wrap gap-2">
               {ev.competitors.slice(0, 4).map((competitor: string, idx: number) => (
-                <span key={idx} className="text-xs font-medium rounded-full bg-red-100 text-red-800 px-2 py-1">
+                <span key={idx} className="text-xs font-medium rounded-md bg-slate-100 text-slate-700 px-2 py-0.5">
                   {competitor}
                 </span>
               ))}
@@ -541,9 +541,9 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       </div>
       
       {!!(ev.topics?.length) && (
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="flex flex-wrap gap-2 mb-3">
           {ev.topics.slice(0, 6).map((t: string) => (
-            <span key={t} className="text-xs font-medium rounded-full bg-blue-50 text-blue-700 px-3 py-1">
+            <span key={t} className="text-xs font-medium rounded-md bg-slate-100 text-slate-700 px-2 py-0.5">
               {t}
             </span>
           ))}
@@ -556,8 +556,8 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       )}
 
       {open && (
-        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div className="flex items-center justify-between mb-4">
+        <div className="mt-6 border-t border-slate-200 pt-4">
+          <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />

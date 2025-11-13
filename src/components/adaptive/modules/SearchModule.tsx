@@ -133,12 +133,12 @@ const SearchModule = memo(() => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className={`text-2xl font-bold ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
+              theme === 'dark' ? 'text-white' : 'text-slate-900'
             }`}>
               Event Search
             </h2>
             <p className={`text-sm ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
             }`}>
               Find conferences, meetups, and networking opportunities
             </p>
@@ -159,16 +159,16 @@ const SearchModule = memo(() => {
       {/* Search Form */}
       <div className={`p-6 rounded-lg border mb-6 ${
         theme === 'dark'
-          ? 'bg-gray-800 border-gray-700'
+          ? 'bg-slate-800 border-slate-700'
           : theme === 'high-contrast'
-          ? 'bg-gray-900 border-gray-600'
-          : 'bg-white border-gray-200'
+          ? 'bg-slate-900 border-slate-600'
+          : 'bg-white border-slate-200'
       }`}>
         <div className="space-y-4">
           {/* Keywords */}
           <div>
             <label className={`block text-sm font-medium mb-2 ${
-              theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+              theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
             }`}>
               Search Keywords
             </label>
@@ -176,20 +176,20 @@ const SearchModule = memo(() => {
               <Search 
                 size={20} 
                 className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                  theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                 }`} 
               />
               <input
                 type="text"
                 value={filters.keywords}
                 onChange={(e) => setFilters(prev => ({ ...prev, keywords: e.target.value }))}
-                placeholder="e.g. compliance, legal tech, fintech conference"
+                placeholder="compliance, legal tech..."
                 className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors ${
                   theme === 'dark'
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
+                    ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-400'
-                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                    ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-400'
+                    : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500'
                 }`}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
               />
@@ -200,7 +200,7 @@ const SearchModule = memo(() => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className={`block text-sm font-medium mb-2 ${
-                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
               }`}>
                 Location
               </label>
@@ -208,7 +208,7 @@ const SearchModule = memo(() => {
                 <MapPin 
                   size={16} 
                   className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
-                    theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                    theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                   }`} 
                 />
                 <select
@@ -216,10 +216,10 @@ const SearchModule = memo(() => {
                   onChange={(e) => setFilters(prev => ({ ...prev, location: e.target.value }))}
                   className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors ${
                     theme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
+                      ? 'bg-slate-700 border-slate-600 text-white focus:border-blue-500'
                       : theme === 'high-contrast'
-                      ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400'
-                      : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                      ? 'bg-slate-800 border-slate-600 text-white focus:border-blue-400'
+                      : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
                   }`}
                 >
                   {EU_COUNTRIES.map((country) => (
@@ -233,7 +233,7 @@ const SearchModule = memo(() => {
 
             <div>
               <label className={`block text-sm font-medium mb-2 ${
-                theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
               }`}>
                 Time Range
               </label>
@@ -241,7 +241,7 @@ const SearchModule = memo(() => {
                 <Calendar 
                   size={16} 
                   className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
-                    theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                    theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                   }`} 
                 />
                 <select
@@ -249,10 +249,10 @@ const SearchModule = memo(() => {
                   onChange={(e) => setFilters(prev => ({ ...prev, dateRange: e.target.value as any }))}
                   className={`w-full pl-10 pr-4 py-3 rounded-lg border transition-colors ${
                     theme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
+                      ? 'bg-slate-700 border-slate-600 text-white focus:border-blue-500'
                       : theme === 'high-contrast'
-                      ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400'
-                      : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                      ? 'bg-slate-800 border-slate-600 text-white focus:border-blue-400'
+                      : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
                   }`}
                 >
                   <option value="next7">Next 7 days</option>
@@ -286,7 +286,7 @@ const SearchModule = memo(() => {
             >
               <div>
                 <label className={`block text-sm font-medium mb-2 ${
-                  theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                  theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                 }`}>
                   Industry Focus
                 </label>
@@ -295,10 +295,10 @@ const SearchModule = memo(() => {
                   onChange={(e) => setFilters(prev => ({ ...prev, industry: e.target.value }))}
                   className={`w-full px-4 py-3 rounded-lg border transition-colors ${
                     theme === 'dark'
-                      ? 'bg-gray-700 border-gray-600 text-white focus:border-blue-500'
+                      ? 'bg-slate-700 border-slate-600 text-white focus:border-blue-500'
                       : theme === 'high-contrast'
-                      ? 'bg-gray-800 border-gray-600 text-white focus:border-blue-400'
-                      : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'
+                      ? 'bg-slate-800 border-slate-600 text-white focus:border-blue-400'
+                      : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
                   }`}
                 >
                   <option value="">All Industries</option>
@@ -347,12 +347,12 @@ const SearchModule = memo(() => {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className={`text-lg font-semibold ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 Found {searchResults.length} Events
               </h3>
               <div className={`text-sm ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 <Clock size={16} className="inline mr-1" />
                 {new Date().toLocaleTimeString()}
@@ -369,16 +369,16 @@ const SearchModule = memo(() => {
                   onClick={handleEventClick}
                   className={`p-4 rounded-lg border cursor-pointer transition-all duration-200 ${
                     theme === 'dark'
-                      ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
+                      ? 'bg-slate-800 border-slate-700 hover:bg-slate-750'
                       : theme === 'high-contrast'
-                      ? 'bg-gray-900 border-gray-600 hover:bg-gray-800'
-                      : 'bg-white border-gray-200 hover:bg-gray-50'
+                      ? 'bg-slate-900 border-slate-600 hover:bg-slate-800'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <h4 className={`font-medium mb-2 line-clamp-2 ${
-                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        theme === 'dark' ? 'text-white' : 'text-slate-900'
                       }`}>
                         {event.title || 'Untitled Event'}
                       </h4>
@@ -386,7 +386,7 @@ const SearchModule = memo(() => {
                       <div className="flex items-center space-x-4 text-sm">
                         {event.starts_at && (
                           <div className={`flex items-center space-x-1 ${
-                            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                            theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                           }`}>
                             <Calendar size={14} />
                             <span>{new Date(event.starts_at).toLocaleDateString()}</span>
@@ -395,7 +395,7 @@ const SearchModule = memo(() => {
                         
                         {(event.city || event.country) && (
                           <div className={`flex items-center space-x-1 ${
-                            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                            theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                           }`}>
                             <MapPin size={14} />
                             <span>{[event.city, event.country].filter(Boolean).join(', ')}</span>
@@ -408,8 +408,8 @@ const SearchModule = memo(() => {
                       <button
                         className={`p-2 rounded-lg transition-colors ${
                           theme === 'dark'
-                            ? 'hover:bg-gray-700 text-gray-400'
-                            : 'hover:bg-gray-100 text-gray-500'
+                            ? 'hover:bg-slate-700 text-slate-400'
+                            : 'hover:bg-slate-100 text-slate-500'
                         }`}
                       >
                         <Star size={16} />
@@ -439,20 +439,20 @@ const SearchModule = memo(() => {
         {!isSearching && searchResults.length === 0 && (
           <div className="text-center py-12">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
-              theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'
+              theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'
             }`}>
               <Search 
                 size={32} 
-                className={theme === 'dark' ? 'text-gray-400' : 'text-gray-500'} 
+                className={theme === 'dark' ? 'text-slate-400' : 'text-slate-500'} 
               />
             </div>
             <h3 className={`text-lg font-medium mb-2 ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
+              theme === 'dark' ? 'text-white' : 'text-slate-900'
             }`}>
               Ready to discover events?
             </h3>
             <p className={`text-sm ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
             }`}>
               Use the search form above to find conferences, meetups, and networking opportunities.
             </p>

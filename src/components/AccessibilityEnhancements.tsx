@@ -121,112 +121,112 @@ const AccessibilityEnhancements = memo(function AccessibilityEnhancements() {
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Accessibility Settings</h1>
-        <p className="text-gray-600">Customize your experience to make the application more accessible</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Accessibility Settings</h1>
+        <p className="text-slate-600">Customize your experience to make the application more accessible</p>
       </div>
 
       <div className="space-y-6">
         {/* Visual Enhancements */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Visual Enhancements</h2>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Visual Enhancements</h2>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">High Contrast Mode</label>
-                <p className="text-sm text-gray-500">Increase contrast for better visibility</p>
+                <label className="text-sm font-medium text-slate-700">High Contrast Mode</label>
+                <p className="text-sm text-slate-500">Increase contrast for better visibility</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.highContrast}
                 onChange={(e) => handleSettingChange('highContrast', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Large Text</label>
-                <p className="text-sm text-gray-500">Increase text size for better readability</p>
+                <label className="text-sm font-medium text-slate-700">Large Text</label>
+                <p className="text-sm text-slate-500">Increase text size for better readability</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.largeText}
                 onChange={(e) => handleSettingChange('largeText', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Focus Indicators</label>
-                <p className="text-sm text-gray-500">Show clear focus indicators for keyboard navigation</p>
+                <label className="text-sm font-medium text-slate-700">Focus Indicators</label>
+                <p className="text-sm text-slate-500">Show clear focus indicators for keyboard navigation</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.focusIndicators}
                 onChange={(e) => handleSettingChange('focusIndicators', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
           </div>
         </div>
 
         {/* Motion and Animation */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Motion and Animation</h2>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Motion and Animation</h2>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Reduce Motion</label>
-                <p className="text-sm text-gray-500">Minimize animations and transitions</p>
+                <label className="text-sm font-medium text-slate-700">Reduce Motion</label>
+                <p className="text-sm text-slate-500">Minimize animations and transitions</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.reducedMotion}
                 onChange={(e) => handleSettingChange('reducedMotion', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Navigation</h2>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Navigation</h2>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Enhanced Keyboard Navigation</label>
-                <p className="text-sm text-gray-500">Improve keyboard navigation experience</p>
+                <label className="text-sm font-medium text-slate-700">Enhanced Keyboard Navigation</label>
+                <p className="text-sm text-slate-500">Improve keyboard navigation experience</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.keyboardNavigation}
                 onChange={(e) => handleSettingChange('keyboardNavigation', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
           </div>
         </div>
 
         {/* Screen Reader */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Screen Reader</h2>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Screen Reader</h2>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Screen Reader Optimizations</label>
-                <p className="text-sm text-gray-500">Optimize content for screen readers</p>
+                <label className="text-sm font-medium text-slate-700">Screen Reader Optimizations</label>
+                <p className="text-sm text-slate-500">Optimize content for screen readers</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.screenReader}
                 onChange={(e) => handleSettingChange('screenReader', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -236,7 +236,7 @@ const AccessibilityEnhancements = memo(function AccessibilityEnhancements() {
         <div className="flex justify-end space-x-4">
           <button
             onClick={resetToDefaults}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors"
           >
             Reset to Defaults
           </button>

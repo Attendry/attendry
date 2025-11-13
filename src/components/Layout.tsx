@@ -31,14 +31,14 @@ export function Layout({ children }: LayoutProps) {
   // Bypass app chrome for design preview routes
   if (pathname.startsWith("/designs")) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         {children}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <SkipLinks />
       
       <div className="flex">

@@ -34,10 +34,10 @@ const MainContent = memo(() => {
   return (
     <main className={`flex-1 overflow-hidden transition-colors duration-300 ${
       theme === 'dark' 
-        ? 'bg-gray-900' 
+        ? 'bg-slate-900' 
         : theme === 'high-contrast'
         ? 'bg-black'
-        : 'bg-gray-50'
+        : 'bg-slate-50'
     }`}>
       <div className="h-full p-6">
         <AnimatePresence mode="wait">

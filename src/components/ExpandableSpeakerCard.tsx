@@ -228,10 +228,10 @@ export default function ExpandableSpeakerCard({
 
   return (
     <div className={`
-      relative rounded-xl border bg-white dark:bg-gray-800 shadow-sm transition-all duration-500 ease-in-out
+      relative rounded-xl border bg-white dark:bg-slate-800 shadow-sm transition-all duration-500 ease-in-out
       ${expanded 
         ? 'col-span-2 row-span-2 shadow-lg border-blue-200 dark:border-blue-700' 
-        : 'hover:shadow-md hover:border-gray-300 dark:hover:border-gray-600'
+        : 'hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600'
       }
     `}>
       <SpeakerDataDebugger speaker={speaker} label="ExpandableSpeakerCard Data" />
@@ -242,7 +242,7 @@ export default function ExpandableSpeakerCard({
           absolute top-4 right-4 p-2 rounded-full transition-all duration-300 ease-in-out
           ${expanded 
             ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-900/50' 
-            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 hover:text-gray-700 dark:hover:text-gray-300'
+            : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-300'
           }
           group
         `}
@@ -448,7 +448,7 @@ export default function ExpandableSpeakerCard({
           <button
             onClick={saveToWatchlist}
             disabled={busy}
-            className="text-xs rounded-full border border-slate-300 dark:border-slate-600 px-3 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 text-slate-700 dark:text-slate-300 transition-colors duration-200"
+            className="text-xs rounded-full border border-slate-300 dark:border-slate-600 px-3 py-1 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 text-slate-700 dark:text-slate-300 transition-colors duration-200"
           >
             {busy ? "Saving…" : "Save to Watchlist"}
           </button>
@@ -459,7 +459,7 @@ export default function ExpandableSpeakerCard({
             className={`text-xs rounded-full border px-3 py-1 disabled:opacity-50 transition-colors duration-200 ${
               profileSaved 
                 ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300" 
-                : "border-slate-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-slate-700 dark:text-slate-300"
+                : "border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
             }`}
           >
             {savingProfile ? "Saving…" : profileSaved ? "Saved ✓" : "Save Profile"}

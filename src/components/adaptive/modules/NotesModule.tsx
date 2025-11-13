@@ -102,12 +102,12 @@ export const NotesModule = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className={`text-2xl font-bold ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 Notes
               </h2>
               <p className={`text-sm ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 {notes.length} notes
               </p>
@@ -135,7 +135,7 @@ export const NotesModule = () => {
             <Search 
               size={20} 
               className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
               }`} 
             />
             <input
@@ -145,10 +145,10 @@ export const NotesModule = () => {
               placeholder="Search notes..."
               className={`w-full pl-10 pr-4 py-2 rounded-lg border transition-colors ${
                 theme === 'dark'
-                  ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:border-blue-500'
+                  ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-400 focus:border-blue-500'
                   : theme === 'high-contrast'
-                  ? 'bg-gray-900 border-gray-600 text-white placeholder-gray-400 focus:border-blue-400'
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                  ? 'bg-slate-900 border-slate-600 text-white placeholder-slate-400 focus:border-blue-400'
+                  : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500'
               }`}
             />
           </div>
@@ -181,19 +181,19 @@ export const NotesModule = () => {
                     ? 'bg-blue-900/30 border-blue-400'
                     : 'bg-blue-50 border-blue-500'
                   : theme === 'dark'
-                  ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
+                  ? 'bg-slate-800 border-slate-700 hover:bg-slate-750'
                   : theme === 'high-contrast'
-                  ? 'bg-gray-900 border-gray-600 hover:bg-gray-800'
-                  : 'bg-white border-gray-200 hover:bg-gray-50'
+                  ? 'bg-slate-900 border-slate-600 hover:bg-slate-800'
+                  : 'bg-white border-slate-200 hover:bg-slate-50'
               }`}
             >
               <h3 className={`font-medium mb-2 ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 {note.title}
               </h3>
               <p className={`text-sm mb-3 line-clamp-2 ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
               }`}>
                 {note.content}
               </p>
@@ -204,8 +204,8 @@ export const NotesModule = () => {
                       key={tag}
                       className={`px-2 py-1 text-xs rounded-full ${
                         theme === 'dark'
-                          ? 'bg-gray-700 text-gray-300'
-                          : 'bg-gray-200 text-gray-600'
+                          ? 'bg-slate-700 text-slate-300'
+                          : 'bg-slate-200 text-slate-600'
                       }`}
                     >
                       {tag}
@@ -213,14 +213,14 @@ export const NotesModule = () => {
                   ))}
                   {note.tags.length > 2 && (
                     <span className={`text-xs ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                     }`}>
                       +{note.tags.length - 2}
                     </span>
                   )}
                 </div>
                 <span className={`text-xs ${
-                  theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+                  theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
                 }`}>
                   {formatDate(note.createdAt)}
                 </span>
@@ -231,7 +231,7 @@ export const NotesModule = () => {
       </div>
 
       {/* Note Detail */}
-      <div className="flex-1 pl-6 border-l border-gray-200 dark:border-gray-700">
+      <div className="flex-1 pl-6 border-l border-slate-200 dark:border-slate-700">
         {selectedNote ? (
           <motion.div
             initial={{ opacity: 0, x: 20 }}
@@ -242,7 +242,7 @@ export const NotesModule = () => {
             <div className="mb-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className={`text-xl font-bold ${
-                  theme === 'dark' ? 'text-white' : 'text-gray-900'
+                  theme === 'dark' ? 'text-white' : 'text-slate-900'
                 }`}>
                   {selectedNote.title}
                 </h3>
@@ -250,8 +250,8 @@ export const NotesModule = () => {
                   <button
                     className={`p-2 rounded-lg transition-colors ${
                       theme === 'dark'
-                        ? 'hover:bg-gray-700 text-gray-300'
-                        : 'hover:bg-gray-100 text-gray-600'
+                        ? 'hover:bg-slate-700 text-slate-300'
+                        : 'hover:bg-slate-100 text-slate-600'
                     }`}
                   >
                     <Edit3 size={16} />
@@ -259,8 +259,8 @@ export const NotesModule = () => {
                   <button
                     className={`p-2 rounded-lg transition-colors ${
                       theme === 'dark'
-                        ? 'hover:bg-gray-700 text-gray-300'
-                        : 'hover:bg-gray-100 text-gray-600'
+                        ? 'hover:bg-slate-700 text-slate-300'
+                        : 'hover:bg-slate-100 text-slate-600'
                     }`}
                   >
                     <Trash2 size={16} />
@@ -270,13 +270,13 @@ export const NotesModule = () => {
               
               <div className="flex items-center space-x-4 text-sm">
                 <span className={`flex items-center space-x-1 ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                  theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                 }`}>
                   <Calendar size={14} />
                   <span>Created {formatDate(selectedNote.createdAt)}</span>
                 </span>
                 <span className={`flex items-center space-x-1 ${
-                  theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                  theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
                 }`}>
                   <Tag size={14} />
                   <span>{selectedNote.tags.length} tags</span>
@@ -288,13 +288,13 @@ export const NotesModule = () => {
             <div className="flex-1">
               <div className={`p-6 rounded-lg border ${
                 theme === 'dark'
-                  ? 'bg-gray-800 border-gray-700'
+                  ? 'bg-slate-800 border-slate-700'
                   : theme === 'high-contrast'
-                  ? 'bg-gray-900 border-gray-600'
-                  : 'bg-white border-gray-200'
+                  ? 'bg-slate-900 border-slate-600'
+                  : 'bg-white border-slate-200'
               }`}>
                 <p className={`whitespace-pre-wrap ${
-                  theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                  theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                 }`}>
                   {selectedNote.content}
                 </p>
@@ -307,11 +307,11 @@ export const NotesModule = () => {
               <FileText 
                 size={48} 
                 className={`mx-auto mb-4 ${
-                  theme === 'dark' ? 'text-gray-600' : 'text-gray-400'
+                  theme === 'dark' ? 'text-slate-600' : 'text-slate-400'
                 }`} 
               />
               <p className={`text-lg ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
               }`}>
                 Select a note to view
               </p>
@@ -334,14 +334,14 @@ export const NotesModule = () => {
             onClick={(e) => e.stopPropagation()}
             className={`w-full max-w-2xl p-6 rounded-lg ${
               theme === 'dark'
-                ? 'bg-gray-800'
+                ? 'bg-slate-800'
                 : theme === 'high-contrast'
-                ? 'bg-gray-900'
+                ? 'bg-slate-900'
                 : 'bg-white'
             }`}
           >
             <h3 className={`text-xl font-bold mb-4 ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
+              theme === 'dark' ? 'text-white' : 'text-slate-900'
             }`}>
               Create New Note
             </h3>
@@ -357,10 +357,10 @@ export const NotesModule = () => {
                 placeholder="Note title..."
                 className={`w-full px-3 py-2 rounded-lg border transition-colors ${
                   theme === 'dark'
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
+                    ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-400'
-                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                    ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-400'
+                    : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500'
                 }`}
               />
               
@@ -374,10 +374,10 @@ export const NotesModule = () => {
                 rows={6}
                 className={`w-full px-3 py-2 rounded-lg border transition-colors resize-none ${
                   theme === 'dark'
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
+                    ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-400'
-                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                    ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-400'
+                    : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500'
                 }`}
               />
               
@@ -391,10 +391,10 @@ export const NotesModule = () => {
                 placeholder="Tags (comma separated)..."
                 className={`w-full px-3 py-2 rounded-lg border transition-colors ${
                   theme === 'dark'
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:border-blue-500'
+                    ? 'bg-slate-700 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-blue-400'
-                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500'
+                    ? 'bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-400'
+                    : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500 focus:border-blue-500'
                 }`}
               />
             </div>
@@ -404,10 +404,10 @@ export const NotesModule = () => {
                 onClick={() => setShowNewNote(false)}
                 className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                   theme === 'dark'
-                    ? 'bg-gray-600 hover:bg-gray-700 text-white'
+                    ? 'bg-slate-600 hover:bg-slate-700 text-white'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-700 hover:bg-gray-800 text-white'
-                    : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
+                    ? 'bg-slate-700 hover:bg-slate-800 text-white'
+                    : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
                 }`}
               >
                 Cancel

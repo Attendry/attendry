@@ -108,11 +108,11 @@ const NotificationSettings = memo(function NotificationSettings() {
     return (
       <div className="max-w-2xl mx-auto p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-6"></div>
+          <div className="h-8 bg-slate-200 rounded w-1/3 mb-6"></div>
           <div className="space-y-4">
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+            <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+            <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+            <div className="h-4 bg-slate-200 rounded w-2/3"></div>
           </div>
         </div>
       </div>
@@ -122,48 +122,48 @@ const NotificationSettings = memo(function NotificationSettings() {
   return (
     <div className="max-w-2xl mx-auto p-6">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Notification Settings</h1>
-        <p className="text-gray-600">Manage how and when you receive notifications</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Notification Settings</h1>
+        <p className="text-slate-600">Manage how and when you receive notifications</p>
       </div>
 
       <div className="space-y-6">
         {/* General Notifications */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">General Notifications</h2>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">General Notifications</h2>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Email Notifications</label>
-                <p className="text-sm text-gray-500">Receive notifications via email</p>
+                <label className="text-sm font-medium text-slate-700">Email Notifications</label>
+                <p className="text-sm text-slate-500">Receive notifications via email</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.email}
                 onChange={(e) => handleSettingChange('email', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">In-App Notifications</label>
-                <p className="text-sm text-gray-500">Receive notifications within the application</p>
+                <label className="text-sm font-medium text-slate-700">In-App Notifications</label>
+                <p className="text-sm text-slate-500">Receive notifications within the application</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.inApp}
                 onChange={(e) => handleSettingChange('inApp', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Notification Frequency</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Notification Frequency</label>
               <select
                 value={settings.frequency}
                 onChange={(e) => handleSettingChange('frequency', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="immediate">Immediate</option>
                 <option value="daily">Daily Digest</option>
@@ -174,79 +174,79 @@ const NotificationSettings = memo(function NotificationSettings() {
         </div>
 
         {/* Event Notifications */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Notifications</h2>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">Event Notifications</h2>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Event Reminders</label>
-                <p className="text-sm text-gray-500">Get reminded about saved events</p>
+                <label className="text-sm font-medium text-slate-700">Event Reminders</label>
+                <p className="text-sm text-slate-500">Get reminded about saved events</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.eventReminders}
                 onChange={(e) => handleSettingChange('eventReminders', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">New Event Alerts</label>
-                <p className="text-sm text-gray-500">Get notified about new events matching your interests</p>
+                <label className="text-sm font-medium text-slate-700">New Event Alerts</label>
+                <p className="text-sm text-slate-500">Get notified about new events matching your interests</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.newEventAlerts}
                 onChange={(e) => handleSettingChange('newEventAlerts', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Industry Updates</label>
-                <p className="text-sm text-gray-500">Receive updates about your selected industries</p>
+                <label className="text-sm font-medium text-slate-700">Industry Updates</label>
+                <p className="text-sm text-slate-500">Receive updates about your selected industries</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.industryUpdates}
                 onChange={(e) => handleSettingChange('industryUpdates', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
           </div>
         </div>
 
         {/* System Notifications */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">System Notifications</h2>
+        <div className="bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">System Notifications</h2>
           
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">System Updates</label>
-                <p className="text-sm text-gray-500">Receive notifications about system updates and maintenance</p>
+                <label className="text-sm font-medium text-slate-700">System Updates</label>
+                <p className="text-sm text-slate-500">Receive notifications about system updates and maintenance</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.systemUpdates}
                 onChange={(e) => handleSettingChange('systemUpdates', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <label className="text-sm font-medium text-gray-700">Marketing Emails</label>
-                <p className="text-sm text-gray-500">Receive promotional emails and newsletters</p>
+                <label className="text-sm font-medium text-slate-700">Marketing Emails</label>
+                <p className="text-sm text-slate-500">Receive promotional emails and newsletters</p>
               </div>
               <input
                 type="checkbox"
                 checked={settings.marketingEmails}
                 onChange={(e) => handleSettingChange('marketingEmails', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
             </div>
           </div>

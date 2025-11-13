@@ -14,7 +14,7 @@ export default async function AnalyticsPage() {
 
   if (!session || !supabase) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-3xl px-4 pt-10">
           <UnauthenticatedNotice
             feature="Admin Analytics"
@@ -33,7 +33,7 @@ export default async function AnalyticsPage() {
 
   if (!profile || !profile.is_admin) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-3xl px-4 pt-10">
           <UnauthenticatedNotice
             feature="Admin Analytics"
@@ -46,7 +46,7 @@ export default async function AnalyticsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <AnalyticsDashboard />
     </div>
   );

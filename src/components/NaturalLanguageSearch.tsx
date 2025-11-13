@@ -43,7 +43,7 @@ export interface SearchIntent {
 const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
   onSearch,
   onIntentDetected,
-  placeholder = 'Ask me anything about events...',
+  placeholder = 'Search events...',
   className = '',
 }: {
   onSearch: (query: string, intent: SearchIntent) => void;
@@ -185,14 +185,14 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
     <div className={`relative ${className}`}>
       {/* Search Input */}
       <div className="relative">
-        <div className="flex items-center bg-white border border-gray-300 rounded-lg shadow-sm">
+        <div className="flex items-center bg-white border border-slate-300 rounded-lg shadow-sm">
           <div className="flex-1 relative">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={placeholder}
-              className="w-full px-4 py-3 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent rounded-l-lg"
+              className="w-full px-4 py-3 text-slate-900 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent rounded-l-lg"
             />
             
             {/* Processing indicator */}
@@ -225,7 +225,7 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
             <ChevronDown className={`h-4 w-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
           </button>
 
-          <div className="flex items-center gap-3 text-xs text-gray-500">
+          <div className="flex items-center gap-3 text-xs text-slate-500">
             <span className="inline-flex items-center gap-1">
               <Target className="h-3 w-3" /> Segments mapped to CRM personas
             </span>
@@ -236,9 +236,9 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
         </div>
 
         {showAdvancedFilters && (
-          <div className="mt-3 border border-gray-200 rounded-lg p-4 space-y-4 bg-gray-50">
+          <div className="mt-3 border border-slate-200 rounded-lg p-4 space-y-4 bg-slate-50">
             <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ICP Segments</h4>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">ICP Segments</h4>
               <div className="flex flex-wrap gap-2">
                 {['All Segments', 'Strategic Finance', 'Manufacturing Ops', 'Healthcare Compliance', 'Emerging SaaS'].map((segment) => {
                   const isSelected = selectedSegments.includes(segment);
@@ -247,7 +247,7 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
                       key={segment}
                       onClick={() => toggleSegment(segment)}
                       className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                        isSelected ? 'bg-blue-100 text-blue-700' : 'bg-white text-gray-600 hover:bg-gray-200'
+                        isSelected ? 'bg-blue-100 text-blue-700' : 'bg-white text-slate-600 hover:bg-slate-200'
                       }`}
                     >
                       {isSelected && <Check className="h-3 w-3" />}
@@ -259,14 +259,14 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
             </div>
 
             <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Revenue Tier</h4>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Revenue Tier</h4>
               <div className="flex flex-wrap gap-2">
                 {['All Tiers', '>$1B Strategic', '$250M-$1B Growth', '<$250M Emerging'].map((tier) => (
                   <button
                     key={tier}
                     onClick={() => setSelectedRevenue(tier)}
                     className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                      selectedRevenue === tier ? 'bg-purple-100 text-purple-700' : 'bg-white text-gray-600 hover:bg-gray-200'
+                      selectedRevenue === tier ? 'bg-purple-100 text-purple-700' : 'bg-white text-slate-600 hover:bg-slate-200'
                     }`}
                   >
                     {selectedRevenue === tier && <Check className="h-3 w-3" />}
@@ -277,7 +277,7 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
             </div>
 
             <div>
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Journey Stage</h4>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Journey Stage</h4>
               <div className="flex flex-wrap gap-2">
                 {['Awareness', 'Evaluation', 'Consideration', 'Expansion'].map((stage) => {
                   const isSelected = selectedJourneyStages.includes(stage);
@@ -286,7 +286,7 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
                       key={stage}
                       onClick={() => toggleJourneyStage(stage)}
                       className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                        isSelected ? 'bg-green-100 text-green-700' : 'bg-white text-gray-600 hover:bg-gray-200'
+                        isSelected ? 'bg-green-100 text-green-700' : 'bg-white text-slate-600 hover:bg-slate-200'
                       }`}
                     >
                       {isSelected && <Check className="h-3 w-3" />}
@@ -297,15 +297,15 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
               </div>
             </div>
 
-            <div className="border-t border-gray-200 pt-3">
+            <div className="border-t border-slate-200 pt-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs text-gray-600">
-                  <span className="font-medium text-gray-700">CRM Sync (mock)</span>
+                <div className="flex items-center gap-2 text-xs text-slate-600">
+                  <span className="font-medium text-slate-700">CRM Sync (mock)</span>
                   <span>Automated nightly sync with Salesforce & HubSpot</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <label className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-md ${
-                    crmSync.salesforce ? 'border-blue-500 text-blue-600' : 'border-gray-300 text-gray-600'
+                    crmSync.salesforce ? 'border-blue-500 text-blue-600' : 'border-slate-300 text-slate-600'
                   }`}>
                     <input
                       type="checkbox"
@@ -315,7 +315,7 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
                     Salesforce (mock)
                   </label>
                   <label className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium border rounded-md ${
-                    crmSync.hubspot ? 'border-orange-500 text-orange-600' : 'border-gray-300 text-gray-600'
+                    crmSync.hubspot ? 'border-orange-500 text-orange-600' : 'border-slate-300 text-slate-600'
                   }`}>
                     <input
                       type="checkbox"
@@ -381,18 +381,18 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
 
         {/* Suggestions */}
         {suggestions.length > 0 && (
-          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
             {suggestions.map((suggestion, index) => (
               <button
                 key={index}
                 onClick={() => handleSuggestionSelect(suggestion)}
-                className="w-full px-4 py-3 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50 transition-colors"
+                className="w-full px-4 py-3 text-left hover:bg-slate-50 focus:outline-none focus:bg-slate-50 transition-colors"
               >
                 <div className="flex items-center space-x-2">
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
-                  <span className="text-gray-900">{suggestion}</span>
+                  <span className="text-slate-900">{suggestion}</span>
                 </div>
               </button>
             ))}
@@ -402,7 +402,7 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
 
       {/* Example queries */}
       <div className="mt-4">
-        <p className="text-sm text-gray-600 mb-2">Try asking:</p>
+        <p className="text-sm text-slate-600 mb-2">Try asking:</p>
         <div className="flex flex-wrap gap-2">
           {[
             'Which strategic finance events unlock C-suite meetings next quarter?',
@@ -414,7 +414,7 @@ const NaturalLanguageSearch = memo(function NaturalLanguageSearch({
             <button
               key={index}
               onClick={() => setQuery(example)}
-              className="px-3 py-1 text-xs bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 transition-colors"
+              className="px-3 py-1 text-xs bg-slate-100 text-slate-700 rounded-full hover:bg-slate-200 transition-colors"
             >
               {example}
             </button>

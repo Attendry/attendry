@@ -412,7 +412,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
         <button
           onClick={saveToWatchlist}
           disabled={busy}
-          className="text-xs rounded-full border px-3 py-1 hover:bg-gray-50 disabled:opacity-50"
+          className="text-xs rounded-full border px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
         >
           {busy ? "Saving…" : "Save to Watchlist"}
         </button>
@@ -423,7 +423,7 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
           className={`text-xs rounded-full border px-3 py-1 disabled:opacity-50 ${
             profileSaved 
               ? "bg-green-50 border-green-200 text-green-700" 
-              : "hover:bg-gray-50"
+              : "hover:bg-slate-50"
           }`}
         >
           {savingProfile ? "Saving…" : profileSaved ? "Saved ✓" : "Save Profile"}

@@ -60,7 +60,7 @@ export default function ProcessingStatusBar({ jobs, onJobComplete, onRefresh }: 
       case 'failed':
         return <XCircle className="w-4 h-4 text-red-500" />;
       default:
-        return <Clock className="w-4 h-4 text-gray-500" />;
+        return <Clock className="w-4 h-4 text-slate-500" />;
     }
   };
 
@@ -75,7 +75,7 @@ export default function ProcessingStatusBar({ jobs, onJobComplete, onRefresh }: 
       case 'failed':
         return 'bg-red-50 border-red-200 text-red-800';
       default:
-        return 'bg-gray-50 border-gray-200 text-gray-800';
+        return 'bg-slate-50 border-slate-200 text-slate-800';
     }
   };
 
@@ -127,7 +127,7 @@ export default function ProcessingStatusBar({ jobs, onJobComplete, onRefresh }: 
                         <span>Progress</span>
                         <span>{job.progress}%</span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                      <div className="w-full bg-slate-200 rounded-full h-1.5">
                         <motion.div
                           className="bg-blue-500 h-1.5 rounded-full"
                           initial={{ width: 0 }}
@@ -153,7 +153,7 @@ export default function ProcessingStatusBar({ jobs, onJobComplete, onRefresh }: 
                 
                 <button
                   onClick={() => toggleJobExpansion(job.id)}
-                  className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+                  className="p-1 hover:bg-slate-100 rounded-full transition-colors"
                 >
                   <motion.div
                     animate={{ rotate: expandedJobs.has(job.id) ? 180 : 0 }}

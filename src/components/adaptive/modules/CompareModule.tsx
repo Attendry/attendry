@@ -117,7 +117,7 @@ export const CompareModule = () => {
       case 'in-person': return 'text-green-600';
       case 'virtual': return 'text-blue-600';
       case 'hybrid': return 'text-purple-600';
-      default: return 'text-gray-600';
+      default: return 'text-slate-600';
     }
   };
 
@@ -126,7 +126,7 @@ export const CompareModule = () => {
       case 'beginner': return 'text-green-600';
       case 'intermediate': return 'text-yellow-600';
       case 'advanced': return 'text-red-600';
-      default: return 'text-gray-600';
+      default: return 'text-slate-600';
     }
   };
 
@@ -137,12 +137,12 @@ export const CompareModule = () => {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className={`text-2xl font-bold ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
+              theme === 'dark' ? 'text-white' : 'text-slate-900'
             }`}>
               Compare Events
             </h2>
             <p className={`text-sm ${
-              theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+              theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
             }`}>
               Compare events side-by-side to make informed decisions
             </p>
@@ -168,14 +168,14 @@ export const CompareModule = () => {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className={`text-lg font-semibold ${
-              theme === 'dark' ? 'text-white' : 'text-gray-900'
+              theme === 'dark' ? 'text-white' : 'text-slate-900'
             }`}>
               Selected Events ({selectedEvents.length}/3)
             </h3>
             <button
               onClick={() => setSelectedEvents([])}
               className={`text-sm ${
-                theme === 'dark' ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-800'
+                theme === 'dark' ? 'text-slate-400 hover:text-slate-300' : 'text-slate-600 hover:text-slate-800'
               }`}
             >
               Clear All
@@ -191,46 +191,46 @@ export const CompareModule = () => {
                 transition={{ delay: index * 0.1 }}
                 className={`p-4 rounded-lg border relative ${
                   theme === 'dark'
-                    ? 'bg-gray-800 border-gray-700'
+                    ? 'bg-slate-800 border-slate-700'
                     : theme === 'high-contrast'
-                    ? 'bg-gray-900 border-gray-600'
-                    : 'bg-white border-gray-200'
+                    ? 'bg-slate-900 border-slate-600'
+                    : 'bg-white border-slate-200'
                 }`}
               >
                 <button
                   onClick={() => handleRemoveEvent(event.id)}
                   className={`absolute -top-2 -right-2 p-1 rounded-full transition-colors ${
                     theme === 'dark'
-                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-400'
-                      : 'bg-gray-200 hover:bg-gray-300 text-gray-600'
+                      ? 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+                      : 'bg-slate-200 hover:bg-slate-300 text-slate-600'
                   }`}
                 >
                   <X size={16} />
                 </button>
 
                 <h4 className={`font-medium mb-2 line-clamp-2 ${
-                  theme === 'dark' ? 'text-white' : 'text-gray-900'
+                  theme === 'dark' ? 'text-white' : 'text-slate-900'
                 }`}>
                   {event.title}
                 </h4>
 
                 <div className="space-y-2 text-sm">
                   <div className={`flex items-center space-x-2 ${
-                    theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                    theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                     <Calendar size={14} />
                     <span>{new Date(event.starts_at).toLocaleDateString()}</span>
                   </div>
                   
                   <div className={`flex items-center space-x-2 ${
-                    theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                    theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                     <MapPin size={14} />
                     <span>{event.city}, {event.country}</span>
                   </div>
                   
                   <div className={`flex items-center space-x-2 ${
-                    theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                    theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                   }`}>
                     <Clock size={14} />
                     <span>{event.duration}</span>
@@ -238,7 +238,7 @@ export const CompareModule = () => {
                   
                   {event.price && (
                     <div className={`flex items-center space-x-2 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                     }`}>
                       <Euro size={14} />
                       <span className="font-medium">{event.price}</span>
@@ -255,44 +255,44 @@ export const CompareModule = () => {
       {selectedEvents.length >= 2 && (
         <div className="mb-6">
           <h3 className={`text-lg font-semibold mb-4 ${
-            theme === 'dark' ? 'text-white' : 'text-gray-900'
+            theme === 'dark' ? 'text-white' : 'text-slate-900'
           }`}>
             Comparison
           </h3>
           
           <div className={`rounded-lg border overflow-hidden ${
-            theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
+            theme === 'dark' ? 'border-slate-700' : 'border-slate-200'
           }`}>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className={`${
-                  theme === 'dark' ? 'bg-gray-800' : 'bg-gray-50'
+                  theme === 'dark' ? 'bg-slate-800' : 'bg-slate-50'
                 }`}>
                   <tr>
                     <th className={`px-4 py-3 text-left text-sm font-medium ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       Feature
                     </th>
                     {selectedEvents.map((event) => (
                       <th key={event.id} className={`px-4 py-3 text-left text-sm font-medium ${
-                        theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                        theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                       }`}>
                         {event.title}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                   <tr>
                     <td className={`px-4 py-3 text-sm font-medium ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       Date
                     </td>
                     {selectedEvents.map((event) => (
                       <td key={event.id} className={`px-4 py-3 text-sm ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         {new Date(event.starts_at).toLocaleDateString()}
                       </td>
@@ -300,13 +300,13 @@ export const CompareModule = () => {
                   </tr>
                   <tr>
                     <td className={`px-4 py-3 text-sm font-medium ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       Location
                     </td>
                     {selectedEvents.map((event) => (
                       <td key={event.id} className={`px-4 py-3 text-sm ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         {event.city}, {event.country}
                       </td>
@@ -314,7 +314,7 @@ export const CompareModule = () => {
                   </tr>
                   <tr>
                     <td className={`px-4 py-3 text-sm font-medium ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       Format
                     </td>
@@ -326,13 +326,13 @@ export const CompareModule = () => {
                   </tr>
                   <tr>
                     <td className={`px-4 py-3 text-sm font-medium ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       Duration
                     </td>
                     {selectedEvents.map((event) => (
                       <td key={event.id} className={`px-4 py-3 text-sm ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         {event.duration}
                       </td>
@@ -340,7 +340,7 @@ export const CompareModule = () => {
                   </tr>
                   <tr>
                     <td className={`px-4 py-3 text-sm font-medium ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       Level
                     </td>
@@ -352,13 +352,13 @@ export const CompareModule = () => {
                   </tr>
                   <tr>
                     <td className={`px-4 py-3 text-sm font-medium ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       Price
                     </td>
                     {selectedEvents.map((event) => (
                       <td key={event.id} className={`px-4 py-3 text-sm ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         {event.price || 'TBD'}
                       </td>
@@ -366,13 +366,13 @@ export const CompareModule = () => {
                   </tr>
                   <tr>
                     <td className={`px-4 py-3 text-sm font-medium ${
-                      theme === 'dark' ? 'text-gray-300' : 'text-gray-700'
+                      theme === 'dark' ? 'text-slate-300' : 'text-slate-700'
                     }`}>
                       Attendees
                     </td>
                     {selectedEvents.map((event) => (
                       <td key={event.id} className={`px-4 py-3 text-sm ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         {event.attendees || 'TBD'}
                       </td>
@@ -389,12 +389,12 @@ export const CompareModule = () => {
       <div className="flex-1 overflow-y-auto">
         <div className="mb-4">
           <h3 className={`text-lg font-semibold ${
-            theme === 'dark' ? 'text-white' : 'text-gray-900'
+            theme === 'dark' ? 'text-white' : 'text-slate-900'
           }`}>
             Available Events
           </h3>
           <p className={`text-sm ${
-            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+            theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
           }`}>
             Click to add events for comparison (max 3)
           </p>
@@ -421,20 +421,20 @@ export const CompareModule = () => {
                       : 'bg-blue-50 border-blue-500'
                     : canAdd
                     ? theme === 'dark'
-                      ? 'bg-gray-800 border-gray-700 hover:bg-gray-750'
+                      ? 'bg-slate-800 border-slate-700 hover:bg-slate-750'
                       : theme === 'high-contrast'
-                      ? 'bg-gray-900 border-gray-600 hover:bg-gray-800'
-                      : 'bg-white border-gray-200 hover:bg-gray-50'
+                      ? 'bg-slate-900 border-slate-600 hover:bg-slate-800'
+                      : 'bg-white border-slate-200 hover:bg-slate-50'
                     : theme === 'dark'
-                    ? 'bg-gray-800/50 border-gray-700 opacity-50'
-                    : 'bg-gray-50 border-gray-200 opacity-50'
+                    ? 'bg-slate-800/50 border-slate-700 opacity-50'
+                    : 'bg-slate-50 border-slate-200 opacity-50'
                 }`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2 mb-2">
                       <h4 className={`font-medium ${
-                        theme === 'dark' ? 'text-white' : 'text-gray-900'
+                        theme === 'dark' ? 'text-white' : 'text-slate-900'
                       }`}>
                         {event.title}
                       </h4>
@@ -444,28 +444,28 @@ export const CompareModule = () => {
                     </div>
                     
                     <p className={`text-sm mb-3 line-clamp-2 ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                      theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                     }`}>
                       {event.description}
                     </p>
                     
                     <div className="flex items-center space-x-4 text-sm">
                       <div className={`flex items-center space-x-1 ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         <Calendar size={14} />
                         <span>{new Date(event.starts_at).toLocaleDateString()}</span>
                       </div>
                       
                       <div className={`flex items-center space-x-1 ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         <MapPin size={14} />
                         <span>{event.city}, {event.country}</span>
                       </div>
                       
                       <div className={`flex items-center space-x-1 ${
-                        theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                        theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                       }`}>
                         <Clock size={14} />
                         <span>{event.duration}</span>
@@ -473,7 +473,7 @@ export const CompareModule = () => {
                       
                       {event.price && (
                         <div className={`flex items-center space-x-1 ${
-                          theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                          theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
                         }`}>
                           <Euro size={14} />
                           <span className="font-medium">{event.price}</span>
@@ -508,8 +508,8 @@ export const CompareModule = () => {
                       }}
                       className={`p-2 rounded-lg transition-colors ${
                         theme === 'dark'
-                          ? 'hover:bg-gray-600 text-gray-400'
-                          : 'hover:bg-gray-200 text-gray-500'
+                          ? 'hover:bg-slate-600 text-slate-400'
+                          : 'hover:bg-slate-200 text-slate-500'
                       }`}
                     >
                       <Bookmark size={16} />
@@ -522,8 +522,8 @@ export const CompareModule = () => {
                       onClick={(e) => e.stopPropagation()}
                       className={`p-2 rounded-lg transition-colors ${
                         theme === 'dark'
-                          ? 'hover:bg-gray-600 text-gray-400'
-                          : 'hover:bg-gray-200 text-gray-500'
+                          ? 'hover:bg-slate-600 text-slate-400'
+                          : 'hover:bg-slate-200 text-slate-500'
                       }`}
                     >
                       <ExternalLink size={16} />

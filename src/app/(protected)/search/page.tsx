@@ -132,11 +132,11 @@ export default function SearchPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <div className="max-w-4xl mx-auto py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Natural Language Search</h1>
-          <p className="text-gray-600">Ask me anything about events in natural language</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Natural Language Search</h1>
+          <p className="text-slate-600">Ask me anything about events in natural language</p>
         </div>
 
         <NaturalLanguageSearch
@@ -149,18 +149,18 @@ export default function SearchPage() {
         {isSearching && (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Searching...</p>
+            <p className="mt-4 text-slate-600">Searching...</p>
           </div>
         )}
 
         {!isSearching && searchResults.length > 0 && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-xl font-semibold text-slate-900">
                 Search Results ({searchResults.length})
               </h2>
               {lastIntent && (
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-slate-600">
                   Intent: {lastIntent.type} ({(lastIntent.confidence * 100).toFixed(0)}% confidence)
                 </div>
               )}
@@ -178,19 +178,19 @@ export default function SearchPage() {
         )}
 
         {!isSearching && searchResults.length === 0 && lastIntent && (
-          <div className="border border-dashed border-gray-300 rounded-lg p-10 text-center space-y-4 bg-white">
-            <h3 className="text-lg font-semibold text-gray-900">No high-confidence matches for this combination</h3>
-            <p className="text-sm text-gray-600 max-w-xl mx-auto">
+          <div className="border border-dashed border-slate-300 rounded-lg p-10 text-center space-y-4 bg-white">
+            <h3 className="text-lg font-semibold text-slate-900">No high-confidence matches for this combination</h3>
+            <p className="text-sm text-slate-600 max-w-xl mx-auto">
               Upload a refined target account list or adjust ICP filters to surface broader results. You can also sync mock CRM data to personalize recommendations.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <button className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors">
                 Upload accounts (mock)
               </button>
-              <button className="px-4 py-2 bg-white border border-gray-300 text-sm text-gray-700 rounded-md hover:bg-gray-100 transition-colors">
+              <button className="px-4 py-2 bg-white border border-slate-300 text-sm text-slate-700 rounded-md hover:bg-slate-100 transition-colors">
                 Invite marketing partner
               </button>
-              <button className="px-4 py-2 bg-white border border-gray-300 text-sm text-gray-700 rounded-md hover:bg-gray-100 transition-colors">
+              <button className="px-4 py-2 bg-white border border-slate-300 text-sm text-slate-700 rounded-md hover:bg-slate-100 transition-colors">
                 Watch 2-min walkthrough
               </button>
             </div>

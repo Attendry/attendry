@@ -38,27 +38,27 @@ export class AdaptiveErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
           <div className="max-w-md w-full mx-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 text-center">
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-lg p-6 text-center">
               <div className="flex justify-center mb-4">
                 <AlertTriangle className="h-12 w-12 text-red-500" />
               </div>
               
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
                 Something went wrong
               </h2>
               
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
+              <p className="text-slate-600 dark:text-slate-400 mb-6">
                 The adaptive interface encountered an error. This might be due to a temporary issue.
               </p>
               
               {this.state.error && (
                 <details className="mb-6 text-left">
-                  <summary className="cursor-pointer text-sm text-gray-500 dark:text-gray-400 mb-2">
+                  <summary className="cursor-pointer text-sm text-slate-500 dark:text-slate-400 mb-2">
                     Error Details
                   </summary>
-                  <pre className="text-xs bg-gray-100 dark:bg-gray-700 p-3 rounded overflow-auto">
+                  <pre className="text-xs bg-slate-100 dark:bg-slate-700 p-3 rounded overflow-auto">
                     {this.state.error.message}
                   </pre>
                 </details>

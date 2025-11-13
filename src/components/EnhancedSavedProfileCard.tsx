@@ -32,11 +32,11 @@ export function EnhancedSavedProfileCard({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'not_started': return 'bg-gray-100 text-gray-800';
+      case 'not_started': return 'bg-slate-100 text-slate-800';
       case 'contacted': return 'bg-yellow-100 text-yellow-800';
       case 'responded': return 'bg-green-100 text-green-800';
       case 'meeting_scheduled': return 'bg-blue-100 text-blue-800';
-      default: return 'bg-gray-100 text-gray-800';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
 

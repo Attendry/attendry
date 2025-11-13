@@ -162,7 +162,7 @@ const ImprovedPremiumSearchModule = memo(() => {
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-[#9CA3AF]" size={20} />
             <input
               type="text"
-              placeholder="Search for events, conferences, meetups..."
+              placeholder="Search events..."
               value={filters.keywords}
               onChange={(e) => handleFilterChange('keywords', e.target.value)}
               className="w-full pl-12 pr-4 py-4 bg-[#0B0F1A] border border-[#2D3344] rounded-2xl text-[#E6E8EC] placeholder-[#9CA3AF] focus:border-[#4ADE80] focus:ring-1 focus:ring-[#4ADE80]/20 transition-all duration-150 text-sm font-medium"

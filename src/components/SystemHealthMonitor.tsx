@@ -57,7 +57,7 @@ const SystemHealthMonitor = memo(function SystemHealthMonitor() {
       case 'healthy': return 'text-green-600 bg-green-100';
       case 'warning': return 'text-yellow-600 bg-yellow-100';
       case 'error': return 'text-red-600 bg-red-100';
-      default: return 'text-gray-600 bg-gray-100';
+      default: return 'text-slate-600 bg-slate-100';
     }
   }, []);
 
@@ -111,11 +111,11 @@ const SystemHealthMonitor = memo(function SystemHealthMonitor() {
     return (
       <div className="max-w-4xl mx-auto p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
           <div className="space-y-4">
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-            <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+            <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+            <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+            <div className="h-4 bg-slate-200 rounded w-2/3"></div>
           </div>
         </div>
       </div>
@@ -127,15 +127,15 @@ const SystemHealthMonitor = memo(function SystemHealthMonitor() {
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">System Health Monitor</h1>
-            <p className="text-gray-600">Real-time monitoring of system components and services</p>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">System Health Monitor</h1>
+            <p className="text-slate-600">Real-time monitoring of system components and services</p>
           </div>
           <div className="text-right">
             <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(getOverallStatus())}`}>
               <span className="mr-2">{getStatusIcon(getOverallStatus())}</span>
               {getOverallStatus().charAt(0).toUpperCase() + getOverallStatus().slice(1)}
             </div>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               Last updated: {lastUpdate.toLocaleTimeString()}
             </p>
           </div>
@@ -146,17 +146,17 @@ const SystemHealthMonitor = memo(function SystemHealthMonitor() {
       <div className="space-y-4">
         {healthChecks.length === 0 ? (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No health checks available</h3>
-            <p className="text-gray-600">Health monitoring data will appear here</p>
+            <h3 className="text-lg font-medium text-slate-900 mb-2">No health checks available</h3>
+            <p className="text-slate-600">Health monitoring data will appear here</p>
           </div>
         ) : (
           healthChecks.map((check) => (
-            <div key={check.service} className="bg-white border border-gray-200 rounded-lg p-6">
+            <div key={check.service} className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <div className={`w-3 h-3 rounded-full ${
@@ -164,22 +164,22 @@ const SystemHealthMonitor = memo(function SystemHealthMonitor() {
                     check.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
                   }`}></div>
                   <div>
-                    <h3 className="text-lg font-medium text-gray-900">{check.service}</h3>
+                    <h3 className="text-lg font-medium text-slate-900">{check.service}</h3>
                     {check.message && (
-                      <p className="text-sm text-gray-600">{check.message}</p>
+                      <p className="text-sm text-slate-600">{check.message}</p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-6">
                   <div className="text-right">
-                    <p className="text-sm text-gray-600">Response Time</p>
-                    <p className="text-lg font-medium text-gray-900">
+                    <p className="text-sm text-slate-600">Response Time</p>
+                    <p className="text-lg font-medium text-slate-900">
                       {formatResponseTime(check.responseTime)}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-gray-600">Last Checked</p>
-                    <p className="text-sm text-gray-900">
+                    <p className="text-sm text-slate-600">Last Checked</p>
+                    <p className="text-sm text-slate-900">
                       {formatLastChecked(check.lastChecked)}
                     </p>
                   </div>
@@ -195,26 +195,26 @@ const SystemHealthMonitor = memo(function SystemHealthMonitor() {
 
       {/* System Status Summary */}
       {healthChecks.length > 0 && (
-        <div className="mt-8 bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">System Status Summary</h2>
+        <div className="mt-8 bg-white border border-slate-200 rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">System Status Summary</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
               <div className="text-3xl font-bold text-green-600">
                 {healthChecks.filter(check => check.status === 'healthy').length}
               </div>
-              <p className="text-sm text-gray-600 mt-2">Healthy Services</p>
+              <p className="text-sm text-slate-600 mt-2">Healthy Services</p>
             </div>
             <div className="text-center">
               <div className="text-3xl font-bold text-yellow-600">
                 {healthChecks.filter(check => check.status === 'warning').length}
               </div>
-              <p className="text-sm text-gray-600 mt-2">Warning Services</p>
+              <p className="text-sm text-slate-600 mt-2">Warning Services</p>
             </div>
             <div className="text-center">
               <div className="text-3xl font-bold text-red-600">
                 {healthChecks.filter(check => check.status === 'error').length}
               </div>
-              <p className="text-sm text-gray-600 mt-2">Error Services</p>
+              <p className="text-sm text-slate-600 mt-2">Error Services</p>
             </div>
           </div>
         </div>

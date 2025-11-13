@@ -94,7 +94,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 
       // Default error UI
       return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
           <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-6">
             <div className="flex items-center mb-4">
               <div className="flex-shrink-0">
@@ -103,12 +103,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
                 </svg>
               </div>
               <div className="ml-3">
-                <h3 className="text-lg font-medium text-gray-900">Something went wrong</h3>
+                <h3 className="text-lg font-medium text-slate-900">Something went wrong</h3>
               </div>
             </div>
 
             <div className="mb-4">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-slate-600">
                 We're sorry, but something unexpected happened. Please try again or contact support if the problem persists.
               </p>
             </div>
@@ -137,7 +137,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               </button>
               <button
                 onClick={this.handleReload}
-                className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+                className="flex-1 bg-slate-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 transition-colors"
               >
                 Reload Page
               </button>
@@ -165,7 +165,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
  */
 export const ErrorFallback = ({ error, resetError }: { error: Error; resetError: () => void }) => {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
       <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-6">
         <div className="flex items-center mb-4">
           <div className="flex-shrink-0">
@@ -174,12 +174,12 @@ export const ErrorFallback = ({ error, resetError }: { error: Error; resetError:
             </svg>
           </div>
           <div className="ml-3">
-            <h3 className="text-lg font-medium text-gray-900">Something went wrong</h3>
+            <h3 className="text-lg font-medium text-slate-900">Something went wrong</h3>
           </div>
         </div>
 
         <div className="mb-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-slate-600">
             We're sorry, but something unexpected happened. Please try again or contact support if the problem persists.
           </p>
         </div>
@@ -204,7 +204,7 @@ export const ErrorFallback = ({ error, resetError }: { error: Error; resetError:
                 window.location.reload();
               }
             }}
-            className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+            className="flex-1 bg-slate-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 transition-colors"
           >
             Reload Page
           </button>

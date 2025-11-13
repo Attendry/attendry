@@ -78,8 +78,8 @@ export function SetupStatusIndicator({ className = "" }: SetupStatusIndicatorPro
   if (loading) {
     return (
       <div className={`flex items-center gap-2 ${className}`}>
-        <div className="w-3 h-3 bg-gray-300 rounded-full animate-pulse"></div>
-        <span className="text-sm text-gray-500">Checking setup...</span>
+        <div className="w-3 h-3 bg-slate-300 rounded-full animate-pulse"></div>
+        <span className="text-sm text-slate-500">Checking setup...</span>
       </div>
     );
   }
@@ -184,7 +184,7 @@ export function SetupStatusIndicator({ className = "" }: SetupStatusIndicatorPro
           </div>
           <button
             onClick={checkSetupStatus}
-            className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs hover:bg-gray-200 transition-colors"
+            className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs hover:bg-slate-200 transition-colors"
             title="Refresh setup status"
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

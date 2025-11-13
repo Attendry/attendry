@@ -33,8 +33,8 @@ export default function ActivityPage() {
 
   if (!authReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-6 py-4 text-sm text-gray-600 shadow-sm">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-sm">
           <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> Checking your session...
         </div>
       </div>
@@ -43,7 +43,7 @@ export default function ActivityPage() {
 
   if (!userId) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-2xl px-4 pt-10">
           <UnauthenticatedNotice
             feature="Activity Insights"
@@ -55,7 +55,7 @@ export default function ActivityPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <UserActivityTracker />
     </div>
   );

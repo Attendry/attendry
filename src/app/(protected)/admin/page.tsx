@@ -12,12 +12,12 @@ import { CustomProfileCreator } from "@/components/CustomProfileCreator";
 type ChipProps = { text: string; onRemove?: () => void };
 function Chip({ text, onRemove }: ChipProps) {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded-md text-xs">
+    <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-xs">
       {text}
       {onRemove && (
         <button
           onClick={onRemove}
-          className="ml-1 text-gray-500 hover:text-gray-700"
+          className="ml-1 text-slate-500 hover:text-slate-700"
         >
           ×
         </button>
@@ -494,7 +494,7 @@ function AdminContent() {
               className={`flex-1 py-3 px-4 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                 activeTab === "profile"
                   ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
             >
               <div className="flex items-center justify-center gap-2">
@@ -513,7 +513,7 @@ function AdminContent() {
               className={`flex-1 py-3 px-4 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                 activeTab === "search"
                   ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
             >
               <div className="flex items-center justify-center gap-2">
@@ -532,7 +532,7 @@ function AdminContent() {
               className={`flex-1 py-3 px-4 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                 activeTab === "collection"
                   ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
               }`}
             >
               <div className="flex items-center justify-center gap-2">
@@ -606,7 +606,7 @@ function AdminContent() {
                     <input 
                       id="fullName"
                       type="text"
-                      className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                      className="w-full rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
                       value={fullName} 
                       onChange={e=>setFullName(e.target.value)}
                       placeholder="Enter your full name"
@@ -623,7 +623,7 @@ function AdminContent() {
                     <input 
                       id="company"
                       type="text"
-                      className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
+                      className="w-full rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors" 
                       value={company} 
                       onChange={e=>setCompany(e.target.value)}
                       placeholder="Enter your company name"
@@ -652,7 +652,7 @@ function AdminContent() {
                       type="checkbox" 
                       checked={useBasic} 
                       onChange={e=>setUseBasic(e.target.checked)}
-                      className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                      className="w-5 h-5 text-blue-600 border-slate-300 rounded focus:ring-blue-500 focus:ring-2"
                       aria-describedby="search-integration-help"
                     />
                     <span className="font-medium text-blue-900">Enable</span>
@@ -665,7 +665,7 @@ function AdminContent() {
                 <button 
                   onClick={generate} 
                   disabled={busy || !company.trim()}
-                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium"
+                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors font-medium"
                   aria-describedby="generate-help"
                 >
                   {busy ? (
@@ -688,7 +688,7 @@ function AdminContent() {
                 <button 
                   onClick={save} 
                   disabled={busy}
-                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors font-medium"
+                  className="flex items-center justify-center gap-2 px-6 py-3 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:bg-slate-100 disabled:cursor-not-allowed transition-colors font-medium"
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2h5v5.586l-1.293-1.293zM9 4a1 1 0 012 0v2H9V4z" />
@@ -770,14 +770,14 @@ function AdminContent() {
                         value={newCompetitor}
                         onChange={(e) => setNewCompetitor(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && addCompetitor()}
-                        className="flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
+                        className="flex-1 rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
                         placeholder="Add competitor..."
                         aria-label="Add competitor"
                       />
                       <button
                         onClick={addCompetitor}
                         disabled={!newCompetitor.trim()}
-                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed text-sm font-medium"
                         aria-label="Add competitor"
                       >
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -817,14 +817,14 @@ function AdminContent() {
                         value={newUserIcpTerm}
                         onChange={(e) => setNewUserIcpTerm(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && addUserIcpTerm()}
-                        className="flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
+                        className="flex-1 rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
                         placeholder="Add ICP term..."
                         aria-label="Add ICP term"
                       />
                       <button
                         onClick={addUserIcpTerm}
                         disabled={!newUserIcpTerm.trim()}
-                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed text-sm font-medium"
                         aria-label="Add ICP term"
                       >
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -864,14 +864,14 @@ function AdminContent() {
                         value={newUserIndustryTerm}
                         onChange={(e) => setNewUserIndustryTerm(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && addUserIndustryTerm()}
-                        className="flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
+                        className="flex-1 rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors text-sm"
                         placeholder="Add industry term..."
                         aria-label="Add industry term"
                       />
                       <button
                         onClick={addUserIndustryTerm}
                         disabled={!newUserIndustryTerm.trim()}
-                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm font-medium"
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed text-sm font-medium"
                         aria-label="Add industry term"
                       >
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -909,7 +909,7 @@ function AdminContent() {
                   <button
                     key={key}
                     onClick={() => applyTemplate(key)}
-                    className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
+                    className="p-4 border border-slate-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
                   >
                     <h4 className="font-medium text-slate-900 mb-1">{template.name}</h4>
                     <p className="text-sm text-slate-600">{template.description}</p>
@@ -929,7 +929,7 @@ function AdminContent() {
                     type="text"
                     value={searchConfig.name}
                     onChange={(e) => setSearchConfig({...searchConfig, name: e.target.value})}
-                    className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="e.g., Legal & Compliance Config"
                   />
                 </div>
@@ -939,7 +939,7 @@ function AdminContent() {
                     type="text"
                     value={searchConfig.industry}
                     onChange={(e) => setSearchConfig({...searchConfig, industry: e.target.value})}
-                    className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="e.g., legal-compliance"
                   />
                 </div>
@@ -948,7 +948,7 @@ function AdminContent() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Base Search Query
-                  <span className="text-xs text-gray-500 ml-2">
+                  <span className="text-xs text-slate-500 ml-2">
                     ({searchConfig.baseQuery.length}/500 characters)
                   </span>
                 </label>
@@ -959,7 +959,7 @@ function AdminContent() {
                       setSearchConfig({...searchConfig, baseQuery: e.target.value});
                     }
                   }}
-                  className={`w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  className={`w-full rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                     searchConfig.baseQuery.length > 500 ? 'border-red-300 bg-red-50' : ''
                   }`}
                   rows={3}
@@ -979,7 +979,7 @@ function AdminContent() {
                   type="text"
                   value={searchConfig.excludeTerms}
                   onChange={(e) => setSearchConfig({...searchConfig, excludeTerms: e.target.value})}
-                  className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="e.g., reddit forum personal blog"
                 />
               </div>
@@ -988,7 +988,7 @@ function AdminContent() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-3">
                   Industry Terms
-                  <span className="text-xs text-gray-500 ml-2">
+                  <span className="text-xs text-slate-500 ml-2">
                     ({searchConfig.industryTerms.length}/3 terms, max 200 chars total)
                   </span>
                 </label>
@@ -1003,7 +1003,7 @@ function AdminContent() {
                     value={newTerm}
                     onChange={(e) => setNewTerm(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && addIndustryTerm()}
-                    className={`flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    className={`flex-1 rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       searchConfig.industryTerms.length >= 3 ? 'border-red-300 bg-red-50' : ''
                     }`}
                     placeholder="Add industry term..."
@@ -1012,7 +1012,7 @@ function AdminContent() {
                   <button
                     onClick={addIndustryTerm}
                     disabled={searchConfig.industryTerms.length >= 3 || !newTerm.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
                   >
                     Add
                   </button>
@@ -1028,7 +1028,7 @@ function AdminContent() {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-3">
                   ICP Terms (Buyer Roles)
-                  <span className="text-xs text-gray-500 ml-2">
+                  <span className="text-xs text-slate-500 ml-2">
                     ({searchConfig.icpTerms.length}/2 terms, max 150 chars total)
                   </span>
                 </label>
@@ -1043,7 +1043,7 @@ function AdminContent() {
                     value={newIcpTerm}
                     onChange={(e) => setNewIcpTerm(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && addIcpTerm()}
-                    className={`flex-1 rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    className={`flex-1 rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       searchConfig.icpTerms.length >= 2 ? 'border-red-300 bg-red-50' : ''
                     }`}
                     placeholder="Add ICP term..."
@@ -1052,7 +1052,7 @@ function AdminContent() {
                   <button
                     onClick={addIcpTerm}
                     disabled={searchConfig.icpTerms.length >= 2 || !newIcpTerm.trim()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
                   >
                     Add
                   </button>
@@ -1099,7 +1099,7 @@ function AdminContent() {
                 <button
                   onClick={loadSearchConfig}
                   disabled={busy}
-                  className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-6 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                 >
                   Reload
                 </button>
@@ -1170,7 +1170,7 @@ function AdminContent() {
                   </div>
                 </div>
               ) : (
-                <div className="text-gray-500">Loading collection status...</div>
+                <div className="text-slate-500">Loading collection status...</div>
               )}
             </div>
 
@@ -1181,7 +1181,7 @@ function AdminContent() {
               <div className="grid md:grid-cols-2 gap-6">
                 <div>
                   <h4 className="font-medium mb-3 text-slate-900">Quick Collection</h4>
-                  <p className="text-sm text-gray-600 mb-4">Collect events for Legal & Compliance in Germany</p>
+                  <p className="text-sm text-slate-600 mb-4">Collect events for Legal & Compliance in Germany</p>
                   <button
                     onClick={startCollection}
                     disabled={busy}
@@ -1193,7 +1193,7 @@ function AdminContent() {
                 
                 <div>
                   <h4 className="font-medium mb-3 text-slate-900">Full Collection</h4>
-                  <p className="text-sm text-gray-600 mb-4">Collect events for all industries and countries</p>
+                  <p className="text-sm text-slate-600 mb-4">Collect events for all industries and countries</p>
                   <button
                     onClick={startFullCollection}
                     disabled={busy}
@@ -1215,7 +1215,7 @@ function AdminContent() {
                   <select
                     value={collectionConfig.monthsAhead}
                     onChange={(e) => setCollectionConfig({...collectionConfig, monthsAhead: parseInt(e.target.value)})}
-                    className="w-full rounded-lg border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full rounded-lg border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value={3}>3 months</option>
                     <option value={6}>6 months</option>
@@ -1246,7 +1246,7 @@ function AdminContent() {
             {/* Collection History */}
             <div className="bg-white border rounded-2xl p-6">
               <h3 className="text-lg font-semibold mb-4 text-slate-900">Recent Collections</h3>
-              <div className="text-gray-500 text-sm">
+              <div className="text-slate-500 text-sm">
                 Collection history will be displayed here once collections are run.
               </div>
             </div>
@@ -1262,7 +1262,7 @@ export default function AdminPage() {
     <Suspense fallback={<div className="flex items-center justify-center min-h-screen">
       <div className="text-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading admin dashboard...</p>
+        <p className="text-slate-600">Loading admin dashboard...</p>
       </div>
     </div>}>
       <AdminContent />

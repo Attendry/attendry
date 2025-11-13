@@ -29,8 +29,8 @@ export default function AttendeeCard({ person }: { person: any }) {
   return (
     <div className="rounded-xl border p-3 bg-white">
       <div className="font-medium">{person.name}</div>
-      {person.title && <div className="text-sm text-gray-700">{person.title}</div>}
-      {person.org && <div className="text-sm text-gray-600">{person.org}</div>}
+      {person.title && <div className="text-sm text-slate-700">{person.title}</div>}
+      {person.org && <div className="text-sm text-slate-600">{person.org}</div>}
       <div className="mt-2 flex gap-2">
         {person.profile_url && (
           <a className="text-xs underline" href={person.profile_url} target="_blank" rel="noreferrer">
@@ -40,7 +40,7 @@ export default function AttendeeCard({ person }: { person: any }) {
         <button
           onClick={save}
           disabled={busy}
-          className="text-xs rounded-full border px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50"
+          className="text-xs rounded-full border px-2 py-0.5 hover:bg-slate-50 disabled:opacity-50"
         >
           {busy ? "Saving…" : "Save"}
         </button>

@@ -68,17 +68,17 @@ const Sidebar = memo(() => {
       transition={{ duration: 0.3, ease: 'easeInOut' }}
       className={`h-full w-70 border-r transition-colors duration-300 ${
         theme === 'dark' 
-          ? 'bg-gray-800 border-gray-700' 
+          ? 'bg-slate-800 border-slate-700' 
           : theme === 'high-contrast'
-          ? 'bg-gray-900 border-gray-600'
-          : 'bg-white border-gray-200'
+          ? 'bg-slate-900 border-slate-600'
+          : 'bg-white border-slate-200'
       }`}
     >
       <div className="p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <h1 className={`text-xl font-semibold ${
-            theme === 'high-contrast' ? 'text-white' : 'text-gray-900'
+            theme === 'high-contrast' ? 'text-white' : 'text-slate-900'
           }`}>
             Attendry
           </h1>
@@ -86,10 +86,10 @@ const Sidebar = memo(() => {
             onClick={() => setSidebarCollapsed(true)}
             className={`p-2 rounded-lg transition-colors ${
               theme === 'dark' 
-                ? 'hover:bg-gray-700 text-gray-300' 
+                ? 'hover:bg-slate-700 text-slate-300' 
                 : theme === 'high-contrast'
-                ? 'hover:bg-gray-800 text-white'
-                : 'hover:bg-gray-100 text-gray-600'
+                ? 'hover:bg-slate-800 text-white'
+                : 'hover:bg-slate-100 text-slate-600'
             }`}
           >
             <Menu size={20} />
@@ -116,10 +116,10 @@ const Sidebar = memo(() => {
                       ? 'bg-blue-500 text-white'
                       : 'bg-blue-50 text-blue-700 border border-blue-200'
                     : theme === 'dark'
-                    ? 'hover:bg-gray-700 text-gray-300'
+                    ? 'hover:bg-slate-700 text-slate-300'
                     : theme === 'high-contrast'
-                    ? 'hover:bg-gray-800 text-white'
-                    : 'hover:bg-gray-50 text-gray-700'
+                    ? 'hover:bg-slate-800 text-white'
+                    : 'hover:bg-slate-50 text-slate-700'
                 }`}
               >
                 <div className="flex items-center space-x-3">
@@ -131,8 +131,8 @@ const Sidebar = memo(() => {
                     isActive
                       ? 'bg-blue-500 text-white'
                       : theme === 'dark'
-                      ? 'bg-gray-600 text-gray-300'
-                      : 'bg-gray-200 text-gray-600'
+                      ? 'bg-slate-600 text-slate-300'
+                      : 'bg-slate-200 text-slate-600'
                   }`}>
                     {module.count}
                   </span>
@@ -145,7 +145,7 @@ const Sidebar = memo(() => {
         {/* Adaptive Mode Toggle */}
         <div className="mb-6">
           <h3 className={`text-sm font-medium mb-3 ${
-            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+            theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
           }`}>
             Adaptive Mode
           </h3>
@@ -159,10 +159,10 @@ const Sidebar = memo(() => {
                   ? 'bg-green-500 text-white'
                   : 'bg-green-100 text-green-700'
                 : theme === 'dark'
-                ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                ? 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                 : theme === 'high-contrast'
-                ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
             <div className="flex items-center space-x-2">
@@ -174,7 +174,7 @@ const Sidebar = memo(() => {
             <div className={`w-8 h-4 rounded-full transition-colors ${
               adaptiveMode
                 ? theme === 'dark' ? 'bg-green-500' : 'bg-green-600'
-                : theme === 'dark' ? 'bg-gray-600' : 'bg-gray-300'
+                : theme === 'dark' ? 'bg-slate-600' : 'bg-slate-300'
             }`}>
               <div className={`w-3 h-3 rounded-full bg-white transition-transform ${
                 adaptiveMode ? 'translate-x-4' : 'translate-x-0.5'
@@ -186,7 +186,7 @@ const Sidebar = memo(() => {
         {/* Theme Selector */}
         <div className="mb-8">
           <h3 className={`text-sm font-medium mb-3 ${
-            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+            theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
           }`}>
             Theme
           </h3>
@@ -209,10 +209,10 @@ const Sidebar = memo(() => {
                         ? 'bg-blue-500 text-white'
                         : 'bg-blue-100 text-blue-700'
                       : theme === 'dark'
-                      ? 'hover:bg-gray-700 text-gray-400'
+                      ? 'hover:bg-slate-700 text-slate-400'
                       : theme === 'high-contrast'
-                      ? 'hover:bg-gray-800 text-gray-300'
-                      : 'hover:bg-gray-100 text-gray-600'
+                      ? 'hover:bg-slate-800 text-slate-300'
+                      : 'hover:bg-slate-100 text-slate-600'
                   }`}
                   title={option.label}
                 >
@@ -226,10 +226,10 @@ const Sidebar = memo(() => {
         {/* User Profile */}
         <div className={`p-3 rounded-lg ${
           theme === 'dark' 
-            ? 'bg-gray-700' 
+            ? 'bg-slate-700' 
             : theme === 'high-contrast'
-            ? 'bg-gray-800'
-            : 'bg-gray-50'
+            ? 'bg-slate-800'
+            : 'bg-slate-50'
         }`}>
           <div className="flex items-center space-x-3">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -247,12 +247,12 @@ const Sidebar = memo(() => {
             </div>
             <div>
               <p className={`text-sm font-medium ${
-                theme === 'dark' ? 'text-white' : 'text-gray-900'
+                theme === 'dark' ? 'text-white' : 'text-slate-900'
               }`}>
                 User
               </p>
               <p className={`text-xs ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
               }`}>
                 Event Discovery
               </p>

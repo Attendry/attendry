@@ -238,7 +238,7 @@ const AdminDashboard = memo(function AdminDashboard() {
       case 'healthy': return 'text-green-600';
       case 'warning': return 'text-yellow-600';
       case 'error': return 'text-red-600';
-      default: return 'text-gray-600';
+      default: return 'text-slate-600';
     }
   }, []);
 
@@ -267,10 +267,10 @@ const AdminDashboard = memo(function AdminDashboard() {
     return (
       <div className="max-w-7xl mx-auto p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 bg-slate-200 rounded w-1/4 mb-6"></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+              <div key={i} className="h-32 bg-slate-200 rounded-lg"></div>
             ))}
           </div>
         </div>
@@ -282,8 +282,8 @@ const AdminDashboard = memo(function AdminDashboard() {
     <div className="max-w-7xl mx-auto p-6 space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
-          <p className="text-gray-600">Manage users, monitor system health, and view analytics</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Admin Dashboard</h1>
+          <p className="text-slate-600">Manage users, monitor system health, and view analytics</p>
         </div>
         <div className="flex flex-col gap-2">
           {successMessage && (
@@ -302,8 +302,8 @@ const AdminDashboard = memo(function AdminDashboard() {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="mb-4 border-b border-gray-200">
-        <nav className="flex flex-wrap gap-4 text-sm font-medium text-gray-500">
+      <div className="mb-4 border-b border-slate-200">
+        <nav className="flex flex-wrap gap-4 text-sm font-medium text-slate-500">
           {[
             { id: 'overview', label: 'Overview' },
             { id: 'users', label: 'Users' },
@@ -315,7 +315,7 @@ const AdminDashboard = memo(function AdminDashboard() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
               className={`relative pb-2 transition-colors ${
-                activeTab === tab.id ? 'text-blue-600' : 'hover:text-gray-700'
+                activeTab === tab.id ? 'text-blue-600' : 'hover:text-slate-700'
               }`}
             >
               {tab.label}
@@ -334,7 +334,7 @@ const AdminDashboard = memo(function AdminDashboard() {
         <div className="space-y-8">
           {/* Key Metrics */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -342,13 +342,13 @@ const AdminDashboard = memo(function AdminDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{metrics.totalUsers}</p>
+                  <p className="text-sm font-medium text-slate-600">Total Users</p>
+                  <p className="text-2xl font-bold text-slate-900">{metrics.totalUsers}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -356,13 +356,13 @@ const AdminDashboard = memo(function AdminDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Active Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{metrics.activeUsers}</p>
+                  <p className="text-sm font-medium text-slate-600">Active Users</p>
+                  <p className="text-2xl font-bold text-slate-900">{metrics.activeUsers}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-purple-100 rounded-lg">
                   <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -370,13 +370,13 @@ const AdminDashboard = memo(function AdminDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Events</p>
-                  <p className="text-2xl font-bold text-gray-900">{metrics.totalEvents}</p>
+                  <p className="text-sm font-medium text-slate-600">Total Events</p>
+                  <p className="text-2xl font-bold text-slate-900">{metrics.totalEvents}</p>
                 </div>
               </div>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-orange-100 rounded-lg">
                   <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -384,54 +384,54 @@ const AdminDashboard = memo(function AdminDashboard() {
                   </svg>
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Total Searches</p>
-                  <p className="text-2xl font-bold text-gray-900">{metrics.totalSearches}</p>
+                  <p className="text-sm font-medium text-slate-600">Total Searches</p>
+                  <p className="text-2xl font-bold text-slate-900">{metrics.totalSearches}</p>
                 </div>
               </div>
             </div>
           </div>
 
           {/* System Health */}
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">System Health</h2>
+          <div className="bg-white border border-slate-200 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-slate-900 mb-4">System Health</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center">
                 <div className={`text-3xl font-bold ${getSystemHealthColor(metrics.systemHealth.status)}`}>
                   {getSystemHealthIcon(metrics.systemHealth.status)}
                 </div>
-                <p className="text-sm text-gray-600 mt-2">Status</p>
+                <p className="text-sm text-slate-600 mt-2">Status</p>
                 <p className="font-medium capitalize">{metrics.systemHealth.status}</p>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">
+                <div className="text-3xl font-bold text-slate-900">
                   {Math.round(metrics.systemHealth.uptime)}%
                 </div>
-                <p className="text-sm text-gray-600 mt-2">Uptime</p>
+                <p className="text-sm text-slate-600 mt-2">Uptime</p>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">
+                <div className="text-3xl font-bold text-slate-900">
                   {metrics.systemHealth.responseTime}ms
                 </div>
-                <p className="text-sm text-gray-600 mt-2">Response Time</p>
+                <p className="text-sm text-slate-600 mt-2">Response Time</p>
               </div>
             </div>
           </div>
 
           {/* User Growth */}
-          <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">User Growth</h2>
+          <div className="bg-white border border-slate-200 rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-slate-900 mb-4">User Growth</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">{metrics.userGrowth.daily}</div>
-                <p className="text-sm text-gray-600 mt-2">New Users Today</p>
+                <div className="text-3xl font-bold text-slate-900">{metrics.userGrowth.daily}</div>
+                <p className="text-sm text-slate-600 mt-2">New Users Today</p>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">{metrics.userGrowth.weekly}</div>
-                <p className="text-sm text-gray-600 mt-2">New Users This Week</p>
+                <div className="text-3xl font-bold text-slate-900">{metrics.userGrowth.weekly}</div>
+                <p className="text-sm text-slate-600 mt-2">New Users This Week</p>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">{metrics.userGrowth.monthly}</div>
-                <p className="text-sm text-gray-600 mt-2">New Users This Month</p>
+                <div className="text-3xl font-bold text-slate-900">{metrics.userGrowth.monthly}</div>
+                <p className="text-sm text-slate-600 mt-2">New Users This Month</p>
               </div>
             </div>
           </div>
@@ -440,33 +440,33 @@ const AdminDashboard = memo(function AdminDashboard() {
 
       {/* Users Tab */}
       {activeTab === 'users' && (
-        <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">User Management</h2>
-            <p className="text-gray-600 mt-1">Manage user accounts and permissions</p>
+        <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+          <div className="p-6 border-b border-slate-200">
+            <h2 className="text-xl font-semibold text-slate-900">User Management</h2>
+            <p className="text-slate-600 mt-1">Manage user accounts and permissions</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     User
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Last Sign In
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-slate-200">
                 {users.map((user) => {
                   const currentRole = roleAssignments[user.id] || 'Seller';
                   const pendingRole = pendingRoleAssignments[user.id] || currentRole;
@@ -475,8 +475,8 @@ const AdminDashboard = memo(function AdminDashboard() {
                     <tr key={user.id}>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{user.email}</div>
-                          <div className="text-sm text-gray-500">ID: {user.id}</div>
+                          <div className="text-sm font-medium text-slate-900">{user.email}</div>
+                          <div className="text-sm text-slate-500">ID: {user.id}</div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -488,10 +488,10 @@ const AdminDashboard = memo(function AdminDashboard() {
                           {user.is_active ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                         {formatDate(user.created_at)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                         {user.last_sign_in_at ? formatDate(user.last_sign_in_at) : 'Never'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -502,7 +502,7 @@ const AdminDashboard = memo(function AdminDashboard() {
                               ...prev,
                               [user.id]: e.target.value as RoleKey,
                             }))}
-                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             {ROLE_OPTIONS.map((role) => (
                               <option key={role} value={role}>{role}</option>
@@ -559,28 +559,28 @@ const AdminDashboard = memo(function AdminDashboard() {
       {/* Analytics Tab */}
       {activeTab === 'analytics' && metrics && (
         <div className="space-y-6">
-          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Statistics</h2>
+          <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900 mb-4">Event Statistics</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">{metrics.eventStats.collected}</div>
-                <p className="text-sm text-gray-600 mt-2">Events Collected</p>
+                <div className="text-3xl font-bold text-slate-900">{metrics.eventStats.collected}</div>
+                <p className="text-sm text-slate-600 mt-2">Events Collected</p>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">{metrics.eventStats.processed}</div>
-                <p className="text-sm text-gray-600 mt-2">Events Processed</p>
+                <div className="text-3xl font-bold text-slate-900">{metrics.eventStats.processed}</div>
+                <p className="text-sm text-slate-600 mt-2">Events Processed</p>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-gray-900">{metrics.eventStats.errors}</div>
-                <p className="text-sm text-gray-600 mt-2">Processing Errors</p>
+                <div className="text-3xl font-bold text-slate-900">{metrics.eventStats.errors}</div>
+                <p className="text-sm text-slate-600 mt-2">Processing Errors</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Search Analytics</h2>
+          <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900 mb-4">Search Analytics</h2>
             <div className="text-center py-8">
-              <p className="text-gray-500">Search analytics will be displayed here</p>
+              <p className="text-slate-500">Search analytics will be displayed here</p>
             </div>
           </div>
         </div>
@@ -589,39 +589,39 @@ const AdminDashboard = memo(function AdminDashboard() {
       {/* System Tab */}
       {activeTab === 'system' && metrics && (
         <div className="space-y-6">
-          <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">System Monitoring</h2>
+          <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+            <h2 className="text-xl font-semibold text-slate-900 mb-4">System Monitoring</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-3">Performance Metrics</h3>
+                <h3 className="text-lg font-medium text-slate-900 mb-3">Performance Metrics</h3>
                 <div className="space-y-3">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Response Time</span>
+                    <span className="text-sm text-slate-600">Response Time</span>
                     <span className="text-sm font-medium">{metrics.systemHealth.responseTime}ms</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Error Rate</span>
+                    <span className="text-sm text-slate-600">Error Rate</span>
                     <span className="text-sm font-medium">{metrics.systemHealth.errorRate}%</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Uptime</span>
+                    <span className="text-sm text-slate-600">Uptime</span>
                     <span className="text-sm font-medium">{Math.round(metrics.systemHealth.uptime)}%</span>
                   </div>
                 </div>
               </div>
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-3">System Status</h3>
+                <h3 className="text-lg font-medium text-slate-900 mb-3">System Status</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Database</span>
+                    <span className="text-sm text-slate-600">Database</span>
                     <span className="text-sm font-medium text-green-600">✓ Healthy</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">API Services</span>
+                    <span className="text-sm text-slate-600">API Services</span>
                     <span className="text-sm font-medium text-green-600">✓ Healthy</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">External APIs</span>
+                    <span className="text-sm text-slate-600">External APIs</span>
                     <span className="text-sm font-medium text-green-600">✓ Healthy</span>
                   </div>
                 </div>
@@ -633,37 +633,37 @@ const AdminDashboard = memo(function AdminDashboard() {
 
       {activeTab === 'permissions' && (
         <div className="space-y-6">
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+            <div className="p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">Module Access Matrix</h2>
-                <p className="text-gray-600 mt-1">Control which roles can see and use each module</p>
+                <h2 className="text-xl font-semibold text-slate-900">Module Access Matrix</h2>
+                <p className="text-slate-600 mt-1">Control which roles can see and use each module</p>
               </div>
-              <div className="inline-flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-3 py-1">
+              <div className="inline-flex items-center gap-2 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-3 py-1">
                 <span className="h-2 w-2 rounded-full bg-blue-500" />
                 Live preview (mock)
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Module
                     </th>
                     {ROLE_OPTIONS.map((role) => (
-                      <th key={role} className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th key={role} className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
                         {role}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-slate-200">
                   {MODULES.map((module) => (
                     <tr key={module.id}>
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                      <td className="px-6 py-4 text-sm font-medium text-slate-900">
                         <div>{module.label}</div>
-                        <p className="text-xs text-gray-500 mt-1">Controls access to {module.label.toLowerCase()} surfaces.</p>
+                        <p className="text-xs text-slate-500 mt-1">Controls access to {module.label.toLowerCase()} surfaces.</p>
                       </td>
                       {ROLE_OPTIONS.map((role) => (
                         <td key={`${module.id}-${role}`} className="px-6 py-4 text-center">
@@ -682,7 +682,7 @@ const AdminDashboard = memo(function AdminDashboard() {
                                   },
                                 }));
                               }}
-                              className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                              className="h-4 w-4 text-blue-600 border-slate-300 rounded"
                             />
                           </label>
                         </td>
@@ -692,8 +692,8 @@ const AdminDashboard = memo(function AdminDashboard() {
                 </tbody>
               </table>
             </div>
-            <div className="p-6 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="text-xs text-gray-500">
+            <div className="p-6 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="text-xs text-slate-500">
                 Changes sync to Supabase permissions. Connect SSO for real-time propagation.
               </div>
               <div className="flex gap-3">
@@ -702,7 +702,7 @@ const AdminDashboard = memo(function AdminDashboard() {
                     setRoleAccess(defaultPermissions().roles);
                     setSuccessMessage('Module access reset to defaults');
                   }}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
                 >
                   Reset defaults
                 </button>
@@ -745,33 +745,33 @@ const AdminDashboard = memo(function AdminDashboard() {
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Role Assignment</h2>
-              <p className="text-gray-600 mt-1">Assign users to roles that determine their navigation and data access</p>
+          <div className="bg-white border border-slate-200 rounded-lg shadow-sm">
+            <div className="p-6 border-b border-slate-200">
+              <h2 className="text-xl font-semibold text-slate-900">Role Assignment</h2>
+              <p className="text-slate-600 mt-1">Assign users to roles that determine their navigation and data access</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       User
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Created
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Last Sign In
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                       Role Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-slate-200">
                   {users.map((user) => {
                     const currentRole = roleAssignments[user.id] || 'Seller';
                     const pendingRole = pendingRoleAssignments[user.id] || currentRole;
@@ -780,8 +780,8 @@ const AdminDashboard = memo(function AdminDashboard() {
                       <tr key={user.id}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
-                            <div className="text-sm font-medium text-gray-900">{user.email}</div>
-                            <div className="text-sm text-gray-500">ID: {user.id}</div>
+                            <div className="text-sm font-medium text-slate-900">{user.email}</div>
+                            <div className="text-sm text-slate-500">ID: {user.id}</div>
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -793,16 +793,16 @@ const AdminDashboard = memo(function AdminDashboard() {
                             {user.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                           {formatDate(user.created_at)}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                           {user.last_sign_in_at ? formatDate(user.last_sign_in_at) : 'Never'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center gap-3 flex-wrap">
-                            <div className="text-xs text-gray-500">
-                              Current: <span className="font-semibold text-gray-700">{currentRole}</span>
+                            <div className="text-xs text-slate-500">
+                              Current: <span className="font-semibold text-slate-700">{currentRole}</span>
                             </div>
                             <select
                               value={pendingRole}
@@ -814,7 +814,7 @@ const AdminDashboard = memo(function AdminDashboard() {
                                   [user.id]: e.target.value as RoleKey,
                                 }));
                               }}
-                              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
                               {ROLE_OPTIONS.map((role) => (
                                 <option key={role} value={role}>{role}</option>
@@ -865,7 +865,7 @@ const AdminDashboard = memo(function AdminDashboard() {
                 </tbody>
               </table>
             </div>
-            <div className="p-6 border-t border-gray-200 text-xs text-gray-500">
+            <div className="p-6 border-t border-slate-200 text-xs text-slate-500">
               SSO integration (mock) required to propagate changes immediately. Otherwise, updates apply on next login.
             </div>
           </div>

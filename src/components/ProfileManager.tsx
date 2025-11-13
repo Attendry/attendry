@@ -101,7 +101,7 @@ export function ProfileManager({
     if (confidence >= 0.9) return 'text-green-600 bg-green-50';
     if (confidence >= 0.8) return 'text-blue-600 bg-blue-50';
     if (confidence >= 0.7) return 'text-yellow-600 bg-yellow-50';
-    return 'text-gray-600 bg-gray-50';
+    return 'text-slate-600 bg-slate-50';
   };
 
   const getConfidenceLabel = (confidence: number) => {
@@ -124,7 +124,7 @@ export function ProfileManager({
               className={`p-2 rounded-lg border text-sm font-medium transition-colors ${
                 selectedCountry === country.code
                   ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-slate-700 border-gray-200 hover:border-gray-300'
+                  : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
               }`}
             >
               {country.name}
@@ -166,7 +166,7 @@ export function ProfileManager({
                       </span>
                     ))}
                     {suggestion.industryTerms.length > 5 && (
-                      <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                      <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded">
                         +{suggestion.industryTerms.length - 5} more
                       </span>
                     )}
@@ -182,7 +182,7 @@ export function ProfileManager({
                       </span>
                     ))}
                     {suggestion.icpTerms.length > 3 && (
-                      <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                      <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded">
                         +{suggestion.icpTerms.length - 3} more
                       </span>
                     )}
@@ -198,7 +198,7 @@ export function ProfileManager({
                       </span>
                     ))}
                     {suggestion.competitors.length > 3 && (
-                      <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">
+                      <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded">
                         +{suggestion.competitors.length - 3} more
                       </span>
                     )}
@@ -232,7 +232,7 @@ export function ProfileManager({
         </p>
         <button
           onClick={onCustomProfileCreate}
-          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm font-medium"
+          className="px-4 py-2 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium"
         >
           Create Custom Profile
         </button>

@@ -151,7 +151,7 @@ export function TemplateCustomization({
       />
 
       {/* Template Preview */}
-      <div className="bg-gray-50 rounded-lg p-4">
+      <div className="bg-slate-50 rounded-lg p-4">
         <h4 className="font-medium text-slate-900 mb-3">Template Preview</h4>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>

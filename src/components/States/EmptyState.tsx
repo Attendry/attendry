@@ -25,15 +25,15 @@ export function EmptyState({
   return (
     <div className="text-center py-12">
       {icon && (
-        <div className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-4">
+        <div className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500 mb-4">
           {icon}
         </div>
       )}
-      <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+      <h3 className="text-lg font-medium text-slate-900 dark:text-white mb-2">
         {title}
       </h3>
       {description && (
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-sm mx-auto">
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm mx-auto">
           {description}
         </p>
       )}
@@ -56,8 +56,8 @@ export function EmptyEvents() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
       }
-      title="No events found"
-      description="Get started by searching for events or creating your first event."
+      title="No events"
+      description="Search events to get started"
       action={{
         label: "Search Events",
         onClick: () => window.location.href = '/search'
@@ -74,8 +74,8 @@ export function EmptySearch() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
       }
-      title="No results found"
-      description="Try adjusting your search terms or filters to find what you're looking for."
+      title="No results"
+      description="Try different keywords"
     />
   );
 }
