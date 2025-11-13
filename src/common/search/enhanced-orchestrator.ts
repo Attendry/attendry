@@ -413,6 +413,7 @@ type ScoredEvent = {
   city: string | null;
   location: string | null;
   venue: string | null;
+  organizer: string | null;
   description: string | null;
   speakers: unknown[];
   confidence: number;
@@ -462,6 +463,7 @@ type ExtractedEventDetails = {
   city: string | null;
   location: string | null;
   venue: string | null;
+  organizer: string | null;
   sessions: ExtractedSession[];
   speakers: ExtractedSpeaker[];
   sponsors: ExtractedSponsor[];
@@ -633,6 +635,7 @@ function toExtractedEventDetails(source: unknown): ExtractedEventDetails {
   const city = typeof obj.city === 'string' && obj.city.trim().length ? obj.city.trim() : null;
   const location = typeof obj.location === 'string' && obj.location.trim().length ? obj.location.trim() : null;
   const venue = typeof obj.venue === 'string' && obj.venue.trim().length ? obj.venue.trim() : null;
+  const organizer = typeof obj.organizer === 'string' && obj.organizer.trim().length ? obj.organizer.trim() : null;
 
   const sessions = Array.isArray(obj.sessions) ? obj.sessions.map(normalizeSession).filter(Boolean) as ExtractedSession[] : [];
   const speakers = Array.isArray(obj.speakers) ? obj.speakers.map(normalizeSpeaker).filter(Boolean) as ExtractedSpeaker[] : [];
@@ -649,6 +652,7 @@ function toExtractedEventDetails(source: unknown): ExtractedEventDetails {
     city,
     location,
     venue,
+    organizer,
     sessions,
     speakers,
     sponsors,
@@ -668,6 +672,7 @@ function mergeDetails(primary: ExtractedEventDetails, fallback: ExtractedEventDe
     location: primary.location ?? fallback.location ?? null,
     locationSource: primary.location ? primary.locationSource ?? 'primary' : fallback.location ? fallback.locationSource ?? 'fallback' : null,
     venue: primary.venue ?? fallback.venue ?? null,
+    organizer: primary.organizer ?? fallback.organizer ?? null,
     sessions: mergeArray(primary.sessions, fallback.sessions, (session) => session.title ?? session.description ?? JSON.stringify(session)),
     speakers: mergeArray(primary.speakers, fallback.speakers, (speaker) => speaker.name ?? JSON.stringify(speaker)),
     sponsors: mergeArray(primary.sponsors, fallback.sponsors, (sponsor) => sponsor.name ?? JSON.stringify(sponsor)),
@@ -977,7 +982,7 @@ CRITICAL: You MUST extract information even if it seems incomplete. Do not retur
 - Event titles, descriptions, dates, locations
 - Speaker names, organizations, titles
 - Session information, agendas
-- Venue details, sponsors
+- Venue details, organizers, sponsors
 
 Be thorough and extract every piece of information you can find. Look carefully through the entire page content.
 Return strict JSON with the following shape:
@@ -989,6 +994,7 @@ Return strict JSON with the following shape:
   "city": string | null,
   "location": string | null,
   "venue": string | null,
+  "organizer": string | null,
   "sessions": [
     {
       "title": string | null,
@@ -1027,7 +1033,8 @@ Instructions:
 - Check for speaker bios, profiles, or "about the speakers" sections.
 - Extract any speaker names mentioned in session descriptions or agenda items.
 - Look for speaker photos with captions or speaker cards with names and titles.
-- Extract sponsors or partners with tier/description when present.
+- Extract organizer information (look for "organized by", "hosted by", "presented by", event organizer company/organization).
+- Extract sponsors or partners with tier/description when present (look for sponsor sections, sponsor tiers like Platinum, Gold, Silver, Bronze).
 - Collect any in-domain links pointing to agenda, program, speakers, sponsors, or practical information pages in "relatedUrls".
 - IMPORTANT: Look for ANY mention of people, names, presenters, or speakers anywhere on the page.
 - Look in headers, footers, sidebars, and all content areas for speaker information.
@@ -1141,6 +1148,7 @@ function emptyExtractedDetails(): ExtractedEventDetails {
     city: null,
     location: null,
     venue: null,
+    organizer: null,
     sessions: [],
     speakers: [],
     sponsors: [],
@@ -2600,6 +2608,7 @@ async function performEnhancedSearch(args: ExecArgs) {
         city: details.city,
         location: details.location,
         venue: details.venue,
+        organizer: details.organizer,
         description: details.description,
         sessions: details.sessions,
         speakers: details.speakers,
