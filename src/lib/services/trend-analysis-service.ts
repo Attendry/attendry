@@ -9,6 +9,8 @@ import { EventData, UserProfile } from '@/lib/types/core';
 import { LLMService } from './llm-service';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import crypto from 'crypto';
+import { normalizeTopics, TAXONOMY_VERSION } from '@/lib/utils/topic-normalizer';
+import { normalizeOrg } from '@/lib/utils/org-normalizer';
 
 export interface HotTopic {
   topic: string;
@@ -418,5 +420,202 @@ export async function cacheTrendAnalysis(
     }, {
       onConflict: 'cache_key'
     });
+}
+
+// ============================================================================
+// PHASE 2 OPTIMIZATION: Trend Snapshot Rollups
+// ============================================================================
+
+export interface TrendSnapshot {
+  id: string;
+  snapshot_date: string;
+  time_window: 'week' | 'month' | 'quarter' | 'year';
+  taxonomy_version: string;
+  topic_frequencies: Record<string, number>;
+  topic_growth_rates: Record<string, number>;
+  sponsor_tiers: Record<string, number>;
+  sponsor_industries: Record<string, number>;
+  org_types: Record<string, number>;
+  org_sectors: Record<string, number>;
+  event_count: number;
+  avg_attendees: number | null;
+  avg_speakers_per_event: number | null;
+  top_cities: Array<{ city: string; count: number }>;
+  top_countries: Array<{ country: string; count: number }>;
+  created_at: string;
+}
+
+/**
+ * Generate a trend snapshot for a given time window
+ */
+export async function generateTrendSnapshot(
+  timeWindow: 'week' | 'month' | 'quarter' | 'year',
+  taxonomyVersion: string = TAXONOMY_VERSION,
+  events?: EventData[]
+): Promise<TrendSnapshot | null> {
+  try {
+    const supabase = supabaseAdmin();
+    
+    if (!events) {
+      const { data: eventsData, error } = await supabase
+        .from('collected_events')
+        .select('*')
+        .not('starts_at', 'is', null)
+        .gte('starts_at', getTimeWindowStart(timeWindow))
+        .lte('starts_at', getTimeWindowEnd(timeWindow));
+      
+      if (error) {
+        console.error('[trend-analysis] Error fetching events:', error);
+        return null;
+      }
+      
+      events = (eventsData || []) as EventData[];
+    }
+    
+    const snapshotDate = getTimeWindowEnd(timeWindow);
+    const topicFrequencies: Record<string, number> = {};
+    
+    events.forEach(event => {
+      const normalizedTopics = normalizeTopics(event.topics || [], taxonomyVersion);
+      normalizedTopics.forEach(topic => {
+        if (topic !== 'unknown') {
+          topicFrequencies[topic] = (topicFrequencies[topic] || 0) + 1;
+        }
+      });
+    });
+    
+    const previousSnapshot = await getPreviousSnapshot(timeWindow);
+    const topicGrowthRates: Record<string, number> = {};
+    Object.keys(topicFrequencies).forEach(topic => {
+      const currentCount = topicFrequencies[topic];
+      const previousCount = previousSnapshot?.topic_frequencies[topic] || 0;
+      const growthRate = previousCount > 0
+        ? ((currentCount - previousCount) / previousCount) * 100
+        : currentCount > 0 ? 100 : 0;
+      topicGrowthRates[topic] = Math.round(growthRate * 100) / 100;
+    });
+    
+    const sponsorTiers: Record<string, number> = {};
+    events.forEach(event => {
+      const sponsors = event.sponsors || [];
+      sponsors.forEach(sponsor => {
+        const level = typeof sponsor === 'string' ? 'unknown' : (sponsor.level || 'unknown');
+        sponsorTiers[level.toLowerCase()] = (sponsorTiers[level.toLowerCase()] || 0) + 1;
+      });
+    });
+    
+    const sponsorIndustries: Record<string, number> = {};
+    events.forEach(event => {
+      const sponsors = event.sponsors || [];
+      sponsors.forEach(sponsor => {
+        const orgName = typeof sponsor === 'string' ? sponsor : (sponsor.name || '');
+        if (orgName) {
+          const normalized = normalizeOrg(orgName);
+          const industry = detectIndustry(normalized);
+          sponsorIndustries[industry] = (sponsorIndustries[industry] || 0) + 1;
+        }
+      });
+    });
+    
+    const cityCounts: Record<string, number> = {};
+    const countryCounts: Record<string, number> = {};
+    events.forEach(event => {
+      if (event.city) cityCounts[event.city] = (cityCounts[event.city] || 0) + 1;
+      if (event.country) countryCounts[event.country] = (countryCounts[event.country] || 0) + 1;
+    });
+    
+    const topCities = Object.entries(cityCounts)
+      .map(([city, count]) => ({ city, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    
+    const topCountries = Object.entries(countryCounts)
+      .map(([country, count]) => ({ country, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+    
+    const totalSpeakers = events.reduce((sum, event) => sum + (event.speakers?.length || 0), 0);
+    const avgSpeakersPerEvent = events.length > 0 
+      ? Math.round((totalSpeakers / events.length) * 100) / 100
+      : null;
+    
+    const snapshot: Omit<TrendSnapshot, 'id' | 'created_at'> = {
+      snapshot_date: snapshotDate,
+      time_window: timeWindow,
+      taxonomy_version: taxonomyVersion,
+      topic_frequencies: topicFrequencies,
+      topic_growth_rates: topicGrowthRates,
+      sponsor_tiers: sponsorTiers,
+      sponsor_industries: sponsorIndustries,
+      org_types: {},
+      org_sectors: {},
+      event_count: events.length,
+      avg_attendees: null,
+      avg_speakers_per_event: avgSpeakersPerEvent,
+      top_cities: topCities,
+      top_countries: topCountries,
+    };
+    
+    const { data, error } = await supabase
+      .from('trend_snapshots')
+      .upsert(snapshot, { onConflict: 'snapshot_date,time_window' })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('[trend-analysis] Error creating snapshot:', error);
+      return null;
+    }
+    
+    return data as TrendSnapshot;
+  } catch (error) {
+    console.error('[trend-analysis] Exception generating snapshot:', error);
+    return null;
+  }
+}
+
+async function getPreviousSnapshot(timeWindow: 'week' | 'month' | 'quarter' | 'year'): Promise<TrendSnapshot | null> {
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase
+      .from('trend_snapshots')
+      .select('*')
+      .eq('time_window', timeWindow)
+      .order('snapshot_date', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (error || !data) return null;
+    return data as TrendSnapshot;
+  } catch (error) {
+    console.error('[trend-analysis] Error fetching previous snapshot:', error);
+    return null;
+  }
+}
+
+function getTimeWindowStart(timeWindow: 'week' | 'month' | 'quarter' | 'year'): string {
+  const now = new Date();
+  let start = new Date();
+  switch (timeWindow) {
+    case 'week': start.setDate(now.getDate() - 7); break;
+    case 'month': start.setMonth(now.getMonth() - 1); break;
+    case 'quarter': start.setMonth(now.getMonth() - 3); break;
+    case 'year': start.setFullYear(now.getFullYear() - 1); break;
+  }
+  return start.toISOString().split('T')[0];
+}
+
+function getTimeWindowEnd(timeWindow: 'week' | 'month' | 'quarter' | 'year'): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function detectIndustry(orgName: string): string {
+  const nameLower = orgName.toLowerCase();
+  if (nameLower.includes('law') || nameLower.includes('legal')) return 'legal';
+  if (nameLower.includes('bank') || nameLower.includes('finance') || nameLower.includes('financial')) return 'finance';
+  if (nameLower.includes('tech') || nameLower.includes('software') || nameLower.includes('technology')) return 'technology';
+  if (nameLower.includes('health') || nameLower.includes('medical') || nameLower.includes('pharma')) return 'healthcare';
+  if (nameLower.includes('consulting') || nameLower.includes('advisory')) return 'consulting';
+  return 'other';
 }
 

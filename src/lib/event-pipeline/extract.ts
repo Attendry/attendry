@@ -9,6 +9,8 @@ import { parseEventDate } from '@/search/date';
 import { logger } from '@/utils/logger';
 import * as cheerio from 'cheerio';
 import { metrics } from '@/search/metrics';
+import { normalizeOrg, orgSimilarity } from '@/lib/utils/org-normalizer';
+import { levenshteinSimilarity, isSimilar } from '@/lib/utils/levenshtein';
 
 const ENRICHMENT_LINK_KEYWORDS = [
   'speaker',
@@ -304,11 +306,60 @@ export class EventExtractor {
     return links;
   }
 
+  /**
+   * PHASE 2 OPTIMIZATION: Normalize speaker name for fuzzy matching
+   * - Remove titles (Dr., Prof., Mr., Mrs., Ms.)
+   * - Expand initials (J. Smith → j smith)
+   * - Lowercase, trim whitespace
+   */
+  private normalizeSpeakerName(name: string): string {
+    if (!name || typeof name !== 'string') return '';
+    
+    let normalized = name.trim();
+    
+    // Remove common titles
+    normalized = normalized.replace(/^(dr\.?|prof\.?|professor|mr\.?|mrs\.?|ms\.?|miss)\s+/i, '');
+    
+    // Expand single-letter initials (J. Smith → J Smith)
+    normalized = normalized.replace(/\b([A-Z])\.\s+/g, '$1 ');
+    
+    // Normalize whitespace and lowercase
+    normalized = normalized.replace(/\s+/g, ' ').trim().toLowerCase();
+    
+    return normalized;
+  }
+
+  /**
+   * PHASE 2 OPTIMIZATION: Check if two speakers are the same person using fuzzy matching
+   * - Name similarity > 0.8 (Levenshtein)
+   * - Org similarity > 0.6 (Jaccard) if both have orgs
+   */
+  private areSameSpeaker(
+    name1: string, org1: string | undefined,
+    name2: string, org2: string | undefined
+  ): boolean {
+    const normName1 = this.normalizeSpeakerName(name1);
+    const normName2 = this.normalizeSpeakerName(name2);
+    
+    // Name similarity check (Levenshtein)
+    const nameSimilarity = levenshteinSimilarity(normName1, normName2);
+    if (nameSimilarity < 0.8) return false;
+    
+    // If both have orgs, require org similarity > 0.6
+    if (org1 && org2) {
+      const orgSim = orgSimilarity(org1, org2);
+      if (orgSim < 0.6) return false;
+    }
+    
+    return true;
+  }
+
   private processSpeakerObjects(speakers: any[] | string[] | undefined): SpeakerInfo[] {
     if (!Array.isArray(speakers)) return [];
 
     const normalized: SpeakerInfo[] = [];
-    const seen = new Set<string>();
+    const seen = new Set<string>(); // For exact matches
+    const fuzzySeen: Array<{ name: string; org?: string }> = []; // For fuzzy matching
 
     for (const rawSpeaker of speakers) {
       if (!rawSpeaker) continue;
@@ -317,11 +368,19 @@ export class EventExtractor {
         const name = rawSpeaker.trim();
         if (!this.validateSpeakerName(name)) continue;
 
+        // PHASE 2: Check for fuzzy duplicates
+        const isDuplicate = fuzzySeen.some(existing => 
+          this.areSameSpeaker(name, undefined, existing.name, existing.org)
+        );
+        
+        if (isDuplicate) continue;
+        
         const key = name.toLowerCase();
         if (seen.has(key)) continue;
 
         normalized.push({ name });
         seen.add(key);
+        fuzzySeen.push({ name });
         continue;
       }
 
@@ -331,9 +390,17 @@ export class EventExtractor {
 
         const title = typeof rawSpeaker.title === 'string' ? rawSpeaker.title.trim() :
           (typeof rawSpeaker.role === 'string' ? rawSpeaker.role.trim() : undefined);
-        const company = typeof rawSpeaker.company === 'string' ? rawSpeaker.company.trim() :
+        const rawCompany = typeof rawSpeaker.company === 'string' ? rawSpeaker.company.trim() :
           (typeof rawSpeaker.org === 'string' ? rawSpeaker.org.trim() :
             (typeof rawSpeaker.organization === 'string' ? rawSpeaker.organization.trim() : undefined));
+        const company = rawCompany ? normalizeOrg(rawCompany) : undefined; // PHASE 2: Normalize org names
+
+        // PHASE 2: Check for fuzzy duplicates
+        const isDuplicate = fuzzySeen.some(existing => 
+          this.areSameSpeaker(name, company, existing.name, existing.org)
+        );
+        
+        if (isDuplicate) continue;
 
         const key = [name.toLowerCase(), title?.toLowerCase() || '', company?.toLowerCase() || ''].join('|');
         if (seen.has(key)) continue;
@@ -344,6 +411,7 @@ export class EventExtractor {
           company: company || undefined
         });
         seen.add(key);
+        fuzzySeen.push({ name, org: company });
       }
     }
 

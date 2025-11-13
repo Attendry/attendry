@@ -8,6 +8,9 @@ import {
   ErrorResponse 
 } from "@/lib/types/api";
 import { EventData } from "@/lib/types/core";
+import { normalizeOrg } from "@/lib/utils/org-normalizer";
+import { normalizeTopics } from "@/lib/utils/topic-normalizer";
+import { validateExtraction, calculateConfidence, applyHallucinationGuard, EvidenceTag } from "@/lib/validation/evidence-validator";
 
 // --- Enhanced schema with organization types
 const EVENT_SCHEMA = {
@@ -49,7 +52,21 @@ const EVENT_SCHEMA = {
     participating_organizations: { type: "array", items: { type: "string" } },
     partners: { type: "array", items: { type: "string" } },
     competitors: { type: "array", items: { type: "string" } },
-    confidence: { type: ["number","null"] }
+    confidence: { type: ["number","null"] },
+    evidence: { 
+      type: "array", 
+      items: { 
+        type: "object",
+        properties: {
+          field: { type: "string" },
+          source_url: { type: "string" },
+          source_section: { type: "string" },
+          snippet: { type: "string" },
+          confidence: { type: "number" },
+          extracted_at: { type: "string" }
+        }
+      }
+    }
   },
   required: ["title"]
 } as const;
@@ -369,10 +386,10 @@ function shape(url: string, p: Partial<Record<string, any>>) {
     country: normalizeCountry(p.country ?? null),
     venue: cleanVenueText(p.venue) ?? null,
     organizer: cleanText(p.organizer) ?? null,
-    topics: Array.isArray(p.topics) ? p.topics.map(cleanText).filter(Boolean) : [],
+    topics: normalizeTopics(Array.isArray(p.topics) ? p.topics.map(cleanText).filter(Boolean) : []), // PHASE 2: Normalize topics to taxonomy
     speakers: Array.isArray(p.speakers) ? p.speakers.map(speaker => ({
       name: cleanText(speaker.name) || "",
-      org: cleanText(speaker.org) || "",
+      org: normalizeOrg(cleanText(speaker.org)) || "", // PHASE 2: Normalize org names
       title: cleanText(speaker.title) || "",
       speech_title: cleanText(speaker.speech_title) || null,
       session: cleanText(speaker.session) || null,
@@ -380,24 +397,39 @@ function shape(url: string, p: Partial<Record<string, any>>) {
     })).filter(s => s.name) : [],
     sponsors: Array.isArray(p.sponsors) ? p.sponsors.map(sponsor => {
       if (typeof sponsor === 'string') {
-        return { name: cleanText(sponsor) || "", level: null, description: null };
+        return { name: normalizeOrg(cleanText(sponsor)) || "", level: null, description: null }; // PHASE 2: Normalize sponsor names
       }
       return {
-        name: cleanText(sponsor.name) || "",
+        name: normalizeOrg(cleanText(sponsor.name)) || "", // PHASE 2: Normalize sponsor names
         level: cleanText(sponsor.level) || null,
         description: cleanText(sponsor.description) || null
       };
     }).filter(s => s.name) : [],
-    participating_organizations: Array.isArray(p.participating_organizations) ? p.participating_organizations.map(cleanText).filter(Boolean) : [],
-    partners: Array.isArray(p.partners) ? p.partners.map(cleanText).filter(Boolean) : [],
-    competitors: Array.isArray(p.competitors) ? p.competitors.map(cleanText).filter(Boolean) : [],
+    participating_organizations: Array.isArray(p.participating_organizations) ? p.participating_organizations.map(org => normalizeOrg(cleanText(org))).filter(Boolean) : [], // PHASE 2: Normalize org names
+    partners: Array.isArray(p.partners) ? p.partners.map(org => normalizeOrg(cleanText(org))).filter(Boolean) : [], // PHASE 2: Normalize org names
+    competitors: Array.isArray(p.competitors) ? p.competitors.map(org => normalizeOrg(cleanText(org))).filter(Boolean) : [], // PHASE 2: Normalize org names
     confidence: typeof p.confidence === "number" ? p.confidence : null,
   };
   
-  // Calculate and set confidence score
-  event.confidence = calculateEventConfidence(event);
+  // PHASE 2: Validate evidence and apply hallucination guard
+  const evidence = Array.isArray(p.evidence) ? p.evidence as EvidenceTag[] : [];
+  const validation = validateExtraction({ ...event, evidence });
   
-  return event;
+  // Apply hallucination guard (auto-null fields without evidence)
+  const guardedEvent = applyHallucinationGuard({ ...event, evidence }, evidence);
+  
+  // Calculate confidence based on evidence quality
+  const evidenceBasedConfidence = calculateConfidence({ ...guardedEvent, evidence });
+  
+  // Use evidence-based confidence if available, otherwise fall back to original
+  guardedEvent.confidence = evidenceBasedConfidence || calculateEventConfidence(guardedEvent);
+  
+  // Log validation warnings if any
+  if (validation.warnings.length > 0) {
+    console.warn('[extract] Evidence validation warnings:', validation.warnings);
+  }
+  
+  return guardedEvent;
 }
 function htmlToText(html: string) {
   return html.replace(/<script[\s\S]*?<\/script>/gi," ")
