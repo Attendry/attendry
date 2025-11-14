@@ -32,18 +32,90 @@ export default function EventDetailPage() {
       setLoading(true);
       const supabase = supabaseBrowser();
       
-      const { data, error: fetchError } = await supabase
-        .from('collected_events')
-        .select('*')
-        .or(`id.eq.${eventId},source_url.eq.${eventId}`)
-        .single();
+      // Check if eventId is a board item ID (UUID) or optimized ID
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
+      const isOptimizedId = eventId.startsWith('optimized_');
+      
+      let eventData: EventData | null = null;
 
-      if (fetchError || !data) {
+      // First, try to get from board if it's a UUID (board item ID)
+      if (isUUID) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: boardItem } = await supabase
+            .from('user_event_board')
+            .select('event_id, event_url, event_data')
+            .eq('id', eventId)
+            .eq('user_id', user.id)
+            .maybeSingle();
+          
+          if (boardItem) {
+            // Try to get event from collected_events if we have event_id
+            if (boardItem.event_id) {
+              const { data: collectedEvent } = await supabase
+                .from('collected_events')
+                .select('*')
+                .eq('id', boardItem.event_id)
+                .single();
+              
+              if (collectedEvent) {
+                eventData = collectedEvent as EventData;
+              }
+            }
+            
+            // If not found in collected_events, use event_data from board
+            if (!eventData && boardItem.event_data) {
+              eventData = boardItem.event_data as EventData;
+            }
+            
+            // If still not found, try by event_url
+            if (!eventData && boardItem.event_url) {
+              const { data: eventByUrl } = await supabase
+                .from('collected_events')
+                .select('*')
+                .eq('source_url', boardItem.event_url)
+                .maybeSingle();
+              
+              if (eventByUrl) {
+                eventData = eventByUrl as EventData;
+              } else {
+                // Create event data from URL if we have it
+                eventData = {
+                  source_url: boardItem.event_url,
+                  title: 'Event',
+                  id: eventId
+                } as EventData;
+              }
+            }
+          }
+        }
+      }
+
+      // If not found in board, try collected_events directly
+      if (!eventData) {
+        const { data, error: fetchError } = await supabase
+          .from('collected_events')
+          .select('*')
+          .or(`id.eq.${eventId},source_url.eq.${eventId}`)
+          .maybeSingle();
+
+        if (!fetchError && data) {
+          eventData = data as EventData;
+        }
+      }
+
+      // For optimized IDs, we can't load from DB - show error with helpful message
+      if (!eventData && isOptimizedId) {
+        setError('This event is from a search result and is not yet saved to the database. Please add it to your board first to view full intelligence.');
+        return;
+      }
+
+      if (!eventData) {
         setError('Event not found');
         return;
       }
 
-      setEvent(data as EventData);
+      setEvent(eventData);
     } catch (err: any) {
       setError(err.message || 'Failed to load event');
     } finally {
