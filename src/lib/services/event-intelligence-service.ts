@@ -9,6 +9,12 @@ import { EventData, UserProfile, SponsorData } from '@/lib/types/core';
 import { LLMService } from './llm-service';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import crypto from 'crypto';
+import {
+  calculateOpportunityScore,
+  calculateUrgencyIndicators,
+  type OpportunityScore,
+  type UrgencyIndicators
+} from './opportunity-scoring-service';
 
 export interface EventDiscussions {
   themes: string[];
@@ -49,6 +55,9 @@ export interface EventIntelligence {
   generatedAt: string;
   cached: boolean;
   expiresAt?: string;
+  // Phase 1B: Quantified Opportunity Scoring
+  opportunityScore?: OpportunityScore;
+  urgencyIndicators?: UrgencyIndicators;
 }
 
 /**
@@ -493,6 +502,25 @@ export async function generateEventIntelligence(
     (hasSponsors ? 0.2 : 0) +
     (hasLocation ? 0.2 : 0)
   );
+
+  // Phase 1B: Calculate opportunity scores and urgency indicators
+  console.log('[EventIntelligence] Calculating opportunity scores...');
+  let opportunityScore: OpportunityScore | undefined;
+  let urgencyIndicators: UrgencyIndicators | undefined;
+
+  try {
+    [opportunityScore, urgencyIndicators] = await Promise.all([
+      calculateOpportunityScore(event, userProfile).catch(err => {
+        console.error('[EventIntelligence] Failed to calculate opportunity score:', err);
+        return undefined;
+      }),
+      Promise.resolve(calculateUrgencyIndicators(event)) // Synchronous, no await needed but keeping consistent
+    ]);
+    console.log('[EventIntelligence] Opportunity scores calculated successfully');
+  } catch (error) {
+    console.error('[EventIntelligence] Error calculating opportunity scores:', error);
+    // Continue without opportunity scores if calculation fails
+  }
   
   return {
     eventId: event.id || event.source_url,
@@ -502,7 +530,9 @@ export async function generateEventIntelligence(
     outreach,
     confidence: Math.max(confidence, 0.5), // Minimum 0.5
     generatedAt: new Date().toISOString(),
-    cached: false
+    cached: false,
+    opportunityScore,
+    urgencyIndicators
   };
 }
 

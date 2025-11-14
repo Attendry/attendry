@@ -17,6 +17,11 @@ import {
   cacheTrendAnalysis,
   filterEventsByUserProfile
 } from '@/lib/services/trend-analysis-service';
+import {
+  calculateTrendSignificance,
+  filterSignificantTrends,
+  type TrendSignificance
+} from '@/lib/services/statistical-analysis-service';
 
 /**
  * Trending category interface
@@ -26,6 +31,8 @@ interface TrendingCategory {
   count: number;
   growth: number;
   events: EventData[];
+  significance?: TrendSignificance;
+  significanceScore?: number; // 0-1, higher = more significant
 }
 
 /**
@@ -161,8 +168,13 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrendingRespon
     const totalEventCount = recentEvents.length;
     const filteredEventCount = filteredEvents.length;
 
-    // Generate trending categories
-    const categories = generateTrendingCategories(filteredEvents, previousEvents || []);
+    // Generate trending categories with statistical significance
+    const categories = generateTrendingCategories(
+      filteredEvents,
+      previousEvents || [],
+      filteredEvents.length,
+      previousEvents?.length || 0
+    );
 
     // Get trending events (most recent and popular)
     const trendingEvents = filteredEvents.slice(0, 20);
@@ -232,9 +244,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrendingRespon
 }
 
 /**
- * Generate trending categories based on event data
+ * Generate trending categories based on event data with statistical significance
  */
-function generateTrendingCategories(recentEvents: any[], previousEvents: any[]): TrendingCategory[] {
+function generateTrendingCategories(
+  recentEvents: any[],
+  previousEvents: any[],
+  currentTotal: number,
+  previousTotal: number
+): TrendingCategory[] {
   const categories: TrendingCategory[] = [];
 
   // Define industry categories
@@ -271,6 +288,21 @@ function generateTrendingCategories(recentEvents: any[], previousEvents: any[]):
     'Bootcamp',
   ];
 
+  // Build previous period map for significance testing
+  const previousMap = new Map<string, { count: number; total: number }>();
+  industryCategories.forEach(cat => {
+    const count = previousEvents.filter(e => containsKeyword(e, cat)).length;
+    if (count > 0) {
+      previousMap.set(cat, { count, total: previousTotal });
+    }
+  });
+  eventTypeCategories.forEach(cat => {
+    const count = previousEvents.filter(e => containsKeyword(e, cat)).length;
+    if (count > 0) {
+      previousMap.set(cat, { count, total: previousTotal });
+    }
+  });
+
   // Analyze industry trends
   industryCategories.forEach(industry => {
     const recentCount = recentEvents.filter(event => 
@@ -290,11 +322,21 @@ function generateTrendingCategories(recentEvents: any[], previousEvents: any[]):
         .filter(event => containsKeyword(event, industry))
         .slice(0, 5);
 
+      // Calculate statistical significance
+      const significance = calculateTrendSignificance(
+        recentCount,
+        previousCount,
+        currentTotal,
+        previousTotal
+      );
+
       categories.push({
         name: industry,
         count: recentCount,
         growth,
         events,
+        significance: significance || undefined,
+        significanceScore: significance?.significanceScore
       });
     }
   });
@@ -318,23 +360,50 @@ function generateTrendingCategories(recentEvents: any[], previousEvents: any[]):
         .filter(event => containsKeyword(event, eventType))
         .slice(0, 5);
 
+      // Calculate statistical significance
+      const significance = calculateTrendSignificance(
+        recentCount,
+        previousCount,
+        currentTotal,
+        previousTotal
+      );
+
       categories.push({
         name: eventType,
         count: recentCount,
         growth,
         events,
+        significance: significance || undefined,
+        significanceScore: significance?.significanceScore
       });
     }
   });
 
-  // Sort by growth and count
-  return categories
+  // Filter by significance and sort
+  // Only show trends with significance score > 0.3 (moderate significance threshold)
+  const significantCategories = categories.filter(cat => 
+    !cat.significanceScore || cat.significanceScore > 0.3
+  );
+
+  // Sort by significance score (if available), then by growth, then by count
+  return significantCategories
     .sort((a, b) => {
-      // First sort by growth (descending)
+      // First sort by significance score (descending)
+      if (a.significanceScore && b.significanceScore) {
+        if (Math.abs(a.significanceScore - b.significanceScore) > 0.1) {
+          return b.significanceScore - a.significanceScore;
+        }
+      } else if (a.significanceScore) {
+        return -1; // a has significance, b doesn't
+      } else if (b.significanceScore) {
+        return 1; // b has significance, a doesn't
+      }
+      
+      // Then by growth (descending)
       if (Math.abs(a.growth - b.growth) > 5) {
         return b.growth - a.growth;
       }
-      // Then by count (descending)
+      // Finally by count (descending)
       return b.count - a.count;
     })
     .slice(0, 10); // Top 10 categories

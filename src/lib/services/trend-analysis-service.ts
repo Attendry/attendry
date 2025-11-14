@@ -20,6 +20,12 @@ export interface HotTopic {
   relatedEvents: string[];
   category: string;
   relevanceScore: number;
+  // Phase 1A enhancements
+  geographicDistribution?: string[]; // Top countries/cities
+  industryBreakdown?: Record<string, number>; // Industry -> count
+  growthTrajectory?: 'rising' | 'stable' | 'declining';
+  validationScore?: number; // 0-1, based on cross-event validation
+  businessRelevance?: 'high' | 'medium' | 'low';
 }
 
 export interface EmergingTheme {
@@ -182,37 +188,53 @@ export async function extractHotTopics(
     url: event.source_url
   }));
   
-  const prompt = `Analyze the following events and extract the most discussed "hot topics" that are relevant for business discussion.
+  const prompt = `You are analyzing professional events to identify hot topics that are valuable for business intelligence and strategic decision-making.
 
-Events:
+EVENTS TO ANALYZE:
 ${JSON.stringify(eventSummaries, null, 2)}
 
-User Context:
+USER CONTEXT:
 ${userProfile ? JSON.stringify({
   industry: userProfile.industry_terms,
-  icp: userProfile.icp_terms
-}, null, 2) : 'No specific user context'}
+  icp: userProfile.icp_terms,
+  competitors: userProfile.competitors
+}, null, 2) : 'No specific user context - provide general business-relevant topics'}
 
-Return a JSON array of hot topics with this structure:
+EXTRACTION REQUIREMENTS:
+1. Extract topics that are mentioned across MULTIPLE events (minimum 2-3 events)
+2. Focus on BUSINESS-RELEVANT topics:
+   - Industry trends and technologies
+   - Regulatory and compliance topics
+   - Market opportunities and challenges
+   - Professional skills and certifications
+   - Strategic business themes
+3. AVOID generic topics like "networking", "conference", "event" unless they represent a significant trend
+4. Prioritize topics that are:
+   - Emerging or growing in importance
+   - Actionable for business decisions
+   - Relevant to the user's industry/ICP (if provided)
+   - Mentioned in event titles, descriptions, or topics
+
+VALIDATION RULES:
+- Each topic must appear in at least 2 different events
+- Topics should be specific enough to be actionable (not too broad)
+- Topics should represent genuine business interest, not just event logistics
+
+Return a JSON array of hot topics with this EXACT structure:
 [
   {
-    "topic": "string - the topic name",
-    "mentionCount": number - how many events mention this topic,
-    "growthRate": number - estimated growth rate (0-100),
-    "momentum": number - momentum score (0-1),
-    "relatedEvents": ["url1", "url2"] - URLs of related events,
-    "category": "string - primary category",
-    "relevanceScore": number - relevance to user (0-1)
+    "topic": "string - specific, actionable topic name (e.g., 'AI in Legal Practice', not just 'AI')",
+    "mentionCount": number - actual count of events mentioning this topic (must be >= 2),
+    "growthRate": number - estimated growth rate (0-100) based on frequency across events,
+    "momentum": number - momentum score (0-1) indicating how rapidly this topic is gaining attention,
+    "relatedEvents": ["url1", "url2"] - URLs of events that mention this topic,
+    "category": "string - primary business category (e.g., 'Technology', 'Compliance', 'Market Trends')",
+    "relevanceScore": number - relevance to user's context (0-1),
+    "businessRelevance": "high" | "medium" | "low" - how actionable this topic is for business decisions
   }
 ]
 
-Focus on topics that are:
-1. Frequently mentioned across multiple events
-2. Relevant to business/professional discussions
-3. Emerging or growing in importance
-4. Relevant to the user's industry/ICP if provided
-
-Return only the JSON array, no other text.`;
+Return ONLY the JSON array, no additional text, no markdown formatting, no explanations.`;
 
   try {
     const response = await LLMService.extractTopics(prompt, { events: eventSummaries });
@@ -224,60 +246,150 @@ Return only the JSON array, no other text.`;
       hotTopics = response.content.topics;
     }
     
-    // Validate and filter results
-    return hotTopics
-      .filter(topic => topic.topic && topic.mentionCount > 0)
-      .slice(0, 20) // Limit to top 20
-      .sort((a, b) => (b.momentum * b.relevanceScore) - (a.momentum * a.relevanceScore));
+    // Phase 1A: Enhanced validation and filtering
+    const validatedTopics = validateHotTopics(hotTopics, filteredEvents);
+    
+    if (validatedTopics.length === 0) {
+      console.warn('[TrendAnalysis] No valid hot topics found after validation');
+      return []; // Return empty array instead of fallback
+    }
+    
+    // Enrich topics with additional data
+    const enrichedTopics = await enrichHotTopics(validatedTopics, filteredEvents);
+    
+    // Sort by combined score (momentum * relevance * validation)
+    return enrichedTopics
+      .sort((a, b) => {
+        const scoreA = (a.momentum || 0) * (a.relevanceScore || 0) * (a.validationScore || 0.5);
+        const scoreB = (b.momentum || 0) * (b.relevanceScore || 0) * (b.validationScore || 0.5);
+        return scoreB - scoreA;
+      })
+      .slice(0, 20); // Limit to top 20
       
   } catch (error) {
     console.error('[TrendAnalysis] Failed to extract hot topics:', error);
-    // Fallback to keyword-based extraction
-    return extractHotTopicsFallback(filteredEvents, userProfile, category);
+    // Phase 1A: Remove fallback - return empty array instead
+    // This ensures we only show high-quality, LLM-extracted topics
+    return [];
   }
 }
 
 /**
- * Fallback hot topic extraction using keyword analysis
+ * Validate hot topics extracted by LLM
+ * Phase 1A: Enhanced validation with minimum mention threshold and cross-event validation
  */
-function extractHotTopicsFallback(
-  events: EventData[],
-  userProfile?: UserProfile,
-  category?: string
+function validateHotTopics(
+  topics: HotTopic[],
+  events: EventData[]
 ): HotTopic[] {
-  const topicMentions: Map<string, number> = new Map();
-  const topicEvents: Map<string, Set<string>> = new Map();
+  const MIN_MENTION_THRESHOLD = 2; // Topic must appear in at least 2 events
+  const MIN_VALIDATION_SCORE = 0.3; // Minimum validation score to keep
   
-  events.forEach(event => {
-    const topics = event.topics || [];
-    const url = event.source_url;
-    
-    topics.forEach(topic => {
-      const topicLower = topic.toLowerCase();
-      topicMentions.set(topicLower, (topicMentions.get(topicLower) || 0) + 1);
-      
-      if (!topicEvents.has(topicLower)) {
-        topicEvents.set(topicLower, new Set());
+  return topics
+    .filter(topic => {
+      // Basic validation
+      if (!topic.topic || topic.topic.trim().length === 0) {
+        return false;
       }
-      topicEvents.get(topicLower)!.add(url);
+      
+      // Minimum mention threshold
+      if (topic.mentionCount < MIN_MENTION_THRESHOLD) {
+        return false;
+      }
+      
+      // Cross-event validation: verify topic actually appears in multiple events
+      const topicLower = topic.topic.toLowerCase();
+      let actualMentions = 0;
+      
+      events.forEach(event => {
+        const eventText = `${event.title || ''} ${event.description || ''} ${(event.topics || []).join(' ')}`.toLowerCase();
+        if (eventText.includes(topicLower)) {
+          actualMentions++;
+        }
+      });
+      
+      // Calculate validation score based on actual mentions vs reported mentions
+      const validationScore = actualMentions >= MIN_MENTION_THRESHOLD
+        ? Math.min(actualMentions / topic.mentionCount, 1.0)
+        : 0;
+      
+      topic.validationScore = validationScore;
+      
+      // Update mention count to actual count
+      topic.mentionCount = actualMentions;
+      
+      return validationScore >= MIN_VALIDATION_SCORE && actualMentions >= MIN_MENTION_THRESHOLD;
     });
+}
+
+/**
+ * Enrich hot topics with additional data
+ * Phase 1A: Add geographic distribution, industry breakdown, growth trajectory
+ */
+async function enrichHotTopics(
+  topics: HotTopic[],
+  events: EventData[]
+): Promise<HotTopic[]> {
+  return topics.map(topic => {
+    const topicLower = topic.topic.toLowerCase();
+    
+    // Find events that mention this topic
+    const relatedEvents = events.filter(event => {
+      const eventText = `${event.title || ''} ${event.description || ''} ${(event.topics || []).join(' ')}`.toLowerCase();
+      return eventText.includes(topicLower);
+    });
+    
+    // Geographic distribution
+    const countries = new Map<string, number>();
+    const cities = new Map<string, number>();
+    relatedEvents.forEach(event => {
+      if (event.country) {
+        countries.set(event.country, (countries.get(event.country) || 0) + 1);
+      }
+      if (event.city) {
+        cities.set(event.city, (cities.get(event.city) || 0) + 1);
+      }
+    });
+    
+    const topCountries = Array.from(countries.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([country]) => country);
+    
+    // Industry breakdown (simplified - based on event topics/descriptions)
+    const industryCounts: Record<string, number> = {};
+    const industryKeywords: Record<string, string[]> = {
+      'Legal': ['legal', 'law', 'compliance', 'regulatory', 'governance'],
+      'FinTech': ['fintech', 'financial technology', 'banking', 'finance'],
+      'Healthcare': ['healthcare', 'medical', 'health', 'pharma'],
+      'Technology': ['technology', 'tech', 'software', 'digital', 'ai', 'artificial intelligence'],
+      'Finance': ['finance', 'banking', 'investment', 'trading'],
+      'Insurance': ['insurance', 'risk management', 'actuarial'],
+    };
+    
+    relatedEvents.forEach(event => {
+      const eventText = `${event.title || ''} ${event.description || ''}`.toLowerCase();
+      Object.entries(industryKeywords).forEach(([industry, keywords]) => {
+        if (keywords.some(keyword => eventText.includes(keyword))) {
+          industryCounts[industry] = (industryCounts[industry] || 0) + 1;
+        }
+      });
+    });
+    
+    // Growth trajectory (simplified - would need historical data for accurate calculation)
+    // For now, use momentum as proxy
+    const growthTrajectory: 'rising' | 'stable' | 'declining' = 
+      (topic.momentum || 0) > 0.7 ? 'rising' :
+      (topic.momentum || 0) > 0.4 ? 'stable' : 'declining';
+    
+    return {
+      ...topic,
+      geographicDistribution: topCountries,
+      industryBreakdown: industryCounts,
+      growthTrajectory,
+      relatedEvents: relatedEvents.map(e => e.source_url).slice(0, 10) // Limit to 10 URLs
+    };
   });
-  
-  // Convert to HotTopic format
-  const hotTopics: HotTopic[] = Array.from(topicMentions.entries())
-    .map(([topic, count]) => ({
-      topic: topic.charAt(0).toUpperCase() + topic.slice(1),
-      mentionCount: count,
-      growthRate: 0, // Would need historical data
-      momentum: Math.min(count / events.length, 1),
-      relatedEvents: Array.from(topicEvents.get(topic) || []),
-      category: category || 'General',
-      relevanceScore: 0.7 // Default relevance
-    }))
-    .sort((a, b) => b.mentionCount - a.mentionCount)
-    .slice(0, 20);
-  
-  return hotTopics;
 }
 
 /**
