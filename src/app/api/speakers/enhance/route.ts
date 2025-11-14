@@ -124,11 +124,16 @@ async function persistEnhancedSpeaker(
       enhanced_data: { ...enhanced, fingerprint },
       confidence: enhanced.confidence ?? null,
       last_enhanced_at: new Date().toISOString(),
+      // Don't include updated_at - it's managed by the trigger
     };
 
     const { error: upsertError } = await supabase
       .from('enhanced_speaker_profiles')
-      .upsert(payload, { onConflict: 'user_id,speaker_key' });
+      .upsert(payload, { 
+        onConflict: 'user_id,speaker_key',
+        // Exclude updated_at from being set manually - let trigger handle it
+        ignoreDuplicates: false
+      });
 
     if (upsertError) {
       console.warn('Failed to upsert enhanced speaker profile', upsertError.message);
