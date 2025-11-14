@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { FixedSizeList as List } from "react-window";
+import { FixedSizeList } from "react-window";
 import { EventBoardCard } from "./EventBoardCard";
 import { BoardItemWithEvent, ColumnStatus } from "@/lib/types/event-board";
 import { Button } from "@/components/ui/button";
@@ -208,7 +208,7 @@ export function EventBoardList({
     actions: true,
   });
   const [columnCustomizationOpen, setColumnCustomizationOpen] = useState(false);
-  const listRef = useRef<List>(null);
+  const listRef = useRef<FixedSizeList<any> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Get all unique topics from items
@@ -757,7 +757,7 @@ export function EventBoardList({
             </div>
           </div>
           <div style={{ height: listHeight }}>
-            <List
+            <FixedSizeList
               ref={listRef}
               height={listHeight}
               itemCount={filteredAndSorted.length}
@@ -765,7 +765,7 @@ export function EventBoardList({
               width="100%"
             >
               {Row}
-            </List>
+            </FixedSizeList>
           </div>
         </div>
       ) : (

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { EventBoardKanban } from "@/components/events-board/EventBoardKanban";
 import { EventBoardList } from "@/components/events-board/EventBoardList";
@@ -34,7 +34,7 @@ import { CollectedEvent } from "@/lib/types/database";
 
 type ViewMode = "kanban" | "list";
 
-export default function EventsBoardPage() {
+function EventsBoardPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>("kanban");
@@ -491,6 +491,32 @@ export default function EventsBoardPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function EventsBoardPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-9 w-48 mb-2" />
+          <Skeleton className="h-5 w-64" />
+        </div>
+        <div className="flex gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex-shrink-0 w-80">
+              <div className="border rounded-lg p-4 space-y-3">
+                <Skeleton className="h-6 w-32" />
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    }>
+      <EventsBoardPageContent />
+    </Suspense>
   );
 }
 

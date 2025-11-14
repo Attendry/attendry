@@ -31,7 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-import { FixedSizeList as List } from "react-window";
+import { FixedSizeList } from "react-window";
 
 interface EventBoardKanbanProps {
   items: BoardItemWithEvent[];
@@ -440,7 +440,7 @@ export function EventBoardKanban({
                         ) : columnItems.length > 20 ? (
                           // Virtualized list for columns with many items
                           <div style={{ height: Math.min(600, columnItems.length * 120) }}>
-                            <List
+                            <FixedSizeList
                               height={Math.min(600, columnItems.length * 120)}
                               itemCount={columnItems.length}
                               itemSize={120}
@@ -462,7 +462,7 @@ export function EventBoardKanban({
                                   </div>
                                 );
                               }}
-                            </List>
+                            </FixedSizeList>
                           </div>
                         ) : (
                           // Regular list for smaller columns
