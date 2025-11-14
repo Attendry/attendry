@@ -192,8 +192,13 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
           size="sm"
           onClick={(e) => {
             e.stopPropagation();
-            if (onViewInsights && item.event?.id) {
-              onViewInsights(item.event.id);
+            if (onViewInsights) {
+              // Use board item ID (unique) or event source_url (unique) as identifier
+              // This ensures we get the correct event even if event.id is an optimized_ ID
+              const identifier = item.id || item.event?.source_url || item.event?.id;
+              if (identifier) {
+                onViewInsights(identifier);
+              }
             }
           }}
           className="h-8 w-8 p-0"

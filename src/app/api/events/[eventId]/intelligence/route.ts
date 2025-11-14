@@ -59,12 +59,39 @@ export async function GET(
       // Continue without personalization
     }
 
-    // Check if eventId is an optimized_ ID (temporary ID, not in DB)
+    // Check if eventId is a board item ID (UUID format)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
     const isOptimizedId = eventId.startsWith('optimized_');
+    const isUrl = eventId.startsWith('http://') || eventId.startsWith('https://');
     
     // Get event from database
     let event: any = null;
     let eventError: any = null;
+    let actualEventId = eventId; // For caching
+    
+    // First, check if it's a board item ID
+    if (isUUID) {
+      const supabaseServerClient = await supabaseServer();
+      const { data: { user } } = await supabaseServerClient.auth.getUser();
+      
+      if (user) {
+        const { data: boardItem } = await supabase
+          .from('user_event_board')
+          .select('event_id, event_url, event_data')
+          .eq('id', eventId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (boardItem) {
+          // Use event_id if available, otherwise use event_url
+          if (boardItem.event_id) {
+            actualEventId = boardItem.event_id;
+          } else if (boardItem.event_url) {
+            actualEventId = boardItem.event_url;
+          }
+        }
+      }
+    }
     
     if (isOptimizedId) {
       // For optimized IDs, we can't query by ID (it's not a UUID)
@@ -77,6 +104,20 @@ export async function GET(
         cached: false,
         isOptimized: true
       });
+    } else if (isUrl) {
+      // Try to find event by source_url
+      const { data: eventByUrl } = await supabase
+        .from('collected_events')
+        .select('*')
+        .eq('source_url', eventId)
+        .maybeSingle();
+      
+      if (eventByUrl) {
+        event = eventByUrl;
+        actualEventId = eventByUrl.id;
+      } else {
+        eventError = new Error('Event not found by URL');
+      }
     } else {
       // Try to find by UUID first, then by source_url
       const { data: eventById, error: errorById } = await supabase
@@ -110,8 +151,8 @@ export async function GET(
       );
     }
 
-    // Check cache first
-    const cachedIntelligence = await getEventIntelligence(eventId, userProfile || undefined);
+    // Check cache first using actual event ID
+    const cachedIntelligence = await getEventIntelligence(actualEventId, userProfile || undefined);
     
     if (cachedIntelligence) {
       return NextResponse.json({

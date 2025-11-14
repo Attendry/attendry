@@ -215,11 +215,17 @@ export function EventBoardCard({
 
         {/* Quick Actions - Always visible on hover */}
         <div className="flex items-center gap-1.5 pt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {event?.id && onViewInsights && (
+          {onViewInsights && (item.id || event?.source_url || event?.id) && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={(e) => handleActionClick(e, () => onViewInsights(event.id!))}
+              onClick={(e) => {
+                // Use board item ID (unique) or event source_url (unique) as identifier
+                const identifier = item.id || event?.source_url || event?.id;
+                if (identifier) {
+                  handleActionClick(e, () => onViewInsights(identifier));
+                }
+              }}
               className="h-7 text-xs px-2"
             >
               <Eye className="h-3.5 w-3.5 mr-1" />
@@ -351,11 +357,17 @@ export function EventBoardCard({
 
           {/* Action Buttons */}
           <div className="flex gap-2 pt-2 border-t">
-            {event?.id && onViewInsights && (
+            {onViewInsights && (item.id || event?.source_url || event?.id) && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={(e) => handleActionClick(e, () => onViewInsights(event.id!))}
+                onClick={(e) => {
+                  // Use board item ID (unique) or event source_url (unique) as identifier
+                  const identifier = item.id || event?.source_url || event?.id;
+                  if (identifier) {
+                    handleActionClick(e, () => onViewInsights(identifier));
+                  }
+                }}
                 className="flex-1"
               >
                 <Eye className="h-4 w-4 mr-1" />
