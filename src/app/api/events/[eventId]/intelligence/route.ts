@@ -298,7 +298,6 @@ export async function POST(
 
     // Determine cache key - use source_url as unique identifier for optimized events
     let cacheKey = eventId;
-    const isOptimizedId = eventId.startsWith('optimized_');
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
     const isUrl = eventId.startsWith('http://') || eventId.startsWith('https://');
     
