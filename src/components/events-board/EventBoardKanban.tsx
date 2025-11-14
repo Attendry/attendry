@@ -46,7 +46,6 @@ const COLUMNS: Array<{ id: ColumnStatus; label: string; color: string }> = [
   { id: "interested", label: "Interested", color: "bg-primary/10 border-primary/20" },
   { id: "researching", label: "Researching", color: "bg-warn/10 border-warn/20" },
   { id: "attending", label: "Attending", color: "bg-positive/10 border-positive/20" },
-  { id: "follow-up", label: "Follow-up", color: "bg-accent/10 border-accent/20" },
   { id: "archived", label: "Archived", color: "bg-surface-alt border-border-muted" },
 ];
 
@@ -82,11 +81,16 @@ function SortableItem({
     opacity: isDragging ? 0.9 : isPending ? 0.6 : 1,
   };
 
+  // Handle drag start - prevent card click during drag
+  const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <div 
       ref={setNodeRef} 
       style={style} 
-      className={cn("relative group", isPending && "pointer-events-none")}
+      className={cn("relative", isPending && "pointer-events-none")}
       role="button"
       aria-label={`${item.event?.title || "Event"}, ${item.column_status}`}
       aria-grabbed={isDragging}
@@ -97,15 +101,18 @@ function SortableItem({
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
         </div>
       )}
-      {/* Drag Handle - Only this area triggers drag */}
+      {/* Drag Handle - Always visible, positioned on the right */}
       <div
         {...attributes}
         {...listeners}
-        className="absolute left-1 top-1/2 -translate-y-1/2 w-5 h-12 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center rounded hover:bg-surface-alt/50"
+        onMouseDown={handleDragStart}
+        onTouchStart={handleDragStart}
+        data-drag-handle="true"
+        className="absolute right-2 top-2 w-6 h-6 cursor-grab active:cursor-grabbing z-20 flex items-center justify-center rounded hover:bg-surface-alt/70 transition-colors"
         aria-label="Drag handle"
         title="Drag to reorder"
       >
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-0.5">
           <div className="w-1 h-1 bg-text-muted rounded-full" />
           <div className="w-1 h-1 bg-text-muted rounded-full" />
           <div className="w-1 h-1 bg-text-muted rounded-full" />
@@ -189,7 +196,6 @@ export function EventBoardKanban({
       interested: [],
       researching: [],
       attending: [],
-      "follow-up": [],
       archived: [],
     };
     items.forEach((item) => {

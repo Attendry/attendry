@@ -86,10 +86,10 @@ export function EventBoardCard({
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't expand if clicking on buttons or if dragging
+    // Don't expand if clicking on buttons, links, or drag handle, or if dragging
     if (isDragging) return;
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('a')) return;
+    if (target.closest('button') || target.closest('a') || target.closest('[data-drag-handle]')) return;
     
     if (onCardClick) {
       onCardClick();
@@ -251,30 +251,30 @@ export function EventBoardCard({
 
       {/* Expanded Content */}
       {expanded && (
-        <CardContent className="pt-0 space-y-4 border-t bg-surface-alt/50">
+        <CardContent className="pt-4 space-y-4 border-t bg-surface-alt/50 overflow-hidden">
           {/* Description */}
           {event?.description && (
-            <div className="text-sm text-text-secondary leading-relaxed">
-              <p className="line-clamp-4">{event.description}</p>
+            <div className="text-sm text-text-secondary leading-relaxed break-words overflow-wrap-anywhere">
+              <p className="whitespace-pre-wrap">{event.description}</p>
             </div>
           )}
 
           {/* Venue Details */}
           {event?.venue && (
-            <div className="flex items-start gap-2 text-sm">
+            <div className="flex items-start gap-2 text-sm break-words">
               <Building2 className="h-4 w-4 mt-0.5 text-text-muted flex-shrink-0" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <span className="font-medium text-text-primary">Venue:</span>
-                <span className="text-text-secondary ml-1">{event.venue}</span>
+                <span className="text-text-secondary ml-1 break-words">{event.venue}</span>
               </div>
             </div>
           )}
 
           {/* Organizer */}
           {event?.organizer && (
-            <div className="text-sm">
+            <div className="text-sm break-words">
               <span className="font-medium text-text-primary">Organizer:</span>
-              <span className="text-text-secondary ml-1">{event.organizer}</span>
+              <span className="text-text-secondary ml-1 break-words">{event.organizer}</span>
             </div>
           )}
 
@@ -298,10 +298,10 @@ export function EventBoardCard({
               <div className="text-xs font-medium text-text-primary">All Speakers ({event.speakers.length})</div>
               <div className="space-y-1.5">
                 {event.speakers.map((speaker: any, idx: number) => (
-                  <div key={idx} className="text-sm text-text-secondary">
-                    <span className="font-medium">{speaker.name || speaker.title || 'Speaker'}</span>
-                    {speaker.org && <span className="text-text-muted"> • {speaker.org}</span>}
-                    {speaker.title && speaker.name && <span className="text-text-muted">, {speaker.title}</span>}
+                  <div key={idx} className="text-sm text-text-secondary break-words">
+                    <span className="font-medium break-words">{speaker.name || speaker.title || 'Speaker'}</span>
+                    {speaker.org && <span className="text-text-muted break-words"> • {speaker.org}</span>}
+                    {speaker.title && speaker.name && <span className="text-text-muted break-words">, {speaker.title}</span>}
                   </div>
                 ))}
               </div>
@@ -334,7 +334,7 @@ export function EventBoardCard({
           {item.notes && (
             <div className="bg-surface-alt p-3 rounded-md border">
               <div className="text-xs font-medium text-text-primary mb-1">Notes</div>
-              <div className="text-sm text-text-secondary">{item.notes}</div>
+              <div className="text-sm text-text-secondary break-words whitespace-pre-wrap overflow-wrap-anywhere">{item.notes}</div>
             </div>
           )}
 
