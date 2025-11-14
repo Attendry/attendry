@@ -34,27 +34,18 @@ function verifyCronRequest(req: NextRequest): boolean {
 }
 
 /**
- * Run the event collection job
+ * Run the deep event collection job
+ * Weekly comprehensive collection across extended markets
  */
-async function runEventCollection(collectionType: string) {
-  console.log(`[CRON] Starting ${collectionType} event collection`);
+async function runDeepEventCollection() {
+  console.log(`[CRON] Starting deep event collection`);
 
   const results = [];
   
-  // Configure collection parameters based on type
-  let industries, countries, monthsAhead;
-  
-  if (collectionType === 'deep') {
-    // Weekly deep collection - more comprehensive
-    industries = ['legal-compliance', 'fintech', 'healthcare', 'general'];
-    countries = ['de', 'fr', 'uk', 'us', 'nl', 'ch', 'at', 'se', 'it', 'es', 'be', 'dk', 'fi', 'no'];
-    monthsAhead = 12; // 12 months ahead for deep collection
-  } else {
-    // Daily standard collection - focused on key markets
-    industries = ['legal-compliance', 'fintech', 'healthcare'];
-    countries = ['de', 'fr', 'uk', 'us'];
-    monthsAhead = 6; // 6 months ahead for standard collection
-  }
+  // Deep collection parameters - comprehensive coverage
+  const industries = ['legal-compliance', 'fintech', 'healthcare', 'general'];
+  const countries = ['de', 'fr', 'uk', 'us', 'nl', 'ch', 'at', 'se', 'it', 'es', 'be', 'dk', 'fi', 'no'];
+  const monthsAhead = 12; // 12 months ahead for deep collection
 
   // TTL sweep: purge expired durable caches (best-effort, non-user-facing)
   try {
@@ -96,7 +87,7 @@ async function runEventCollection(collectionType: string) {
             from,
             to,
             collectedAt: new Date().toISOString(),
-            source: 'cron_firecrawl'
+            source: 'cron_firecrawl_deep'
           });
         }
 
@@ -123,12 +114,12 @@ async function runEventCollection(collectionType: string) {
   const successCount = results.filter(r => r.success).length;
   const totalEvents = results.reduce((sum, r) => sum + (r.eventsFound || 0), 0);
 
-  console.log(`[CRON] Collection complete: ${successCount}/${results.length} successful, ${totalEvents} total events`);
+  console.log(`[CRON] Deep collection complete: ${successCount}/${results.length} successful, ${totalEvents} total events`);
 
   return {
     success: true,
     timestamp: new Date().toISOString(),
-    collectionType,
+    collectionType: 'deep',
     results,
     summary: {
       totalJobs: results.length,
@@ -142,10 +133,10 @@ async function runEventCollection(collectionType: string) {
 }
 
 /**
- * GET /api/cron/collect-events
+ * GET /api/cron/collect-events-deep
  * 
  * Vercel Cron jobs use GET requests by default.
- * This endpoint runs the event collection job.
+ * This endpoint runs the weekly deep event collection job.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -164,11 +155,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Determine collection type from query parameters
-    const { searchParams } = new URL(req.url);
-    const collectionType = searchParams.get('type') || 'standard';
-
-    const result = await runEventCollection(collectionType);
+    const result = await runDeepEventCollection();
     return NextResponse.json(result, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -198,7 +185,7 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST /api/cron/collect-events
+ * POST /api/cron/collect-events-deep
  * 
  * Alternative endpoint for manual testing or external cron services.
  * Supports Authorization header authentication.
@@ -220,11 +207,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Determine collection type from query parameters
-    const { searchParams } = new URL(req.url);
-    const collectionType = searchParams.get('type') || 'standard';
-
-    const result = await runEventCollection(collectionType);
+    const result = await runDeepEventCollection();
     return NextResponse.json(result, {
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',

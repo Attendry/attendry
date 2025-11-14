@@ -6,7 +6,7 @@
       "schedule": "0 2 * * *"
     },
     {
-      "path": "/api/cron/collect-events?type=deep",
+      "path": "/api/cron/collect-events-deep",
       "schedule": "0 3 * * 0"
     },
     {
