@@ -36,9 +36,24 @@ function verifyCronRequest(req: NextRequest): boolean {
     return true;
   }
 
+  // Additional check: If request appears to be from Vercel Cron infrastructure
+  // Vercel Cron may not always send x-vercel-cron header, but we can detect it
+  // by checking for Vercel-specific headers or user-agent
+  const userAgent = req.headers.get('user-agent') || '';
+  const vercelId = req.headers.get('x-vercel-id');
+  const isVercelRequest = vercelId || userAgent.includes('vercel') || userAgent.includes('Vercel');
+  
+  if (isVercelRequest && !expectedToken) {
+    // If it looks like a Vercel request and no CRON_SECRET is set, allow it
+    console.log('[CRON AUTH] ✅ Authenticated via Vercel infrastructure detection (no CRON_SECRET)');
+    return true;
+  }
+
   // If CRON_SECRET is set but no valid auth, reject
   if (expectedToken) {
     console.log('[CRON AUTH] ❌ CRON_SECRET is set but no valid auth provided');
+    console.log('[CRON AUTH] User-Agent:', userAgent);
+    console.log('[CRON AUTH] X-Vercel-Id:', vercelId);
     return false;
   }
 
