@@ -296,10 +296,41 @@ export async function POST(
       );
     }
 
-    // Determine cache key - try to find actual UUID if event is in database
+    // Determine cache key - use source_url as unique identifier for optimized events
     let cacheKey = eventId;
+    const isOptimizedId = eventId.startsWith('optimized_');
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
+    const isUrl = eventId.startsWith('http://') || eventId.startsWith('https://');
+    
+    // First, check if it's a board item ID
+    if (isUUID) {
+      const supabaseServerClient = await supabaseServer();
+      const { data: { user } } = await supabaseServerClient.auth.getUser();
+      
+      if (user) {
+        const { data: boardItem } = await supabase
+          .from('user_event_board')
+          .select('event_id, event_url, event_data')
+          .eq('id', eventId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (boardItem) {
+          // Use event_id if available, otherwise use event_url
+          if (boardItem.event_id) {
+            cacheKey = boardItem.event_id;
+          } else if (boardItem.event_url) {
+            cacheKey = boardItem.event_url;
+          }
+        }
+      }
+    }
+    
     if (isOptimizedId && event.source_url) {
-      // For optimized events, try to find the event in database by source_url
+      // For optimized events, use source_url as unique identifier
+      cacheKey = event.source_url;
+      
+      // Try to find the event in database by source_url to get UUID
       const { data: dbEvent } = await supabase
         .from('collected_events')
         .select('id')
@@ -307,12 +338,12 @@ export async function POST(
         .maybeSingle();
       
       if (dbEvent) {
-        cacheKey = dbEvent.id; // Use UUID if found
-      } else {
-        cacheKey = event.source_url; // Use source_url as fallback
+        cacheKey = dbEvent.id; // Use UUID if found for better caching
       }
     } else if (event.id && typeof event.id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event.id)) {
       cacheKey = event.id; // Use UUID from event object
+    } else if (event.source_url) {
+      cacheKey = event.source_url; // Use source_url as fallback
     }
     
     // Check cache first
