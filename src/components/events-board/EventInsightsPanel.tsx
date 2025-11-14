@@ -46,10 +46,28 @@ export function EventInsightsPanel({
     setError(null);
 
     try {
-      const response = await fetch(`/api/events/board/insights/${eventId}`);
+      // First try to get existing insights
+      let response = await fetch(`/api/events/board/insights/${eventId}`);
+      
+      // If insights don't exist (404), generate them
+      if (response.status === 404) {
+        // Generate insights using the intelligence API
+        const generateResponse = await fetch(`/api/events/${eventId}/intelligence`, {
+          method: 'POST',
+        });
+        
+        if (!generateResponse.ok) {
+          throw new Error("Failed to generate insights");
+        }
+        
+        // After generation, try to get insights again
+        response = await fetch(`/api/events/board/insights/${eventId}`);
+      }
+      
       if (!response.ok) {
         throw new Error("Failed to load insights");
       }
+      
       const data = await response.json();
       setInsights(data);
     } catch (err: any) {
@@ -70,17 +88,18 @@ export function EventInsightsPanel({
         </DialogHeader>
 
         {loading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          <div className="flex flex-col items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+            <p className="text-sm text-text-secondary">Generating insights...</p>
           </div>
         )}
 
         {error && (
-          <div className="text-center py-8 text-red-600">
-            <p>{error}</p>
+          <div className="text-center py-8">
+            <p className="text-danger mb-2">{error}</p>
             <button
               onClick={loadInsights}
-              className="mt-2 text-sm text-blue-600 hover:underline"
+              className="text-sm text-primary hover:underline"
             >
               Try again
             </button>

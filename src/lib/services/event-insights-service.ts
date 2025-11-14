@@ -23,13 +23,37 @@ export class EventInsightsService {
 
     let event: any = null;
 
-    // First, check if eventId is a board item ID
-    const { data: boardItem } = await supabase
-      .from('user_event_board')
-      .select('event_id, event_url, event_data')
-      .eq('id', eventId)
-      .eq('user_id', userId)
-      .maybeSingle();
+    // First, check if eventId is a board item ID (UUID format)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(eventId);
+    let boardItem: any = null;
+    
+    if (isUUID) {
+      // Try as board item ID first
+      const { data: boardItemData } = await supabase
+        .from('user_event_board')
+        .select('id, event_id, event_url, event_data')
+        .eq('id', eventId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (boardItemData) {
+        boardItem = boardItemData;
+      }
+    }
+    
+    // Also try as source_url (if eventId is a URL)
+    if (!boardItem && (eventId.startsWith('http://') || eventId.startsWith('https://'))) {
+      const { data: boardItemByUrl } = await supabase
+        .from('user_event_board')
+        .select('id, event_id, event_url, event_data')
+        .eq('event_url', eventId)
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (boardItemByUrl) {
+        boardItem = boardItemByUrl;
+      }
+    }
 
     if (boardItem) {
       // We have a board item - try to get event from collected_events first
@@ -69,35 +93,29 @@ export class EventInsightsService {
       const isOptimizedId = eventId.startsWith('optimized_');
       
       if (isOptimizedId) {
-        // For optimized IDs, try to find in board by event_url or event_data
-        // First, try to find board item that might have this event
-        const { data: boardItems } = await supabase
+        // For optimized IDs, we need to find the specific event
+        // Try to find by matching the optimized ID in event_data across all board items
+        const { data: allBoardItems } = await supabase
           .from('user_event_board')
-          .select('event_id, event_url, event_data')
-          .eq('user_id', userId)
-          .maybeSingle();
+          .select('id, event_id, event_url, event_data')
+          .eq('user_id', userId);
         
-        if (boardItems?.event_data) {
-          // Check if event_data has a matching ID or URL
-          const eventData = boardItems.event_data as any;
-          if (eventData.id === eventId || eventData.source_url) {
-            event = eventData;
+        if (allBoardItems) {
+          // First, try to find exact match by optimized ID in event_data
+          for (const boardItem of allBoardItems) {
+            const eventData = boardItem.event_data as any;
+            if (eventData && eventData.id === eventId) {
+              // Found exact match - use this event
+              event = eventData;
+              break;
+            }
           }
-        }
-        
-        // If still not found, try to find by URL pattern
-        // Optimized events typically have source_url in their metadata
-        if (!event) {
-          // Try to extract URL from optimized ID or search board items
-          const { data: allBoardItems } = await supabase
-            .from('user_event_board')
-            .select('event_data')
-            .eq('user_id', userId);
           
-          if (allBoardItems) {
-            for (const item of allBoardItems) {
-              const eventData = item.event_data as any;
-              if (eventData && (eventData.id === eventId || eventData.source_url)) {
+          // If not found by ID, try to find by source_url if eventId is actually a URL
+          if (!event && eventId.includes('http')) {
+            for (const boardItem of allBoardItems) {
+              const eventData = boardItem.event_data as any;
+              if (eventData && eventData.source_url === eventId) {
                 event = eventData;
                 break;
               }
@@ -152,8 +170,12 @@ export class EventInsightsService {
       .single();
 
     // Transform event to EventData format
+    // Use source_url as ID for optimized events to ensure uniqueness
+    const eventDataId = event.source_url || (event.id && !event.id.startsWith('optimized_') ? event.id : `event_${Date.now()}`);
+    
     const eventData: EventData = {
-      id: event.id,
+      id: eventDataId,
+      source_url: event.source_url || event.url,
       title: event.title,
       starts_at: event.starts_at,
       ends_at: event.ends_at,
