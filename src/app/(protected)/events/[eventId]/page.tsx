@@ -119,11 +119,27 @@ export default function EventDetailPage() {
         } else {
           // Try by source_url (handle URL encoding variations)
           const normalizedUrl = eventId.replace(/\/$/, ''); // Remove trailing slash
-          const { data: eventByUrl, error: errorByUrl } = await supabase
+          
+          // Try exact match first
+          let { data: eventByUrl, error: errorByUrl } = await supabase
             .from('collected_events')
             .select('*')
-            .or(`source_url.eq.${eventId},source_url.eq.${normalizedUrl}`)
+            .eq('source_url', eventId)
             .maybeSingle();
+
+          // If not found and URL is different from normalized, try normalized
+          if (!eventByUrl && normalizedUrl !== eventId) {
+            const { data: eventByNormalizedUrl, error: errorByNormalized } = await supabase
+              .from('collected_events')
+              .select('*')
+              .eq('source_url', normalizedUrl)
+              .maybeSingle();
+            
+            if (eventByNormalizedUrl) {
+              eventByUrl = eventByNormalizedUrl;
+              errorByUrl = errorByNormalized;
+            }
+          }
 
           if (eventByUrl) {
             console.log('[EventDetailPage] Found event by source_url');
