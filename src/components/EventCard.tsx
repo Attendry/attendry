@@ -653,11 +653,28 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       <EventIntelligenceQuickView
         event={ev as EventData}
         onViewFull={() => {
-          // Prefer source_url as it's more reliable for navigation
-          // If it's a board item UUID, the detail page will handle it
-          const eventId = ev.source_url || ev.id;
-          if (eventId) {
-            router.push(`/events/${encodeURIComponent(eventId)}`);
+          try {
+            // Prefer source_url as it's more reliable for navigation
+            // If it's a board item UUID, the detail page will handle it
+            const eventId = ev.source_url || ev.id;
+            console.log('[EventCard] View Full Intelligence clicked', {
+              eventId,
+              source_url: ev.source_url,
+              id: ev.id,
+              title: ev.title
+            });
+            
+            if (eventId) {
+              const targetPath = `/events/${encodeURIComponent(eventId)}`;
+              console.log('[EventCard] Navigating to:', targetPath);
+              router.push(targetPath);
+            } else {
+              console.error('[EventCard] No event ID available for navigation');
+              alert('Unable to view full intelligence: event ID not available');
+            }
+          } catch (error) {
+            console.error('[EventCard] Error navigating to full intelligence:', error);
+            alert('Failed to navigate to full intelligence view');
           }
         }}
       />

@@ -315,8 +315,30 @@ export function EventIntelligenceQuickView({
 
           {/* View Full Link */}
           <button
-            onClick={onViewFull}
-            className="w-full mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-1"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[EventIntelligenceQuickView] View Full Intelligence clicked', {
+                hasCallback: !!onViewFull,
+                eventId: event.id || event.source_url,
+                eventTitle: event.title
+              });
+              
+              if (onViewFull) {
+                onViewFull();
+              } else {
+                // Fallback: navigate to event detail page
+                const eventId = event.id || event.source_url;
+                if (eventId) {
+                  console.log('[EventIntelligenceQuickView] Navigating to event detail:', eventId);
+                  window.location.href = `/events/${encodeURIComponent(eventId)}`;
+                } else {
+                  console.error('[EventIntelligenceQuickView] No event ID available for navigation');
+                  alert('Unable to view full intelligence: event ID not available');
+                }
+              }
+            }}
+            className="w-full mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-1 hover:underline cursor-pointer"
           >
             View Full Intelligence
             <ArrowRight className="h-3 w-3" />
