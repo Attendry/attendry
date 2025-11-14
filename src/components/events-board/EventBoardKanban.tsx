@@ -199,7 +199,11 @@ export function EventBoardKanban({
       archived: [],
     };
     items.forEach((item) => {
-      cols[item.column_status].push(item);
+      // Skip items with "follow-up" status since we removed that column
+      // Also handle any unexpected statuses gracefully
+      if (cols[item.column_status]) {
+        cols[item.column_status].push(item);
+      }
     });
     // Sort by position
     Object.keys(cols).forEach((key) => {
