@@ -140,88 +140,118 @@ export function EventIntelligenceQuickView({
             <Brain className="h-4 w-4" />
             <span>Intelligence not yet generated</span>
           </div>
-          <button
-            onClick={async (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              
-              if (generating) return;
-              
-              setGenerating(true);
-              // Trigger generation
-              const eventId = event.id || event.source_url;
-              try {
-                const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/intelligence`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({
-                    event: event,
-                    source_url: event.source_url
-                  })
-                });
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 
-                if (response.ok) {
-                  const result = await response.json();
-                  console.log('[EventIntelligenceQuickView] Generation response:', {
-                    hasDiscussions: !!result.discussions,
-                    hasSponsors: !!result.sponsors,
-                    hasLocation: !!result.location,
-                    hasOutreach: !!result.outreach,
-                    resultKeys: Object.keys(result)
+                if (generating) return;
+                
+                setGenerating(true);
+                // Trigger generation
+                const eventId = event.id || event.source_url;
+                try {
+                  const response = await fetch(`/api/events/${encodeURIComponent(eventId)}/intelligence`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                      event: event,
+                      source_url: event.source_url
+                    })
                   });
                   
-                  // Update state directly with the response data
-                  // Only update if we actually have intelligence data
-                  if (result.discussions || result.sponsors || result.location || result.outreach) {
-                    setIntelligence({
-                      discussions: result.discussions,
-                      sponsors: result.sponsors,
-                      location: result.location,
-                      outreach: result.outreach,
-                      cached: result.cached || false,
-                      loading: false
+                  if (response.ok) {
+                    const result = await response.json();
+                    console.log('[EventIntelligenceQuickView] Generation response:', {
+                      hasDiscussions: !!result.discussions,
+                      hasSponsors: !!result.sponsors,
+                      hasLocation: !!result.location,
+                      hasOutreach: !!result.outreach,
+                      resultKeys: Object.keys(result)
                     });
                     
-                    // Don't reload immediately - the POST response has the data
-                    // Reload after a short delay to get cached version
-                    setTimeout(async () => {
-                      await loadIntelligence();
-                    }, 1000);
+                    // Update state directly with the response data
+                    // Only update if we actually have intelligence data
+                    if (result.discussions || result.sponsors || result.location || result.outreach) {
+                      setIntelligence({
+                        discussions: result.discussions,
+                        sponsors: result.sponsors,
+                        location: result.location,
+                        outreach: result.outreach,
+                        cached: result.cached || false,
+                        loading: false
+                      });
+                      
+                      // Don't reload immediately - the POST response has the data
+                      // Reload after a short delay to get cached version
+                      setTimeout(async () => {
+                        await loadIntelligence();
+                      }, 1000);
+                    } else {
+                      console.warn('[EventIntelligenceQuickView] POST response missing intelligence data');
+                      setIntelligence(prev => ({ ...prev, loading: false }));
+                    }
                   } else {
-                    console.warn('[EventIntelligenceQuickView] POST response missing intelligence data');
-                    setIntelligence(prev => ({ ...prev, loading: false }));
+                    const error = await response.json();
+                    console.error('[EventIntelligenceQuickView] Failed to generate intelligence:', error);
+                    alert(`Failed to generate intelligence: ${error.error || 'Unknown error'}`);
                   }
-                } else {
-                  const error = await response.json();
-                  console.error('[EventIntelligenceQuickView] Failed to generate intelligence:', error);
-                  alert(`Failed to generate intelligence: ${error.error || 'Unknown error'}`);
+                } catch (error: any) {
+                  console.error('Error generating intelligence:', error);
+                  alert(`Error generating intelligence: ${error.message || 'Unknown error'}`);
+                } finally {
+                  setGenerating(false);
                 }
-              } catch (error: any) {
-                console.error('Error generating intelligence:', error);
-                alert(`Error generating intelligence: ${error.message || 'Unknown error'}`);
-              } finally {
-                setGenerating(false);
-              }
-            }}
-            disabled={generating}
-            className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
-              generating 
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                : 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
-            }`}
-            style={{ pointerEvents: generating ? 'none' : 'auto' }}
-          >
-            {generating ? (
-              <>
-                <Loader2 className="h-3 w-3 inline-block animate-spin mr-1" />
-                Generating...
-              </>
-            ) : (
-              'Generate'
-            )}
-          </button>
+              }}
+              disabled={generating}
+              className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
+                generating 
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                  : 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+              }`}
+              style={{ pointerEvents: generating ? 'none' : 'auto' }}
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="h-3 w-3 inline-block animate-spin mr-1" />
+                  Generating...
+                </>
+              ) : (
+                'Generate'
+              )}
+            </button>
+            {/* Always show View Full Intelligence link, even when not generated */}
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[EventIntelligenceQuickView] View Full Intelligence clicked (no intelligence)', {
+                  hasCallback: !!onViewFull,
+                  eventId: event.id || event.source_url,
+                  eventTitle: event.title
+                });
+                
+                if (onViewFull) {
+                  onViewFull();
+                } else {
+                  const eventId = event.id || event.source_url;
+                  if (eventId) {
+                    console.log('[EventIntelligenceQuickView] Navigating to event detail:', eventId);
+                    window.location.href = `/events/${encodeURIComponent(eventId)}`;
+                  } else {
+                    console.error('[EventIntelligenceQuickView] No event ID available for navigation');
+                    alert('Unable to view full intelligence: event ID not available');
+                  }
+                }
+              }}
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-1.5 hover:underline cursor-pointer"
+            >
+              View Full
+            </button>
+          </div>
         </div>
       </div>
     );
