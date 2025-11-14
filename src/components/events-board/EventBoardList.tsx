@@ -79,7 +79,7 @@ type Density = 'comfortable' | 'compact';
 interface ColumnDef {
   id: string;
   label: string;
-  accessor: (item: BoardItemWithEvent) => React.ReactNode;
+  accessor: (item: BoardItemWithEvent, onStatusChange?: (itemId: string, status: ColumnStatus) => void) => React.ReactNode;
   width: number;
   minWidth: number;
   sortable?: boolean;
@@ -138,7 +138,7 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   {
     id: 'status',
     label: 'Status',
-    accessor: (item) => {
+    accessor: (item, onStatusChange) => {
       const statusColors: Record<ColumnStatus, string> = {
         'interested': 'bg-primary/10 text-primary',
         'researching': 'bg-warn/10 text-warn',
@@ -146,10 +146,36 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
         'follow-up': 'bg-accent/10 text-accent',
         'archived': 'bg-surface-alt text-text-secondary'
       };
+      const statusOptions: ColumnStatus[] = ['interested', 'researching', 'attending', 'archived'];
+      
       return (
-        <Badge className={statusColors[item.column_status]}>
-          {item.column_status}
-        </Badge>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="cursor-pointer hover:opacity-80 transition-opacity">
+              <Badge className={statusColors[item.column_status]}>
+                {item.column_status}
+              </Badge>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {statusOptions.map((status) => (
+              <DropdownMenuItem
+                key={status}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onStatusChange && status !== item.column_status) {
+                    onStatusChange(item.id, status);
+                  }
+                }}
+                className={item.column_status === status ? "bg-surface-alt" : ""}
+              >
+                <Badge className={statusColors[status]}>{status}</Badge>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       );
     },
     width: 120,
@@ -346,9 +372,9 @@ export function EventBoardList({
                 density === 'compact' ? "py-2 px-4" : "py-4 px-4",
                 "flex items-center"
               )}
-              style={{ width: column.width, minWidth: column.minWidth }}
+                          style={{ width: column.width, minWidth: column.minWidth }}
             >
-              {column.accessor(item)}
+              {column.accessor(item, column.id === 'status' ? onStatusChange : undefined)}
             </div>
           ))}
         </div>
@@ -813,9 +839,9 @@ export function EventBoardList({
                             density === 'compact' ? "py-2" : "py-4"
                           )}
                           style={{ width: column.width }}
-                        >
-                          {column.accessor(item)}
-                        </TableCell>
+            >
+              {column.accessor(item, column.id === 'status' ? onStatusChange : undefined)}
+            </TableCell>
                       ))}
                     </TableRow>
                     {isExpanded && (

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { EventBoardKanban } from "@/components/events-board/EventBoardKanban";
 import { EventBoardList } from "@/components/events-board/EventBoardList";
 import { EventInsightsPanel } from "@/components/events-board/EventInsightsPanel";
 import { BoardItemWithEvent, ColumnStatus } from "@/lib/types/event-board";
@@ -27,17 +26,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LayoutGrid, List, Plus, Save, BookOpen, Trash2 } from "lucide-react";
+import { Plus, Save, BookOpen, Trash2, List } from "lucide-react";
 import { toast } from "sonner";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { CollectedEvent } from "@/lib/types/database";
 
-type ViewMode = "kanban" | "list";
-
 function EventsBoardPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [viewMode, setViewMode] = useState<ViewMode>("kanban");
   const [items, setItems] = useState<BoardItemWithEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,11 +44,14 @@ function EventsBoardPageContent() {
   const [viewName, setViewName] = useState("");
   const [loadingViews, setLoadingViews] = useState(false);
 
-  // Parse URL params on load
+  // Remove view param from URL if present
   useEffect(() => {
     const view = searchParams.get('view');
-    if (view === 'list' || view === 'kanban') {
-      setViewMode(view);
+    if (view) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('view');
+      const newUrl = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`;
+      window.history.replaceState({}, '', newUrl);
     }
   }, [searchParams]);
 
@@ -194,7 +193,7 @@ function EventsBoardPageContent() {
   const loadSavedViews = async () => {
     setLoadingViews(true);
     try {
-      const response = await fetch(`/api/events/board/views?view_type=${viewMode}`);
+      const response = await fetch(`/api/events/board/views?view_type=list`);
       if (!response.ok) throw new Error("Failed to load saved views");
       const data = await response.json();
       setSavedViews(data.views || []);
@@ -228,7 +227,7 @@ function EventsBoardPageContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: viewName.trim(),
-          view_type: viewMode,
+          view_type: 'list',
           filters,
           sort,
         }),
@@ -265,7 +264,6 @@ function EventsBoardPageContent() {
       if (view.density) {
         params.set('density', view.density);
       }
-      params.set('view', view.view_type);
 
       router.push(`/events-board?${params.toString()}`);
       toast.success(`Loaded view: ${view.name}`);
@@ -291,14 +289,6 @@ function EventsBoardPageContent() {
     }
   };
 
-  const handleViewModeChange = (mode: ViewMode) => {
-    setViewMode(mode);
-    // Update URL
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('view', mode);
-    router.push(`/events-board?${params.toString()}`);
-    loadSavedViews(); // Reload views for new mode
-  };
 
   if (loading) {
     return (
@@ -414,29 +404,13 @@ function EventsBoardPageContent() {
             </DialogContent>
           </Dialog>
 
-          <Button
-            variant={viewMode === "kanban" ? "default" : "outline"}
-            size="sm"
-            onClick={() => handleViewModeChange("kanban")}
-          >
-            <LayoutGrid className="h-4 w-4 mr-2" />
-            Kanban
-          </Button>
-          <Button
-            variant={viewMode === "list" ? "default" : "outline"}
-            size="sm"
-            onClick={() => handleViewModeChange("list")}
-          >
-            <List className="h-4 w-4 mr-2" />
-            List
-          </Button>
         </div>
       </div>
 
       {/* Board Content */}
       {items.length === 0 ? (
         <div className="text-center py-12 bg-surface-alt rounded-lg">
-          <LayoutGrid className="h-16 w-16 mx-auto mb-4 text-text-muted" />
+          <List className="h-16 w-16 mx-auto mb-4 text-text-muted" />
           <h3 className="text-xl font-semibold text-text-primary mb-2">
             Your board is empty
           </h3>
@@ -449,36 +423,23 @@ function EventsBoardPageContent() {
           </Button>
         </div>
       ) : (
-        <>
-          {viewMode === "kanban" ? (
-            <EventBoardKanban
-              items={items}
-              onViewInsights={handleViewInsights}
-              onEdit={handleEdit}
-              onRemove={handleRemove}
-              onStatusChange={handleStatusChange}
-              onReorder={handleReorder}
-            />
-          ) : (
-            <EventBoardList
-              items={items}
-              onViewInsights={handleViewInsights}
-              onEdit={handleEdit}
-              onRemove={handleRemove}
-              onStatusChange={handleStatusChange}
-              initialFilters={{
-                search: searchParams.get('search') || undefined,
-                status: searchParams.get('status')?.split(',') as ColumnStatus[] || undefined,
-                topics: searchParams.get('topics')?.split(',') || undefined,
-                sort: searchParams.get('sort') ? {
-                  field: searchParams.get('sort')?.split(':')[0] || 'added',
-                  direction: (searchParams.get('sort')?.split(':')[1] || 'desc') as 'asc' | 'desc',
-                } : undefined,
-                density: (searchParams.get('density') as 'comfortable' | 'compact') || undefined,
-              }}
-            />
-          )}
-        </>
+        <EventBoardList
+          items={items}
+          onViewInsights={handleViewInsights}
+          onEdit={handleEdit}
+          onRemove={handleRemove}
+          onStatusChange={handleStatusChange}
+          initialFilters={{
+            search: searchParams.get('search') || undefined,
+            status: searchParams.get('status')?.split(',') as ColumnStatus[] || undefined,
+            topics: searchParams.get('topics')?.split(',') || undefined,
+            sort: searchParams.get('sort') ? {
+              field: searchParams.get('sort')?.split(':')[0] || 'added',
+              direction: (searchParams.get('sort')?.split(':')[1] || 'desc') as 'asc' | 'desc',
+            } : undefined,
+            density: (searchParams.get('density') as 'comfortable' | 'compact') || undefined,
+          }}
+        />
       )}
 
       {/* Insights Panel */}
