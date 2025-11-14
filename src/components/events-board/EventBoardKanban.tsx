@@ -86,9 +86,7 @@ function SortableItem({
     <div 
       ref={setNodeRef} 
       style={style} 
-      {...attributes} 
-      {...listeners}
-      className={cn("relative", isPending && "pointer-events-none")}
+      className={cn("relative group", isPending && "pointer-events-none")}
       role="button"
       aria-label={`${item.event?.title || "Event"}, ${item.column_status}`}
       aria-grabbed={isDragging}
@@ -99,12 +97,27 @@ function SortableItem({
           <Loader2 className="h-4 w-4 animate-spin text-primary" />
         </div>
       )}
+      {/* Drag Handle - Only this area triggers drag */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="absolute left-1 top-1/2 -translate-y-1/2 w-5 h-12 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10 flex items-center justify-center rounded hover:bg-surface-alt/50"
+        aria-label="Drag handle"
+        title="Drag to reorder"
+      >
+        <div className="flex flex-col gap-1">
+          <div className="w-1 h-1 bg-text-muted rounded-full" />
+          <div className="w-1 h-1 bg-text-muted rounded-full" />
+          <div className="w-1 h-1 bg-text-muted rounded-full" />
+        </div>
+      </div>
       <EventBoardCard
         item={item}
         onViewInsights={onViewInsights}
         onEdit={onEdit}
         onRemove={onRemove}
         onStatusChange={onStatusChange}
+        isDragging={isDragging}
       />
     </div>
   );
@@ -129,8 +142,8 @@ function DroppableColumn({
       role="region"
       aria-label={`${column?.label || id} column`}
       className={cn(
-        "transition-all duration-200",
-        isOver && "bg-primary/10 rounded-lg border-2 border-primary shadow-elevation-1"
+        "transition-all duration-200 rounded-lg",
+        isOver && "ring-2 ring-primary ring-offset-2 bg-primary/5"
       )}
     >
       {children}
@@ -417,25 +430,28 @@ export function EventBoardKanban({
             return (
               <DroppableColumn key={column.id} id={column.id}>
                 <div className="flex-shrink-0 w-80">
-                  <Card className={`h-full ${column.color}`}>
-                    <CardHeader className="pb-3">
+                  <Card className="h-full border-2 bg-surface-elevated shadow-elevation-1">
+                    <CardHeader className="pb-3 border-b bg-surface-alt/50">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-base font-semibold">
+                        <CardTitle className="text-base font-semibold text-text-primary">
                           {column.label}
                         </CardTitle>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="secondary" className="text-xs font-medium">
                           {columnItems.length}
                         </Badge>
                       </div>
                     </CardHeader>
-                    <CardContent className="pt-0">
+                    <CardContent className="pt-4">
                       <SortableContext
                         items={itemIds}
                         strategy={verticalListSortingStrategy}
                       >
                         {columnItems.length === 0 ? (
-                          <div className="text-center py-8">
-                            <p className="text-text-muted text-sm">No events</p>
+                          <div className="text-center py-12">
+                            <div className="text-text-muted text-sm">
+                              <p className="mb-1">No events</p>
+                              <p className="text-xs text-text-muted/70">Drop events here</p>
+                            </div>
                           </div>
                         ) : columnItems.length > 20 ? (
                           // Virtualized list for columns with many items
