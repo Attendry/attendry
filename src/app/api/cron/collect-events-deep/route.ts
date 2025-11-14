@@ -11,8 +11,19 @@ import { SearchService } from "@/lib/services/search-service";
  */
 function verifyCronRequest(req: NextRequest): boolean {
   // Check for Vercel Cron header (automatically added by Vercel)
+  // Vercel adds this header when triggering cron jobs
   const vercelCronHeader = req.headers.get('x-vercel-cron');
+  
+  // Log all headers for debugging (in production, check logs)
+  const allHeaders = Object.fromEntries(
+    Array.from(req.headers.entries()).map(([key, value]) => [key, value])
+  );
+  console.log('[CRON AUTH] Headers received:', JSON.stringify(allHeaders));
+  console.log('[CRON AUTH] x-vercel-cron header:', vercelCronHeader);
+  console.log('[CRON AUTH] CRON_SECRET set:', !!process.env.CRON_SECRET);
+  
   if (vercelCronHeader) {
+    console.log('[CRON AUTH] ✅ Authenticated via x-vercel-cron header');
     return true; // Vercel automatically adds this header for cron jobs
   }
 
@@ -21,15 +32,18 @@ function verifyCronRequest(req: NextRequest): boolean {
   const expectedToken = process.env.CRON_SECRET;
   
   if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+    console.log('[CRON AUTH] ✅ Authenticated via Authorization header');
     return true;
   }
 
   // If CRON_SECRET is set but no valid auth, reject
   if (expectedToken) {
+    console.log('[CRON AUTH] ❌ CRON_SECRET is set but no valid auth provided');
     return false;
   }
 
   // If no CRON_SECRET is set, allow (for development)
+  console.log('[CRON AUTH] ⚠️ No CRON_SECRET set, allowing (development mode)');
   return true;
 }
 
