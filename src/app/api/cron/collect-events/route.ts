@@ -293,29 +293,67 @@ async function storeEventsInDatabase(events: any[], metadata: any): Promise<numb
     }
 
     // Prepare events for database insertion
-    const eventsToInsert = events.map(event => ({
-      title: event.title,
-      description: event.description,
-      starts_at: event.starts_at,
-      ends_at: event.ends_at,
-      city: event.city,
-      country: event.country,
-      location: event.location,
-      venue: event.venue,
-      organizer: event.organizer,
-      source_url: event.source_url,
-      speakers: event.speakers || [],
-      confidence: event.confidence || 0.5,
-      collected_at: new Date().toISOString(),
-      collection_metadata: {
-        source: metadata.source,
-        industry: metadata.industry,
-        country: metadata.country,
-        from: metadata.from,
-        to: metadata.to,
-        collectedAt: metadata.collectedAt
+    const eventsToInsert = events.map(event => {
+      // Extract source domain from URL
+      let sourceDomain = null;
+      try {
+        sourceDomain = new URL(event.source_url).hostname;
+      } catch {
+        // Invalid URL, skip domain extraction
       }
-    }));
+
+      // Calculate data completeness score
+      const fields = {
+        title: !!event.title,
+        description: !!event.description,
+        starts_at: !!event.starts_at,
+        city: !!event.city,
+        country: !!event.country,
+        venue: !!event.venue,
+        organizer: !!event.organizer,
+        topics: !!(event.topics && event.topics.length > 0),
+        speakers: !!(event.speakers && event.speakers.length > 0),
+        sponsors: !!(event.sponsors && event.sponsors.length > 0),
+        participating_organizations: !!(event.participating_organizations && event.participating_organizations.length > 0),
+        partners: !!(event.partners && event.partners.length > 0),
+        competitors: !!(event.competitors && event.competitors.length > 0),
+      };
+      const completenessScore = Object.values(fields).filter(Boolean).length / Object.keys(fields).length;
+
+      return {
+        title: event.title,
+        description: event.description,
+        starts_at: event.starts_at,
+        ends_at: event.ends_at,
+        city: event.city,
+        country: event.country,
+        location: event.location,
+        venue: event.venue,
+        organizer: event.organizer,
+        source_url: event.source_url,
+        source_domain: sourceDomain,
+        topics: event.topics || [],
+        speakers: event.speakers || [],
+        sponsors: event.sponsors || [],
+        participating_organizations: event.participating_organizations || [],
+        partners: event.partners || [],
+        competitors: event.competitors || [],
+        extraction_method: metadata.source === 'cron_firecrawl' ? 'firecrawl' : 'run',
+        confidence: event.confidence || 0.5,
+        data_completeness: Math.round(completenessScore * 100) / 100,
+        collected_at: new Date().toISOString(),
+        industry: metadata.industry,
+        search_terms: [metadata.industry],
+        collection_metadata: {
+          source: metadata.source,
+          industry: metadata.industry,
+          country: metadata.country,
+          from: metadata.from,
+          to: metadata.to,
+          collectedAt: metadata.collectedAt
+        }
+      };
+    });
 
     // Insert events (upsert to avoid duplicates)
     const { data, error } = await supabase
