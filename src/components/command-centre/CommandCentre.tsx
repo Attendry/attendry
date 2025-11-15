@@ -44,6 +44,7 @@ import { deriveLocale, toISO2Country } from '@/lib/utils/country';
 import { EventRec } from '@/context/SearchResultsContext';
 import { useSpeakerEnhancement } from '@/lib/hooks/useSpeakerEnhancement';
 import { SpeakerData } from '@/lib/types/core';
+import { EventIntelligenceQuickView } from '@/components/EventIntelligenceQuickView';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',
@@ -1330,6 +1331,18 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
                         )}
                       </button>
                     )}
+                    {/* Event Intelligence Quick View */}
+                    <div className="mt-4">
+                      <EventIntelligenceQuickView
+                        event={event as any}
+                        onViewFull={() => {
+                          const eventId = event.source_url || event.id;
+                          if (eventId) {
+                            window.location.href = `/events/${encodeURIComponent(eventId)}`;
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
                 );
               })}
