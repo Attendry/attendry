@@ -1243,7 +1243,8 @@ Return structured JSON matching the schema exactly. Include evidence array for a
             allowSubdomains: true,
             // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
             // This is language-agnostic and automatically finds relevant pages in any language
-            prompt: "Crawl pages related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. Focus on pages that contain event information, speaker bios, session details, and registration forms."
+            // IMPORTANT: Explicitly look for PDF documents (programs, brochures, speaker lists) as they often contain complete speaker information
+            prompt: "Crawl pages and documents related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. CRITICAL: Also discover and crawl PDF documents (programs, brochures, speaker lists, event guides) linked from the page, as they often contain complete speaker information. Look for links to PDF files (.pdf) containing event programs, speaker lists, or detailed event information. Focus on pages and PDFs that contain event information, speaker bios, session details, and registration forms."
           }
         },
           ignoreInvalidURLs: true
