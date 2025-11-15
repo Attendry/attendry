@@ -920,9 +920,9 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
             maxDepth: Math.min(3, (crawl?.depth ?? 3)),
             maxPagesToCrawl: 12,
             allowSubdomains: true,
-            includePatterns: [
-              "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
-            ]
+            // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
+            // This is language-agnostic and automatically finds relevant pages in any language
+            prompt: "Crawl pages related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. Focus on pages that contain event information, speaker bios, session details, and registration forms."
           }
         },
         ignoreInvalidURLs: true
@@ -962,9 +962,9 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
               maxDepth: Math.min(3, (crawl?.depth ?? 3)),
               maxPagesToCrawl: 12,
               allowSubdomains: true,
-              includePatterns: [
-                "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
-              ]
+              // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
+              // This is language-agnostic and automatically finds relevant pages in any language
+              prompt: "Crawl pages related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. Focus on pages that contain event information, speaker bios, session details, and registration forms."
             }
           },
           ignoreInvalidURLs: true
@@ -1200,9 +1200,9 @@ Return structured JSON matching the schema exactly. Include evidence array for a
             maxDepth: Math.min(3, (crawl?.depth ?? 3)),
             maxPagesToCrawl: 12,
             allowSubdomains: true,
-            includePatterns: [
-              "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
-            ]
+            // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
+            // This is language-agnostic and automatically finds relevant pages in any language
+            prompt: "Crawl pages related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. Focus on pages that contain event information, speaker bios, session details, and registration forms."
           }
         },
           ignoreInvalidURLs: true
@@ -1242,9 +1242,9 @@ Return structured JSON matching the schema exactly. Include evidence array for a
               maxDepth: Math.min(3, (crawl?.depth ?? 3)),
               maxPagesToCrawl: 12,
               allowSubdomains: true,
-              includePatterns: [
-                "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
-              ]
+              // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
+              // This is language-agnostic and automatically finds relevant pages in any language
+              prompt: "Crawl pages related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. Focus on pages that contain event information, speaker bios, session details, and registration forms."
             }
           },
           ignoreInvalidURLs: true
