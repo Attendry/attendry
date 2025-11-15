@@ -360,22 +360,20 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
     };
 
     // FIRECRAWL-V2: Enhanced scraping with extraction support
-    if (params.scrapeContent || params.extractSchema) {
+    // NOTE: The search endpoint does NOT support extract in scrapeOptions
+    // Extract must be done separately using the /v2/extract endpoint
+    if (params.scrapeContent) {
       body.scrapeOptions = {
         formats: ['markdown', 'html'], // Get both formats for better extraction
         onlyMainContent: true,
         blockAds: true,
         removeBase64Images: true
       };
-      
-      // FIRECRAWL-V2: Add structured extraction if schema provided
-      if (params.extractSchema) {
-        body.scrapeOptions.extract = {
-          schema: params.extractSchema,
-          prompt: params.extractPrompt || "Extract event details including title, dates, location, and speakers from this page."
-        };
-      }
     }
+    
+    // FIRECRAWL-V2: Note - unified search+extract is not supported in search endpoint
+    // The extract parameter would need to be at top level, but search API doesn't support it
+    // We'll need to do search and extract separately
 
     // Add location-based search for better regional results
     if (params.country) {
@@ -429,24 +427,13 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
         console.log('[unified-firecrawl] Response received, items:', data?.data?.web?.length || 0);
 
-        // FIRECRAWL-V2: Parse response with extracted data support
+        // FIRECRAWL-V2: Parse response with scraped content support
         const webResults = data?.data?.web || [];
-        const items: Array<string | { url: string; title?: string; description?: string; markdown?: string; extracted?: any }> = Array.isArray(webResults) 
+        const items: Array<string | { url: string; title?: string; description?: string; markdown?: string }> = Array.isArray(webResults) 
           ? webResults
               .map((item: any) => {
                 const url = item?.url;
                 if (!url || !url.startsWith('http')) return null;
-                
-                // FIRECRAWL-V2: Return enriched item if extraction was done, otherwise just URL
-                if (params.extractSchema && item.extracted) {
-                  return {
-                    url,
-                    title: item.title,
-                    description: item.description,
-                    markdown: item.markdown,
-                    extracted: item.extracted // Structured extracted data
-                  };
-                }
                 
                 // Return enriched item if scraped content available
                 if (params.scrapeContent && (item.markdown || item.title || item.description)) {

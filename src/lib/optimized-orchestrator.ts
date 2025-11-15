@@ -1316,34 +1316,6 @@ async function discoverEventCandidates(
     )
   );
   
-  // FIRECRAWL-V2: Event schema for unified search + extract
-  // This allows extraction during search, reducing API calls by 50%
-  const eventSchema = {
-    type: "object",
-    properties: {
-      title: { type: "string" },
-      starts_at: { type: ["string","null"] },
-      ends_at: { type: ["string","null"] },
-      city: { type: ["string","null"] },
-      country: { type: ["string","null"] },
-      venue: { type: ["string","null"] },
-      organizer: { type: ["string","null"] },
-      topics: { type: "array", items: { type: "string" } },
-      speakers: { 
-        type: "array", 
-        items: { 
-          type: "object", 
-          properties: { 
-            name: { type: "string" }, 
-            org: { type: "string" }, 
-            title: { type: "string" }
-          }
-        }
-      }
-    },
-    required: ["title"]
-  };
-
   const discoveryResults = await parallelProcessor.processParallel(
     discoveryTasks,
     async (task) => {
@@ -1357,17 +1329,15 @@ async function discoverEventCandidates(
           country: params.country || undefined,
           limit: Math.ceil(ORCHESTRATOR_CONFIG.limits.maxCandidates / queryVariations.length),
           scrapeContent: true, // Enable content scraping for better prioritization
-          // FIRECRAWL-V2: Enable unified search + extract (50% API call reduction)
-          extractSchema: eventSchema,
-          extractPrompt: "Extract event details including title, dates, location, and speakers from this page. Use null for missing information.",
+          // NOTE: Firecrawl v2 search API does NOT support extract in scrapeOptions
+          // Extraction must be done separately using /v2/extract endpoint
           useCache: true,
           userProfile: userProfile // Pass user profile to unified search
         });
         console.log('[optimized-orchestrator] Discovery result:', { 
           query: task.data.substring(0, 50) + '...', 
           itemsFound: result.items?.length || 0,
-          userProfileUsed: !!userProfile,
-          hasExtractedData: result.items?.some((item: any) => typeof item === 'object' && item?.extracted) // FIRECRAWL-V2: Log if extraction was done
+          userProfileUsed: !!userProfile
         });
         return result;
       }, 'firecrawl');
@@ -1381,23 +1351,18 @@ async function discoverEventCandidates(
   );
 
   // Combine results from all query variations
-  // FIRECRAWL-V2: Handle both string URLs and enriched items with extracted data
+  // Handle both string URLs and enriched items (with scraped content)
   const allUrls: string[] = [];
-  const extractedDataMap = new Map<string, any>(); // Store extracted data for later use
   
   discoveryResults.forEach(result => {
     if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
-      const searchResult = result.result as { items: Array<string | { url: string; extracted?: any }> };
+      const searchResult = result.result as { items: Array<string | { url: string }> };
       searchResult.items.forEach((item: any) => {
-        // Handle enriched items (objects with url and extracted data)
+        // Handle enriched items (objects with url and scraped content)
         if (typeof item === 'object' && item !== null && item.url) {
           const url = item.url;
           if (url && url.startsWith('http')) {
             allUrls.push(url);
-            // Store extracted data if available (for potential use in extraction phase)
-            if (item.extracted) {
-              extractedDataMap.set(url, item.extracted);
-            }
           }
         } 
         // Handle string URLs (backward compatibility)
@@ -1412,11 +1377,6 @@ async function discoverEventCandidates(
   const urls = allUrls
     .filter((url, index, array) => array.indexOf(url) === index) // Remove duplicates
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxCandidates);
-  
-  // FIRECRAWL-V2: Log if we have extracted data available
-  if (extractedDataMap.size > 0) {
-    console.log(`[optimized-orchestrator] Found ${extractedDataMap.size} URLs with pre-extracted data from unified search+extract`);
-  }
 
   console.log(`[optimized-orchestrator] Discovered ${urls.length} unique URLs from ${queryVariations.length} query variations in ${Date.now() - startTime}ms`);
   

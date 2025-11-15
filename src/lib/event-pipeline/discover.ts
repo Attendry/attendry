@@ -181,34 +181,6 @@ export class EventDiscoverer {
       // Use Unified Search Core for better performance and reliability
       const { unifiedSearch } = await import('@/lib/search/unified-search-core');
       
-      // FIRECRAWL-V2: Event schema for unified search + extract
-      // This allows extraction during search, reducing API calls by 50%
-      const eventSchema = {
-        type: "object",
-        properties: {
-          title: { type: "string" },
-          starts_at: { type: ["string","null"] },
-          ends_at: { type: ["string","null"] },
-          city: { type: ["string","null"] },
-          country: { type: ["string","null"] },
-          venue: { type: ["string","null"] },
-          organizer: { type: ["string","null"] },
-          topics: { type: "array", items: { type: "string" } },
-          speakers: { 
-            type: "array", 
-            items: { 
-              type: "object", 
-              properties: { 
-                name: { type: "string" }, 
-                org: { type: "string" }, 
-                title: { type: "string" }
-              }
-            }
-          }
-        },
-        required: ["title"]
-      };
-      
       const unifiedResult = await unifiedSearch({
         q: query,
         dateFrom: context?.dateFrom || undefined,
@@ -216,9 +188,8 @@ export class EventDiscoverer {
         country: country || undefined,
         limit: 15, // Reduced limit since we're scraping content
         scrapeContent: true, // Enable content scraping for better prioritization
-        // FIRECRAWL-V2: Enable unified search + extract
-        extractSchema: eventSchema,
-        extractPrompt: "Extract event details including title, dates, location, and speakers from this page. Use null for missing information.",
+        // NOTE: Firecrawl v2 search API does NOT support extract in scrapeOptions
+        // Extraction must be done separately using /v2/extract endpoint
         useCache: true
       });
       
@@ -229,8 +200,7 @@ export class EventDiscoverer {
         providers: unifiedResult.providers,
         totalItems: unifiedResult.totalItems,
         metrics: unifiedResult.metrics,
-        duration: Date.now() - startTime,
-        hasExtractedData: items.some((item: any) => typeof item === 'object' && item.extracted) // FIRECRAWL-V2: Log if extraction was done
+        duration: Date.now() - startTime
       });
       
       const candidates = items
@@ -252,11 +222,6 @@ export class EventDiscoverer {
               stageTimings: {
                 discovery: Date.now() - startTime
               },
-              // FIRECRAWL-V2: Include extracted data if available (from unified search+extract)
-              ...(isEnriched && item.extracted && {
-                extracted: item.extracted, // Structured extracted data
-                extractedDuringSearch: true // Flag to skip separate extraction phase
-              }),
               // Include scraped content if available
               ...(isEnriched && {
                 title: item.title,
