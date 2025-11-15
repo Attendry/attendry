@@ -2203,7 +2203,7 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
     
     // Add keyword translations/context if available (e.g., "Kartellrecht" → "antitrust law")
     try {
-      const { getKeywordContext } = await import('../services/weighted-query-builder');
+      const { getKeywordContext } = await import('./services/weighted-query-builder');
       keywords.forEach(keyword => {
         const keywordContext = getKeywordContext(keyword);
         if (keywordContext) {
