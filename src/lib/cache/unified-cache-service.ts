@@ -516,4 +516,9 @@ export const CACHE_CONFIGS = {
     prefix: 'ci',
     fallbackToDb: true,
   },
+  EXTRACTED_EVENTS: {
+    ttl: 24 * 60 * 60, // 24 hours
+    prefix: 'extracted_metadata',
+    fallbackToDb: true,
+  },
 } as const;

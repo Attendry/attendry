@@ -334,11 +334,17 @@ async function filterWithGemini(items: SearchResultItem[], dropTitleRegex: RegEx
       });
     }
     
+    // PERF-2.4.3: Make database writes async (non-blocking)
     if (upserts.length) {
-      try { 
-        const supabase = await supabaseServer(); 
-        await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" }); 
-      } catch {}
+      // Don't await - let it run in background
+      (async () => {
+        try { 
+          const supabase = await supabaseServer(); 
+          await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" }); 
+        } catch (error) {
+          console.warn("Failed to save AI decisions to database:", error);
+        }
+      })();
     }
 
     return result.filteredItems;
@@ -876,9 +882,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     // Prepare the final response
     const result: EventSearchResponse = { provider: "cse", items };
     
+    // PERF-2.4.3: Make cache write async (non-blocking) for faster response
     // Cache the result for future requests using unified cache service
     // This will cache in Redis (primary) and Supabase (fallback)
-    await setCachedResult(cacheKey, result);
+    setCachedResult(cacheKey, result).catch(error => {
+      console.warn("Failed to cache search results:", error);
+    });
     
     // Save to database for persistence and analytics
     // Note: We don't await this to avoid slowing down the response

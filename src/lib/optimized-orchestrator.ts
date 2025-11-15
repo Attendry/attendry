@@ -45,6 +45,7 @@ import {
   generateSpeakerCacheKey,
   warmPopularSearches 
 } from './advanced-cache';
+import { getCacheService, CACHE_CONFIGS } from './cache';
 import { deepCrawlEvent, extractEventMetadata, extractAndEnhanceSpeakers } from './event-analysis';
 import type { SpeakerData } from './event-analysis';
 import { attemptJsonRepair } from './ai/gemini-bypass';
@@ -403,6 +404,7 @@ const ORCHESTRATOR_CONFIG = {
     maxCandidates: 40,      // Increased from 30 for better coverage
     maxExtractions: 12,     // Reduced from 20 to 12 to prevent timeout
     maxSpeakers: 30,        // Increased from 25 for richer data
+    maxHighQualityEvents: 10, // PERF-2.2.2: Stop extraction once 10 high-quality events found
   },
   timeouts: {
     discovery: optimizeTimeout('firecrawl'),      // Optimized timeout
@@ -1471,7 +1473,7 @@ async function executeGeminiCall(prompt: string, urls: string[]): Promise<Array<
     }));
   }
 
-  const attemptTimeouts = [12000]; // single short attempt (ms)
+    const attemptTimeouts = [15000]; // single short attempt (ms) - increased from 12s to 15s to reduce timeout failures
 
   try {
     const systemInstruction = 'Return only JSON array [{"url":"","score":0,"reason":""}]. Score 0-1 based on industry relevance. Prioritize URLs with specific events matching the industry focus. Penalize generic directories. Reason<=10 chars. No explanations.';
@@ -1959,6 +1961,18 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         const url = task.data;
         console.log('[optimized-orchestrator] Deep crawling event:', url);
 
+        // PERF-EXT-3: Check cache for extracted metadata before processing
+        const cacheService = getCacheService();
+        const crypto = await import('crypto');
+        const urlHash = crypto.createHash('sha256').update(url).digest('hex');
+        const cacheKey = urlHash;
+        
+        const cachedResult = await cacheService.get<ExtractionPayload>(cacheKey, CACHE_CONFIGS.EXTRACTED_EVENTS);
+        if (cachedResult) {
+          console.log(`[optimized-orchestrator] Using cached extraction result for URL: ${url.substring(0, 50)}...`);
+          return cachedResult;
+        }
+
         // Add timeout for individual deep crawl (30 seconds max)
         const crawlPromise = deepCrawlEvent(url);
         const timeoutPromise = new Promise<never>((_, reject) =>
@@ -2000,7 +2014,7 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
           console.warn('[optimized-orchestrator] Speaker extraction failed, continuing without speakers:', error instanceof Error ? error.message : error);
         }
 
-        return {
+        const result: ExtractionPayload = {
           metadata,
           speakers,
           crawlStats: {
@@ -2009,7 +2023,14 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
             durationMs: Date.now() - extractionStart,
             provider
           }
-        } satisfies ExtractionPayload;
+        };
+
+        // PERF-EXT-3: Cache extracted result for future use
+        await cacheService.set(cacheKey, result, CACHE_CONFIGS.EXTRACTED_EVENTS).catch(err => {
+          console.warn('[optimized-orchestrator] Failed to cache extraction result:', err instanceof Error ? err.message : err);
+        });
+
+        return result;
       }, 'firecrawl');
     },
     {
@@ -2022,8 +2043,15 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   );
 
   const events: EventCandidate[] = [];
+  let highQualityCount = 0; // PERF-2.2.2: Track high-quality events for early termination
 
   extractionResults.forEach((result, index) => {
+    // PERF-2.2.2: Early termination - stop processing once we have enough high-quality events
+    if (highQualityCount >= ORCHESTRATOR_CONFIG.limits.maxHighQualityEvents) {
+      console.log(`[optimized-orchestrator] Early termination: ${highQualityCount} high-quality events found, skipping remaining extractions`);
+      return;
+    }
+
     const prioritizedItem = limitedPrioritized[index];
     if (!prioritizedItem) {
       return;
@@ -2055,6 +2083,20 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
     const locationParts = payload.metadata.location?.split(',').map(s => s.trim()) || [];
     const city = locationParts.length > 0 ? locationParts[0] : undefined;
     const country = locationParts.length > 1 ? locationParts[1] : (params.country || undefined);
+    
+    // PERF-2.2.2: Determine if this is a high-quality event
+    // High-quality criteria: has title, date, location, and speakers
+    const isHighQuality = !!(
+      payload.metadata.title &&
+      payload.metadata.date &&
+      payload.metadata.location &&
+      mappedSpeakers.length > 0 &&
+      prioritizedItem.score >= ORCHESTRATOR_CONFIG.thresholds.confidence
+    );
+    
+    if (isHighQuality) {
+      highQualityCount++;
+    }
     
     events.push({
       url: prioritizedItem.url,

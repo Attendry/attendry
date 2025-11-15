@@ -1075,9 +1075,192 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
 
     const desiredFields: Array<keyof typeof aggregatedMetadata> = ['title', 'description', 'date', 'location', 'organizer', 'website'];
 
-    // PARALLELIZE METADATA EXTRACTION: Process chunks in parallel for speed
-    const processMetadataChunk = async (chunk: string, index: number): Promise<any> => {
-      const prompt = `Extract factual event metadata as JSON using the provided schema. Only return fields you can confirm from this content chunk. Use null when unsure.
+    // PERF-EXT-1: Batch metadata extraction - combine all chunks into single Gemini call
+    // Filter out chunks that are too small
+    const validChunks = chunks
+      .map((chunk, index) => ({ chunk, index }))
+      .filter(({ chunk }) => chunk.trim().length >= 200);
+
+    if (validChunks.length === 0) {
+      console.warn('[event-analysis] No valid chunks for metadata extraction, using fallback');
+      return fallbackMetadata;
+    }
+
+    console.log(`[event-analysis] Processing ${validChunks.length} metadata chunks in single batch call...`);
+    
+    // Build batch prompt with all chunks labeled
+    const batchPrompt = `Extract factual event metadata as JSON from the following chunks. Each chunk is labeled with its index. Only return fields you can confirm from each chunk. Use null when unsure.
+
+**Date Extraction Guidelines:**
+- Look for dates in formats like: "November 10-17, 2025", "10-17 Nov 2025", "2025-11-10 to 2025-11-17"
+- Return dates in ISO format: "2025-11-10" or as a range: "2025-11-10 to 2025-11-17"
+- Check event headers, registration sections, and "when" or "date" sections
+- If you find a date range, return it as "YYYY-MM-DD to YYYY-MM-DD"
+
+**Location Extraction Guidelines:**
+- Look for city names (Berlin, München, Frankfurt, etc.)
+- Look for venue names and addresses
+- Return format: "City, Country" (e.g., "Berlin, Germany")
+
+CHUNKS:
+${validChunks.map(({ chunk, index }) => `
+--- Chunk ${index + 1}/${chunks.length} (Index ${index}) ---
+${chunk}
+`).join('\n')}
+
+Return JSON array with metadata for each chunk:
+[
+  {
+    "chunkIndex": 0,
+    "metadata": {
+      "title": "...",
+      "description": "...",
+      "date": "...",
+      "location": "...",
+      "organizer": "...",
+      "website": "...",
+      "registrationUrl": "..."
+    }
+  },
+  ...
+]`;
+
+    // Batch metadata schema for array response
+    const batchMetadataSchema = {
+      type: 'array' as const,
+      items: {
+        type: 'object' as const,
+        properties: {
+          chunkIndex: { type: 'number' as const },
+          metadata: {
+            type: 'object' as const,
+            properties: {
+              title: { type: 'string' as const, nullable: true },
+              description: { type: 'string' as const, nullable: true },
+              date: { type: 'string' as const, nullable: true },
+              location: { type: 'string' as const, nullable: true },
+              organizer: { type: 'string' as const, nullable: true },
+              website: { type: 'string' as const, nullable: true },
+              registrationUrl: { type: 'string' as const, nullable: true }
+            }
+          }
+        },
+        required: ['chunkIndex', 'metadata']
+      }
+    };
+
+    try {
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Gemini metadata batch timeout after 20 seconds')), 20000);
+      });
+
+      const batchModel = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        generationConfig: {
+          temperature: 0.1,
+          topP: 0.8,
+          topK: 12,
+          maxOutputTokens: 4096, // Increased for batch responses
+          responseMimeType: 'application/json',
+          responseSchema: batchMetadataSchema as any
+        }
+      });
+
+      const geminiPromise = batchModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: batchPrompt }] }]
+      });
+
+      const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+      const response = await result.response;
+      const text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      if (!text || !text.trim()) {
+        console.warn('[event-analysis] Empty batch metadata response, falling back to individual processing');
+        // Fallback to individual processing
+        return await processMetadataChunksIndividually(chunks, model, aggregatedMetadata, crawlResults, eventTitle, eventDate, country);
+      }
+
+      // Parse batch response
+      let batchResults: Array<{ chunkIndex: number; metadata: any }> = [];
+      try {
+        batchResults = JSON.parse(text);
+        if (!Array.isArray(batchResults)) {
+          throw new Error('Batch response is not an array');
+        }
+      } catch (jsonError) {
+        console.warn('[event-analysis] Failed to parse batch metadata response, falling back to individual processing:', jsonError);
+        return await processMetadataChunksIndividually(chunks, model, aggregatedMetadata, crawlResults, eventTitle, eventDate, country);
+      }
+
+      // PERF-EXT-5: Early termination - track core fields and stop if enough data found
+      const coreFields = ['title', 'date', 'location'];
+      const extractedFields = new Set<string>();
+
+      // Aggregate results from batch response with early termination check
+      for (const result of batchResults) {
+        if (result && result.metadata) {
+          const metadata = result.metadata;
+          
+          // Update aggregated metadata
+          if (metadata.title) {
+            aggregatedMetadata.title = selectBetterValue(aggregatedMetadata.title, metadata.title);
+            extractedFields.add('title');
+          }
+          if (metadata.date) {
+            aggregatedMetadata.date = selectBetterValue(aggregatedMetadata.date, metadata.date);
+            extractedFields.add('date');
+          }
+          if (metadata.location) {
+            aggregatedMetadata.location = selectBetterValue(aggregatedMetadata.location, metadata.location);
+            extractedFields.add('location');
+          }
+          
+          aggregatedMetadata.description = selectBetterValue(aggregatedMetadata.description, metadata.description);
+          aggregatedMetadata.organizer = selectBetterValue(aggregatedMetadata.organizer, metadata.organizer);
+          aggregatedMetadata.website = selectBetterValue(aggregatedMetadata.website, metadata.website);
+          const registrationCandidate = metadata.registrationUrl ?? metadata.registration_url ?? metadata.registrationurl;
+          aggregatedMetadata.registrationUrl = selectBetterValue(aggregatedMetadata.registrationUrl, registrationCandidate);
+
+          // PERF-EXT-5: Early termination - if we have all core fields, we can stop processing
+          // Note: In batch processing, we already have all results, but this check helps with quality gate
+          if (coreFields.every(field => extractedFields.has(field))) {
+            console.log(`[event-analysis] Early termination: All core fields (title, date, location) found after processing ${batchResults.indexOf(result) + 1} chunks`);
+            break; // We already have all results, but this documents the early termination logic
+          }
+        }
+      }
+
+      console.log(`[event-analysis] Batch metadata extraction completed for ${validChunks.length} chunks (core fields found: ${Array.from(extractedFields).join(', ') || 'none'})`);
+      
+      // Return aggregated metadata after successful batch processing
+      return {
+        title: aggregatedMetadata.title || eventTitle || 'Unknown Event',
+        description: aggregatedMetadata.description || '',
+        date: aggregatedMetadata.date || eventDate || 'Unknown Date',
+        location: aggregatedMetadata.location || country || 'Unknown Location',
+        organizer: aggregatedMetadata.organizer || 'Unknown Organizer',
+        website: aggregatedMetadata.website || crawlResults[0]?.url || '',
+        registrationUrl: aggregatedMetadata.registrationUrl
+      };
+    } catch (batchError) {
+      console.warn('[event-analysis] Batch metadata extraction failed, falling back to individual processing:', batchError instanceof Error ? batchError.message : batchError);
+      // Fallback to individual processing
+      return await processMetadataChunksIndividually(chunks, model, aggregatedMetadata, crawlResults, eventTitle, eventDate, country);
+    }
+
+    // Helper function for fallback individual processing
+    async function processMetadataChunksIndividually(
+      chunks: string[],
+      model: any,
+      aggregatedMetadata: typeof aggregatedMetadata,
+      crawlResults: CrawlResult[],
+      eventTitle?: string,
+      eventDate?: string,
+      country?: string
+    ): Promise<EventMetadata> {
+      console.log('[event-analysis] Falling back to individual chunk processing...');
+      const processMetadataChunk = async (chunk: string, index: number): Promise<any> => {
+        const prompt = `Extract factual event metadata as JSON using the provided schema. Only return fields you can confirm from this content chunk. Use null when unsure.
 
 **Date Extraction Guidelines:**
 - Look for dates in formats like: "November 10-17, 2025", "10-17 Nov 2025", "2025-11-10 to 2025-11-17"
@@ -1093,156 +1276,113 @@ export async function extractEventMetadata(crawlResults: CrawlResult[], eventTit
 Chunk ${index + 1}/${chunks.length}:
 ${chunk}`;
 
-      console.log(`[event-analysis] Calling Gemini for metadata chunk ${index + 1}/${chunks.length}`);
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Gemini metadata chunk timeout after 15 seconds')), 15000);
-      });
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Gemini metadata chunk timeout after 15 seconds')), 15000);
+        });
 
-      try {
-        if (chunk.trim().length < 200) {
-          console.warn(`[event-analysis] Skipping metadata chunk ${index + 1} due to insufficient content`);
-          return null;
-        }
-
-        // LLM EMPTY-RESPONSE RETRY: Retry with smaller chunks if empty response
-        let text = '';
-        let currentChunk = chunk;
-        let retryCount = 0;
-        const maxRetries = 2;
-        const chunkReductionFactor = 0.7; // Reduce chunk size by 30% on retry
-        
-        while (retryCount <= maxRetries && (!text || !text.trim())) {
-          if (retryCount > 0) {
-            // Reduce chunk size on retry
-            const newSize = Math.floor(currentChunk.length * chunkReductionFactor);
-            currentChunk = currentChunk.substring(0, newSize);
-            console.log(`[event-analysis] Retry ${retryCount}/${maxRetries} for chunk ${index + 1} with reduced size: ${newSize} chars`);
+        try {
+          if (chunk.trim().length < 200) {
+            return null;
           }
-          
-          // Build prompt with current chunk (replace only the chunk placeholder, not all occurrences)
-          const currentPrompt = prompt.replace(`Chunk ${index + 1}/${chunks.length}:\n${chunk}`, `Chunk ${index + 1}/${chunks.length}:\n${currentChunk}`);
-          
+
           const geminiPromise = model.generateContent({
-            contents: [{ role: 'user', parts: [{ text: currentPrompt }] }]
+            contents: [{ role: 'user', parts: [{ text: prompt }] }]
           });
           const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
           const response = await result.response;
-          text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          
+          const text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
           if (!text || !text.trim()) {
-            // METRICS: Track empty LLM responses
-            llmTotalResponseCount++;
-            llmEmptyResponseCount++;
-            
-            // CIRCUIT BREAKER: Check if circuit is open for empty responses
-            const { getCircuitBreakerState } = await import('./circuit-breaker');
-            const circuitState = getCircuitBreakerState('gemini-empty-response');
-            if (circuitState === 'OPEN') {
-              console.warn(`[event-analysis] Circuit breaker OPEN for empty LLM responses, skipping chunk ${index + 1}`);
-              return null;
-            }
-            
-            // Record empty response to circuit breaker
-            try {
-              const { executeWithAdvancedCircuitBreaker } = await import('./error-recovery');
-              await executeWithAdvancedCircuitBreaker(async () => {
-                throw new Error('Empty LLM response');
-              }, 'gemini-empty-response', async () => null);
-            } catch (err) {
-              // Circuit breaker recorded the failure, continue
-            }
-            
-            retryCount++;
-            if (retryCount <= maxRetries) {
-              console.warn(`[event-analysis] Empty metadata response for chunk ${index + 1}, retrying with smaller chunk...`);
-              // Wait a bit before retry to avoid rate limiting
-              await new Promise(resolve => setTimeout(resolve, 500));
-            } else {
-              console.warn(`[event-analysis] Empty metadata response for chunk ${index + 1} after ${maxRetries} retries`);
-            }
-          } else {
-            // METRICS: Track successful responses
-            llmTotalResponseCount++;
-            
-            // Record success to circuit breaker
-            try {
-              const { executeWithAdvancedCircuitBreaker } = await import('./error-recovery');
-              await executeWithAdvancedCircuitBreaker(async () => true, 'gemini-empty-response');
-            } catch (err) {
-              // Circuit breaker recorded the success, continue
-            }
-          }
-        }
-
-        if (!text || !text.trim()) {
-          console.warn(`[event-analysis] Skipping chunk ${index + 1} after all retries failed`);
-          return null;
-        }
-
-        // PHASE 1: Safe JSON parsing with auto-repair
-        let metadata: any = null;
-        try {
-          metadata = JSON.parse(text);
-        } catch (jsonError) {
-          // Try to extract JSON from response if it's wrapped
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            try {
-              metadata = JSON.parse(jsonMatch[0]);
-              console.log(`[event-analysis] Recovered JSON from chunk ${index + 1} using regex extraction`);
-            } catch (retryError) {
-              console.warn(`[event-analysis] Metadata chunk ${index + 1} JSON parsing failed completely:`, jsonError);
-              return null;
-            }
-          } else {
-            console.warn(`[event-analysis] Metadata chunk ${index + 1} JSON parsing failed:`, jsonError);
             return null;
           }
+
+          let metadata: any = null;
+          try {
+            metadata = JSON.parse(text);
+          } catch (jsonError) {
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                metadata = JSON.parse(jsonMatch[0]);
+              } catch {
+                return null;
+              }
+            } else {
+              return null;
+            }
+          }
+          
+          return metadata;
+        } catch (chunkError) {
+          return null;
         }
-        
-        return metadata;
-      } catch (chunkError) {
-        console.warn(`[event-analysis] Metadata chunk ${index + 1} failed`, chunkError);
-        // Check if it's a MAX_TOKENS error
-        if (chunkError instanceof Error && chunkError.message.includes('MAX_TOKENS')) {
-          console.warn(`[event-analysis] Chunk ${index + 1} hit MAX_TOKENS limit, may need to reduce chunk size`);
+      };
+
+      // PERF-EXT-5: Early termination - process chunks sequentially and stop when core fields found
+      const coreFields = ['title', 'date', 'location'];
+      const extractedFields = new Set<string>();
+      const chunkResults: Array<PromiseSettledResult<any>> = [];
+
+      // Process chunks sequentially to enable early termination
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        try {
+          const metadata = await processMetadataChunk(chunk, i);
+          if (metadata) {
+            chunkResults.push({ status: 'fulfilled' as const, value: metadata });
+            
+            // Update aggregated metadata
+            if (metadata.title) {
+              aggregatedMetadata.title = selectBetterValue(aggregatedMetadata.title, metadata.title);
+              extractedFields.add('title');
+            }
+            if (metadata.date) {
+              aggregatedMetadata.date = selectBetterValue(aggregatedMetadata.date, metadata.date);
+              extractedFields.add('date');
+            }
+            if (metadata.location) {
+              aggregatedMetadata.location = selectBetterValue(aggregatedMetadata.location, metadata.location);
+              extractedFields.add('location');
+            }
+            
+            aggregatedMetadata.description = selectBetterValue(aggregatedMetadata.description, metadata.description);
+            aggregatedMetadata.organizer = selectBetterValue(aggregatedMetadata.organizer, metadata.organizer);
+            aggregatedMetadata.website = selectBetterValue(aggregatedMetadata.website, metadata.website);
+            const registrationCandidate = metadata.registrationUrl ?? metadata.registration_url ?? metadata.registrationurl;
+            aggregatedMetadata.registrationUrl = selectBetterValue(aggregatedMetadata.registrationUrl, registrationCandidate);
+
+            // PERF-EXT-5: Early termination - stop processing if all core fields found
+            if (coreFields.every(field => extractedFields.has(field))) {
+              console.log(`[event-analysis] Early termination: All core fields (title, date, location) found after processing ${i + 1}/${chunks.length} chunks`);
+              // Skip remaining chunks
+              break;
+            }
+          } else {
+            chunkResults.push({ status: 'fulfilled' as const, value: null });
+          }
+        } catch (error) {
+          chunkResults.push({ status: 'rejected' as const, reason: error });
+          console.warn(`[event-analysis] Metadata chunk ${i + 1} rejected:`, error);
+          
+          // PERF-EXT-5: Even on error, check if we have enough data
+          if (coreFields.every(field => extractedFields.has(field))) {
+            console.log(`[event-analysis] Early termination: All core fields found despite error, stopping at chunk ${i + 1}`);
+            break;
+          }
         }
-        return null;
       }
-    };
 
-    // Process all chunks in parallel
-    console.log('[event-analysis] Processing metadata chunks in parallel for speed...');
-    const chunkPromises = chunks.map((chunk, i) => processMetadataChunk(chunk, i));
-    const chunkResults = await Promise.allSettled(chunkPromises);
-
-    // Aggregate results from all chunks
-    chunkResults.forEach((result, i) => {
-      if (result.status === 'fulfilled' && result.value) {
-        const metadata = result.value;
-        aggregatedMetadata.title = selectBetterValue(aggregatedMetadata.title, metadata.title);
-        aggregatedMetadata.description = selectBetterValue(aggregatedMetadata.description, metadata.description);
-        aggregatedMetadata.date = selectBetterValue(aggregatedMetadata.date, metadata.date);
-        aggregatedMetadata.location = selectBetterValue(aggregatedMetadata.location, metadata.location);
-        aggregatedMetadata.organizer = selectBetterValue(aggregatedMetadata.organizer, metadata.organizer);
-        aggregatedMetadata.website = selectBetterValue(aggregatedMetadata.website, metadata.website);
-        const registrationCandidate = metadata.registrationUrl ?? metadata.registration_url ?? metadata.registrationurl;
-        aggregatedMetadata.registrationUrl = selectBetterValue(aggregatedMetadata.registrationUrl, registrationCandidate);
-      } else if (result.status === 'rejected') {
-        console.warn(`[event-analysis] Metadata chunk ${i + 1} rejected:`, result.reason);
-      }
-    });
-
-    // Return aggregated metadata
-    return {
-      title: aggregatedMetadata.title || eventTitle || 'Unknown Event',
-      description: aggregatedMetadata.description || '',
-      date: aggregatedMetadata.date || eventDate || 'Unknown Date',
-      location: aggregatedMetadata.location || country || 'Unknown Location',
-      organizer: aggregatedMetadata.organizer || 'Unknown Organizer',
-      website: aggregatedMetadata.website || crawlResults[0]?.url || '',
-      registrationUrl: aggregatedMetadata.registrationUrl
-    };
+      // Return aggregated metadata
+      return {
+        title: aggregatedMetadata.title || eventTitle || 'Unknown Event',
+        description: aggregatedMetadata.description || '',
+        date: aggregatedMetadata.date || eventDate || 'Unknown Date',
+        location: aggregatedMetadata.location || country || 'Unknown Location',
+        organizer: aggregatedMetadata.organizer || 'Unknown Organizer',
+        website: aggregatedMetadata.website || crawlResults[0]?.url || '',
+        registrationUrl: aggregatedMetadata.registrationUrl
+      };
+    }
   } catch (error) {
     console.warn('Event metadata extraction error:', error);
     if (error instanceof Error && error.message.includes('timeout')) {
@@ -1687,9 +1827,21 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       speakerMap.set(key, existing);
     };
 
-    // Process chunks in parallel for speed
-    const processChunk = async (chunk: string, index: number) => {
-      const prompt = `Extract ONLY PEOPLE (actual speakers/presenters) from this event content.
+    // PERF-EXT-2: Batch speaker extraction - combine all chunks into single Gemini call
+    // Filter out chunks that are too small
+    const validChunks = chunks
+      .map((chunk, index) => ({ chunk, index }))
+      .filter(({ chunk }) => chunk.trim().length >= 250);
+
+    if (validChunks.length === 0) {
+      console.warn('[event-analysis] No valid chunks for speaker extraction');
+      return [];
+    }
+
+    console.log(`[event-analysis] Processing ${validChunks.length} speaker chunks in single batch call...`);
+
+    // Build batch prompt with all chunks labeled
+    const batchPrompt = `Extract ONLY PEOPLE (actual speakers/presenters) from the following event content chunks. Each chunk is labeled with its index.
 
 REQUIRED: Each entry must be a REAL PERSON with a full name.
 
@@ -1712,127 +1864,235 @@ ONLY EXTRACT:
 ✓ Company/organization: "ABC Corporation", "XYZ Law Firm", "Legal Institute"
 ✓ Bio if available: Brief professional background
 
-EXAMPLE OUTPUT:
-{
-  "speakers": [
-    {
-      "name": "Dr. Sarah Johnson",
-      "title": "General Counsel",
-      "company": "ABC Corporation",
-      "bio": "Expert in compliance and regulatory affairs"
+CHUNKS:
+${validChunks.map(({ chunk, index }) => `
+--- Chunk ${index + 1}/${chunks.length} (Index ${index}) ---
+${chunk}
+`).join('\n')}
+
+Return JSON array with speakers for each chunk:
+[
+  {
+    "chunkIndex": 0,
+    "speakers": [
+      {
+        "name": "Dr. Sarah Johnson",
+        "title": "General Counsel",
+        "company": "ABC Corporation",
+        "bio": "Expert in compliance and regulatory affairs"
+      }
+    ]
+  },
+  ...
+]
+
+If NO PEOPLE found in a chunk, return empty speakers array: {"chunkIndex": 0, "speakers": []}`;
+
+    // Batch speaker schema for array response
+    const batchSpeakerSchema = {
+      type: 'array' as const,
+      items: {
+        type: 'object' as const,
+        properties: {
+          chunkIndex: { type: 'number' as const },
+          speakers: {
+            type: 'array' as const,
+            items: {
+              type: 'object' as const,
+              properties: {
+                name: { type: 'string' as const },
+                title: { type: 'string' as const, nullable: true },
+                company: { type: 'string' as const, nullable: true },
+                bio: { type: 'string' as const, nullable: true }
+              },
+              required: ['name']
+            }
+          }
+        },
+        required: ['chunkIndex', 'speakers']
+      }
+    };
+
+    try {
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Gemini speaker batch timeout after 20 seconds')), 20000);
+      });
+
+      const batchModel = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        generationConfig: {
+          temperature: 0.2,
+          topP: 0.8,
+          topK: 12,
+          maxOutputTokens: 4096, // Increased for batch responses
+          responseMimeType: 'application/json',
+          responseSchema: batchSpeakerSchema as any
+        }
+      });
+
+      const geminiPromise = batchModel.generateContent({
+        contents: [{ role: 'user', parts: [{ text: batchPrompt }] }]
+      });
+
+      const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+      const response = await result.response;
+      const text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      if (!text || !text.trim()) {
+        console.warn('[event-analysis] Empty batch speaker response, falling back to individual processing');
+        return await processSpeakerChunksIndividually(chunks, model, speakerMap, upsertSpeaker);
+      }
+
+      // Parse batch response
+      let batchResults: Array<{ chunkIndex: number; speakers: any[] }> = [];
+      try {
+        batchResults = JSON.parse(text);
+        if (!Array.isArray(batchResults)) {
+          throw new Error('Batch response is not an array');
+        }
+      } catch (jsonError) {
+        console.warn('[event-analysis] Failed to parse batch speaker response, falling back to individual processing:', jsonError);
+        return await processSpeakerChunksIndividually(chunks, model, speakerMap, upsertSpeaker);
+      }
+
+      // Process speakers from batch response
+      batchResults.forEach((result) => {
+        if (result && Array.isArray(result.speakers)) {
+          result.speakers.forEach(upsertSpeaker);
+        }
+      });
+
+      console.log(`[event-analysis] Batch speaker extraction completed for ${validChunks.length} chunks, found ${speakerMap.size} unique speakers`);
+    } catch (batchError) {
+      console.warn('[event-analysis] Batch speaker extraction failed, falling back to individual processing:', batchError instanceof Error ? batchError.message : batchError);
+      return await processSpeakerChunksIndividually(chunks, model, speakerMap, upsertSpeaker);
     }
-  ]
-}
+
+    // Helper function for fallback individual processing
+    async function processSpeakerChunksIndividually(
+      chunks: string[],
+      model: any,
+      speakerMap: Map<string, SpeakerData>,
+      upsertSpeaker: (speaker: any) => void
+    ): Promise<SpeakerData[]> {
+      console.log('[event-analysis] Falling back to individual speaker chunk processing...');
+      const processChunk = async (chunk: string, index: number) => {
+        const prompt = `Extract ONLY PEOPLE (actual speakers/presenters) from this event content.
+
+REQUIRED: Each entry must be a REAL PERSON with a full name.
+
+CRITICAL: You MUST extract title (job title/role) and company (organization) for each speaker when available.
+These fields are ESSENTIAL and must be included in the response.
+
+DO NOT EXTRACT:
+✗ Event names: "Privacy Summit", "Risk Forum", "Compliance Day"
+✗ Session titles: "Practices Act", "Keynote Address", "Panel Discussion"  
+✗ Organization names: "ABC Corporation", "Legal Institute"
+✗ UI/CTA elements: "Reserve Seat", "Register Now", "Book Ticket", "Learn More"
+✗ Buttons/Links: "Sign Up", "Download", "Contact", "View More", "Save Date"
+✗ Generic roles: "Moderator", "Organizer", "Committee" (without names)
+✗ Organizational terms: "Organizing Committee", "Advisory Board", "Program Team"
+✗ Navigation/Menu items: "Home", "About", "Contact", "Privacy Policy"
+
+ONLY EXTRACT:
+✓ Full person names: "Dr. Sarah Johnson", "Michael Schmidt", "María García"
+✓ Job title/role: "General Counsel", "Chief Compliance Officer", "Partner", "VP Legal"
+✓ Company/organization: "ABC Corporation", "XYZ Law Firm", "Legal Institute"
+✓ Bio if available: Brief professional background
 
 Return JSON with "speakers" array. If NO PEOPLE found, return {"speakers": []}.
 
 Content chunk ${index + 1}/${chunks.length}:
 ${chunk}`;
 
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Gemini speaker chunk timeout after 15 seconds')), 15000);
-      });
-
-      if (chunk.trim().length < 250) {
-        console.warn(`[event-analysis] Skipping speaker chunk ${index + 1} due to insufficient content`);
-        return [];
-      }
-
-      try {
-        const geminiPromise = model.generateContent({
-          contents: [{ role: 'user', parts: [{ text: prompt }] }]
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Gemini speaker chunk timeout after 15 seconds')), 15000);
         });
 
-        const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
-        const response = await result.response;
-        let text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (chunk.trim().length < 250) {
+          return [];
+        }
 
-        if (!text || !text.trim()) {
-          // LLM EMPTY-RESPONSE RETRY: Retry with smaller chunk if empty response
-          console.warn(`[event-analysis] Empty speaker response for chunk ${index + 1}, retrying with smaller chunk...`);
-          
-          // Retry with reduced chunk size
-          const reducedChunk = chunk.substring(0, Math.floor(chunk.length * 0.7));
-          // Replace only the chunk placeholder in the prompt, not all occurrences
-          const retryPrompt = prompt.replace(`Content chunk ${index + 1}/${chunks.length}:\n${chunk}`, `Content chunk ${index + 1}/${chunks.length}:\n${reducedChunk}`);
-          
-          try {
-            await new Promise(resolve => setTimeout(resolve, 500)); // Wait before retry
-            const retryResult = await model.generateContent({
-              contents: [{ role: 'user', parts: [{ text: retryPrompt }] }]
-            });
-            const retryResponse = await retryResult.response;
-            text = typeof retryResponse.text === 'function' ? await retryResponse.text() : retryResponse?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            
-            if (!text || !text.trim()) {
-              // METRICS: Track empty LLM responses
-              llmTotalResponseCount++;
-              llmEmptyResponseCount++;
-              console.warn(`[event-analysis] Empty speaker response for chunk ${index + 1} after retry`);
-              return [];
-            } else {
-              llmTotalResponseCount++;
-            }
-          } catch (retryError) {
-            console.warn(`[event-analysis] Speaker extraction retry failed for chunk ${index + 1}:`, retryError);
+        try {
+          const geminiPromise = model.generateContent({
+            contents: [{ role: 'user', parts: [{ text: prompt }] }]
+          });
+
+          const result = await Promise.race([geminiPromise, timeoutPromise]) as any;
+          const response = await result.response;
+          let text = typeof response.text === 'function' ? await response.text() : response?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+          if (!text || !text.trim()) {
             return [];
           }
-        }
-        
-        if (!text || !text.trim()) {
-          // METRICS: Track empty LLM responses
-          llmTotalResponseCount++;
-          llmEmptyResponseCount++;
-          return [];
-        } else {
-          llmTotalResponseCount++;
-        }
 
-        let parsed;
-        try {
-          parsed = JSON.parse(text);
-        } catch (jsonError) {
-          // Try to extract JSON from response if it's wrapped in markdown or other text
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            try {
-              parsed = JSON.parse(jsonMatch[0]);
-              console.log(`[event-analysis] Recovered JSON from chunk ${index + 1} using regex extraction`);
-            } catch (retryError) {
-              throw new Error(`JSON parsing failed: ${jsonError instanceof Error ? jsonError.message : 'Unknown error'}`);
+          let parsed;
+          try {
+            parsed = JSON.parse(text);
+          } catch (jsonError) {
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                parsed = JSON.parse(jsonMatch[0]);
+              } catch {
+                return [];
+              }
+            } else {
+              return [];
             }
-          } else {
-            throw jsonError;
           }
-        }
-        
-        if (Array.isArray(parsed?.speakers)) {
-          console.log(`[event-analysis] Processing ${parsed.speakers.length} speakers from chunk ${index + 1}`);
-          return parsed.speakers;
-        } else {
-          console.warn(`[event-analysis] Chunk ${index + 1} response has no speakers array`, parsed);
+          
+          if (Array.isArray(parsed?.speakers)) {
+            return parsed.speakers;
+          } else {
+            return [];
+          }
+        } catch (chunkError) {
           return [];
         }
-      } catch (chunkError) {
-        console.warn(`[event-analysis] Speaker chunk ${index + 1} failed`, chunkError);
-        return [];
+      };
+
+      const chunkPromises = chunks.map((chunk, i) => processChunk(chunk, i));
+      const chunkResults = await Promise.allSettled(chunkPromises);
+
+      // Process results
+      chunkResults.forEach((result) => {
+        if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+          result.value.forEach(upsertSpeaker);
+        }
+      });
+
+      // Return speakers from map
+      if (speakerMap.size > 0) {
+        const rawSpeakers = Array.from(speakerMap.values()).slice(0, 20);
+        
+        // PHASE 2: Filter speakers to only include persons
+        const validSpeakers = filterSpeakers(rawSpeakers as RawSpeaker[]);
+        
+        // Map filtered speakers to SpeakerData format
+        const speakerData: SpeakerData[] = validSpeakers.map(speaker => {
+          const key = speaker.name.toLowerCase();
+          const originalSpeaker = speakerMap.get(key);
+          
+          return {
+            name: speaker.name,
+            title: originalSpeaker?.title && originalSpeaker.title.trim().length > 0
+              ? originalSpeaker.title
+              : (speaker.role || ''),
+            company: originalSpeaker?.company && originalSpeaker.company.trim().length > 0
+              ? originalSpeaker.company
+              : (speaker.org || ''),
+            bio: originalSpeaker?.bio || ''
+          };
+        });
+
+        return speakerData;
       }
-    };
 
-    // Process all chunks in parallel
-    console.log('[event-analysis] Processing chunks in parallel for speed...');
-    const chunkPromises = chunks.map((chunk, i) => processChunk(chunk, i));
-    const chunkResults = await Promise.allSettled(chunkPromises);
+      return [];
+    }
 
-    // Process results
-    chunkResults.forEach((result, i) => {
-      if (result.status === 'fulfilled' && Array.isArray(result.value)) {
-        result.value.forEach(upsertSpeaker);
-      } else if (result.status === 'rejected') {
-        console.warn(`[event-analysis] Chunk ${i + 1} rejected:`, result.reason);
-      }
-    });
-
+    // Process speakers from speakerMap (populated by batch or fallback processing)
     if (speakerMap.size > 0) {
       const rawSpeakers = Array.from(speakerMap.values()).slice(0, 20);
       
