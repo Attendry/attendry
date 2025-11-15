@@ -35,7 +35,7 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
     { href: '/events', label: 'Events', icon: Calendar },
     { href: '/search', label: 'Search', icon: Search },
     { href: '/recommendations', label: 'Intelligence', icon: Brain },
-    { href: '/activity', label: 'Insights', icon: BarChart3 },
+    { href: '/activity', label: 'Reporting', icon: BarChart3 },
     { href: '/notifications', label: 'Notifications', icon: Bell, badge: 3 },
     { href: '/settings', label: 'Settings', icon: Settings }
   ];

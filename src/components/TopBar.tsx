@@ -25,9 +25,9 @@ export function TopBar({ onMenuClick, mobileMenuButton }: TopBarProps) {
       { path: "/recommendations", label: "Intelligence" },
       { path: "/events", label: "Event Hub" },
       { path: "/events-board", label: "Events Board" },
-      { path: "/watchlist", label: "Watchlist" },
+      { path: "/watchlist", label: "Contacts" },
       { path: "/search", label: "Smart Search" },
-      { path: "/activity", label: "Activity Insights" },
+      { path: "/activity", label: "Reporting" },
       { path: "/notifications", label: "Alerts" },
       { path: "/admin", label: "Admin" },
     ];

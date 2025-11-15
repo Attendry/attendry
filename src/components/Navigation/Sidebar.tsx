@@ -17,8 +17,8 @@ import {
   Activity,
   TrendingUp,
   Briefcase,
-  CalendarDays,
-  LayoutGrid
+  LayoutGrid,
+  Users
 } from 'lucide-react';
 
 interface NavigationItem {
@@ -42,13 +42,20 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
   const sidebarRef = useRef<HTMLElement>(null);
 
   const navigationItems: NavigationItem[] = [
-    { href: '/dashboard', label: 'Command Centre', icon: Home },
+    { 
+      href: '/dashboard', 
+      label: 'Command Centre', 
+      icon: Home,
+      children: [
+        { href: '/watchlist', label: 'Contacts', icon: Users }
+      ]
+    },
     { 
       href: '/events', 
       label: 'Events', 
       icon: Calendar,
       children: [
-        { href: '/events', label: 'All Events', icon: Calendar },
+        { href: '/recommendations', label: 'Event Recommendations', icon: Brain },
         { href: '/events-board', label: 'Events Board', icon: LayoutGrid }
       ]
     },
@@ -58,13 +65,11 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
       label: 'Intelligence', 
       icon: Brain,
       children: [
-        { href: '/recommendations', label: 'Event Recommendations', icon: Brain },
-        { href: '/calendar', label: 'Relevant Events', icon: CalendarDays },
         { href: '/watchlist', label: 'My Watchlist', icon: Bookmark },
         { href: '/trending', label: 'Trend Insights', icon: TrendingUp }
       ]
     },
-    { href: '/activity', label: 'Insights', icon: BarChart3 },
+    { href: '/activity', label: 'Reporting', icon: BarChart3 },
     { href: '/notifications', label: 'Notifications', icon: Bell, badge: 3 },
     { href: '/settings', label: 'Settings', icon: Settings }
   ];
