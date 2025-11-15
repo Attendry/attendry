@@ -218,14 +218,40 @@ describe('Competitive Intelligence Service', () => {
     });
 
     it('should generate activity spike alerts', () => {
-      const alerts = generateCompetitiveAlerts(mockContext, mockIntelligence, mockEvent);
+      // Activity spike requires: growthRate > 50 AND competitorEventCount > 5
+      const spikeContext: CompetitiveContext = {
+        ...mockContext,
+        activityComparison: [
+          {
+            competitorName: 'Competitor Corp',
+            userEventCount: 5,
+            competitorEventCount: 10, // > 5
+            growthRate: 60, // > 50
+            gapCount: 5
+          }
+        ]
+      };
+      
+      const alerts = generateCompetitiveAlerts(spikeContext, mockIntelligence, mockEvent);
       
       const spikeAlerts = alerts.filter(a => a.type === 'activity_spike');
       expect(spikeAlerts.length).toBeGreaterThan(0);
     });
 
     it('should generate competitive gap alerts', () => {
-      const alerts = generateCompetitiveAlerts(mockContext, mockIntelligence, mockEvent);
+      // Gap alerts require: eventsUserNotAttending.length >= 3
+      const gapContext: CompetitiveContext = {
+        ...mockContext,
+        competitiveGaps: [
+          {
+            competitorName: 'Competitor Corp',
+            eventsAttending: ['event-1', 'event-2', 'event-3', 'event-4'],
+            eventsUserNotAttending: ['event-2', 'event-3', 'event-4'] // >= 3
+          }
+        ]
+      };
+      
+      const alerts = generateCompetitiveAlerts(gapContext, mockIntelligence, mockEvent);
       
       const gapAlerts = alerts.filter(a => a.type === 'competitive_gap');
       expect(gapAlerts.length).toBeGreaterThan(0);
