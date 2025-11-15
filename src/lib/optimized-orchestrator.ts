@@ -2182,58 +2182,114 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
 async function filterByContentRelevance(events: EventCandidate[], params: OptimizedSearchParams): Promise<EventCandidate[]> {
   if (events.length === 0) return [];
   
-  const userProfile = await getUserProfile();
-  if (!userProfile || !userProfile.industry_terms || userProfile.industry_terms.length === 0) {
-    console.log('[optimized-orchestrator] No user profile or industry terms, skipping content filtering');
-    return events;
-  }
+  // USER SEARCH PRIORITY: Extract user search keywords (from search bar or buttons)
+  // User's explicit search selection takes priority over profile filters
+  const userSearchKeywords: string[] = [];
   
-  // CONTENT FILTER FIX: Include user search keyword in filtering
-  // When user searches for specific keyword (e.g., "Kartellrecht"), include it in search terms
-  // This prevents relevant keyword-specific events from being filtered out
-  const searchTerms: string[] = [];
-  
-  // Add user keyword if provided (e.g., "Kartellrecht")
   if (params.userText && params.userText.trim()) {
-    const userKeyword = params.userText.trim().toLowerCase();
-    searchTerms.push(userKeyword);
+    // Extract individual keywords from user search (e.g., "hospitality events" → ["hospitality", "events"])
+    const userText = params.userText.trim();
+    const keywords = userText.toLowerCase()
+      .split(/\s+/)
+      .filter(word => word.length > 2) // Filter out short words like "in", "at", "the"
+      .filter(word => !['events', 'event', 'conference', 'conferences', 'summit', 'summits'].includes(word)); // Remove generic event terms
     
-    // Add keyword translations/context (e.g., "antitrust law", "competition law")
+    // Add individual keywords
+    userSearchKeywords.push(...keywords);
+    
+    // Always add the full phrase (for both single-word and multi-word searches)
+    // This ensures "Kartellrecht" or "hospitality" work even as single words
+    userSearchKeywords.push(userText.toLowerCase());
+    
+    // Add keyword translations/context if available (e.g., "Kartellrecht" → "antitrust law")
     try {
       const { getKeywordContext } = await import('../services/weighted-query-builder');
-      const keywordContext = getKeywordContext(userKeyword);
-      if (keywordContext) {
-        // Split "antitrust law, competition law, cartel law" into individual terms
-        const contextTerms = keywordContext.split(',').map(t => t.trim().toLowerCase());
-        searchTerms.push(...contextTerms);
-      }
+      keywords.forEach(keyword => {
+        const keywordContext = getKeywordContext(keyword);
+        if (keywordContext) {
+          // Split "antitrust law, competition law, cartel law" into individual terms
+          const contextTerms = keywordContext.split(',').map(t => t.trim().toLowerCase());
+          userSearchKeywords.push(...contextTerms);
+        }
+      });
     } catch (error) {
       // getKeywordContext might not be exported, continue without it
       console.warn('[optimized-orchestrator] Could not get keyword context:', error);
     }
   }
   
-  // Add profile industry terms
-  const industryTerms = (userProfile.industry_terms as string[]).map(term => term.toLowerCase());
-  searchTerms.push(...industryTerms);
+  // If user provided search keywords, prioritize them - skip profile filtering
+  if (userSearchKeywords.length > 0) {
+    console.log('[optimized-orchestrator] User search keywords provided, prioritizing user search:', userSearchKeywords.slice(0, 5));
+    
+    return events.filter(event => {
+      const eventTitle = event.title || 'Untitled Event';
+      const searchText = `${eventTitle} ${event.description || ''}`.toLowerCase();
+      const titleLower = eventTitle.toLowerCase();
+      
+      // Exclude non-event pages
+      const NON_EVENT_KEYWORDS = [
+        'allgemeine geschäftsbedingungen', 'agb', 'general terms and conditions',
+        'terms of service', 'terms and conditions', 'privacy policy',
+        'datenschutzerklärung', 'cookie policy', 'impressum', 'legal notice', 'disclaimer'
+      ];
+      
+      const isNonEvent = NON_EVENT_KEYWORDS.some(keyword => titleLower.includes(keyword));
+      if (isNonEvent) {
+        console.log(`[optimized-orchestrator] ✗ Event filtered out (non-event page): "${eventTitle.substring(0, 80)}"`);
+        return false;
+      }
+      
+      // Check if event matches ANY user search keyword
+      // Use flexible matching: exact word boundary match first, then partial match for compound words
+      const hasUserKeywordMatch = userSearchKeywords.some(keyword => {
+        // First try exact word boundary match (most precise)
+        const exactRegex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        if (exactRegex.test(searchText)) {
+          return true;
+        }
+        
+        // For longer keywords (>5 chars), also allow partial matches
+        // This handles German compound words and hyphenated terms
+        // e.g., "Kartellrecht" matches "Kartellrecht-November" or "Internationale Kartellkonferenz"
+        if (keyword.length > 5) {
+          const partialRegex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+          if (partialRegex.test(searchText)) {
+            return true;
+          }
+        }
+        
+        return false;
+      });
+      
+      if (hasUserKeywordMatch) {
+        console.log(`[optimized-orchestrator] ✓ Event matches user search: "${eventTitle.substring(0, 80)}"`);
+        return true;
+      }
+      
+      // If no user keyword match, filter out (user search takes priority)
+      console.log(`[optimized-orchestrator] ✗ Event filtered out (no user keyword match): "${eventTitle.substring(0, 80)}"`);
+      return false;
+    });
+  }
   
+  // FALLBACK: If no user search keywords, use profile-based filtering
+  const userProfile = await getUserProfile();
+  if (!userProfile || !userProfile.industry_terms || userProfile.industry_terms.length === 0) {
+    console.log('[optimized-orchestrator] No user profile or industry terms, skipping content filtering');
+    return events;
+  }
+  
+  const industryTerms = (userProfile.industry_terms as string[]).map(term => term.toLowerCase());
   const icpTerms = (userProfile.icp_terms as string[] || []).map(term => term.toLowerCase());
   
-  console.log('[optimized-orchestrator] Filtering with search terms:', searchTerms.slice(0, 8), 'and ICP terms:', icpTerms.slice(0, 3));
+  console.log('[optimized-orchestrator] No user search keywords, using profile-based filtering with industry terms:', industryTerms.slice(0, 5), 'and ICP terms:', icpTerms.slice(0, 3));
   
-  // Non-event keywords that should immediately disqualify a result
+  // Profile-based filtering (fallback when no user search keywords)
   const NON_EVENT_KEYWORDS = [
-    'allgemeine geschäftsbedingungen',
-    'agb',
-    'general terms and conditions',
-    'terms of service',
-    'terms and conditions',
-    'privacy policy',
-    'datenschutzerklärung',
-    'cookie policy',
-    'impressum',
-    'legal notice',
-    'disclaimer'
+    'allgemeine geschäftsbedingungen', 'agb', 'general terms and conditions',
+    'terms of service', 'terms and conditions', 'privacy policy',
+    'datenschutzerklärung', 'cookie policy', 'impressum', 'legal notice', 'disclaimer'
   ];
   
   return events.filter(event => {
@@ -2248,15 +2304,14 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
       return false;
     }
     
-    // Check if event content contains ANY search term (user keyword OR industry term)
-    const hasSearchMatch = searchTerms.some(term => {
-      // Check for word boundary matches to avoid partial matches
+    // Check if event content contains ANY industry term
+    const hasIndustryMatch = industryTerms.some(term => {
       const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
       return regex.test(searchText);
     });
     
-    if (hasSearchMatch) {
-      console.log(`[optimized-orchestrator] ✓ Event matches search terms: "${eventTitle.substring(0, 80)}"`);
+    if (hasIndustryMatch) {
+      console.log(`[optimized-orchestrator] ✓ Event matches industry terms: "${eventTitle.substring(0, 80)}"`);
       return true;
     }
     
