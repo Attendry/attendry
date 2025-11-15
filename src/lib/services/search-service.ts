@@ -902,11 +902,13 @@ export class SearchService {
     }
 
     // Build search parameters
+    // Google CSE only allows max 10 results per request - limit num to 10
+    const cseNum = Math.min(num, 10);
     const searchParams = new URLSearchParams({
       q: trimmedQuery,
       key,
       cx,  // ✅ Add cx parameter (required by Google CSE API)
-      num: num.toString(),
+      num: cseNum.toString(),  // ✅ Limit to 10 (Google CSE max)
       safe: "off",
       hl: "en"
     });
@@ -934,35 +936,67 @@ export class SearchService {
       { q: enhancedQuery, country, num: num.toString() }
     );
 
-    const res = await executeWithFallback("google_cse", async () => {
-      return await deduplicateRequest(fingerprint, async () => {
-        // First attempt - check for 400 errors immediately
-        const response = await fetch(url);
-        
-        // Don't retry 400 errors - they're configuration issues, not service failures
-        if (response.status === 400) {
-          const errorText = await response.text();
-          console.error('[CSE] 400 error (configuration issue):', errorText);
-          throw new Error(`CSE 400: ${errorText}`);
-        }
-        
-        // For other errors, use retry logic
-        if (!response.ok) {
-          throw new Error(`CSE ${response.status}: ${response.statusText}`);
-        }
-        
-        return response;
+    let data: any;
+    let status = 200;
+    
+    try {
+      const res = await executeWithFallback("google_cse", async () => {
+        return await deduplicateRequest(fingerprint, async () => {
+          // First attempt - check for 400 errors immediately
+          const response = await fetch(url);
+          
+          // Don't retry 400 errors - they're configuration issues, not service failures
+          if (response.status === 400) {
+            const errorText = await response.text();
+            console.error('[CSE] 400 error (configuration issue):', errorText);
+            throw new Error(`CSE 400: ${errorText}`);
+          }
+          
+          // For other errors, use retry logic
+          if (!response.ok) {
+            throw new Error(`CSE ${response.status}: ${response.statusText}`);
+          }
+          
+          return response;
+        });
       });
-    });
-    const data = await res.json();
-    console.log(JSON.stringify({ at: "search_service", real: "cse_result", status: res.status, items: data.items?.length || 0 }));
+      
+      // Check if res is a Response object or already parsed data (from fallback)
+      if (res instanceof Response) {
+        data = await res.json();
+        status = res.status;
+      } else {
+        // Fallback returned demo data directly (not a Response object)
+        data = res;
+        status = 200;
+      }
+    } catch (error) {
+      // If fallback also fails, return empty results
+      console.error('[CSE] All attempts failed, returning empty results:', error);
+      data = { items: [] };
+      status = 500;
+    }
+    
+    console.log(JSON.stringify({ at: "search_service", real: "cse_result", status: status, items: data.items?.length || data.length || 0 }));
 
     // Transform results
-    const items: SearchItem[] = (data.items || []).map((it: any) => ({
-      title: it.title || "",
-      link: it.link || "",
-      snippet: it.snippet || ""
-    }));
+    // Handle both Response format (data.items) and fallback demo data format (data is array)
+    let items: SearchItem[];
+    if (Array.isArray(data)) {
+      // Fallback returned demo data as array
+      items = data.map((it: any) => ({
+        title: it.title || "",
+        link: it.link || "",
+        snippet: it.snippet || ""
+      }));
+    } else {
+      // Normal Response format
+      items = (data.items || []).map((it: any) => ({
+        title: it.title || "",
+        link: it.link || "",
+        snippet: it.snippet || ""
+      }));
+    }
 
     // Apply basic filtering
     const filteredItems = items.filter(item => {
@@ -2345,11 +2379,12 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
   }> {
     const { q = "", country = "", from, to, provider = "cse" } = params;
 
-    // Step 1: Load search configuration
-    const searchConfig = await this.loadSearchConfig();
-
-    // Step 2: Load user profile for comprehensive query building
-    const userProfile = await this.loadUserProfile();
+    // Step 1 & 2: Load search configuration and user profile in parallel
+    // These operations are independent and can be executed simultaneously
+    const [searchConfig, userProfile] = await Promise.all([
+      this.loadSearchConfig(),
+      this.loadUserProfile()
+    ]);
 
     // Step 3: Build comprehensive query using all available data
     const effectiveQ = this.buildEnhancedQuery(
