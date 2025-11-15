@@ -83,12 +83,21 @@ export async function GET(
         }
       }
 
-      // Try to get or generate event intelligence
+      // Try to get cached event intelligence
       let intelligence = await getEventIntelligence(actualEventId, userProfile || undefined);
       
+      // PERF-2.3.4: Queue intelligence generation in background if not cached
+      // Don't block the response - return what we have and queue enhancement
       if (!intelligence && eventData) {
-        // Generate intelligence if we have event data
-        intelligence = await generateEventIntelligence(eventData, userProfile || undefined);
+        // Queue intelligence generation (non-blocking)
+        try {
+          const { queueIntelligenceGeneration } = await import('@/lib/services/intelligence-queue');
+          await queueIntelligenceGeneration(actualEventId, 7); // Priority 7 for board insights
+          console.log('[BoardInsights] Queued intelligence generation for event:', actualEventId);
+        } catch (queueError) {
+          console.warn('[BoardInsights] Failed to queue intelligence generation:', queueError);
+          // Continue without intelligence - user can refresh later
+        }
       }
 
       if (intelligence) {

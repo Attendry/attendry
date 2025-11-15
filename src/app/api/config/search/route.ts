@@ -116,13 +116,19 @@ export async function GET(req: NextRequest) {
       };
     }
 
+    // PERF-3.2.3: Edge caching for search config (1 hour TTL)
     return NextResponse.json({
       config: currentConfig,
       templates: INDUSTRY_TEMPLATES
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400'
+      }
     });
   } catch (error: any) {
     // Ultimate fallback - return default configuration
     console.error('Search config API error:', error);
+    // PERF-3.2.3: Edge caching for fallback config (1 hour TTL)
     return NextResponse.json({
       config: {
         id: "fallback",
@@ -137,6 +143,10 @@ export async function GET(req: NextRequest) {
         created_at: new Date().toISOString()
       },
       templates: INDUSTRY_TEMPLATES
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=86400'
+      }
     });
   }
 }

@@ -12,6 +12,14 @@
     {
       "path": "/api/cron/precompute-intelligence",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/keep-warm",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/pre-warm-cache",
+      "schedule": "0 1 * * *"
     }
   ],
   "installCommand": "npm install --legacy-peer-deps",

@@ -1,4 +1,5 @@
 import { RetryService } from "./retry-service";
+import { withRateLimit } from "./rate-limit-service";
 
 /**
  * Gemini Service
@@ -41,6 +42,38 @@ export interface GeminiExtractionRequest {
 export interface GeminiExtractionResponse {
   result: any;
   confidence: number;
+  processingTime: number;
+}
+
+export interface GeminiFilterAndPrioritizeRequest {
+  items: Array<{
+    title: string;
+    link: string;
+    snippet: string;
+  }>;
+  dropTitleRegex: RegExp;
+  banHosts: Set<string>;
+  searchConfig?: any;
+  query?: string;
+  country?: string;
+}
+
+export interface GeminiFilterAndPrioritizeResponse {
+  filteredItems: Array<{
+    title: string;
+    link: string;
+    snippet: string;
+  }>;
+  prioritizedItems: Array<{
+    link: string;
+    score: number;
+    reason: string;
+  }>;
+  decisions: Array<{
+    index: number;
+    isEvent: boolean;
+    reason: string;
+  }>;
   processingTime: number;
 }
 
@@ -90,6 +123,45 @@ export class GeminiService {
   }
 
   /**
+   * PERF-2.3.1: Filter and prioritize in a single Gemini call
+   * Combines filtering and prioritization to reduce API calls by 50%
+   */
+  static async filterAndPrioritizeWithGemini(request: GeminiFilterAndPrioritizeRequest): Promise<GeminiFilterAndPrioritizeResponse> {
+    const startTime = Date.now();
+    
+    return RetryService.executeWithRetry(
+      "gemini",
+      "filter_and_prioritize",
+      async () => {
+        const { items, dropTitleRegex, banHosts, searchConfig = {}, query = '', country = '' } = request;
+        
+        if (!items || items.length === 0) {
+          return {
+            filteredItems: [],
+            prioritizedItems: [],
+            decisions: [],
+            processingTime: Date.now() - startTime
+          };
+        }
+
+        // Build the combined prompt
+        const prompt = this.buildFilterAndPrioritizePrompt(items, dropTitleRegex, banHosts, searchConfig, query, country);
+        
+        // Call Gemini API
+        const response = await this.callGeminiAPI(prompt);
+        
+        // Parse the response
+        const result = this.parseFilterAndPrioritizeResponse(response, items);
+        
+        return {
+          ...result,
+          processingTime: Date.now() - startTime
+        };
+      }
+    ).then(result => result.data);
+  }
+
+  /**
    * Extract structured data using Gemini AI
    */
   static async extractWithGemini(request: GeminiExtractionRequest): Promise<GeminiExtractionResponse> {
@@ -128,32 +200,35 @@ export class GeminiService {
       throw new Error("GEMINI_API_KEY not configured");
     }
 
-    const response = await RetryService.fetchWithRetry(
-      "gemini",
-      "api_call",
-      `${this.GEMINI_API_URL}?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: this.TEMPERATURE,
-            maxOutputTokens: this.MAX_TOKENS,
-            topP: 0.8,
-            topK: 10
+    // PERF-1.4.1: Check rate limit before making Gemini API call
+    // PERF-1.4.3: Automatically record response time for adaptive rate limiting
+    const response = await withRateLimit('gemini', async () => {
+      return await RetryService.fetchWithRetry(
+        "gemini",
+        "api_call",
+        `${this.GEMINI_API_URL}?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
           },
-          safetySettings: [
-            {
-              category: "HARM_CATEGORY_HARASSMENT",
-              threshold: "BLOCK_MEDIUM_AND_ABOVE"
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              temperature: this.TEMPERATURE,
+              maxOutputTokens: this.MAX_TOKENS,
+              topP: 0.8,
+              topK: 10
             },
+            safetySettings: [
+              {
+                category: "HARM_CATEGORY_HARASSMENT",
+                threshold: "BLOCK_MEDIUM_AND_ABOVE"
+              },
             {
               category: "HARM_CATEGORY_HATE_SPEECH",
               threshold: "BLOCK_MEDIUM_AND_ABOVE"
@@ -307,6 +382,160 @@ Please provide a structured response in JSON format. Be precise and only extract
       
       return {
         filteredItems,
+        decisions: originalItems.map((_, index) => ({
+          index,
+          isEvent: filteredItems.includes(originalItems[index]),
+          reason: "Fallback filtering due to parsing error"
+        }))
+      };
+    }
+  }
+
+  /**
+   * PERF-2.3.1: Build combined filter and prioritize prompt
+   */
+  private static buildFilterAndPrioritizePrompt(
+    items: Array<{ title: string; link: string; snippet: string }>,
+    dropTitleRegex: RegExp,
+    banHosts: Set<string>,
+    searchConfig: any,
+    query: string,
+    country: string
+  ): string {
+    const itemsJson = JSON.stringify(items, null, 2);
+    const banHostsList = Array.from(banHosts).join(", ");
+    
+    return `You are an expert event discovery assistant. Your task is to:
+1. FILTER search results to identify actual business events, conferences, and professional gatherings
+2. PRIORITIZE the filtered items by relevance to the search query
+
+SEARCH CONTEXT:
+- Query: ${query || 'general event search'}
+- Country: ${country || 'any'}
+- Looking for: ${searchConfig.industry || 'business'} events
+- Target audience: ${searchConfig.icpTerms?.join(', ') || 'professionals'}
+- Exclude: ${banHostsList}
+
+FILTERING RULES:
+1. Keep items that represent actual events (conferences, summits, workshops, seminars, webinars, trade shows)
+2. Exclude items that are:
+   - News articles about events (not the events themselves)
+   - Job postings or career pages
+   - General company pages
+   - Blog posts or articles
+   - Social media posts (Instagram, Facebook, Twitter, LinkedIn, YouTube, TikTok)
+   - Social media content (reels, posts, stories, videos)
+   - Pages from banned hosts: ${banHostsList}
+   - Items with titles matching: ${dropTitleRegex.source}
+
+PRIORITIZATION RULES:
+After filtering, prioritize the remaining items by:
+1. Relevance to the search query: ${query}
+2. Event quality (has date, location, agenda, speakers)
+3. Industry match: ${searchConfig.industry || 'general'}
+4. Location match: ${country || 'any'}
+
+SEARCH RESULTS TO PROCESS:
+${itemsJson}
+
+Please analyze each item and return a JSON response with this exact structure:
+{
+  "decisions": [
+    {
+      "index": 0,
+      "isEvent": true,
+      "reason": "Clear conference with agenda and speakers"
+    }
+  ],
+  "filteredItems": [
+    {
+      "title": "Event Title",
+      "link": "https://example.com",
+      "snippet": "Event description"
+    }
+  ],
+  "prioritizedItems": [
+    {
+      "link": "https://example.com",
+      "score": 0.95,
+      "reason": "Highly relevant, has date and location"
+    }
+  ]
+}
+
+Return only the JSON response, no additional text.`;
+  }
+
+  /**
+   * PERF-2.3.1: Parse combined filter and prioritize response
+   */
+  private static parseFilterAndPrioritizeResponse(
+    response: any,
+    originalItems: Array<{ title: string; link: string; snippet: string }>
+  ): {
+    filteredItems: Array<{ title: string; link: string; snippet: string }>;
+    prioritizedItems: Array<{ link: string; score: number; reason: string }>;
+    decisions: Array<{ index: number; isEvent: boolean; reason: string }>;
+  } {
+    try {
+      const text = response.candidates[0].content.parts[0].text;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      
+      if (!jsonMatch) {
+        throw new Error("No JSON found in Gemini response");
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0]);
+      
+      // Validate the response structure
+      if (!parsed.decisions || !Array.isArray(parsed.decisions)) {
+        throw new Error("Invalid decisions array in Gemini response");
+      }
+      
+      if (!parsed.filteredItems || !Array.isArray(parsed.filteredItems)) {
+        throw new Error("Invalid filteredItems array in Gemini response");
+      }
+      
+      if (!parsed.prioritizedItems || !Array.isArray(parsed.prioritizedItems)) {
+        // If prioritization is missing, create it from filtered items
+        parsed.prioritizedItems = parsed.filteredItems.map((item: any, idx: number) => ({
+          link: item.link,
+          score: 0.8 - idx * 0.05, // Default scoring
+          reason: "Filtered event"
+        }));
+      }
+      
+      return {
+        filteredItems: parsed.filteredItems,
+        prioritizedItems: parsed.prioritizedItems,
+        decisions: parsed.decisions
+      };
+    } catch (error) {
+      console.error("Error parsing Gemini filter and prioritize response:", error);
+      
+      // Fallback: return filtered items with basic prioritization
+      const filteredItems = originalItems.filter((item, index) => {
+        const title = item.title.toLowerCase();
+        const link = item.link.toLowerCase();
+        
+        if (title.includes('job') || title.includes('career') || title.includes('hiring')) {
+          return false;
+        }
+        
+        if (link.includes('linkedin.com') || link.includes('indeed.com')) {
+          return false;
+        }
+        
+        return true;
+      });
+      
+      return {
+        filteredItems,
+        prioritizedItems: filteredItems.map((item, idx) => ({
+          link: item.link,
+          score: 0.8 - idx * 0.05,
+          reason: "Fallback prioritization"
+        })),
         decisions: originalItems.map((_, index) => ({
           index,
           isEvent: filteredItems.includes(originalItems[index]),

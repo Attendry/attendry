@@ -774,6 +774,138 @@ function parseEnhancedLocation(text: string, hostCountry: string | null) {
 }
 
 // --- Extract one URL (NEVER returns undefined)
+/**
+ * PERF-2.2.5: Batch extraction using Firecrawl v2 batch API
+ * Extracts multiple URLs in a single API call to reduce overhead
+ */
+async function extractBatch(urls: string[], key: string, locale: string, trace: any[], origin?: string, crawl?: any): Promise<Array<{ url: string; data: any }>> {
+  const hostCountry = guessCountryFromHost(urls[0] || '');
+  const context = await getExtractionContext(origin);
+  
+  const industryContext = context.industryTerms.length > 0 
+    ? ` Focus on ${context.industry} industry events. Key terms: ${context.industryTerms.slice(0, 5).join(', ')}.`
+    : '';
+  
+  const enhancedPrompt = `You are an expert event data extractor. Extract ONLY information explicitly stated on the page.
+
+CRITICAL RULES:
+1. If information is NOT found, use null (not empty string, not "Unknown", not guesses)
+2. For each extracted field, cite the source section and snippet in the evidence array
+3. Normalize dates to YYYY-MM-DD format (handle German: 25.09.2025, European: 25/09/2025, English: September 25, 2025)
+4. Normalize topics to the provided taxonomy (see below)
+5. Extract speakers ONLY if explicitly listed as speakers/presenters/keynote speakers
+6. Extract cities ONLY if they are actual city names (not topics like "Praxisnah" or "Whistleblowing")
+
+Extract event details for each URL provided. Return structured JSON matching the schema exactly. Include evidence array for all extracted fields.
+
+Locale: ${locale || hostCountry || "DE"}${industryContext}`;
+
+  try {
+    // PERF-1.4.1: Check rate limit before making Firecrawl extraction API call
+    // PERF-1.4.3: Automatically record response time for adaptive rate limiting
+    let kicked: any;
+    try {
+      const { withRateLimit } = await import('@/lib/services/rate-limit-service');
+      kicked = await withRateLimit('firecrawl', async () => {
+        return await fetchWithRetry("https://api.firecrawl.dev/v2/extract", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        urls, // PERF-2.2.5: Multiple URLs in single request
+        schema: EVENT_SCHEMA,
+        prompt: enhancedPrompt,
+        showSources: false,
+        scrapeOptions: {
+          onlyMainContent: true, 
+          formats: ["markdown", "html"], 
+          parsers: ["pdf"], 
+          waitFor: 1200,
+          location: { 
+            country: (locale || hostCountry || "DE").toUpperCase(), 
+            languages: ["de-DE","en-GB","fr-FR","it-IT","es-ES","nl-NL","pt-PT","pl-PL"] 
+          },
+          blockAds: true,
+          removeBase64Images: true,
+          crawlerOptions: {
+            maxDepth: Math.min(3, (crawl?.depth ?? 3)),
+            maxPagesToCrawl: 12,
+            allowSubdomains: true,
+            includePatterns: [
+              "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
+            ]
+          }
+        },
+        ignoreInvalidURLs: true
+      })
+      }).then(r => r.json());
+      });
+    } catch (rateLimitError) {
+      console.warn('[extractBatch] Rate limit check failed, continuing without rate limiting:', rateLimitError);
+      // Fallback: make call without rate limiting
+      kicked = await fetchWithRetry("https://api.firecrawl.dev/v2/extract", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          urls, // PERF-2.2.5: Multiple URLs in single request
+          schema: EVENT_SCHEMA,
+          prompt: enhancedPrompt,
+          showSources: false,
+          scrapeOptions: {
+            onlyMainContent: true, 
+            formats: ["markdown", "html"], 
+            parsers: ["pdf"], 
+            waitFor: 1200,
+            location: { 
+              country: (locale || hostCountry || "DE").toUpperCase(), 
+              languages: ["de-DE","en-GB","fr-FR","it-IT","es-ES","nl-NL","pt-PT","pl-PL"] 
+            },
+            blockAds: true,
+            removeBase64Images: true,
+            crawlerOptions: {
+              maxDepth: Math.min(3, (crawl?.depth ?? 3)),
+              maxPagesToCrawl: 12,
+              allowSubdomains: true,
+              includePatterns: [
+                "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
+              ]
+            }
+          },
+          ignoreInvalidURLs: true
+        })
+      }).then(r => r.json());
+    }
+
+    if (!kicked?.id) {
+      console.warn('[extractBatch] No job ID returned, falling back to individual extraction');
+      return [];
+    }
+
+    const data = await pollExtract(kicked.id, key);
+    
+    // PERF-2.2.5: Handle batch response format
+    const results: Array<{ url: string; data: any }> = [];
+    
+    if (data?.results && Array.isArray(data.results)) {
+      // Batch format: results array with url and data
+      for (const result of data.results) {
+        if (result?.url && result?.data) {
+          results.push({ url: result.url, data: result.data });
+        }
+      }
+    } else if (data?.data) {
+      // Single result format (fallback)
+      results.push({ url: urls[0], data: data.data });
+    }
+    
+    trace.push({ step: "batch_extract", urls_count: urls.length, results_count: results.length });
+    return results;
+  } catch (error) {
+    console.warn('[extractBatch] Batch extraction failed, will fall back to individual:', error);
+    trace.push({ step: "batch_extract", error: error instanceof Error ? error.message : 'unknown' });
+    return [];
+  }
+}
+
 async function extractOne(url: string, key: string, locale: string, trace: any[], origin?: string, crawl?: any) {
   const hostCountry = guessCountryFromHost(url);
   const context = await getExtractionContext(origin);
@@ -931,7 +1063,13 @@ QUALITY STANDARDS:
 Locale: ${locale || hostCountry || "DE"}${industryContext}
 Return structured JSON matching the schema exactly. Include evidence array for all extracted fields.`;
 
-    const kicked = await fetchWithRetry("https://api.firecrawl.dev/v2/extract", {
+    // PERF-1.4.1: Check rate limit before making Firecrawl extraction API call
+    // PERF-1.4.3: Automatically record response time for adaptive rate limiting
+    let kicked: any;
+    try {
+      const { withRateLimit } = await import('@/lib/services/rate-limit-service');
+      kicked = await withRateLimit('firecrawl', async () => {
+        return await fetchWithRetry("https://api.firecrawl.dev/v2/extract", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -959,9 +1097,45 @@ Return structured JSON matching the schema exactly. Include evidence array for a
             ]
           }
         },
-        ignoreInvalidURLs: true
-      })
-    }).then(r => r.json());
+          ignoreInvalidURLs: true
+        })
+      }).then(r => r.json());
+      });
+    } catch (rateLimitError) {
+      console.warn('[extractOne] Rate limit check failed, continuing without rate limiting:', rateLimitError);
+      // Fallback: make call without rate limiting
+      kicked = await fetchWithRetry("https://api.firecrawl.dev/v2/extract", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          urls: [url],
+          schema: EVENT_SCHEMA,
+          prompt: enhancedPrompt,
+          showSources: false,
+          scrapeOptions: {
+            onlyMainContent: true, 
+            formats: ["markdown", "html"], 
+            parsers: ["pdf"], 
+            waitFor: 1200,
+            location: { 
+              country: (locale || hostCountry || "DE").toUpperCase(), 
+              languages: ["de-DE","en-GB","fr-FR","it-IT","es-ES","nl-NL","pt-PT","pl-PL"] 
+            },
+            blockAds: true,
+            removeBase64Images: true,
+            crawlerOptions: {
+              maxDepth: Math.min(3, (crawl?.depth ?? 3)),
+              maxPagesToCrawl: 12,
+              allowSubdomains: true,
+              includePatterns: [
+                "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
+              ]
+            }
+          },
+          ignoreInvalidURLs: true
+        })
+      }).then(r => r.json());
+    }
 
     if (kicked?.id) {
       const data = await pollExtract(kicked.id, key);
@@ -1067,34 +1241,138 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventExtracti
     }
 
     const targets = urls.slice(0, 20);
-    // Optimized bounded concurrency (limit 12) with per-host throttle map
-    // Increased from 4 to 12 to improve throughput (Firecrawl supports up to 50 concurrent browsers)
-    const inFlight = new Set<Promise<any>>();
-    const results: any[] = [];
-    const limit = 12;
-    const hostLast: Record<string, number> = {};
-    const gapMs = 250; // min gap per host
+    
+    // PERF-2.2.5: Use batch extraction for 3+ URLs to reduce API overhead
+    // For smaller batches, use individual extraction for better error handling
+    let out: any[] = [];
+    
+    if (targets.length >= 3) {
+      // Try batch extraction first
+      try {
+        const batchResults = await extractBatch(
+          targets, 
+          key, 
+          locale, 
+          trace, 
+          req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000', 
+          crawl
+        );
+        
+        if (batchResults.length > 0) {
+          // Process batch results
+          for (const { url, data } of batchResults) {
+            if (data) {
+              const ev = shape(url, data);
+              // Cache the result
+              try {
+                const supabase = await supabaseServer();
+                await supabase.from("url_extractions").upsert({ 
+                  url_normalized: normalizeUrl(url), 
+                  payload: ev, 
+                  confidence: ev.confidence ?? null, 
+                  schema_version: 1 
+                });
+              } catch {}
+              out.push(ev);
+            }
+          }
+          
+          // If batch extraction succeeded for all URLs, we're done
+          if (batchResults.length === targets.length) {
+            // All URLs processed via batch
+          } else {
+            // Some URLs failed in batch, extract remaining individually
+            const processedUrls = new Set(batchResults.map(r => r.url));
+            const remaining = targets.filter(u => !processedUrls.has(u));
+            
+            // Fall back to individual extraction for remaining URLs
+            const inFlight = new Set<Promise<any>>();
+            const limit = 12;
+            const hostLast: Record<string, number> = {};
+            const gapMs = 250;
+            
+            async function runOne(u: string) {
+              const host = (() => { try { return new URL(u).hostname; } catch { return ""; } })();
+              const last = hostLast[host] || 0;
+              const wait = Math.max(0, last + gapMs - Date.now());
+              if (wait > 0) await new Promise(r => setTimeout(r, wait));
+              hostLast[host] = Date.now();
+              const ev = await extractOne(u, key, locale, trace, req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000', crawl);
+              out.push(ev);
+            }
+            
+            for (const u of remaining) {
+              const p = runOne(u);
+              inFlight.add(p);
+              p.finally(() => inFlight.delete(p));
+              if (inFlight.size >= limit) {
+                await Promise.race(inFlight);
+              }
+            }
+            await Promise.all(Array.from(inFlight));
+          }
+        } else {
+          // Batch extraction failed, fall back to individual
+          throw new Error('Batch extraction returned no results');
+        }
+      } catch (batchError) {
+        // Batch extraction failed, fall back to individual extraction
+        console.warn('[extract] Batch extraction failed, falling back to individual:', batchError);
+        trace.push({ step: "batch_fallback", reason: "batch_failed" });
+        
+        // Optimized bounded concurrency (limit 12) with per-host throttle map
+        const inFlight = new Set<Promise<any>>();
+        const limit = 12;
+        const hostLast: Record<string, number> = {};
+        const gapMs = 250; // min gap per host
 
-    async function runOne(u: string) {
-      const host = (() => { try { return new URL(u).hostname; } catch { return ""; } })();
-      const last = hostLast[host] || 0;
-      const wait = Math.max(0, last + gapMs - Date.now());
-      if (wait > 0) await new Promise(r => setTimeout(r, wait));
-      hostLast[host] = Date.now();
-      const ev = await extractOne(u, key, locale, trace, req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000', crawl);
-      results.push(ev);
-    }
+        async function runOne(u: string) {
+          const host = (() => { try { return new URL(u).hostname; } catch { return ""; } })();
+          const last = hostLast[host] || 0;
+          const wait = Math.max(0, last + gapMs - Date.now());
+          if (wait > 0) await new Promise(r => setTimeout(r, wait));
+          hostLast[host] = Date.now();
+          const ev = await extractOne(u, key, locale, trace, req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000', crawl);
+          out.push(ev);
+        }
 
-    for (const u of targets) {
-      const p = runOne(u);
-      inFlight.add(p);
-      p.finally(() => inFlight.delete(p));
-      if (inFlight.size >= limit) {
-        await Promise.race(inFlight);
+        for (const u of targets) {
+          const p = runOne(u);
+          inFlight.add(p);
+          p.finally(() => inFlight.delete(p));
+          if (inFlight.size >= limit) {
+            await Promise.race(inFlight);
+          }
+        }
+        await Promise.all(Array.from(inFlight));
       }
+    } else {
+      // Small batches: use individual extraction for better error handling
+      const inFlight = new Set<Promise<any>>();
+      const limit = 12;
+      const hostLast: Record<string, number> = {};
+      const gapMs = 250; // min gap per host
+
+      async function runOne(u: string) {
+        const host = (() => { try { return new URL(u).hostname; } catch { return ""; } })();
+        const last = hostLast[host] || 0;
+        const wait = Math.max(0, last + gapMs - Date.now());
+        if (wait > 0) await new Promise(r => setTimeout(r, wait));
+        hostLast[host] = Date.now();
+        const ev = await extractOne(u, key, locale, trace, req.nextUrl?.origin || process.env.NEXT_PUBLIC_SITE_URL || 'http://127.0.0.1:4000', crawl);
+        out.push(ev);
+      }
+
+      for (const u of targets) {
+        const p = runOne(u);
+        inFlight.add(p);
+        p.finally(() => inFlight.delete(p));
+        if (inFlight.size >= limit) {
+          await Promise.race(inFlight);
+        }
+      }
+      await Promise.all(Array.from(inFlight));
     }
-    await Promise.all(Array.from(inFlight));
-    const out: any[] = results;
     
     // Filter and sort events by quality
     const filteredEvents = out

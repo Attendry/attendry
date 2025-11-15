@@ -506,6 +506,11 @@ export const CACHE_CONFIGS = {
     prefix: 'ai',
     fallbackToDb: false,
   },
+  AI_DECISIONS: {
+    ttl: 7 * 24 * 60 * 60, // 7 days - AI decisions are stable
+    prefix: 'ai_decision',
+    fallbackToDb: true, // Fallback to database cache
+  },
   EXTERNAL_APIS: {
     ttl: 15 * 60, // 15 minutes
     prefix: 'external',
