@@ -73,11 +73,17 @@ export function isSolidHit(m: CandidateMeta, window: QualityWindow): {
   // Speaker requirement: ≥2 speakers (as requested by user)
   const enoughSpeakers = (m.speakersCount ?? 0) >= 2;
   
-  // Date validation: Allow ±1 month from window (30 days)
+  // Date validation: Adaptive tolerance based on window size
+  // For short windows (14 days), be more lenient (2x window size)
+  // For longer windows, use standard 30-day tolerance
   let hasReliableDate = false;
   let dateWindowStatus: 'in-window' | 'within-month' | 'extraction-error' | 'no-date' = 'no-date';
   
   if (m.dateISO) {
+    const windowDays = daysBetween(window.from, window.to);
+    // Tolerance: at least 2x window size, minimum 30 days, maximum 60 days
+    const toleranceDays = Math.min(60, Math.max(30, windowDays * 2));
+    
     const daysFromStart = daysBetween(m.dateISO, window.from);
     const daysFromEnd = daysBetween(m.dateISO, window.to);
     
@@ -86,16 +92,16 @@ export function isSolidHit(m: CandidateMeta, window: QualityWindow): {
       hasReliableDate = true;
       dateWindowStatus = 'in-window';
     }
-    // Check if date is within 1 month (30 days) of window - SOFTENED REQUIREMENT
-    else if (daysFromStart <= 30 || daysFromEnd <= 30) {
+    // Check if date is within tolerance of window (adaptive based on window size)
+    else if (daysFromStart <= toleranceDays || daysFromEnd <= toleranceDays) {
       hasReliableDate = true;
       dateWindowStatus = 'within-month';
-      console.log(`[quality-gate] Date ${m.dateISO} is within 1 month of window ${window.from}..${window.to}, allowing with flag`);
+      console.log(`[quality-gate] Date ${m.dateISO} is within ${toleranceDays} days of window ${window.from}..${window.to}, allowing with flag`);
     }
-    // Date is >30 days off - likely extraction error, ignore it
+    // Date is >tolerance days off - likely extraction error, ignore it
     else {
       dateWindowStatus = 'extraction-error';
-      console.log(`[quality-gate] Date ${m.dateISO} is >30 days from window ${window.from}..${window.to}, treating as extraction error`);
+      console.log(`[quality-gate] Date ${m.dateISO} is >${toleranceDays} days from window ${window.from}..${window.to}, treating as extraction error`);
     }
   }
   

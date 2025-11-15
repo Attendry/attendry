@@ -857,6 +857,17 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       event.metadata = event.metadata || {};
       event.metadata.dateWindowStatus = qualityResult.dateWindowStatus || 'no-date';
       
+      // DATE FIX: Clear invalid dates when marked as extraction-error
+      // This prevents "invalid date" display in UI and ensures we don't trust unreliable dates
+      if (qualityResult.dateWindowStatus === 'extraction-error') {
+        // Clear the invalid date - it's unreliable and shouldn't be displayed
+        event.date = null;
+        event.starts_at = null;
+        event.ends_at = null;
+        event.metadata.dateCleared = true;
+        console.log(`[quality-gate] Cleared invalid date ${meta.dateISO} from event "${event.title?.substring(0, 50) || 'Untitled'}" - marked as extraction error`);
+      }
+      
       // Log why events fail quality check
       if (!qualityResult.ok) {
         const titlePreview = event.title ? event.title.substring(0, 60) : 'Untitled Event';
