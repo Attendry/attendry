@@ -507,7 +507,7 @@ function parseDates(text: string) {
     }
   }
   
-  // Pattern: 25. September (current year)
+  // Pattern: 25. September (current year) - but only if it's in the future
   m = text.match(/\b(\d{1,2})\.\s*([a-zA-ZäöüÄÖÜ]+)\b/i);
   if (m) {
     const day = pad2(m[1]);
@@ -515,7 +515,22 @@ function parseDates(text: string) {
     const month = germanMonths[monthName as keyof typeof germanMonths];
     if (month) {
       const currentYear = new Date().getFullYear();
-      return { starts_at: `${currentYear}-${month}-${day}`, ends_at: null };
+      const currentDate = new Date();
+      const parsedDate = new Date(currentYear, parseInt(month) - 1, parseInt(day));
+      
+      // Only use current year if the date is in the future
+      // If the date is in the past, it's likely from a past event - don't default to current year
+      if (parsedDate >= currentDate) {
+        return { starts_at: `${currentYear}-${month}-${day}`, ends_at: null };
+      }
+      // If date is in the past, try next year (for recurring events)
+      const nextYear = currentYear + 1;
+      const nextYearDate = new Date(nextYear, parseInt(month) - 1, parseInt(day));
+      if (nextYearDate >= currentDate) {
+        return { starts_at: `${nextYear}-${month}-${day}`, ends_at: null };
+      }
+      // Otherwise, don't guess - return null
+      return { starts_at: null, ends_at: null };
     }
   }
   
@@ -1112,6 +1127,24 @@ EXTRACTION GUIDELINES:
    - English formats: "September 25, 2025", "25 September 2025"
    - ISO formats: "2025-09-25"
    - If only year is mentioned, use null.
+   
+   CRITICAL: Extract ONLY the event start/end dates (when the event actually takes place).
+   IGNORE these dates (do NOT extract them):
+   - "Last updated" or "Last modified" dates
+   - "Published" or "Posted" dates  
+   - Archive dates
+   - Registration deadline dates (unless they're the event date)
+   - Copyright dates (e.g., "© 2025")
+   - "As of" dates
+   - Any date in the past that's clearly not the event date
+   - Page metadata dates
+   
+   If you find a date without a year (e.g., "25. Mai"), only use it if:
+   - It's clearly in the future relative to today
+   - It's explicitly stated as the event date
+   - Otherwise, use null
+   
+   Validate dates: If a date is clearly wrong (e.g., past event date, archive date, metadata date), use null instead.
 2. LOCATIONS: Extract ONLY actual city names (Berlin, Munich, Hamburg, etc.). 
    - DO NOT use event themes, topics, or descriptions as city names
    - DO NOT use words like "Praxisnah", "Whistleblowing", "Politik", "Forschung"

@@ -216,13 +216,33 @@ function buildNarrativeQuery(
     temporalDescription = `scheduled on or before ${formatDate(dateTo)}`;
   }
 
-  narrativeParts.push(
-    `Find ${template.name.toLowerCase()} business events and professional conferences in ${locationPhrase}`,
-    temporalDescription
-  );
+  // SEARCH RELEVANCE FIX: Prioritize user keyword when provided
+  // If user provides a specific keyword (e.g., "Kartellrecht"), make it the primary focus
+  if (userText && userText.trim()) {
+    const userKeyword = userText.trim();
+    // Get keyword context/translations for better matching
+    const keywordContext = getKeywordContext(userKeyword);
+    
+    // Make user keyword the primary focus
+    narrativeParts.push(
+      `Find ${userKeyword}${keywordContext ? ` (${keywordContext})` : ''} business events and professional conferences in ${locationPhrase}`,
+      temporalDescription
+    );
+    
+    // Include industry terms as secondary context (helps with relevance)
+    if (industryTerms.length > 0) {
+      narrativeParts.push(`covering ${industryTerms.join(', ')}`);
+    }
+  } else {
+    // Fallback to template-based query when no user keyword
+    narrativeParts.push(
+      `Find ${template.name.toLowerCase()} business events and professional conferences in ${locationPhrase}`,
+      temporalDescription
+    );
 
-  if (industryTerms.length > 0) {
-    narrativeParts.push(`covering ${industryTerms.join(', ')}`);
+    if (industryTerms.length > 0) {
+      narrativeParts.push(`covering ${industryTerms.join(', ')}`);
+    }
   }
 
   if (icpTerms.length > 0) {
@@ -241,10 +261,6 @@ function buildNarrativeQuery(
     }
   }
 
-  if (userText && userText.trim()) {
-    narrativeParts.push(`related to ${userText.trim()}`);
-  }
-
   if (template.precision.qualityRequirements.weight >= 6) {
     narrativeParts.push('prioritise events that publish agendas, speakers, and venues');
   } else {
@@ -252,6 +268,35 @@ function buildNarrativeQuery(
   }
 
   return narrativeParts.join(', ') + '.';
+}
+
+/**
+ * Get keyword context/translations for better search matching
+ * Helps Firecrawl understand German keywords and find related English terms
+ */
+function getKeywordContext(keyword: string): string | null {
+  const keywordLower = keyword.toLowerCase().trim();
+  
+  // German legal terms with English translations
+  const keywordMap: Record<string, string> = {
+    'kartellrecht': 'antitrust law, competition law, cartel law',
+    'wettbewerbsrecht': 'competition law, antitrust law',
+    'datenschutz': 'data protection, privacy law, GDPR',
+    'arbeitsrecht': 'labor law, employment law',
+    'steuerrecht': 'tax law, taxation',
+    'gesellschaftsrecht': 'corporate law, company law',
+    'vertragsrecht': 'contract law',
+    'urheberrecht': 'copyright law, intellectual property',
+    'markenrecht': 'trademark law',
+    'patentrecht': 'patent law',
+    'it-recht': 'IT law, technology law',
+    'medienrecht': 'media law',
+    'baurecht': 'construction law, building law',
+    'versicherungsrecht': 'insurance law',
+    'bankrecht': 'banking law, financial law'
+  };
+  
+  return keywordMap[keywordLower] || null;
 }
 
 /**
