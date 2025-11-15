@@ -7,6 +7,7 @@
  */
 
 import { OptimizedAIService } from './optimized-ai-service';
+import { UserProfile } from '@/lib/types/core';
 
 export interface CompanyAnalysisRequest {
   companyName: string;
@@ -39,6 +40,20 @@ export interface CompanyAnalysisResult {
     sourcesAnalyzed: number;
     lastUpdated: string;
     processingTime: number;
+  };
+  // Phase 2B: Insight Scoring
+  insightScore?: {
+    overallScore: number;
+    relevanceScore: number;
+    impactScore: number;
+    urgencyScore: number;
+    confidenceScore: number;
+    breakdown: {
+      relevance: number;
+      impact: number;
+      urgency: number;
+      confidence: number;
+    };
   };
 }
 
@@ -124,6 +139,9 @@ export class CompanyIntelligenceAI {
         lastUpdated: new Date().toISOString(),
         processingTime: Date.now() - startTime
       };
+
+      // Phase 2B: Calculate insight score for company intelligence
+      result.insightScore = this.calculateCompanyInsightScore(result, request.userProfile);
 
       return result;
     } catch (error) {
@@ -317,5 +335,129 @@ Return structured competitive analysis.`;
     const baseSources = 20;
     const multiplier = request.searchType === 'competitor_analysis' ? 1.5 : 1;
     return Math.round(baseSources * multiplier);
+  }
+
+  /**
+   * Phase 2B: Calculate insight score for company intelligence
+   * Maps company intelligence data to insight scoring factors
+   */
+  static calculateCompanyInsightScore(
+    result: CompanyAnalysisResult,
+    userProfile?: UserProfile
+  ): CompanyAnalysisResult['insightScore'] {
+    // Relevance Score (30%): Based on user profile match and industry alignment
+    let relevanceScore = 0.5; // Base score
+    if (userProfile) {
+      // Check industry alignment
+      const companyIndustry = result.companyName.toLowerCase();
+      const userIndustries = (userProfile.industry_terms || []).map(t => t.toLowerCase());
+      const industryMatch = userIndustries.some(industry => 
+        companyIndustry.includes(industry) || industry.includes(companyIndustry)
+      );
+      if (industryMatch) relevanceScore += 0.2;
+
+      // Check ICP match (if company matches ICP terms)
+      const userICP = (userProfile.icp_terms || []).map(t => t.toLowerCase());
+      const icpMatch = userICP.some(term => 
+        companyIndustry.includes(term) || term.includes(companyIndustry)
+      );
+      if (icpMatch) relevanceScore += 0.2;
+
+      // Check competitor match (if tracking competitors)
+      const competitors = (userProfile.competitors || []).map(c => c.toLowerCase());
+      const isCompetitor = competitors.some(comp => 
+        companyIndustry.includes(comp) || comp.includes(companyIndustry)
+      );
+      if (isCompetitor) relevanceScore += 0.1; // Competitors are relevant
+    }
+    relevanceScore = Math.min(1, relevanceScore);
+
+    // Impact Score (30%): Based on opportunities, trends, and data richness
+    let impactScore = 0.5;
+    const opportunitiesCount = result.insights.opportunities?.length || 0;
+    const trendsCount = result.insights.trends?.length || 0;
+    const keyFindingsCount = result.insights.keyFindings?.length || 0;
+    
+    // More opportunities = higher impact
+    if (opportunitiesCount > 0) impactScore += Math.min(0.2, opportunitiesCount * 0.05);
+    // More trends = higher impact
+    if (trendsCount > 0) impactScore += Math.min(0.15, trendsCount * 0.03);
+    // More findings = higher impact
+    if (keyFindingsCount > 0) impactScore += Math.min(0.15, keyFindingsCount * 0.03);
+    
+    // Intent signals have high impact
+    if (result.data.intentSignals && result.data.intentSignals.length > 0) {
+      const highImpactSignals = result.data.intentSignals.filter(s => s.impact === 'high').length;
+      impactScore += Math.min(0.2, highImpactSignals * 0.1);
+    }
+    
+    // Event participation indicates market activity
+    if (result.data.eventParticipation && result.data.eventParticipation.length > 0) {
+      impactScore += Math.min(0.1, result.data.eventParticipation.length * 0.02);
+    }
+    
+    impactScore = Math.min(1, impactScore);
+
+    // Urgency Score (20%): Based on recency and time sensitivity
+    let urgencyScore = 0.5;
+    const lastUpdated = new Date(result.metadata.lastUpdated);
+    const daysSinceUpdate = (Date.now() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
+    
+    // Recent data = higher urgency
+    if (daysSinceUpdate < 7) urgencyScore += 0.3;
+    else if (daysSinceUpdate < 30) urgencyScore += 0.2;
+    else if (daysSinceUpdate < 90) urgencyScore += 0.1;
+    
+    // Intent signals indicate urgency (hiring, funding, expansion)
+    if (result.data.intentSignals && result.data.intentSignals.length > 0) {
+      const urgentTypes = ['hiring', 'funding', 'expansion'];
+      const urgentSignals = result.data.intentSignals.filter(s => 
+        urgentTypes.includes(s.type)
+      ).length;
+      urgencyScore += Math.min(0.2, urgentSignals * 0.1);
+    }
+    
+    urgencyScore = Math.min(1, urgencyScore);
+
+    // Confidence Score (20%): Based on data quality and source reliability
+    let confidenceScore = result.confidence || 0.5; // Use existing confidence as base
+    
+    // More sources = higher confidence
+    const sourcesCount = result.metadata.sourcesAnalyzed || 0;
+    if (sourcesCount > 10) confidenceScore += 0.1;
+    else if (sourcesCount > 5) confidenceScore += 0.05;
+    
+    // Annual reports have high confidence
+    if (result.data.annualReports && result.data.annualReports.length > 0) {
+      confidenceScore += 0.1;
+    }
+    
+    // Event participation data is reliable
+    if (result.data.eventParticipation && result.data.eventParticipation.length > 0) {
+      confidenceScore += 0.05;
+    }
+    
+    confidenceScore = Math.min(1, confidenceScore);
+
+    // Calculate overall score with weights
+    const overallScore = 
+      (relevanceScore * 0.3) +
+      (impactScore * 0.3) +
+      (urgencyScore * 0.2) +
+      (confidenceScore * 0.2);
+
+    return {
+      overallScore: Math.round(overallScore * 100) / 100,
+      relevanceScore: Math.round(relevanceScore * 100) / 100,
+      impactScore: Math.round(impactScore * 100) / 100,
+      urgencyScore: Math.round(urgencyScore * 100) / 100,
+      confidenceScore: Math.round(confidenceScore * 100) / 100,
+      breakdown: {
+        relevance: relevanceScore,
+        impact: impactScore,
+        urgency: urgencyScore,
+        confidence: confidenceScore
+      }
+    };
   }
 }

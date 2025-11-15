@@ -11,8 +11,19 @@ import { SearchService } from "@/lib/services/search-service";
  */
 function verifyCronRequest(req: NextRequest): boolean {
   // Check for Vercel Cron header (automatically added by Vercel)
+  // Vercel adds this header when triggering cron jobs
   const vercelCronHeader = req.headers.get('x-vercel-cron');
+  
+  // Log all headers for debugging (in production, check logs)
+  const allHeaders = Object.fromEntries(
+    Array.from(req.headers.entries()).map(([key, value]) => [key, value])
+  );
+  console.log('[CRON AUTH] Headers received:', JSON.stringify(allHeaders));
+  console.log('[CRON AUTH] x-vercel-cron header:', vercelCronHeader);
+  console.log('[CRON AUTH] CRON_SECRET set:', !!process.env.CRON_SECRET);
+  
   if (vercelCronHeader) {
+    console.log('[CRON AUTH] ✅ Authenticated via x-vercel-cron header');
     return true; // Vercel automatically adds this header for cron jobs
   }
 
@@ -21,15 +32,33 @@ function verifyCronRequest(req: NextRequest): boolean {
   const expectedToken = process.env.CRON_SECRET;
   
   if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+    console.log('[CRON AUTH] ✅ Authenticated via Authorization header');
+    return true;
+  }
+
+  // Additional check: If request appears to be from Vercel Cron infrastructure
+  // Vercel Cron may not always send x-vercel-cron header, but we can detect it
+  // by checking for Vercel-specific headers or user-agent
+  const userAgent = req.headers.get('user-agent') || '';
+  const vercelId = req.headers.get('x-vercel-id');
+  const isVercelRequest = vercelId || userAgent.includes('vercel') || userAgent.includes('Vercel');
+  
+  if (isVercelRequest && !expectedToken) {
+    // If it looks like a Vercel request and no CRON_SECRET is set, allow it
+    console.log('[CRON AUTH] ✅ Authenticated via Vercel infrastructure detection (no CRON_SECRET)');
     return true;
   }
 
   // If CRON_SECRET is set but no valid auth, reject
   if (expectedToken) {
+    console.log('[CRON AUTH] ❌ CRON_SECRET is set but no valid auth provided');
+    console.log('[CRON AUTH] User-Agent:', userAgent);
+    console.log('[CRON AUTH] X-Vercel-Id:', vercelId);
     return false;
   }
 
   // If no CRON_SECRET is set, allow (for development)
+  console.log('[CRON AUTH] ⚠️ No CRON_SECRET set, allowing (development mode)');
   return true;
 }
 
@@ -37,7 +66,12 @@ function verifyCronRequest(req: NextRequest): boolean {
  * Run the event collection job
  */
 async function runEventCollection(collectionType: string) {
+  const startTime = Date.now();
+  const MAX_RUNTIME_MS = 240000; // 4 minutes (leave 60s buffer before 5min timeout)
+  const MIN_REMAINING_TIME_MS = 60000; // Exit if less than 60s remaining
+
   console.log(`[CRON] Starting ${collectionType} event collection`);
+  console.log(`[CRON] Max runtime: ${MAX_RUNTIME_MS / 1000}s, will exit with ${MIN_REMAINING_TIME_MS / 1000}s remaining`);
 
   const results = [];
   
@@ -66,11 +100,31 @@ async function runEventCollection(collectionType: string) {
     // ignore; does not impact user collection
   }
 
+  // Limit combinations per run to prevent timeout
+  // Process only 2-3 combinations per run for standard collection
+  const MAX_COMBINATIONS = collectionType === 'deep' ? 3 : 2;
+  let processedCount = 0;
+
   // Run comprehensive searches for each industry/country combination
   for (const industry of industries) {
     for (const country of countries) {
+      // Check if we've processed enough combinations
+      if (processedCount >= MAX_COMBINATIONS) {
+        console.log(`[CRON] Reached max combinations limit (${MAX_COMBINATIONS}), stopping to prevent timeout`);
+        break;
+      }
+
+      // Check remaining time before starting new combination
+      const elapsed = Date.now() - startTime;
+      const remaining = MAX_RUNTIME_MS - elapsed;
+      
+      if (remaining < MIN_REMAINING_TIME_MS) {
+        console.log(`[CRON] ⚠️ Only ${Math.round(remaining / 1000)}s remaining, exiting early to prevent timeout`);
+        break;
+      }
+
       try {
-        console.log(`[CRON] Collecting events for ${industry} in ${country}`);
+        console.log(`[CRON] Collecting events for ${industry} in ${country} (${Math.round(remaining / 1000)}s remaining)`);
         
         // Calculate date range for comprehensive search
         const today = new Date();
@@ -78,14 +132,28 @@ async function runEventCollection(collectionType: string) {
         const to = new Date(today.getFullYear(), today.getMonth() + monthsAhead, today.getDate())
           .toISOString().split('T')[0];
 
+        // Build industry-specific query instead of empty string for better results
+        const industryQueries: Record<string, string> = {
+          'legal-compliance': 'legal compliance conference event',
+          'fintech': 'fintech financial technology conference',
+          'healthcare': 'healthcare medical conference event',
+          'general': 'business professional conference event'
+        };
+        const searchQuery = industryQueries[industry] || 'conference event';
+
         // Run comprehensive search using shared service with Firecrawl
         const searchData = await SearchService.runEventDiscovery({
-          q: "", // Use default query from search config
+          q: searchQuery, // ✅ Meaningful query instead of empty string
           country,
           from,
           to,
           provider: "firecrawl" // Use Firecrawl for better results
         });
+
+        // Log if no results found (extraction will be skipped)
+        if (searchData.events.length === 0) {
+          console.log(`[CRON] ⚠️ No events found for ${industry}/${country}, skipping extraction`);
+        }
 
         // Store events in database
         let eventsStored = 0;
@@ -100,16 +168,31 @@ async function runEventCollection(collectionType: string) {
           });
         }
 
+        processedCount++;
+        const elapsedAfter = Date.now() - startTime;
+        const remainingAfter = MAX_RUNTIME_MS - elapsedAfter;
+
         results.push({
           industry,
           country,
           success: true,
           eventsFound: searchData.events.length,
           eventsStored: eventsStored,
-          enhancement: searchData.enhancement
+          enhancement: searchData.enhancement,
+          elapsedSeconds: Math.round(elapsedAfter / 1000),
+          remainingSeconds: Math.round(remainingAfter / 1000)
         });
+
+        console.log(`[CRON] ✅ Completed ${industry}/${country}: ${eventsStored} events stored, ${Math.round(remainingAfter / 1000)}s remaining`);
+
+        // Check again after processing
+        if (remainingAfter < MIN_REMAINING_TIME_MS) {
+          console.log(`[CRON] ⚠️ Time running low after processing, exiting early`);
+          break;
+        }
       } catch (error: any) {
         console.error(`[CRON] Error collecting ${industry}/${country}:`, error);
+        processedCount++;
         results.push({
           industry,
           country,
@@ -118,12 +201,18 @@ async function runEventCollection(collectionType: string) {
         });
       }
     }
+    
+    // Break outer loop if we've hit limits
+    if (processedCount >= MAX_COMBINATIONS) {
+      break;
+    }
   }
 
   const successCount = results.filter(r => r.success).length;
   const totalEvents = results.reduce((sum, r) => sum + (r.eventsFound || 0), 0);
+  const totalElapsed = Math.round((Date.now() - startTime) / 1000);
 
-  console.log(`[CRON] Collection complete: ${successCount}/${results.length} successful, ${totalEvents} total events`);
+  console.log(`[CRON] Collection complete: ${successCount}/${results.length} successful, ${totalEvents} total events, ${totalElapsed}s elapsed`);
 
   return {
     success: true,
@@ -136,7 +225,10 @@ async function runEventCollection(collectionType: string) {
       totalEventsCollected: totalEvents,
       industries: industries.length,
       countries: countries.length,
-      monthsAhead
+      monthsAhead,
+      maxCombinations: MAX_COMBINATIONS,
+      elapsedSeconds: totalElapsed,
+      earlyExit: processedCount < (industries.length * countries.length)
     }
   };
 }
@@ -151,7 +243,17 @@ export async function GET(req: NextRequest) {
   try {
     // Verify this is a legitimate cron request
     if (!verifyCronRequest(req)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { 
+          status: 401,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        }
+      );
     }
 
     // Determine collection type from query parameters
@@ -159,7 +261,13 @@ export async function GET(req: NextRequest) {
     const collectionType = searchParams.get('type') || 'standard';
 
     const result = await runEventCollection(collectionType);
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
 
   } catch (error: any) {
     console.error('[CRON] Fatal error:', error);
@@ -169,7 +277,14 @@ export async function GET(req: NextRequest) {
         error: error.message,
         timestamp: new Date().toISOString()
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
     );
   }
 }
@@ -184,7 +299,17 @@ export async function POST(req: NextRequest) {
   try {
     // Verify this is a legitimate cron request
     if (!verifyCronRequest(req)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { 
+          status: 401,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        }
+      );
     }
 
     // Determine collection type from query parameters
@@ -192,7 +317,13 @@ export async function POST(req: NextRequest) {
     const collectionType = searchParams.get('type') || 'standard';
 
     const result = await runEventCollection(collectionType);
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
 
   } catch (error: any) {
     console.error('[CRON] Fatal error:', error);
@@ -202,7 +333,14 @@ export async function POST(req: NextRequest) {
         error: error.message,
         timestamp: new Date().toISOString()
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
     );
   }
 }
@@ -218,29 +356,67 @@ async function storeEventsInDatabase(events: any[], metadata: any): Promise<numb
     }
 
     // Prepare events for database insertion
-    const eventsToInsert = events.map(event => ({
-      title: event.title,
-      description: event.description,
-      starts_at: event.starts_at,
-      ends_at: event.ends_at,
-      city: event.city,
-      country: event.country,
-      location: event.location,
-      venue: event.venue,
-      organizer: event.organizer,
-      source_url: event.source_url,
-      speakers: event.speakers || [],
-      confidence: event.confidence || 0.5,
-      collected_at: new Date().toISOString(),
-      collection_metadata: {
-        source: metadata.source,
-        industry: metadata.industry,
-        country: metadata.country,
-        from: metadata.from,
-        to: metadata.to,
-        collectedAt: metadata.collectedAt
+    const eventsToInsert = events.map(event => {
+      // Extract source domain from URL
+      let sourceDomain = null;
+      try {
+        sourceDomain = new URL(event.source_url).hostname;
+      } catch {
+        // Invalid URL, skip domain extraction
       }
-    }));
+
+      // Calculate data completeness score
+      const fields = {
+        title: !!event.title,
+        description: !!event.description,
+        starts_at: !!event.starts_at,
+        city: !!event.city,
+        country: !!event.country,
+        venue: !!event.venue,
+        organizer: !!event.organizer,
+        topics: !!(event.topics && event.topics.length > 0),
+        speakers: !!(event.speakers && event.speakers.length > 0),
+        sponsors: !!(event.sponsors && event.sponsors.length > 0),
+        participating_organizations: !!(event.participating_organizations && event.participating_organizations.length > 0),
+        partners: !!(event.partners && event.partners.length > 0),
+        competitors: !!(event.competitors && event.competitors.length > 0),
+      };
+      const completenessScore = Object.values(fields).filter(Boolean).length / Object.keys(fields).length;
+
+      return {
+        title: event.title,
+        description: event.description,
+        starts_at: event.starts_at,
+        ends_at: event.ends_at,
+        city: event.city,
+        country: event.country,
+        location: event.location,
+        venue: event.venue,
+        organizer: event.organizer,
+        source_url: event.source_url,
+        source_domain: sourceDomain,
+        topics: event.topics || [],
+        speakers: event.speakers || [],
+        sponsors: event.sponsors || [],
+        participating_organizations: event.participating_organizations || [],
+        partners: event.partners || [],
+        competitors: event.competitors || [],
+        extraction_method: metadata.source === 'cron_firecrawl' ? 'firecrawl' : 'run',
+        confidence: event.confidence || 0.5,
+        data_completeness: Math.round(completenessScore * 100) / 100,
+        collected_at: new Date().toISOString(),
+        industry: metadata.industry,
+        search_terms: [metadata.industry],
+        collection_metadata: {
+          source: metadata.source,
+          industry: metadata.industry,
+          country: metadata.country,
+          from: metadata.from,
+          to: metadata.to,
+          collectedAt: metadata.collectedAt
+        }
+      };
+    });
 
     // Insert events (upsert to avoid duplicates)
     const { data, error } = await supabase

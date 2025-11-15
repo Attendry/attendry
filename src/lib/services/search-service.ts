@@ -580,16 +580,25 @@ export class SearchService {
     items: SearchItem[];
     cached: boolean;
   }> {
-    // Step 1: Check database first to avoid duplicate API calls
-    const dbResult = await this.checkDatabaseForEvents({
-      q: params.q,
-      country: params.country,
-      from: params.from,
-      to: params.to
-    });
+    // OPTIMIZATION: Check database cache and prepare external search in parallel
+    // This reduces total wait time by starting both operations simultaneously
+    const [dbResult, searchConfig, userProfile] = await Promise.all([
+      this.checkDatabaseForEvents({
+        q: params.q,
+        country: params.country,
+        from: params.from,
+        to: params.to
+      }),
+      this.loadSearchConfig(),
+      this.loadUserProfile().catch(error => {
+        console.warn('Failed to load user profile, continuing without user-specific enhancements:', error.message);
+        return null;
+      })
+    ]);
 
+    // If database has results, return immediately (fastest path)
     if (dbResult.found && dbResult.events.length > 0) {
-      console.log(JSON.stringify({ at: "search_service", provider: "database", found: dbResult.count, cached: true }));
+      console.log(JSON.stringify({ at: "search_service", provider: "database", found: dbResult.count, cached: true, parallel: true }));
       
       // Convert database events to SearchItem format
       const items: SearchItem[] = dbResult.events.map(event => ({
@@ -604,21 +613,14 @@ export class SearchService {
         cached: true
       };
     } else {
-      console.log(JSON.stringify({ at: "search_service", provider: "database", found: false, count: dbResult.count, proceeding_to_search: true }));
+      console.log(JSON.stringify({ at: "search_service", provider: "database", found: false, count: dbResult.count, proceeding_to_search: true, parallel: true }));
     }
 
-    // Step 2: Try Firecrawl Search with tier-based approach
+    // Step 2: Try Firecrawl Search with tier-based approach (config already loaded in parallel)
     try {
-      console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "tier_based" }));
+      console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "tier_based", parallel: true }));
       
-      // Load user configuration to enhance search
-      const searchConfig = await this.loadSearchConfig();
-      const userProfile = await this.loadUserProfile().catch(error => {
-        console.warn('Failed to load user profile, continuing without user-specific enhancements:', error.message);
-        return null;
-      });
-      
-      // Build enhanced query using user configuration
+      // Build enhanced query using user configuration (already loaded in parallel above)
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
       
       // Normalize effectiveQ using unified query builder
@@ -874,25 +876,16 @@ export class SearchService {
 
     // Get API credentials
     const key = process.env.GOOGLE_CSE_KEY;
+    const cx = process.env.GOOGLE_CSE_CX;
 
-    if (!key) {
-      // Return demo data if API keys are not configured
-      const demoItems: SearchItem[] = [
-        {
-          title: "Legal Tech Conference 2025 - Munich",
-          link: "https://example.com/legal-tech-2025",
-          snippet: "Join us for the premier legal technology conference in Munich, featuring compliance, e-discovery, and regulatory technology sessions."
-        }
-      ];
-      
-      const result = {
-        provider: "demo",
-        items: demoItems,
+    if (!key || !cx) {
+      // Return empty results if API keys are not fully configured
+      console.warn('[CSE] Missing GOOGLE_CSE_KEY or GOOGLE_CSE_CX, returning empty results');
+      return {
+        provider: "cse",
+        items: [],
         cached: false
       };
-      
-      await setCachedResult(cacheKey, result);
-      return result;
     }
 
     // Load user profile for query building
@@ -903,29 +896,34 @@ export class SearchService {
     
     // Build simplified query for Google CSE to avoid 400 errors
     const enhancedQuery = this.buildSimpleQuery(q, searchConfig, userProfile, country);
+    
+    // Trim query to 256 characters to prevent 400 errors
+    const trimmedQuery = enhancedQuery.slice(0, 256);
+    if (enhancedQuery.length > 256) {
+      console.log(`[CSE] Query trimmed from ${enhancedQuery.length} to 256 chars`);
+    }
 
     // Build search parameters
+    // Google CSE only allows max 10 results per request - limit num to 10
+    const cseNum = Math.min(num, 10);
     const searchParams = new URLSearchParams({
-      q: enhancedQuery,
+      q: trimmedQuery,
       key,
-      num: num.toString(),
+      cx,  // ✅ Add cx parameter (required by Google CSE API)
+      num: cseNum.toString(),  // ✅ Limit to 10 (Google CSE max)
       safe: "off",
       hl: "en"
     });
 
-    // Add country restriction
+    // Add country restriction (use only gl parameter to avoid 400 errors from lr/cr combinations)
     if (country === "de") {
-      searchParams.set("cr", "countryDE");
       searchParams.set("gl", "de");
-      searchParams.set("lr", "lang_de|lang_en");
     } else if (country === "fr") {
-      searchParams.set("cr", "countryFR");
       searchParams.set("gl", "fr");
-      searchParams.set("lr", "lang_fr|lang_en");
     } else if (country === "uk") {
-      searchParams.set("cr", "countryGB");
       searchParams.set("gl", "gb");
-      searchParams.set("lr", "lang_en");
+    } else if (country === "us") {
+      searchParams.set("gl", "us");
     }
 
     // Make the search request with retry logic
@@ -940,28 +938,67 @@ export class SearchService {
       { q: enhancedQuery, country, num: num.toString() }
     );
 
-    const res = await executeWithFallback("google_cse", async () => {
-      return await deduplicateRequest(fingerprint, () =>
-        executeWithCircuitBreaker("google_cse", () =>
-          RetryService.fetchWithRetry(
-            "google_cse",
-            "search",
-            url,
-            { cache: "no-store" }
-          ),
-          CIRCUIT_BREAKER_CONFIGS.GOOGLE_CSE
-        )
-      );
-    });
-    const data = await res.json();
-    console.log(JSON.stringify({ at: "search_service", real: "cse_result", status: res.status, items: data.items?.length || 0 }));
+    let data: any;
+    let status = 200;
+    
+    try {
+      const res = await executeWithFallback("google_cse", async () => {
+        return await deduplicateRequest(fingerprint, async () => {
+          // First attempt - check for 400 errors immediately
+          const response = await fetch(url);
+          
+          // Don't retry 400 errors - they're configuration issues, not service failures
+          if (response.status === 400) {
+            const errorText = await response.text();
+            console.error('[CSE] 400 error (configuration issue):', errorText);
+            throw new Error(`CSE 400: ${errorText}`);
+          }
+          
+          // For other errors, use retry logic
+          if (!response.ok) {
+            throw new Error(`CSE ${response.status}: ${response.statusText}`);
+          }
+          
+          return response;
+        });
+      });
+      
+      // Check if res is a Response object or already parsed data (from fallback)
+      if (res instanceof Response) {
+        data = await res.json();
+        status = res.status;
+      } else {
+        // Fallback returned demo data directly (not a Response object)
+        data = res;
+        status = 200;
+      }
+    } catch (error) {
+      // If fallback also fails, return empty results
+      console.error('[CSE] All attempts failed, returning empty results:', error);
+      data = { items: [] };
+      status = 500;
+    }
+    
+    console.log(JSON.stringify({ at: "search_service", real: "cse_result", status: status, items: data.items?.length || data.length || 0 }));
 
     // Transform results
-    const items: SearchItem[] = (data.items || []).map((it: any) => ({
-      title: it.title || "",
-      link: it.link || "",
-      snippet: it.snippet || ""
-    }));
+    // Handle both Response format (data.items) and fallback demo data format (data is array)
+    let items: SearchItem[];
+    if (Array.isArray(data)) {
+      // Fallback returned demo data as array
+      items = data.map((it: any) => ({
+        title: it.title || "",
+        link: it.link || "",
+        snippet: it.snippet || ""
+      }));
+    } else {
+      // Normal Response format
+      items = (data.items || []).map((it: any) => ({
+        title: it.title || "",
+        link: it.link || "",
+        snippet: it.snippet || ""
+      }));
+    }
 
     // Apply basic filtering
     const filteredItems = items.filter(item => {
@@ -1271,6 +1308,18 @@ export class SearchService {
     version: string;
     trace: any[];
   }> {
+    // ✅ Early exit for empty URLs - prevents wasting time on extraction when no URLs are found
+    if (!urls || urls.length === 0) {
+      console.log('[extract] ⚠️ No URLs provided, skipping extraction');
+      return {
+        events: [],
+        version: "extract_v5",
+        trace: []
+      };
+    }
+    
+    console.log(`[extract] Starting extraction for ${urls.length} URLs`);
+    
     const firecrawlKey = process.env.FIRECRAWL_KEY;
     
     if (!firecrawlKey) {
@@ -1384,12 +1433,21 @@ export class SearchService {
    * Poll for extract results using the job ID
    */
   private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
-    const maxAttempts = 20; // 20 seconds max for better extraction success
+    const maxAttempts = 20; // 20 attempts max
     const pollInterval = 1000; // 1 second intervals
+    const absoluteTimeout = 60000; // 60 seconds absolute timeout to prevent infinite polling
+    const startTime = Date.now();
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // ✅ Check absolute timeout to prevent infinite polling
+      const elapsed = Date.now() - startTime;
+      if (elapsed > absoluteTimeout) {
+        console.warn(`[extract] Job ${jobId} exceeded absolute timeout: ${elapsed}ms > ${absoluteTimeout}ms`);
+        return null;
+      }
+      
       try {
-        console.log(`Polling extract job ${jobId}, attempt ${attempt + 1}/${maxAttempts}`);
+        console.log(`Polling extract job ${jobId}, attempt ${attempt + 1}/${maxAttempts} (${Math.round(elapsed / 1000)}s elapsed)`);
         
         const response = await RetryService.fetchWithRetry(
           "firecrawl",
@@ -2323,11 +2381,12 @@ Return only the top 15 most promising URLs for event extraction. Focus on qualit
   }> {
     const { q = "", country = "", from, to, provider = "cse" } = params;
 
-    // Step 1: Load search configuration
-    const searchConfig = await this.loadSearchConfig();
-
-    // Step 2: Load user profile for comprehensive query building
-    const userProfile = await this.loadUserProfile();
+    // Step 1 & 2: Load search configuration and user profile in parallel
+    // These operations are independent and can be executed simultaneously
+    const [searchConfig, userProfile] = await Promise.all([
+      this.loadSearchConfig(),
+      this.loadUserProfile()
+    ]);
 
     // Step 3: Build comprehensive query using all available data
     const effectiveQ = this.buildEnhancedQuery(

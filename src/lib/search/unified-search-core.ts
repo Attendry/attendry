@@ -646,10 +646,53 @@ async function unifiedDatabaseSearch(params: UnifiedSearchParams): Promise<Unifi
 }
 
 /**
+ * Timeout wrapper for provider search functions
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  providerName: string
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${providerName} timeout after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+}
+
+/**
+ * Generate unified cache key (provider-agnostic)
+ * This allows us to check cache once before trying any provider
+ * Uses same format as generateSearchCacheKey but without provider
+ */
+function generateUnifiedCacheKey(params: UnifiedSearchParams): string {
+  const keyData = {
+    q: params.q,
+    country: params.country,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+    limit: params.limit,
+    scrapeContent: params.scrapeContent,
+    // Note: provider is NOT included - we want provider-agnostic cache
+  };
+  // Use same format as generateSearchCacheKey for consistency
+  return `search:unified:${createHash('md5').update(JSON.stringify(keyData)).digest('hex')}`;
+}
+
+/**
  * Main unified search function
  * 
- * Tries providers in order: Firecrawl -> CSE -> Database
- * Returns results from the first successful provider
+ * Optimized flow:
+ * 1. Check unified cache first (provider-agnostic)
+ * 2. If cache miss, try all providers in parallel with smart timeouts:
+ *    - Firecrawl: 8s timeout (fast fail)
+ *    - CSE: 5s timeout
+ *    - Database: 2s timeout
+ * 3. Cache result for future requests
+ * 
+ * Returns results from cache or first successful provider
+ * Total max wait time: 8s instead of 60s (sequential)
  */
 export async function unifiedSearch(params: UnifiedSearchParams): Promise<UnifiedSearchResponse> {
   const startTime = Date.now();
@@ -659,22 +702,105 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
   let cacheHits = 0;
   let rateLimitHits = 0;
 
-  // Try Firecrawl first
-  console.log('[unified-search] Trying Firecrawl first...');
-  const firecrawlResult = await unifiedFirecrawlSearch(params);
-  providers.push('firecrawl');
-  debug.firecrawl = firecrawlResult.debug;
-  
-  if (firecrawlResult.metrics.cacheHit) cacheHits++;
-  if (firecrawlResult.metrics.rateLimitHit) rateLimitHits++;
+  // Step 1: Check unified cache first (before trying any provider)
+  // This prevents duplicate API calls when cache exists
+  if (params.useCache !== false) {
+    const unifiedCacheKey = generateUnifiedCacheKey(params);
+    const cachedResult = await searchCache.get(unifiedCacheKey);
+    
+    if (cachedResult) {
+      console.log('[unified-search] Cache hit - returning cached result without trying providers');
+      return {
+        ...cachedResult,
+        metrics: {
+          ...cachedResult.metrics,
+          totalResponseTime: Date.now() - startTime,
+          cacheHit: true
+        }
+      };
+    }
+    console.log('[unified-search] Cache miss - proceeding with provider attempts');
+  }
 
-  if (firecrawlResult.items.length > 0) {
-    totalItems = firecrawlResult.items.length;
-    console.log('[unified-search] Firecrawl returned', totalItems, 'items');
+  // Step 2: Try all providers in parallel with smart timeouts
+  console.log('[unified-search] Trying all providers in parallel with timeouts...');
+  
+  const [firecrawlResult, cseResult, databaseResult] = await Promise.allSettled([
+    withTimeout(unifiedFirecrawlSearch(params), 8000, 'Firecrawl').catch(err => {
+      console.warn('[unified-search] Firecrawl failed:', err instanceof Error ? err.message : String(err));
+      return {
+        items: [],
+        provider: 'firecrawl' as const,
+        debug: { rawCount: 0, error: err instanceof Error ? err.message : 'Unknown error' },
+        metrics: { responseTime: 0, cacheHit: false, rateLimitHit: false }
+      };
+    }),
+    withTimeout(unifiedCseSearch(params), 5000, 'CSE').catch(err => {
+      console.warn('[unified-search] CSE failed:', err instanceof Error ? err.message : String(err));
+      return {
+        items: [],
+        provider: 'cse' as const,
+        debug: { rawCount: 0, error: err instanceof Error ? err.message : 'Unknown error' },
+        metrics: { responseTime: 0, cacheHit: false, rateLimitHit: false }
+      };
+    }),
+    withTimeout(unifiedDatabaseSearch(params), 2000, 'Database').catch(err => {
+      console.warn('[unified-search] Database failed:', err instanceof Error ? err.message : String(err));
+      return {
+        items: [],
+        provider: 'database' as const,
+        debug: { rawCount: 0, error: err instanceof Error ? err.message : 'Unknown error' },
+        metrics: { responseTime: 0, cacheHit: false, rateLimitHit: false }
+      };
+    })
+  ]);
+
+  // Extract results from settled promises
+  const firecrawl = firecrawlResult.status === 'fulfilled' ? firecrawlResult.value : null;
+  const cse = cseResult.status === 'fulfilled' ? cseResult.value : null;
+  const database = databaseResult.status === 'fulfilled' ? databaseResult.value : null;
+
+  // Track which providers were attempted
+  if (firecrawl) {
+    providers.push('firecrawl');
+    debug.firecrawl = firecrawl.debug;
+    if (firecrawl.metrics.cacheHit) cacheHits++;
+    if (firecrawl.metrics.rateLimitHit) rateLimitHits++;
+  }
+  if (cse) {
+    providers.push('cse');
+    debug.cse = cse.debug;
+    if (cse.metrics.cacheHit) cacheHits++;
+    if (cse.metrics.rateLimitHit) rateLimitHits++;
+  }
+  if (database) {
+    providers.push('database');
+    debug.database = database.debug;
+    if (database.metrics.cacheHit) cacheHits++;
+    if (database.metrics.rateLimitHit) rateLimitHits++;
+  }
+
+  // Use first successful result (prefer Firecrawl > CSE > Database)
+  let selectedResult: UnifiedSearchResult | null = null;
+  
+  if (firecrawl && firecrawl.items.length > 0) {
+    selectedResult = firecrawl;
+    console.log('[unified-search] Using Firecrawl result:', firecrawl.items.length, 'items');
+  } else if (cse && cse.items.length > 0) {
+    selectedResult = cse;
+    console.log('[unified-search] Using CSE result:', cse.items.length, 'items');
+  } else if (database && database.items.length > 0) {
+    selectedResult = database;
+    console.log('[unified-search] Using Database result:', database.items.length, 'items');
+  }
+
+  // If no results, return empty with all attempted providers
+  if (!selectedResult) {
+    console.log('[unified-search] No results from any provider');
     return {
-      items: firecrawlResult.items,
+      items: [],
       providers,
-      totalItems,
+      totalItems: 0,
       debug,
       metrics: {
         totalResponseTime: Date.now() - startTime,
@@ -684,45 +810,11 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
     };
   }
 
-  // Try CSE if Firecrawl failed
-  console.log('[unified-search] Firecrawl returned 0 results, trying CSE...');
-  const cseResult = await unifiedCseSearch(params);
-  providers.push('cse');
-  debug.cse = cseResult.debug;
-  
-  if (cseResult.metrics.cacheHit) cacheHits++;
-  if (cseResult.metrics.rateLimitHit) rateLimitHits++;
+  totalItems = selectedResult.items.length;
+  console.log('[unified-search] Selected provider:', selectedResult.provider, 'with', totalItems, 'items');
 
-  if (cseResult.items.length > 0) {
-    totalItems = cseResult.items.length;
-    console.log('[unified-search] CSE returned', totalItems, 'items');
-    return {
-      items: cseResult.items,
-      providers,
-      totalItems,
-      debug,
-      metrics: {
-        totalResponseTime: Date.now() - startTime,
-        cacheHits,
-        rateLimitHits
-      }
-    };
-  }
-
-  // Try database fallback if both failed
-  console.log('[unified-search] CSE also returned 0 results, using database fallback...');
-  const databaseResult = await unifiedDatabaseSearch(params);
-  providers.push('database');
-  debug.database = databaseResult.debug;
-  
-  if (databaseResult.metrics.cacheHit) cacheHits++;
-  if (databaseResult.metrics.rateLimitHit) rateLimitHits++;
-
-  totalItems = databaseResult.items.length;
-  console.log('[unified-search] Database fallback returned', totalItems, 'items');
-
-  return {
-    items: databaseResult.items,
+  const result: UnifiedSearchResponse = {
+    items: selectedResult.items,
     providers,
     totalItems,
     debug,
@@ -732,6 +824,16 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
       rateLimitHits
     }
   };
+
+  // Step 3: Cache the result for future requests (provider-agnostic cache)
+  if (params.useCache !== false && selectedResult.items.length > 0) {
+    const unifiedCacheKey = generateUnifiedCacheKey(params);
+    await searchCache.set(unifiedCacheKey, result, CACHE_DURATION, []).catch(err => {
+      console.warn('[unified-search] Failed to cache result:', err);
+    });
+  }
+
+  return result;
 }
 
 /**

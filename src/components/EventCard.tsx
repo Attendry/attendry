@@ -100,6 +100,7 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   const [saved, setSaved] = useState(initiallySaved);           // Whether event is saved to watchlist
   const [busy, setBusy] = useState(false);                     // Loading state for save operation
   const [inBoard, setInBoard] = useState(false);                // Whether event is in board
+  const [boardItemId, setBoardItemId] = useState<string | null>(null); // Board item ID if in board
   const [boardBusy, setBoardBusy] = useState(false);           // Loading state for board operation
   const [open, setOpen] = useState(false);                     // Whether event details are expanded
   const [includePast, setIncludePast] = useState(false);       // Whether to include past speakers
@@ -128,6 +129,31 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       setSpeakers(ev.speakers);
     }
   }, [ev.speakers, speakers]);
+
+  // ============================================================================
+  // Check if event is in board on mount
+  // ============================================================================
+  React.useEffect(() => {
+    const checkBoardStatus = async () => {
+      if (!ev.source_url) return;
+      
+      try {
+        const response = await fetch(`/api/events/board/check?eventUrl=${encodeURIComponent(ev.source_url)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.inBoard && data.boardItemId) {
+            setInBoard(true);
+            setBoardItemId(data.boardItemId);
+          }
+        }
+      } catch (error) {
+        // Silently fail - board check is not critical
+        console.warn('Failed to check board status:', error);
+      }
+    };
+
+    checkBoardStatus();
+  }, [ev.source_url]);
 
   // ============================================================================
   // COMPUTED VALUES (Memoized for performance)
@@ -233,6 +259,10 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         // Don't fail if watchlist add fails - board add succeeded
       }
 
+      // Store board item ID from response
+      if (boardData.boardItem?.id) {
+        setBoardItemId(boardData.boardItem.id);
+      }
       setInBoard(true);
     } catch (e: any) {
       alert(e.message || "Failed to add to board");
@@ -431,44 +461,50 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
           >
             {open ? "Collapse" : "Speakers"}
           </button>
-          <button
-            onClick={addToBoard}
-            disabled={boardBusy || inBoard}
-            className={`text-sm font-medium rounded-lg px-3 py-2 border transition-all duration-200 disabled:opacity-50 ${
-              inBoard 
-                ? "bg-blue-50 border-blue-200 text-blue-700" 
-                : "border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400"
-            }`}
-            title={inBoard ? "Already in board" : "Add to Events Board"}
-          >
-            {boardBusy ? (
+          {inBoard ? (
+            <button
+              onClick={() => {
+                // Navigate to board with the board item ID
+                const targetUrl = boardItemId 
+                  ? `/events-board?highlight=${boardItemId}`
+                  : `/events-board?search=${encodeURIComponent(ev.title || ev.source_url)}`;
+                router.push(targetUrl);
+              }}
+              className="text-sm font-medium rounded-lg px-3 py-2 border border-green-300 text-green-700 hover:bg-green-50 hover:border-green-400 transition-colors duration-200"
+              title="View in Events Board"
+            >
               <div className="flex items-center gap-1">
-                <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                Adding…
+                View
               </div>
-            ) : (
-              <div className="flex items-center gap-1">
-                {inBoard ? (
-                  <>
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
-                    In Board
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
-                    </svg>
-                    Add to Board
-                  </>
-                )}
-              </div>
-            )}
-          </button>
+            </button>
+          ) : (
+            <button
+              onClick={addToBoard}
+              disabled={boardBusy}
+              className="text-sm font-medium rounded-lg px-3 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Add to Events Board"
+            >
+              {boardBusy ? (
+                <div className="flex items-center gap-1">
+                  <svg className="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Adding…
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
+                  </svg>
+                  Add to Board
+                </div>
+              )}
+            </button>
+          )}
           {onAddToComparison && (
             <button
               onClick={() => onAddToComparison(ev)}
@@ -617,8 +653,29 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       <EventIntelligenceQuickView
         event={ev as EventData}
         onViewFull={() => {
-          const eventId = ev.id || ev.source_url;
-          router.push(`/events/${encodeURIComponent(eventId)}`);
+          try {
+            // Prefer source_url as it's more reliable for navigation
+            // If it's a board item UUID, the detail page will handle it
+            const eventId = ev.source_url || ev.id;
+            console.log('[EventCard] View Full Intelligence clicked', {
+              eventId,
+              source_url: ev.source_url,
+              id: ev.id,
+              title: ev.title
+            });
+            
+            if (eventId) {
+              const targetPath = `/events/${encodeURIComponent(eventId)}`;
+              console.log('[EventCard] Navigating to:', targetPath);
+              router.push(targetPath);
+            } else {
+              console.error('[EventCard] No event ID available for navigation');
+              alert('Unable to view full intelligence: event ID not available');
+            }
+          } catch (error) {
+            console.error('[EventCard] Error navigating to full intelligence:', error);
+            alert('Failed to navigate to full intelligence view');
+          }
         }}
       />
 

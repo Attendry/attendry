@@ -5,6 +5,7 @@
  * Configured in vercel.json to run periodically
  */
 
+export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { processIntelligenceQueue, getQueueStats } from '@/lib/services/intelligence-queue';
@@ -15,8 +16,19 @@ import { processIntelligenceQueue, getQueueStats } from '@/lib/services/intellig
  */
 function verifyCronRequest(req: NextRequest): boolean {
   // Check for Vercel Cron header (automatically added by Vercel)
+  // Vercel adds this header when triggering cron jobs
   const vercelCronHeader = req.headers.get('x-vercel-cron');
+  
+  // Log all headers for debugging (in production, check logs)
+  const allHeaders = Object.fromEntries(
+    Array.from(req.headers.entries()).map(([key, value]) => [key, value])
+  );
+  console.log('[CRON AUTH] Headers received:', JSON.stringify(allHeaders));
+  console.log('[CRON AUTH] x-vercel-cron header:', vercelCronHeader);
+  console.log('[CRON AUTH] CRON_SECRET set:', !!process.env.CRON_SECRET);
+  
   if (vercelCronHeader) {
+    console.log('[CRON AUTH] ✅ Authenticated via x-vercel-cron header');
     return true; // Vercel automatically adds this header for cron jobs
   }
 
@@ -25,15 +37,33 @@ function verifyCronRequest(req: NextRequest): boolean {
   const expectedToken = process.env.CRON_SECRET;
   
   if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+    console.log('[CRON AUTH] ✅ Authenticated via Authorization header');
+    return true;
+  }
+
+  // Additional check: If request appears to be from Vercel Cron infrastructure
+  // Vercel Cron may not always send x-vercel-cron header, but we can detect it
+  // by checking for Vercel-specific headers or user-agent
+  const userAgent = req.headers.get('user-agent') || '';
+  const vercelId = req.headers.get('x-vercel-id');
+  const isVercelRequest = vercelId || userAgent.includes('vercel') || userAgent.includes('Vercel');
+  
+  if (isVercelRequest && !expectedToken) {
+    // If it looks like a Vercel request and no CRON_SECRET is set, allow it
+    console.log('[CRON AUTH] ✅ Authenticated via Vercel infrastructure detection (no CRON_SECRET)');
     return true;
   }
 
   // If CRON_SECRET is set but no valid auth, reject
   if (expectedToken) {
+    console.log('[CRON AUTH] ❌ CRON_SECRET is set but no valid auth provided');
+    console.log('[CRON AUTH] User-Agent:', userAgent);
+    console.log('[CRON AUTH] X-Vercel-Id:', vercelId);
     return false;
   }
 
   // If no CRON_SECRET is set, allow (for development)
+  console.log('[CRON AUTH] ⚠️ No CRON_SECRET set, allowing (development mode)');
   return true;
 }
 
@@ -49,12 +79,19 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (!verifyCronRequest(req)) {
       return NextResponse.json(
         { error: 'Unauthorized' },
-        { status: 401 }
+        { 
+          status: 401,
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        }
       );
     }
     
-    // Process queue (limit to 20 items per run)
-    const result = await processIntelligenceQueue(20);
+    // Process queue (limit to 10 items per run to avoid timeout)
+    const result = await processIntelligenceQueue(10);
     
     // Get updated stats
     const stats = await getQueueStats();
@@ -65,6 +102,12 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       failed: result.failed,
       errors: result.errors,
       stats
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
     });
   } catch (error: any) {
     console.error('Cron precompute intelligence error:', error);
@@ -73,7 +116,14 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         success: false,
         error: error.message 
       },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
     );
   }
 }

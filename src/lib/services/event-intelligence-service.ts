@@ -9,6 +9,28 @@ import { EventData, UserProfile, SponsorData } from '@/lib/types/core';
 import { LLMService } from './llm-service';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import crypto from 'crypto';
+import {
+  calculateOpportunityScore,
+  calculateUrgencyIndicators,
+  type OpportunityScore,
+  type UrgencyIndicators
+} from './opportunity-scoring-service';
+import {
+  generateEventRecommendations,
+  type Recommendation
+} from './recommendation-engine';
+import {
+  calculateInsightScore,
+  getPersonalizedWeights,
+  type InsightScore
+} from './insight-scoring-service';
+import {
+  detectCompetitorsInEvent,
+  compareUserActivity,
+  generateCompetitiveAlerts,
+  type CompetitiveContext,
+  type CompetitiveAlert
+} from './competitive-intelligence-service';
 
 export interface EventDiscussions {
   themes: string[];
@@ -49,6 +71,16 @@ export interface EventIntelligence {
   generatedAt: string;
   cached: boolean;
   expiresAt?: string;
+  // Phase 1B: Quantified Opportunity Scoring
+  opportunityScore?: OpportunityScore;
+  urgencyIndicators?: UrgencyIndicators;
+  // Phase 2A: Recommendations
+  recommendations?: Recommendation[];
+  // Phase 2B: Insight Scoring
+  insightScore?: InsightScore;
+  // Phase 2C: Competitive Intelligence
+  competitiveContext?: CompetitiveContext;
+  competitiveAlerts?: CompetitiveAlert[];
 }
 
 /**
@@ -121,7 +153,14 @@ export async function getEventIntelligence(
       confidence: cached.confidence || 0.7,
       generatedAt: cached.generated_at,
       cached: true,
-      expiresAt: cached.expires_at
+      expiresAt: cached.expires_at,
+      opportunityScore: cached.opportunity_score || undefined,
+      urgencyIndicators: cached.urgency_indicators || undefined,
+      recommendations: cached.recommendations || undefined,
+      insightScore: cached.insight_score || undefined,
+      // Phase 2C: Competitive Intelligence
+      competitiveContext: cached.competitive_context || undefined,
+      competitiveAlerts: cached.competitive_alerts || undefined
     };
   }
   
@@ -493,6 +532,128 @@ export async function generateEventIntelligence(
     (hasSponsors ? 0.2 : 0) +
     (hasLocation ? 0.2 : 0)
   );
+
+  // Phase 1B: Calculate opportunity scores and urgency indicators
+  console.log('[EventIntelligence] Calculating opportunity scores...');
+  let opportunityScore: OpportunityScore | undefined;
+  let urgencyIndicators: UrgencyIndicators | undefined;
+
+  try {
+    [opportunityScore, urgencyIndicators] = await Promise.all([
+      calculateOpportunityScore(event, userProfile).catch(err => {
+        console.error('[EventIntelligence] Failed to calculate opportunity score:', err);
+        return undefined;
+      }),
+      Promise.resolve(calculateUrgencyIndicators(event)) // Synchronous, no await needed but keeping consistent
+    ]);
+    console.log('[EventIntelligence] Opportunity scores calculated successfully');
+  } catch (error) {
+    console.error('[EventIntelligence] Error calculating opportunity scores:', error);
+    // Continue without opportunity scores if calculation fails
+  }
+
+  // Phase 2A: Generate recommendations
+  console.log('[EventIntelligence] Generating recommendations...');
+  let recommendations: Recommendation[] | undefined;
+  
+  // Build intelligence object for recommendations and scoring
+  const intelligence: EventIntelligence = {
+    eventId: event.id || event.source_url,
+    discussions,
+    sponsors,
+    location,
+    outreach,
+    confidence: Math.max(confidence, 0.5),
+    generatedAt: new Date().toISOString(),
+    cached: false,
+    opportunityScore,
+    urgencyIndicators
+  };
+  
+  try {
+    recommendations = await generateEventRecommendations(event, intelligence, userProfile).catch(err => {
+      console.error('[EventIntelligence] Failed to generate recommendations:', err);
+      return undefined;
+    });
+    console.log(`[EventIntelligence] Generated ${recommendations?.length || 0} recommendations`);
+  } catch (error) {
+    console.error('[EventIntelligence] Error generating recommendations:', error);
+    // Continue without recommendations if generation fails
+  }
+
+  // Phase 2B: Calculate insight score
+  console.log('[EventIntelligence] Calculating insight score...');
+  let insightScore: InsightScore | undefined;
+  
+  try {
+    const personalizedWeights = getPersonalizedWeights(userProfile);
+    insightScore = calculateInsightScore(
+      event,
+      { ...intelligence, recommendations },
+      userProfile,
+      personalizedWeights
+    );
+    console.log(`[EventIntelligence] Insight score calculated: ${(insightScore.overallScore * 100).toFixed(0)}%`);
+  } catch (error) {
+    console.error('[EventIntelligence] Error calculating insight score:', error);
+    // Continue without insight score if calculation fails
+  }
+
+  // Phase 2C: Add competitive intelligence
+  console.log('[EventIntelligence] Generating competitive intelligence...');
+  let competitiveContext: CompetitiveContext | undefined;
+  let competitiveAlerts: CompetitiveAlert[] = [];
+  
+  if (userProfile?.competitors && userProfile.competitors.length > 0 && userProfile.id) {
+    try {
+      // Detect competitors in this event
+      const competitorMatches = await detectCompetitorsInEvent(
+        event,
+        userProfile.competitors
+      );
+      
+      if (competitorMatches.length > 0) {
+        console.log(`[EventIntelligence] Found ${competitorMatches.length} competitor match(es) in event`);
+        
+        // Get full competitive context (compare user activity vs. competitors)
+        const timeWindow = {
+          from: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), // Last 90 days
+          to: new Date()
+        };
+        
+        competitiveContext = await compareUserActivity(
+          userProfile.id,
+          userProfile.competitors,
+          timeWindow
+        );
+        
+        // Add competitors present in this event
+        competitiveContext.competitorsPresent = competitorMatches;
+        
+        // Generate alerts
+        const fullIntelligence = {
+          ...intelligence,
+          recommendations,
+          insightScore
+        };
+        
+        competitiveAlerts = generateCompetitiveAlerts(
+          competitiveContext,
+          fullIntelligence,
+          event
+        );
+        
+        console.log(`[EventIntelligence] Generated ${competitiveAlerts.length} competitive alert(s)`);
+      } else {
+        console.log('[EventIntelligence] No competitors detected in this event');
+      }
+    } catch (error) {
+      console.error('[EventIntelligence] Error generating competitive intelligence:', error);
+      // Continue without competitive intelligence if generation fails
+    }
+  } else {
+    console.log('[EventIntelligence] No competitors in user profile, skipping competitive intelligence');
+  }
   
   return {
     eventId: event.id || event.source_url,
@@ -502,7 +663,13 @@ export async function generateEventIntelligence(
     outreach,
     confidence: Math.max(confidence, 0.5), // Minimum 0.5
     generatedAt: new Date().toISOString(),
-    cached: false
+    cached: false,
+    opportunityScore,
+    urgencyIndicators,
+    recommendations,
+    insightScore,
+    competitiveContext,
+    competitiveAlerts
   };
 }
 
@@ -551,7 +718,14 @@ export async function cacheEventIntelligence(
       outreach: intelligence.outreach,
       confidence: intelligence.confidence,
       generated_at: intelligence.generatedAt,
-      expires_at: expiresAt.toISOString()
+      expires_at: expiresAt.toISOString(),
+      opportunity_score: intelligence.opportunityScore || null,
+      urgency_indicators: intelligence.urgencyIndicators || null,
+      recommendations: intelligence.recommendations || null,
+      insight_score: intelligence.insightScore || null,
+      // Phase 2C: Competitive Intelligence
+      competitive_context: intelligence.competitiveContext || null,
+      competitive_alerts: intelligence.competitiveAlerts || null
     }, {
       onConflict: 'event_id,user_profile_hash'
     });

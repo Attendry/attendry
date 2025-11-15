@@ -31,6 +31,7 @@ import {
 import { withCorrelation, ensureCorrelation } from '@/lib/obs/corr';
 import { stageCounter, logSuppressedSamples, type Reason } from '@/lib/obs/triage-metrics';
 import { EventData, SearchConfig, SearchResultItem } from "@/lib/types/core";
+import { getCacheService, CACHE_CONFIGS } from "@/lib/cache";
 
 // ============================================================================
 // ENHANCED QUERY BUILDING
@@ -158,16 +159,15 @@ function buildLocalizedEventLexicon(country: string): string {
 // ============================================================================
 
 /**
- * In-memory cache for search results to improve performance and reduce API calls.
+ * Unified cache service for distributed caching (Redis + Supabase fallback)
  * 
- * Note: In production, this should be replaced with Redis or a database-backed
- * cache for better scalability and persistence across server restarts.
+ * This replaces the in-memory Map with a distributed cache that:
+ * - Uses Redis as primary cache (shared across all instances)
+ * - Falls back to Supabase database cache if Redis unavailable
+ * - Provides better scalability for multiple users
+ * - Persists across server restarts
  */
-const searchCache = new Map<string, { data: unknown; timestamp: number }>();
-// Expose cache globally for debug endpoints
-(global as any).searchCache = searchCache;
-const CACHE_DURATION = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
-const DB_CACHE_TTL_HOURS = 6;
+const cacheService = getCacheService();
 
 /**
  * Generates a unique cache key based on search parameters.
@@ -181,112 +181,43 @@ const DB_CACHE_TTL_HOURS = 6;
  */
 function getCacheKey(q: string, country: string, from?: string, to?: string): string {
   // Generate consistent cache key without timestamp to enable proper caching
-  return `${q}|${country}|${from || ''}|${to || ''}`;
+  // Normalize query to handle whitespace variations
+  const normalizedQuery = q.trim().replace(/\s+/g, ' ');
+  return `${normalizedQuery}|${country}|${from || ''}|${to || ''}`;
 }
 
 /**
- * Retrieves cached search results if they exist and are still valid.
+ * Retrieves cached search results using unified cache service.
  * 
  * @param key - Cache key to look up
  * @returns Cached data if valid, null otherwise
  */
-function getCachedResult(key: string) {
-  const cached = searchCache.get(key);
-  if (cached) {
-    const age = Date.now() - cached.timestamp;
-    if (age < CACHE_DURATION) {
-      console.log(JSON.stringify({ at: "cache", hit: true, key, age: Math.round(age / 1000) + 's' }));
-      return cached.data;
-    } else {
-      // Remove expired entry
-      searchCache.delete(key);
-      console.log(JSON.stringify({ at: "cache", expired: true, key, age: Math.round(age / 1000) + 's' }));
+async function getCachedResult(key: string): Promise<any> {
+  try {
+    const cached = await cacheService.get<EventSearchResponse>(key, CACHE_CONFIGS.SEARCH_RESULTS);
+    if (cached) {
+      console.log(JSON.stringify({ at: "cache", hit: true, key, source: "unified_cache" }));
+      return cached;
     }
+    return null;
+  } catch (error) {
+    console.error(JSON.stringify({ at: "cache", error: error instanceof Error ? error.message : 'unknown', key }));
+    return null;
   }
-  return null;
 }
 
 /**
- * Stores search results in cache with automatic cleanup to prevent memory leaks.
- * 
- * This function implements a simple LRU-style cleanup that removes expired
- * entries when the cache grows beyond 100 items.
+ * Stores search results in unified cache service.
  * 
  * @param key - Cache key to store under
  * @param data - Search results data to cache
  */
-function setCachedResult(key: string, data: unknown) {
-  // Clean up old entries to prevent memory leaks
-  if (searchCache.size > 100) {
-    const now = Date.now();
-    let cleaned = 0;
-    for (const [k, v] of searchCache.entries()) {
-      if (now - v.timestamp > CACHE_DURATION) {
-        searchCache.delete(k);
-        cleaned++;
-      }
-    }
-    if (cleaned > 0) {
-      console.log(JSON.stringify({ at: "cache", cleanup: true, cleaned, remaining: searchCache.size }));
-    }
-  }
-  
-  const timestamp = Date.now();
-  searchCache.set(key, { data, timestamp });
-  console.log(JSON.stringify({ at: "cache", stored: true, key, size: searchCache.size }));
-}
-
-// Durable cache helpers (Supabase)
-async function readSearchCacheDB(cacheKey: string) {
-  const correlationId = ensureCorrelation();
+async function setCachedResult(key: string, data: EventSearchResponse): Promise<void> {
   try {
-    const supabase = await supabaseServer();
-    const { data, error } = await supabase
-      .from("search_cache")
-      .select("payload, ttl_at")
-      .eq("cache_key", cacheKey)
-      .maybeSingle();
-    
-    if (error) {
-      console.log(JSON.stringify({ at: "cache_db", error: error.message, key: cacheKey }));
-      return null;
-    }
-    
-    if (!data) {
-      return null;
-    }
-    
-    const now = Date.now();
-    const ttlTime = new Date(data.ttl_at).getTime();
-    
-    if (ttlTime > now) {
-      const age = Math.round((now - (ttlTime - DB_CACHE_TTL_HOURS * 3600 * 1000)) / 1000);
-      console.log(JSON.stringify({ at: "cache_db", hit: true, key: cacheKey, age: age + 's' }));
-      return data.payload;
-    } else {
-      console.log(JSON.stringify({ at: "cache_db", expired: true, key: cacheKey }));
-      return null;
-    }
+    await cacheService.set(key, data, CACHE_CONFIGS.SEARCH_RESULTS);
+    console.log(JSON.stringify({ at: "cache", stored: true, key, source: "unified_cache" }));
   } catch (error) {
-    console.log(JSON.stringify({ at: "cache_db", exception: error instanceof Error ? error.message : 'unknown', key: cacheKey }));
-    return null;
-  }
-}
-async function writeSearchCacheDB(cacheKey: string, provider: string, payload: any) {
-  try {
-    const supabase = await supabaseServer();
-    const ttlAt = new Date(Date.now() + DB_CACHE_TTL_HOURS * 3600 * 1000).toISOString();
-    const { error } = await supabase
-      .from("search_cache")
-      .upsert({ cache_key: cacheKey, provider, payload, schema_version: 1, ttl_at: ttlAt }, { onConflict: "cache_key" });
-    
-    if (error) {
-      console.log(JSON.stringify({ at: "cache_db", write_error: error.message, key: cacheKey }));
-    } else {
-      console.log(JSON.stringify({ at: "cache_db", stored: true, key: cacheKey, ttl: DB_CACHE_TTL_HOURS + 'h' }));
-    }
-  } catch (error) {
-    console.log(JSON.stringify({ at: "cache_db", write_exception: error instanceof Error ? error.message : 'unknown', key: cacheKey }));
+    console.error(JSON.stringify({ at: "cache", write_error: error instanceof Error ? error.message : 'unknown', key }));
   }
 }
 
@@ -745,7 +676,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
 
     // Check cache first to avoid unnecessary API calls
     const cacheKey = getCacheKey(q, country, from, to);
-    const cachedResult = getCachedResult(cacheKey) || await readSearchCacheDB(cacheKey);
+    const cachedResult = await getCachedResult(cacheKey);
     if (cachedResult) {
       console.log(JSON.stringify({ correlationId, at: "search", cache: "hit", key: cacheKey }));
       stageCounter('cache', [], [], [{ key: 'cache_hit', count: 1, samples: [cacheKey] }]);
@@ -943,11 +874,11 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     items = filteredItems;
 
     // Prepare the final response
-    const result = { provider: "cse", items };
+    const result: EventSearchResponse = { provider: "cse", items };
     
-    // Cache the result for future requests
-    setCachedResult(cacheKey, result);
-    writeSearchCacheDB(cacheKey, "cse", result).catch(() => {});
+    // Cache the result for future requests using unified cache service
+    // This will cache in Redis (primary) and Supabase (fallback)
+    await setCachedResult(cacheKey, result);
     
     // Save to database for persistence and analytics
     // Note: We don't await this to avoid slowing down the response

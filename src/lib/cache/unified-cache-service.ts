@@ -39,9 +39,22 @@ export interface CacheStats {
 }
 
 /**
- * Unified cache service with Redis + Supabase fallback
+ * L1 In-memory cache entry
+ */
+interface L1CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+/**
+ * Unified cache service with L1 (in-memory), L2 (Redis), L3 (Database) multi-level caching
  */
 export class UnifiedCacheService {
+  // L1: In-memory cache (fastest, 5 min TTL)
+  private l1Cache = new Map<string, L1CacheEntry<any>>();
+  private l1MaxSize = 1000; // Max 1000 entries in memory
+  private l1TTL = 5 * 60 * 1000; // 5 minutes
+  
   private redis = getRedisClient();
   private stats: CacheStats = {
     hits: 0,
@@ -52,32 +65,76 @@ export class UnifiedCacheService {
   };
 
   /**
-   * Get cached data
+   * Clean up expired L1 cache entries
+   */
+  private cleanupL1Cache(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.l1Cache.entries()) {
+      if (entry.expiresAt < now) {
+        this.l1Cache.delete(key);
+      }
+    }
+    
+    // If still over limit, remove oldest entries (LRU-like)
+    if (this.l1Cache.size > this.l1MaxSize) {
+      const entries = Array.from(this.l1Cache.entries());
+      entries.sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+      const toRemove = entries.slice(0, this.l1Cache.size - this.l1MaxSize);
+      for (const [key] of toRemove) {
+        this.l1Cache.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Get cached data with multi-level caching (L1 → L2 → L3)
    */
   async get<T>(key: string, config: CacheConfig): Promise<T | null> {
     this.stats.totalRequests++;
+    this.cleanupL1Cache(); // Clean expired entries
 
     try {
-      // Try Redis first
       const redisKey = this.buildKey(key, config.prefix);
-      const redisData = await this.redis.get(redisKey);
       
-      if (redisData) {
+      // L1: Try in-memory cache first (fastest)
+      const l1Entry = this.l1Cache.get(redisKey);
+      if (l1Entry && l1Entry.expiresAt > Date.now()) {
         this.stats.hits++;
-        console.log(`[CACHE] Redis hit for key: ${redisKey}`);
-        return JSON.parse(redisData);
+        console.log(`[CACHE] L1 (memory) hit for key: ${redisKey}`);
+        return l1Entry.data as T;
       }
 
-      // Fallback to database cache if enabled
+      // L2: Try Redis second
+      const redisData = await this.redis.get(redisKey);
+      if (redisData) {
+        this.stats.hits++;
+        const parsedData = JSON.parse(redisData);
+        
+        // Promote to L1
+        this.l1Cache.set(redisKey, {
+          data: parsedData,
+          expiresAt: Date.now() + this.l1TTL
+        });
+        
+        console.log(`[CACHE] L2 (Redis) hit for key: ${redisKey}`);
+        return parsedData as T;
+      }
+
+      // L3: Fallback to database cache if enabled
       if (config.fallbackToDb) {
         const dbData = await this.getFromDatabase(redisKey);
         if (dbData) {
           this.stats.hits++;
           this.stats.fallbacks++;
-          console.log(`[CACHE] Database fallback hit for key: ${redisKey}`);
+          console.log(`[CACHE] L3 (Database) fallback hit for key: ${redisKey}`);
           
-          // Try to restore to Redis
+          // Promote to L2 (Redis) and L1 (memory)
           await this.redis.set(redisKey, JSON.stringify(dbData), config.ttl);
+          this.l1Cache.set(redisKey, {
+            data: dbData,
+            expiresAt: Date.now() + this.l1TTL
+          });
+          
           return dbData as T;
         }
       }
@@ -93,23 +150,29 @@ export class UnifiedCacheService {
   }
 
   /**
-   * Set cached data
+   * Set cached data in all levels (L1, L2, L3)
    */
   async set<T>(key: string, data: T, config: CacheConfig): Promise<boolean> {
     try {
       const redisKey = this.buildKey(key, config.prefix);
       const serializedData = JSON.stringify(data);
       
-      // Set in Redis
+      // L1: Set in memory cache (5 min TTL)
+      this.l1Cache.set(redisKey, {
+        data,
+        expiresAt: Date.now() + this.l1TTL
+      });
+      
+      // L2: Set in Redis (config TTL)
       const redisSuccess = await this.redis.set(redisKey, serializedData, config.ttl);
       
-      // Also set in database cache if enabled
+      // L3: Also set in database cache if enabled
       if (config.fallbackToDb) {
         await this.setInDatabase(redisKey, data, config.ttl);
       }
 
       if (redisSuccess) {
-        console.log(`[CACHE] Set key: ${redisKey} (TTL: ${config.ttl}s)`);
+        console.log(`[CACHE] Set key: ${redisKey} in L1/L2/L3 (TTL: ${config.ttl}s)`);
         return true;
       }
 
@@ -122,20 +185,23 @@ export class UnifiedCacheService {
   }
 
   /**
-   * Delete cached data
+   * Delete cached data from all levels (L1, L2, L3)
    */
   async delete(key: string, prefix: string): Promise<boolean> {
     try {
       const redisKey = this.buildKey(key, prefix);
       
-      // Delete from Redis
+      // L1: Delete from memory cache
+      this.l1Cache.delete(redisKey);
+      
+      // L2: Delete from Redis
       const redisSuccess = await this.redis.del(redisKey);
       
-      // Delete from database cache
+      // L3: Delete from database cache
       await this.deleteFromDatabase(redisKey);
       
       if (redisSuccess) {
-        console.log(`[CACHE] Deleted key: ${redisKey}`);
+        console.log(`[CACHE] Deleted key: ${redisKey} from L1/L2/L3`);
         return true;
       }
 

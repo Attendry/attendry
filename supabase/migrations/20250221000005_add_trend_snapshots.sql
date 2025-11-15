@@ -75,3 +75,5 @@ COMMENT ON COLUMN trend_snapshots.topic_frequencies IS 'JSONB object: {topic_id:
 COMMENT ON COLUMN trend_snapshots.topic_growth_rates IS 'JSONB object: {topic_id: growth_percentage} compared to previous period';
 COMMENT ON COLUMN trend_snapshots.sponsor_tiers IS 'JSONB object: {tier: count} for sponsor tier distribution';
 
+
+

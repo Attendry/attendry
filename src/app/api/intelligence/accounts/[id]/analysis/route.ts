@@ -9,6 +9,8 @@ import { supabaseServer } from '@/lib/supabase-server';
 import { CompanySearchService } from '@/lib/services/company-search-service';
 import { CompanyIntelligenceCache } from '@/lib/services/company-intelligence-cache';
 import { CompanyIntelligenceQueue } from '@/lib/services/company-intelligence-queue';
+import { CompanyIntelligenceAI } from '@/lib/services/company-intelligence-ai-service';
+import { UserProfile } from '@/lib/types/core';
 import { z } from 'zod';
 
 const AnalysisRequestSchema = z.object({
@@ -57,6 +59,31 @@ export async function POST(
       return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
 
+    // Get user profile for personalization (Phase 2B)
+    let userProfile: UserProfile | undefined;
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (profile) {
+        userProfile = {
+          id: profile.id,
+          full_name: profile.full_name,
+          company: profile.company,
+          competitors: profile.competitors || [],
+          icp_terms: profile.icp_terms || [],
+          industry_terms: profile.industry_terms || [],
+          use_in_basic_search: profile.use_in_basic_search ?? true
+        };
+      }
+    } catch (error) {
+      console.warn('[API] Failed to load user profile for personalization:', error);
+      // Continue without personalization
+    }
+
     // Check cache first (unless force refresh)
     if (!validatedData.forceRefresh) {
       const cacheKey = {
@@ -90,6 +117,22 @@ export async function POST(
       maxResults: validatedData.maxResults
     });
 
+    // Phase 2B: Calculate insight score for company intelligence
+    let insightScore = undefined;
+    if (analysisResult.results?.aiAnalysis) {
+      try {
+        insightScore = CompanyIntelligenceAI.calculateCompanyInsightScore(
+          analysisResult.results.aiAnalysis,
+          userProfile
+        );
+        // Add insight score to the AI analysis result
+        analysisResult.results.aiAnalysis.insightScore = insightScore;
+      } catch (error) {
+        console.error('[API] Error calculating insight score:', error);
+        // Continue without insight score
+      }
+    }
+
     // Cache the result
     await CompanyIntelligenceCache.setCompanyData(
       {
@@ -106,8 +149,8 @@ export async function POST(
       }
     );
 
-    // Store intelligence data in database
-    await storeIntelligenceData(accountId, validatedData.searchType, analysisResult);
+    // Store intelligence data in database (including insight score)
+    await storeIntelligenceData(accountId, validatedData.searchType, analysisResult, insightScore);
 
     return NextResponse.json({
       data: analysisResult,
@@ -115,7 +158,9 @@ export async function POST(
       metadata: {
         processingTime: analysisResult.metadata.searchTime,
         sourcesAnalyzed: analysisResult.metadata.sourcesFound,
-        confidence: analysisResult.results.confidence
+        confidence: analysisResult.results.confidence,
+        // Phase 2B: Include insight score in response
+        insightScore: insightScore || undefined
       }
     });
 
@@ -222,11 +267,13 @@ export async function GET(
 
 /**
  * Store intelligence data in database
+ * Phase 2B: Includes insight score in metadata
  */
 async function storeIntelligenceData(
   accountId: string,
   dataType: string,
-  analysisResult: any
+  analysisResult: any,
+  insightScore?: any
 ): Promise<void> {
   try {
     const supabase = await supabaseServer();
@@ -244,7 +291,9 @@ async function storeIntelligenceData(
         metadata: {
           sourcesAnalyzed: analysisResult.metadata.sourcesFound,
           processingTime: analysisResult.metadata.searchTime,
-          searchType: dataType
+          searchType: dataType,
+          // Phase 2B: Include insight score in metadata
+          insightScore: insightScore || null
         }
       });
 

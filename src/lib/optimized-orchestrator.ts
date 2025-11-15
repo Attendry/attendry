@@ -1910,7 +1910,18 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   
   console.log(`[optimized-orchestrator] Extracting ${limitedPrioritized.length}/${prioritized.length} URLs (limited for performance)`);
   
-  // Use parallel processing for event extraction, but throttle to respect Firecrawl limits
+  // Optimized concurrency: Use higher concurrency for small batches, conservative for large batches
+  // Calculation: For small batches (≤4 URLs), use 12 concurrent (Firecrawl supports 50)
+  // For larger batches, use adaptive limit: min(12, Math.ceil(50 / (avg_calls_per_url * batch_size)))
+  // With 2 URLs × 12 concurrent × 3 calls (main + 2 sub) = 72 max calls, but Firecrawl can handle bursts
+  // For safety, we use 12 for small batches (≤4) and scale down for larger batches
+  const adaptiveConcurrency = limitedPrioritized.length <= 4 
+    ? 12  // Small batches: use full concurrency
+    : Math.min(ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions, Math.max(2, Math.floor(50 / (3 * limitedPrioritized.length))));
+  
+  console.log(`[optimized-orchestrator] Using adaptive concurrency: ${adaptiveConcurrency} for ${limitedPrioritized.length} URLs`);
+  
+  // Use parallel processing for event extraction with optimized concurrency
   const parallelProcessor = getParallelProcessor();
   const extractionTasks = limitedPrioritized.map((item, index) =>
     createParallelTask(
@@ -2002,9 +2013,8 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
       }, 'firecrawl');
     },
     {
-      // BACKPRESSURE: Reduce concurrency to 2 to prevent exceeding Firecrawl capacity
-      // With 8 extractions × 2 concurrent × 3 calls (main + 2 sub) = 48 max Firecrawl calls (within 50 limit)
-      maxConcurrency: Math.min(ORCHESTRATOR_CONFIG.parallel.maxConcurrentExtractions, 2),
+      // Use adaptive concurrency calculated above
+      maxConcurrency: adaptiveConcurrency,
       enableEarlyTermination: false,
       qualityThreshold: ORCHESTRATOR_CONFIG.thresholds.parseQuality,
       minResults: 1
