@@ -884,7 +884,7 @@ async function extractBatch(urls: string[], key: string, locale: string, trace: 
     ? ` Focus on ${context.industry} industry events. Key terms: ${context.industryTerms.slice(0, 5).join(', ')}.`
     : '';
   
-  const enhancedPrompt = `You are an expert event data extractor. Extract ONLY information explicitly stated on the page.
+  const enhancedPrompt = `You are an expert event data extractor. Extract ONLY information explicitly stated on the page or in linked PDF documents.
 
 CRITICAL RULES:
 1. If information is NOT found, use null (not empty string, not "Unknown", not guesses)
@@ -892,9 +892,11 @@ CRITICAL RULES:
 3. Normalize dates to YYYY-MM-DD format (handle German: 25.09.2025, European: 25/09/2025, English: September 25, 2025)
 4. Normalize topics to the provided taxonomy (see below)
 5. Extract speakers ONLY if explicitly listed as speakers/presenters/keynote speakers
+   IMPORTANT: Speakers are often listed in PDF documents (programs, brochures, speaker lists) linked from the main page. 
+   Extract ALL speakers from PDFs if available - they typically contain the most complete speaker information.
 6. Extract cities ONLY if they are actual city names (not topics like "Praxisnah" or "Whistleblowing")
 
-Extract event details for each URL provided. Return structured JSON matching the schema exactly. Include evidence array for all extracted fields.
+Extract event details for each URL provided, including content from linked PDF documents. Return structured JSON matching the schema exactly. Include evidence array for all extracted fields.
 
 Locale: ${locale || hostCountry || "DE"}${industryContext}`;
 
@@ -1172,6 +1174,12 @@ EXTRACT THESE ELEMENTS:
 - speech_title: Title of their presentation/speech
 - session: Session name or track
 - bio: Brief professional summary (1-2 sentences)
+
+CRITICAL: Speakers may be listed in PDF documents (programs, brochures, speaker lists) linked from the main page. 
+- If the page links to a PDF (e.g., "program.pdf", "speakers.pdf", "event-brochure.pdf"), extract speakers from that PDF
+- Look for speaker sections in PDFs with headings like "Speakers", "Faculty", "Presenters", "Keynote Speakers"
+- Extract ALL speakers listed, including their full names, titles, organizations, and affiliations
+- PDFs often contain the most complete and accurate speaker information
 
 🏢 ORGANIZATIONS (categorize by role):
 - sponsors: Financial supporters with sponsorship level (Platinum, Gold, Silver, Bronze, etc.)
