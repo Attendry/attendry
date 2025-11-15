@@ -580,16 +580,25 @@ export class SearchService {
     items: SearchItem[];
     cached: boolean;
   }> {
-    // Step 1: Check database first to avoid duplicate API calls
-    const dbResult = await this.checkDatabaseForEvents({
-      q: params.q,
-      country: params.country,
-      from: params.from,
-      to: params.to
-    });
+    // OPTIMIZATION: Check database cache and prepare external search in parallel
+    // This reduces total wait time by starting both operations simultaneously
+    const [dbResult, searchConfig, userProfile] = await Promise.all([
+      this.checkDatabaseForEvents({
+        q: params.q,
+        country: params.country,
+        from: params.from,
+        to: params.to
+      }),
+      this.loadSearchConfig(),
+      this.loadUserProfile().catch(error => {
+        console.warn('Failed to load user profile, continuing without user-specific enhancements:', error.message);
+        return null;
+      })
+    ]);
 
+    // If database has results, return immediately (fastest path)
     if (dbResult.found && dbResult.events.length > 0) {
-      console.log(JSON.stringify({ at: "search_service", provider: "database", found: dbResult.count, cached: true }));
+      console.log(JSON.stringify({ at: "search_service", provider: "database", found: dbResult.count, cached: true, parallel: true }));
       
       // Convert database events to SearchItem format
       const items: SearchItem[] = dbResult.events.map(event => ({
@@ -604,21 +613,14 @@ export class SearchService {
         cached: true
       };
     } else {
-      console.log(JSON.stringify({ at: "search_service", provider: "database", found: false, count: dbResult.count, proceeding_to_search: true }));
+      console.log(JSON.stringify({ at: "search_service", provider: "database", found: false, count: dbResult.count, proceeding_to_search: true, parallel: true }));
     }
 
-    // Step 2: Try Firecrawl Search with tier-based approach
+    // Step 2: Try Firecrawl Search with tier-based approach (config already loaded in parallel)
     try {
-      console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "tier_based" }));
+      console.log(JSON.stringify({ at: "search_service", provider: "firecrawl", attempt: "tier_based", parallel: true }));
       
-      // Load user configuration to enhance search
-      const searchConfig = await this.loadSearchConfig();
-      const userProfile = await this.loadUserProfile().catch(error => {
-        console.warn('Failed to load user profile, continuing without user-specific enhancements:', error.message);
-        return null;
-      });
-      
-      // Build enhanced query using user configuration
+      // Build enhanced query using user configuration (already loaded in parallel above)
       const enhancedQuery = this.buildEnhancedQuery(params.q, searchConfig, userProfile, params.country);
       
       // Normalize effectiveQ using unified query builder

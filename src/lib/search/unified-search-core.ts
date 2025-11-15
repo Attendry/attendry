@@ -662,14 +662,36 @@ function withTimeout<T>(
 }
 
 /**
+ * Generate unified cache key (provider-agnostic)
+ * This allows us to check cache once before trying any provider
+ * Uses same format as generateSearchCacheKey but without provider
+ */
+function generateUnifiedCacheKey(params: UnifiedSearchParams): string {
+  const keyData = {
+    q: params.q,
+    country: params.country,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+    limit: params.limit,
+    scrapeContent: params.scrapeContent,
+    // Note: provider is NOT included - we want provider-agnostic cache
+  };
+  // Use same format as generateSearchCacheKey for consistency
+  return `search:unified:${createHash('md5').update(JSON.stringify(keyData)).digest('hex')}`;
+}
+
+/**
  * Main unified search function
  * 
- * Tries all providers in parallel with smart timeouts:
- * - Firecrawl: 8s timeout (fast fail)
- * - CSE: 5s timeout
- * - Database: 2s timeout
+ * Optimized flow:
+ * 1. Check unified cache first (provider-agnostic)
+ * 2. If cache miss, try all providers in parallel with smart timeouts:
+ *    - Firecrawl: 8s timeout (fast fail)
+ *    - CSE: 5s timeout
+ *    - Database: 2s timeout
+ * 3. Cache result for future requests
  * 
- * Returns results from the first successful provider
+ * Returns results from cache or first successful provider
  * Total max wait time: 8s instead of 60s (sequential)
  */
 export async function unifiedSearch(params: UnifiedSearchParams): Promise<UnifiedSearchResponse> {
@@ -680,7 +702,27 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
   let cacheHits = 0;
   let rateLimitHits = 0;
 
-  // Try all providers in parallel with smart timeouts
+  // Step 1: Check unified cache first (before trying any provider)
+  // This prevents duplicate API calls when cache exists
+  if (params.useCache !== false) {
+    const unifiedCacheKey = generateUnifiedCacheKey(params);
+    const cachedResult = await searchCache.get(unifiedCacheKey);
+    
+    if (cachedResult) {
+      console.log('[unified-search] Cache hit - returning cached result without trying providers');
+      return {
+        ...cachedResult,
+        metrics: {
+          ...cachedResult.metrics,
+          totalResponseTime: Date.now() - startTime,
+          cacheHit: true
+        }
+      };
+    }
+    console.log('[unified-search] Cache miss - proceeding with provider attempts');
+  }
+
+  // Step 2: Try all providers in parallel with smart timeouts
   console.log('[unified-search] Trying all providers in parallel with timeouts...');
   
   const [firecrawlResult, cseResult, databaseResult] = await Promise.allSettled([
@@ -771,7 +813,7 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
   totalItems = selectedResult.items.length;
   console.log('[unified-search] Selected provider:', selectedResult.provider, 'with', totalItems, 'items');
 
-  return {
+  const result: UnifiedSearchResponse = {
     items: selectedResult.items,
     providers,
     totalItems,
@@ -782,6 +824,16 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
       rateLimitHits
     }
   };
+
+  // Step 3: Cache the result for future requests (provider-agnostic cache)
+  if (params.useCache !== false && selectedResult.items.length > 0) {
+    const unifiedCacheKey = generateUnifiedCacheKey(params);
+    await searchCache.set(unifiedCacheKey, result, CACHE_DURATION, []).catch(err => {
+      console.warn('[unified-search] Failed to cache result:', err);
+    });
+  }
+
+  return result;
 }
 
 /**
