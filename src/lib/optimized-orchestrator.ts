@@ -1998,8 +1998,15 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         
         const cachedResult = await cacheService.get<ExtractionPayload>(cacheKey, CACHE_CONFIGS.EXTRACTED_EVENTS);
         if (cachedResult) {
-          console.log(`[optimized-orchestrator] Using cached extraction result for URL: ${url.substring(0, 50)}...`);
-          return cachedResult;
+          // CACHE FIX: If cached result has no speakers, re-extract to get speakers from PDFs
+          // This ensures we get complete speaker data even if cache is stale
+          if (!cachedResult.speakers || cachedResult.speakers.length === 0) {
+            console.log(`[optimized-orchestrator] Cache has no speakers, re-extracting to discover PDFs: ${url.substring(0, 50)}...`);
+            // Continue with extraction instead of using cache
+          } else {
+            console.log(`[optimized-orchestrator] Using cached extraction result for URL: ${url.substring(0, 50)}... (${cachedResult.speakers.length} speakers)`);
+            return cachedResult;
+          }
         }
 
         // Add timeout for individual deep crawl (30 seconds max)
