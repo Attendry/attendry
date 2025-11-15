@@ -15,7 +15,7 @@
  */
 
 import { createHash } from "crypto";
-import { supabaseServer } from "./supabase-server";
+import { supabaseAdmin } from "./supabase-admin";
 
 // Cache configuration
 export const CACHE_CONFIG = {
@@ -435,12 +435,12 @@ class L3DatabaseCache<T> {
     this.analytics.totalRequests++;
 
     try {
-      const supabase = await supabaseServer();
+      const supabase = supabaseAdmin();
       const { data, error } = await supabase
         .from('cache_entries')
         .select('*')
         .eq('cache_key', key)
-        .eq('expires_at', '>', new Date().toISOString())
+        .gt('expires_at', new Date().toISOString())
         .single();
 
       if (error || !data) {
@@ -464,7 +464,7 @@ class L3DatabaseCache<T> {
 
   async set(key: string, data: T, ttl: number = CACHE_CONFIG.tiers.l3.ttl, dependencies: string[] = []): Promise<void> {
     try {
-      const supabase = await supabaseServer();
+      const supabase = supabaseAdmin();
       const expiresAt = new Date(Date.now() + ttl);
       
       await supabase
@@ -483,7 +483,7 @@ class L3DatabaseCache<T> {
 
   async delete(key: string): Promise<boolean> {
     try {
-      const supabase = await supabaseServer();
+      const supabase = supabaseAdmin();
       const { error } = await supabase
         .from('cache_entries')
         .delete()
@@ -498,7 +498,7 @@ class L3DatabaseCache<T> {
 
   async clear(): Promise<void> {
     try {
-      const supabase = await supabaseServer();
+      const supabase = supabaseAdmin();
       await supabase
         .from('cache_entries')
         .delete()
