@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import { EnhancedSavedProfileCard } from "@/components/EnhancedSavedProfileCard";
+import { toast } from "sonner";
 
 type WatchItem = { 
   id: string; 
@@ -96,8 +97,13 @@ export default function Watchlist() {
       }
       
       await loadSavedProfiles();
+      toast.success("Status updated", {
+        description: "Outreach status has been updated"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to update status");
+      toast.error("Failed to update status", {
+        description: e.message || "An error occurred. Please try again."
+      });
     }
   }
 
@@ -115,8 +121,13 @@ export default function Watchlist() {
       }
       
       await loadSavedProfiles();
+      toast.success("Notes updated", {
+        description: "Profile notes have been saved"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to update notes");
+      toast.error("Failed to update notes", {
+        description: e.message || "An error occurred. Please try again."
+      });
     }
   }
 
@@ -134,15 +145,22 @@ export default function Watchlist() {
       }
       
       await loadSavedProfiles();
+      toast.success("Profile deleted", {
+        description: "Speaker profile has been removed"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to delete profile");
+      toast.error("Failed to delete profile", {
+        description: e.message || "An error occurred. Please try again."
+      });
     }
   }
 
   function openEditModal(profile: SavedSpeakerProfile) {
-    // For now, we'll use a simple alert. In a full implementation,
+    // For now, show a toast. In a full implementation,
     // this would open a modal with detailed editing capabilities
-    alert(`Edit profile for ${profile.speaker_data.name}. This feature will be enhanced in a future update.`);
+    toast.info("Edit feature coming soon", {
+      description: `Edit functionality for ${profile.speaker_data.name} will be available in a future update.`
+    });
   }
 
   useEffect(() => {

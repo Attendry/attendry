@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import { CheckCircle2, XCircle, Loader2, MessageSquare } from 'lucide-react';
 import { CompetitorMatch } from '@/lib/services/competitive-intelligence-service';
+import { toast } from 'sonner';
 
 interface CompetitorMatchFeedbackProps {
   match: CompetitorMatch;
@@ -65,12 +66,16 @@ export function CompetitorMatchFeedback({
       } else {
         const error = await response.json();
         console.error('Failed to submit feedback:', error);
-        alert('Failed to submit feedback. Please try again.');
+        toast.error("Failed to submit feedback", {
+          description: "Please try again."
+        });
         setIsCorrect(null);
       }
     } catch (error) {
       console.error('Error submitting feedback:', error);
-      alert('Error submitting feedback. Please try again.');
+      toast.error("Error submitting feedback", {
+        description: "An error occurred. Please try again."
+      });
       setIsCorrect(null);
     } finally {
       setSubmitting(false);

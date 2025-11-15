@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 
 interface CustomProfileCreatorProps {
   onProfileCreate: (profile: any) => void;
@@ -72,7 +73,9 @@ export function CustomProfileCreator({
 
   const handleCreate = () => {
     if (!profileName.trim() || !industry || industryTerms.length === 0) {
-      alert('Please fill in profile name, industry, and at least one industry term');
+      toast.warning("Missing information", {
+        description: "Please fill in profile name, industry, and at least one industry term"
+      });
       return;
     }
 

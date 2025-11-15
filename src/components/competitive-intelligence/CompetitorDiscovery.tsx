@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { Search, CheckCircle2, XCircle, Loader2, Users, TrendingUp } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface CompetitorSuggestion {
   companyName: string;
@@ -76,11 +77,19 @@ export function CompetitorDiscovery() {
 
       if (approved) {
         // Show success message
-        alert(`${companyName} has been added to your competitors list`);
+        toast.success("Competitor added", {
+          description: `${companyName} has been added to your competitors list`
+        });
+      } else {
+        toast.success("Suggestion dismissed", {
+          description: `${companyName} has been removed from suggestions`
+        });
       }
     } catch (err: any) {
       console.error('Error approving suggestion:', err);
-      alert(`Failed to ${approved ? 'add' : 'reject'} competitor: ${err.message}`);
+      toast.error(`Failed to ${approved ? 'add' : 'reject'} competitor`, {
+        description: err.message || "An error occurred. Please try again."
+      });
     } finally {
       setProcessing(prev => {
         const next = new Set(prev);

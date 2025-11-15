@@ -49,18 +49,18 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
       icon: Calendar,
       children: [
         { href: '/events', label: 'All Events', icon: Calendar },
-        { href: '/events-board', label: 'Events Board', icon: LayoutGrid },
-        { href: '/watchlist', label: 'My Watchlist', icon: Bookmark },
-        { href: '/calendar', label: 'Relevant Events', icon: CalendarDays }
+        { href: '/events-board', label: 'Events Board', icon: LayoutGrid }
       ]
     },
     { href: '/search', label: 'Search', icon: Search },
     { 
       href: '/recommendations', 
-      label: 'Market Intelligence', 
+      label: 'Intelligence', 
       icon: Brain,
       children: [
         { href: '/recommendations', label: 'Event Recommendations', icon: Brain },
+        { href: '/calendar', label: 'Relevant Events', icon: CalendarDays },
+        { href: '/watchlist', label: 'My Watchlist', icon: Bookmark },
         { href: '/trending', label: 'Trend Insights', icon: TrendingUp }
       ]
     },

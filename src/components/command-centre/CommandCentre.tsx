@@ -45,6 +45,7 @@ import { EventRec } from '@/context/SearchResultsContext';
 import { useSpeakerEnhancement } from '@/lib/hooks/useSpeakerEnhancement';
 import { SpeakerData } from '@/lib/types/core';
 import { EventIntelligenceQuickView } from '@/components/EventIntelligenceQuickView';
+import { toast } from 'sonner';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',
@@ -791,7 +792,9 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const handleSaveSpeaker = useCallback(
     async (event: EventRec, speaker: EventSpeaker, key: string) => {
       if (!speaker?.name) {
-        alert('Unable to save speaker without a name.');
+        toast.warning("Cannot save speaker", {
+          description: "Speaker name is required to save a profile"
+        });
         return;
       }
       const signature = getSpeakerSignature(speaker);
@@ -830,9 +833,14 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
         if (onSpeakerSaved) {
           await Promise.resolve(onSpeakerSaved());
         }
+        toast.success("Speaker saved", {
+          description: `${speaker.name} has been saved to your profiles`
+        });
       } catch (err) {
         setSpeakerStatus((prev) => ({ ...prev, [key]: 'error' }));
-        alert(err instanceof Error ? err.message : 'Failed to save speaker');
+        toast.error("Failed to save speaker", {
+          description: err instanceof Error ? err.message : 'An error occurred. Please try again.'
+        });
       } finally {
         setSavingSpeakerId(null);
       }
@@ -872,10 +880,17 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
         const data = await response.json();
         if (!response.ok) {
           if (response.status === 401) {
-            alert('Please log in to add events to your board.');
-            if (typeof window !== 'undefined') {
-              window.location.href = '/login';
-            }
+            toast.error("Authentication required", {
+              description: "Please log in to add events to your board.",
+              action: {
+                label: "Log in",
+                onClick: () => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = '/login';
+                  }
+                }
+              }
+            });
             return;
           }
           throw new Error(data.error || 'Failed to add to board');
@@ -897,9 +912,14 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
         }
 
         setBoardStatus((prev) => ({ ...prev, [eventKey]: 'saved' }));
+        toast.success("Event added to board", {
+          description: "You can manage it from your Events Board"
+        });
       } catch (err) {
         setBoardStatus((prev) => ({ ...prev, [eventKey]: undefined }));
-        alert(err instanceof Error ? err.message : 'Failed to add event to board');
+        toast.error("Failed to add to board", {
+          description: err instanceof Error ? err.message : 'An error occurred. Please try again.'
+        });
       }
     },
     [boardStatus],
@@ -1478,8 +1498,13 @@ function TargetedSpeakersPanel({
     try {
       setUpdatingId(profileId);
       await onStatusChange(profileId, status);
+      toast.success("Status updated", {
+        description: `Outreach status changed to ${STATUS_LABELS[status]}`
+      });
     } catch (err) {
-      alert((err as Error).message || 'Failed to update status');
+      toast.error("Failed to update status", {
+        description: (err as Error).message || 'An error occurred. Please try again.'
+      });
     } finally {
       setUpdatingId(null);
     }
@@ -1816,8 +1841,13 @@ function AccountIntelligencePanel({
       setSubmitting(true);
       await onAddAccount(payload);
       setShowModal(false);
+      toast.success("Account added", {
+        description: `${payload.company_name} has been added to your watchlist`
+      });
     } catch (err) {
-      alert((err as Error).message || 'Failed to add account');
+      toast.error("Failed to add account", {
+        description: (err as Error).message || 'An error occurred. Please try again.'
+      });
     } finally {
       setSubmitting(false);
     }

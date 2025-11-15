@@ -134,8 +134,13 @@ function EventsBoardPageContent() {
         });
         if (!response.ok) throw new Error("Failed to update");
         await loadBoardItems();
+        toast.success("Event updated", {
+          description: "Notes have been saved"
+        });
       } catch (err: any) {
-        alert(err.message || "Failed to update");
+        toast.error("Failed to update", {
+          description: err.message || "An error occurred. Please try again."
+        });
       }
     }
   };
@@ -149,8 +154,13 @@ function EventsBoardPageContent() {
       });
       if (!response.ok) throw new Error("Failed to remove");
       await loadBoardItems();
+      toast.success("Event removed", {
+        description: "Event has been removed from your board"
+      });
     } catch (err: any) {
-      alert(err.message || "Failed to remove");
+      toast.error("Failed to remove", {
+        description: err.message || "An error occurred. Please try again."
+      });
     }
   };
 
@@ -163,8 +173,13 @@ function EventsBoardPageContent() {
       });
       if (!response.ok) throw new Error("Failed to update status");
       await loadBoardItems();
+      toast.success("Status updated", {
+        description: "Event status has been changed"
+      });
     } catch (err: any) {
-      alert(err.message || "Failed to update status");
+      toast.error("Failed to update status", {
+        description: err.message || "An error occurred. Please try again."
+      });
     }
   };
 

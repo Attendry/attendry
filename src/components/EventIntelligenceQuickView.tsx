@@ -26,6 +26,7 @@ import { EventData } from '@/lib/types/core';
 import { Recommendation } from '@/lib/services/recommendation-engine';
 import { InsightScore } from '@/lib/services/insight-scoring-service';
 import { CompetitiveContext, CompetitiveAlert } from '@/lib/services/competitive-intelligence-service';
+import { toast } from 'sonner';
 
 interface EventIntelligenceQuickViewProps {
   event: EventData;
@@ -217,11 +218,15 @@ export function EventIntelligenceQuickView({
                   } else {
                     const error = await response.json();
                     console.error('[EventIntelligenceQuickView] Failed to generate intelligence:', error);
-                    alert(`Failed to generate intelligence: ${error.error || 'Unknown error'}`);
+                    toast.error("Failed to generate intelligence", {
+                      description: error.error || 'An error occurred. Please try again.'
+                    });
                   }
                 } catch (error: any) {
                   console.error('Error generating intelligence:', error);
-                  alert(`Error generating intelligence: ${error.message || 'Unknown error'}`);
+                  toast.error("Error generating intelligence", {
+                    description: error.message || 'An error occurred. Please try again.'
+                  });
                 } finally {
                   setGenerating(false);
                 }
@@ -263,7 +268,9 @@ export function EventIntelligenceQuickView({
                     window.location.href = `/events/${encodeURIComponent(eventId)}`;
                   } else {
                     console.error('[EventIntelligenceQuickView] No event ID available for navigation');
-                    alert('Unable to view full intelligence: event ID not available');
+                    toast.error("Unable to view intelligence", {
+                      description: "Event ID not available. Please add this event to your board first."
+                    });
                   }
                 }
               }}
@@ -452,8 +459,11 @@ export function EventIntelligenceQuickView({
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          // Show how to execute in a modal or expand
-                          alert(rec.how);
+                          // Show how to execute in a toast
+                          toast.info("How to execute", {
+                            description: rec.how,
+                            duration: 10000
+                          });
                         }}
                         className="mt-1 text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline"
                       >
@@ -523,17 +533,19 @@ export function EventIntelligenceQuickView({
               
               if (onViewFull) {
                 onViewFull();
-              } else {
-                // Fallback: navigate to event detail page
-                const eventId = event.id || event.source_url;
-                if (eventId) {
-                  console.log('[EventIntelligenceQuickView] Navigating to event detail:', eventId);
-                  window.location.href = `/events/${encodeURIComponent(eventId)}`;
                 } else {
-                  console.error('[EventIntelligenceQuickView] No event ID available for navigation');
-                  alert('Unable to view full intelligence: event ID not available');
+                  // Fallback: navigate to event detail page
+                  const eventId = event.id || event.source_url;
+                  if (eventId) {
+                    console.log('[EventIntelligenceQuickView] Navigating to event detail:', eventId);
+                    window.location.href = `/events/${encodeURIComponent(eventId)}`;
+                  } else {
+                    console.error('[EventIntelligenceQuickView] No event ID available for navigation');
+                    toast.error("Unable to view intelligence", {
+                      description: "Event ID not available. Please add this event to your board first."
+                    });
+                  }
                 }
-              }
             }}
             className="w-full mt-3 text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center justify-center gap-1 hover:underline cursor-pointer"
           >

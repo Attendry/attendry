@@ -25,6 +25,7 @@ import { EventIntelligenceQuickView } from "./EventIntelligenceQuickView"; // Ev
 import { SpeakerData } from "@/lib/types/core";
 import { Star, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 /**
  * Event data structure interface
@@ -192,24 +193,39 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         const j = await res.json();
         if (!res.ok) {
           if (res.status === 401) {
-            alert("Please log in to save items.");
-            if (typeof window !== 'undefined') {
-              window.location.href = "/login";
-            }
+            toast.error("Authentication required", {
+              description: "Please log in to save items.",
+              action: {
+                label: "Log in",
+                onClick: () => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = "/login";
+                  }
+                }
+              }
+            });
             return;
           }
           throw new Error(j.error || "Save failed");
         }
         setSaved(true);
+        toast.success("Event saved", {
+          description: "Added to your watchlist"
+        });
       } else {
         // Remove from watchlist
         const res = await fetch("/api/watchlist/remove", { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ kind:"event", ref_id: ev.source_url }) });
         const j = await res.json();
         if (!res.ok) throw new Error(j.error || "Unsave failed");
         setSaved(false);
+        toast.success("Event removed", {
+          description: "Removed from your watchlist"
+        });
       }
     } catch (e: any) {
-      alert(e.message || "Action failed");
+      toast.error("Action failed", {
+        description: e.message || "An error occurred. Please try again."
+      });
     } finally {
       setBusy(false);
     }
@@ -236,10 +252,17 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       const boardData = await boardRes.json();
       if (!boardRes.ok) {
         if (boardRes.status === 401) {
-          alert("Please log in to add events to your board.");
-          if (typeof window !== 'undefined') {
-            window.location.href = "/login";
-          }
+          toast.error("Authentication required", {
+            description: "Please log in to add events to your board.",
+            action: {
+              label: "Log in",
+              onClick: () => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = "/login";
+                }
+              }
+            }
+          });
           return;
         }
         throw new Error(boardData.error || "Failed to add to board");
@@ -264,8 +287,13 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         setBoardItemId(boardData.boardItem.id);
       }
       setInBoard(true);
+      toast.success("Event added to board", {
+        description: "You can manage it from your Events Board"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to add to board");
+      toast.error("Failed to add to board", {
+        description: e.message || "An error occurred. Please try again."
+      });
     } finally {
       setBoardBusy(false);
     }
@@ -294,9 +322,13 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       }
       
       // Show success feedback
-      alert(`Added "${companyName}" to your watchlist!`);
+      toast.success("Company added", {
+        description: `"${companyName}" has been added to your watchlist`
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to add company to watchlist");
+      toast.error("Failed to add company", {
+        description: e.message || "Could not add company to watchlist. Please try again."
+      });
     }
   }, []);
 
@@ -321,7 +353,9 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       setSpeakers(j.speakers || []);
       setFollowed(j.followed || []);
     } catch (e: any) {
-      alert(e.message || "Could not load speakers");
+      toast.error("Could not load speakers", {
+        description: e.message || "Unable to fetch speaker information. Please try again."
+      });
       setSpeakers([]);
       setFollowed([]);
     } finally {
@@ -670,11 +704,15 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
               router.push(targetPath);
             } else {
               console.error('[EventCard] No event ID available for navigation');
-              alert('Unable to view full intelligence: event ID not available');
+              toast.error("Unable to view intelligence", {
+                description: "Event ID not available. Please add this event to your board first."
+              });
             }
           } catch (error) {
             console.error('[EventCard] Error navigating to full intelligence:', error);
-            alert('Failed to navigate to full intelligence view');
+            toast.error("Navigation failed", {
+              description: "Unable to navigate to full intelligence view. Please try again."
+            });
           }
         }}
       />

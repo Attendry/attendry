@@ -22,7 +22,7 @@ export function TopBar({ onMenuClick, mobileMenuButton }: TopBarProps) {
   const pageTitle = useMemo(() => {
     const mapping = [
       { path: "/dashboard", label: "Command Centre" },
-      { path: "/recommendations", label: "Market Intelligence" },
+      { path: "/recommendations", label: "Intelligence" },
       { path: "/events", label: "Event Hub" },
       { path: "/events-board", label: "Events Board" },
       { path: "/watchlist", label: "Watchlist" },

@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, memo } from 'react';
 import { EventData } from '@/lib/types/core';
 import EventComparison from '@/components/EventComparison';
+import { toast } from 'sonner';
 // import { useUser } from '@supabase/auth-helpers-react';
 
 /**
@@ -42,12 +43,16 @@ const ComparePage = memo(function ComparePage() {
   // Add event to comparison
   const addEventToComparison = useCallback(async (event: EventData) => {
     if (comparisonEvents.length >= 5) {
-      alert('You can compare up to 5 events at a time');
+      toast.warning("Comparison limit reached", {
+        description: "You can compare up to 5 events at a time. Remove an event to add another."
+      });
       return;
     }
 
     if (comparisonEvents.some(e => e.id === event.id)) {
-      alert('This event is already in your comparison');
+      toast.info("Event already added", {
+        description: "This event is already in your comparison"
+      });
       return;
     }
 
