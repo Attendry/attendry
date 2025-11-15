@@ -713,13 +713,13 @@ function generateUnifiedCacheKey(params: UnifiedSearchParams): string {
  * Optimized flow:
  * 1. Check unified cache first (provider-agnostic)
  * 2. If cache miss, try all providers in parallel with smart timeouts:
- *    - Firecrawl: 8s timeout (fast fail)
+ *    - Firecrawl: 40s timeout (allows for 28-30s API response time)
  *    - CSE: 5s timeout
  *    - Database: 2s timeout
  * 3. Cache result for future requests
  * 
  * Returns results from cache or first successful provider
- * Total max wait time: 8s instead of 60s (sequential)
+ * Total max wait time: 40s (Firecrawl can take 28-30s)
  */
 export async function unifiedSearch(params: UnifiedSearchParams): Promise<UnifiedSearchResponse> {
   const startTime = Date.now();
@@ -753,7 +753,7 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
   console.log('[unified-search] Trying all providers in parallel with timeouts...');
   
   const [firecrawlResult, cseResult, databaseResult] = await Promise.allSettled([
-    withTimeout(unifiedFirecrawlSearch(params), 8000, 'Firecrawl').catch(err => {
+    withTimeout(unifiedFirecrawlSearch(params), 40000, 'Firecrawl').catch(err => {
       console.warn('[unified-search] Firecrawl failed:', err instanceof Error ? err.message : String(err));
       return {
         items: [],
