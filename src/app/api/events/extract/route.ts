@@ -1066,11 +1066,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventExtracti
       return NextResponse.json({ version: "extract_v5", events: out as EventData[], trace, note: "no FIRECRAWL_KEY" });
     }
 
-    const targets = urls.slice(0, 15);
-    // Simple bounded concurrency (limit 4) with per-host throttle map
+    const targets = urls.slice(0, 20);
+    // Optimized bounded concurrency (limit 12) with per-host throttle map
+    // Increased from 4 to 12 to improve throughput (Firecrawl supports up to 50 concurrent browsers)
     const inFlight = new Set<Promise<any>>();
     const results: any[] = [];
-    const limit = 4;
+    const limit = 12;
     const hostLast: Record<string, number> = {};
     const gapMs = 250; // min gap per host
 

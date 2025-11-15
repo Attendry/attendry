@@ -83,11 +83,37 @@ export interface PositioningRecommendation {
 }
 
 /**
+ * Recommendation insight (Phase 2A)
+ */
+export interface RecommendationInsight {
+  id: string;
+  type: 'immediate' | 'strategic' | 'research';
+  title: string;
+  description: string;
+  why: string;
+  when: string;
+  how: string | null;
+  expectedOutcome: string;
+  priority: number;
+  confidence: number;
+  metadata?: {
+    roiEstimate?: string;
+    estimatedCost?: string;
+    timeToExecute?: string;
+    requiredResources?: string[];
+  };
+}
+
+/**
  * Event insights response
  */
 export interface EventInsightsResponse {
   attendees: AttendeeInsight[];
   trends: TrendInsight[];
   positioning: PositioningRecommendation[];
+  recommendations?: RecommendationInsight[]; // Phase 2A: Recommendations
+  insightScore?: any; // Phase 2B: Insight Score (using any to avoid circular dependency)
+  competitiveContext?: any; // Phase 2C: Competitive Intelligence (using any to avoid circular dependency)
+  competitiveAlerts?: any[]; // Phase 2C: Competitive Alerts
 }
 

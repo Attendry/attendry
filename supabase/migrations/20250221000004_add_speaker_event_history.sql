@@ -61,3 +61,5 @@ COMMENT ON COLUMN speaker_event_history.speaker_key IS 'Canonical key: hash(norm
 COMMENT ON COLUMN speaker_event_history.appeared_at IS 'When this speaker-event relationship was recorded';
 COMMENT ON COLUMN speaker_event_history.confidence IS 'Confidence score of speaker extraction (0.00 to 1.00)';
 
+
+

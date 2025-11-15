@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { EventInsightsService } from "@/lib/services/event-insights-service";
 import { getEventIntelligence, generateEventIntelligence } from "@/lib/services/event-intelligence-service";
 import { UserProfile } from "@/lib/types/core";
-import { EventInsightsResponse, AttendeeInsight, TrendInsight, PositioningRecommendation } from "@/lib/types/event-board";
+import { EventInsightsResponse, AttendeeInsight, TrendInsight, PositioningRecommendation, RecommendationInsight } from "@/lib/types/event-board";
 
 /**
  * GET /api/events/board/insights/[eventId]
@@ -110,7 +110,11 @@ export async function GET(
         const insights: EventInsightsResponse = {
           attendees: extractAttendeesFromIntelligence(intelligence, eventData),
           trends: extractTrendsFromIntelligence(intelligence, eventData),
-          positioning: extractPositioningFromIntelligence(intelligence)
+          positioning: extractPositioningFromIntelligence(intelligence),
+          recommendations: extractRecommendationsFromIntelligence(intelligence),
+          insightScore: intelligence.insightScore, // Phase 2B: Include insight score
+          competitiveContext: intelligence.competitiveContext, // Phase 2C: Competitive Intelligence
+          competitiveAlerts: intelligence.competitiveAlerts // Phase 2C: Competitive Alerts
         };
 
         return NextResponse.json(insights);
@@ -327,5 +331,28 @@ function extractPositioningFromIntelligence(intelligence: any): PositioningRecom
     reasoning: ['Event analysis available'],
     opportunity: 'medium'
   }];
+}
+
+/**
+ * Extract recommendations from event intelligence (Phase 2A)
+ */
+function extractRecommendationsFromIntelligence(intelligence: any): RecommendationInsight[] {
+  if (!intelligence.recommendations || !Array.isArray(intelligence.recommendations)) {
+    return [];
+  }
+
+  return intelligence.recommendations.map((rec: any): RecommendationInsight => ({
+    id: rec.id,
+    type: rec.type,
+    title: rec.title,
+    description: rec.description,
+    why: rec.why,
+    when: rec.when,
+    how: rec.how || null,
+    expectedOutcome: rec.expectedOutcome,
+    priority: rec.priority || 0.5,
+    confidence: rec.confidence || 0.7,
+    metadata: rec.metadata || undefined
+  }));
 }
 

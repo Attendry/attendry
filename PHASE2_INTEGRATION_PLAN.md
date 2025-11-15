@@ -174,3 +174,5 @@ For Saved Profiles:
 3. **Cross-Event Queries:** "Where has this speaker presented before?"
 4. **Analytics:** Track speaker appearance frequency across events
 
+
+

@@ -15,9 +15,17 @@ import {
   Target, 
   ArrowRight, 
   Loader2,
-  Sparkles
+  Sparkles,
+  Lightbulb,
+  CheckCircle2,
+  TrendingUp,
+  BarChart3,
+  AlertTriangle
 } from 'lucide-react';
 import { EventData } from '@/lib/types/core';
+import { Recommendation } from '@/lib/services/recommendation-engine';
+import { InsightScore } from '@/lib/services/insight-scoring-service';
+import { CompetitiveContext, CompetitiveAlert } from '@/lib/services/competitive-intelligence-service';
 
 interface EventIntelligenceQuickViewProps {
   event: EventData;
@@ -41,6 +49,10 @@ interface QuickIntelligence {
     positioning: string;
     recommendedApproach: string;
   };
+  recommendations?: Recommendation[]; // Phase 2A: Recommendations
+  insightScore?: InsightScore; // Phase 2B: Insight Scoring
+  competitiveContext?: CompetitiveContext; // Phase 2C: Competitive Intelligence
+  competitiveAlerts?: CompetitiveAlert[]; // Phase 2C: Competitive Alerts
   cached: boolean;
   loading: boolean;
 }
@@ -93,12 +105,16 @@ export function EventIntelligenceQuickView({
           });
         } else {
           // Only update if we have actual intelligence data
-          if (data.discussions || data.sponsors || data.location || data.outreach) {
+          if (data.discussions || data.sponsors || data.location || data.outreach || data.recommendations || data.insightScore || data.competitiveContext) {
             setIntelligence({
               discussions: data.discussions,
               sponsors: data.sponsors,
               location: data.location,
               outreach: data.outreach,
+              recommendations: data.recommendations,
+              insightScore: data.insightScore,
+              competitiveContext: data.competitiveContext,
+              competitiveAlerts: data.competitiveAlerts,
               cached: data.cached || false,
               loading: false
             });
@@ -175,12 +191,16 @@ export function EventIntelligenceQuickView({
                     
                     // Update state directly with the response data
                     // Only update if we actually have intelligence data
-                    if (result.discussions || result.sponsors || result.location || result.outreach) {
+                    if (result.discussions || result.sponsors || result.location || result.outreach || result.recommendations || result.insightScore || result.competitiveContext) {
                       setIntelligence({
                         discussions: result.discussions,
                         sponsors: result.sponsors,
                         location: result.location,
                         outreach: result.outreach,
+                        recommendations: result.recommendations,
+                        insightScore: result.insightScore,
+                        competitiveContext: result.competitiveContext,
+                        competitiveAlerts: result.competitiveAlerts,
                         cached: result.cached || false,
                         loading: false
                       });
@@ -266,6 +286,17 @@ export function EventIntelligenceQuickView({
         <div className="flex items-center gap-2">
           <Brain className="h-5 w-5 text-blue-600" />
           <span className="font-medium text-blue-900">Event Intelligence</span>
+          {intelligence.insightScore && (
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+              intelligence.insightScore.overallScore >= 0.7
+                ? 'bg-green-100 text-green-700'
+                : intelligence.insightScore.overallScore >= 0.4
+                ? 'bg-yellow-100 text-yellow-700'
+                : 'bg-gray-100 text-gray-700'
+            }`}>
+              {Math.round(intelligence.insightScore.overallScore * 100)}% Score
+            </span>
+          )}
           {intelligence.cached && (
             <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">
               Cached
@@ -279,6 +310,45 @@ export function EventIntelligenceQuickView({
 
       {expanded && (
         <div className="px-4 pb-4 space-y-3 border-t border-blue-200 pt-4">
+          {/* Insight Score - Phase 2B */}
+          {intelligence.insightScore && (
+            <div className="bg-white rounded-lg p-3 border border-blue-200">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-900">Insight Score</span>
+                </div>
+                <span className={`text-lg font-bold ${
+                  intelligence.insightScore.overallScore >= 0.7
+                    ? 'text-green-600'
+                    : intelligence.insightScore.overallScore >= 0.4
+                    ? 'text-yellow-600'
+                    : 'text-gray-600'
+                }`}>
+                  {Math.round(intelligence.insightScore.overallScore * 100)}%
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-2 text-xs">
+                <div className="text-center">
+                  <div className="font-semibold text-blue-700">Relevance</div>
+                  <div className="text-blue-600">{Math.round(intelligence.insightScore.breakdown.relevance * 100)}%</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-blue-700">Impact</div>
+                  <div className="text-blue-600">{Math.round(intelligence.insightScore.breakdown.impact * 100)}%</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-blue-700">Urgency</div>
+                  <div className="text-blue-600">{Math.round(intelligence.insightScore.breakdown.urgency * 100)}%</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-blue-700">Confidence</div>
+                  <div className="text-blue-600">{Math.round(intelligence.insightScore.breakdown.confidence * 100)}%</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Discussions */}
           {intelligence.discussions && (
             <div>
@@ -340,6 +410,103 @@ export function EventIntelligenceQuickView({
               <p className="text-xs text-blue-800 line-clamp-2">
                 {intelligence.outreach.recommendedApproach || intelligence.outreach.positioning}
               </p>
+            </div>
+          )}
+
+          {/* Recommendations - Phase 2A */}
+          {intelligence.recommendations && intelligence.recommendations.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Lightbulb className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">Top Recommendations</span>
+              </div>
+              <div className="space-y-2">
+                {intelligence.recommendations.slice(0, 3).map((rec) => (
+                  <div
+                    key={rec.id}
+                    className="border border-blue-200 rounded-lg p-2 bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-semibold text-blue-900">
+                            {rec.title}
+                          </span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            rec.type === 'immediate' 
+                              ? 'bg-red-100 text-red-700'
+                              : rec.type === 'strategic'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {rec.type}
+                          </span>
+                        </div>
+                        <p className="text-xs text-blue-800 line-clamp-2">
+                          {rec.description}
+                        </p>
+                      </div>
+                    </div>
+                    {rec.how && (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          // Show how to execute in a modal or expand
+                          alert(rec.how);
+                        }}
+                        className="mt-1 text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline"
+                      >
+                        View Steps
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Competitive Intelligence - Phase 2C */}
+          {intelligence.competitiveContext && intelligence.competitiveContext.competitorsPresent.length > 0 && (
+            <div className="border-t border-orange-200 pt-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="h-4 w-4 text-orange-600" />
+                <span className="text-sm font-medium text-blue-900">Competitive Intelligence</span>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs text-blue-800">
+                  <strong>{intelligence.competitiveContext.competitorsPresent.length}</strong> competitor(s) present:
+                </div>
+                {intelligence.competitiveContext.competitorsPresent.slice(0, 3).map((match, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs bg-white border border-orange-200 rounded p-2">
+                    <span className="font-medium text-blue-900">{match.competitorName}</span>
+                    <span className="text-blue-600">({match.matchType})</span>
+                    <span className="text-blue-500">
+                      {Math.round(match.matchConfidence * 100)}% match
+                    </span>
+                  </div>
+                ))}
+                
+                {/* Show alerts if any */}
+                {intelligence.competitiveAlerts && intelligence.competitiveAlerts.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-orange-200">
+                    <div className="flex items-center gap-1 text-xs font-medium text-orange-700 mb-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      {intelligence.competitiveAlerts.length} alert(s)
+                    </div>
+                    {intelligence.competitiveAlerts.slice(0, 2).map((alert) => (
+                      <div key={alert.id} className={`text-xs p-2 rounded mb-1 ${
+                        alert.severity === 'high' ? 'bg-red-50 border border-red-200' :
+                        alert.severity === 'medium' ? 'bg-orange-50 border border-orange-200' :
+                        'bg-yellow-50 border border-yellow-200'
+                      }`}>
+                        <div className="font-medium text-blue-900">{alert.title}</div>
+                        <div className="text-blue-700 mt-0.5 line-clamp-2">{alert.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

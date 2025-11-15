@@ -12,8 +12,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AttendeeInsights } from "./AttendeeInsights";
 import { TrendInsights } from "./TrendInsights";
 import { PositioningInsights } from "./PositioningInsights";
+import { RecommendationsInsights } from "./RecommendationsInsights";
+import { CompetitiveInsights } from "./CompetitiveInsights";
 import { EventInsightsResponse } from "@/lib/types/event-board";
-import { Loader2 } from "lucide-react";
+import { Loader2, BarChart3 } from "lucide-react";
 
 interface EventInsightsPanelProps {
   eventId: string | null;
@@ -81,10 +83,31 @@ export function EventInsightsPanel({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Event Insights</DialogTitle>
-          <DialogDescription>
-            Comprehensive analysis of attendees, trends, and positioning opportunities
-          </DialogDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle>Event Insights</DialogTitle>
+              <DialogDescription>
+                Comprehensive analysis of attendees, trends, and positioning opportunities
+              </DialogDescription>
+            </div>
+            {insights?.insightScore && (
+              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                <BarChart3 className="h-4 w-4 text-blue-600" />
+                <div className="text-right">
+                  <div className="text-xs text-blue-600 font-medium">Insight Score</div>
+                  <div className={`text-lg font-bold ${
+                    insights.insightScore.overallScore >= 0.7
+                      ? 'text-green-600'
+                      : insights.insightScore.overallScore >= 0.4
+                      ? 'text-yellow-600'
+                      : 'text-gray-600'
+                  }`}>
+                    {Math.round(insights.insightScore.overallScore * 100)}%
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </DialogHeader>
 
         {loading && (
@@ -107,12 +130,72 @@ export function EventInsightsPanel({
         )}
 
         {!loading && !error && insights && (
-          <Tabs defaultValue="attendees" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+          <Tabs defaultValue="recommendations" className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
               <TabsTrigger value="attendees">Attendees</TabsTrigger>
               <TabsTrigger value="trends">Trends</TabsTrigger>
               <TabsTrigger value="positioning">Positioning</TabsTrigger>
+              <TabsTrigger value="competitive">Competitive</TabsTrigger>
             </TabsList>
+            
+            {/* Score Breakdown - Phase 2B */}
+            {insights.insightScore && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <div className="flex items-center gap-2 mb-3">
+                  <BarChart3 className="h-4 w-4 text-gray-600" />
+                  <span className="text-sm font-semibold text-gray-900">Score Breakdown</span>
+                </div>
+                <div className="grid grid-cols-4 gap-4">
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">Relevance</div>
+                    <div className="text-sm font-semibold text-blue-600">
+                      {Math.round(insights.insightScore.breakdown?.relevance * 100 || 0)}%
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {(insights.insightScore.breakdown?.factors?.relevance?.icpMatch * 100 || 0).toFixed(0)}% ICP Match
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">Impact</div>
+                    <div className="text-sm font-semibold text-green-600">
+                      {Math.round(insights.insightScore.breakdown?.impact * 100 || 0)}%
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {insights.insightScore.breakdown?.factors?.impact?.roiEstimate ? 
+                        `${Math.round(insights.insightScore.breakdown.factors.impact.roiEstimate * 100)}% ROI` : 
+                        'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">Urgency</div>
+                    <div className="text-sm font-semibold text-orange-600">
+                      {Math.round(insights.insightScore.breakdown?.urgency * 100 || 0)}%
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {insights.insightScore.breakdown?.factors?.urgency?.timeSensitivity ? 
+                        `${Math.round(insights.insightScore.breakdown.factors.urgency.timeSensitivity * 100)}% Time Sensitive` : 
+                        'N/A'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">Confidence</div>
+                    <div className="text-sm font-semibold text-purple-600">
+                      {Math.round(insights.insightScore.breakdown?.confidence * 100 || 0)}%
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {insights.insightScore.breakdown?.factors?.confidence?.dataQuality ? 
+                        `${Math.round(insights.insightScore.breakdown.factors.confidence.dataQuality * 100)}% Data Quality` : 
+                        'N/A'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <TabsContent value="recommendations" className="mt-4">
+              <RecommendationsInsights recommendations={insights.recommendations || []} />
+            </TabsContent>
             
             <TabsContent value="attendees" className="mt-4">
               <AttendeeInsights attendees={insights.attendees} />
@@ -124,6 +207,13 @@ export function EventInsightsPanel({
             
             <TabsContent value="positioning" className="mt-4">
               <PositioningInsights positioning={insights.positioning} />
+            </TabsContent>
+            
+            <TabsContent value="competitive" className="mt-4">
+              <CompetitiveInsights
+                context={insights.competitiveContext}
+                alerts={insights.competitiveAlerts}
+              />
             </TabsContent>
           </Tabs>
         )}

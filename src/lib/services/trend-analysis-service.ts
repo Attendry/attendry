@@ -11,6 +11,8 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 import crypto from 'crypto';
 import { normalizeTopics, TAXONOMY_VERSION } from '@/lib/utils/topic-normalizer';
 import { normalizeOrg } from '@/lib/utils/org-normalizer';
+import { calculateInsightScore, getPersonalizedWeights, type InsightScore } from './insight-scoring-service';
+import { getEventIntelligence, generateEventIntelligence } from './event-intelligence-service';
 
 export interface HotTopic {
   topic: string;
@@ -26,6 +28,8 @@ export interface HotTopic {
   growthTrajectory?: 'rising' | 'stable' | 'declining';
   validationScore?: number; // 0-1, based on cross-event validation
   businessRelevance?: 'high' | 'medium' | 'low';
+  // Phase 2B: Insight Scoring
+  insightScore?: InsightScore;
 }
 
 export interface EmergingTheme {
@@ -34,6 +38,8 @@ export interface EmergingTheme {
   growth: number;
   events: EventData[];
   relevanceScore: number;
+  // Phase 2B: Insight Scoring
+  insightScore?: InsightScore;
 }
 
 export interface TrendAnalysisResult {
@@ -275,6 +281,63 @@ Return ONLY the JSON array, no additional text, no markdown formatting, no expla
 }
 
 /**
+ * Calculate a quick score estimate for a topic based on characteristics
+ * (used when full event intelligence is not available)
+ */
+function calculateTopicScoreEstimate(
+  topic: HotTopic,
+  event: EventData,
+  userProfile?: UserProfile
+): number {
+  let score = 0.5; // Base score
+  
+  // Relevance from topic relevance score
+  score += topic.relevanceScore * 0.3;
+  
+  // Impact from momentum and business relevance
+  const impactScore = topic.momentum || 0.5;
+  const businessRelevanceScore = topic.businessRelevance === 'high' ? 0.9 : 
+                                  topic.businessRelevance === 'medium' ? 0.6 : 0.3;
+  score += (impactScore * 0.5 + businessRelevanceScore * 0.5) * 0.3;
+  
+  // Urgency from growth rate
+  const urgencyScore = Math.min(1, (topic.growthRate || 0) / 100);
+  score += urgencyScore * 0.2;
+  
+  // Confidence from validation score
+  score += (topic.validationScore || 0.5) * 0.2;
+  
+  return Math.min(1, score);
+}
+
+/**
+ * Calculate a quick score estimate for an emerging theme
+ */
+function calculateThemeScoreEstimate(
+  theme: EmergingTheme,
+  event: EventData,
+  userProfile?: UserProfile
+): number {
+  let score = 0.5; // Base score
+  
+  // Relevance
+  score += theme.relevanceScore * 0.3;
+  
+  // Impact from growth
+  const impactScore = Math.min(1, (theme.growth || 0) / 100);
+  score += impactScore * 0.3;
+  
+  // Urgency from growth rate
+  const urgencyScore = Math.min(1, (theme.growth || 0) / 200);
+  score += urgencyScore * 0.2;
+  
+  // Confidence (moderate for emerging themes)
+  score += 0.7 * 0.2;
+  
+  return Math.min(1, score);
+}
+
+/**
  * Validate hot topics extracted by LLM
  * Phase 1A: Enhanced validation with minimum mention threshold and cross-event validation
  */
@@ -438,8 +501,93 @@ export async function identifyEmergingThemes(
     }
   });
   
-  return emergingThemes
-    .sort((a, b) => b.growth - a.growth)
+  // Phase 2B: Calculate insight scores for emerging themes
+  const themesWithScores = await Promise.all(
+    emergingThemes.map(async (theme) => {
+      try {
+        if (theme.events.length > 0) {
+          // Calculate aggregate insight score from related events
+          const scores = await Promise.all(
+            theme.events.slice(0, 5).map(async (event) => {
+              try {
+                const intelligence = await getEventIntelligence(
+                  event.id || event.source_url,
+                  userProfile
+                ).catch(() => null);
+                
+                if (intelligence && intelligence.insightScore) {
+                  return intelligence.insightScore.overallScore;
+                }
+                
+                // Estimate score based on theme characteristics
+                return calculateThemeScoreEstimate(theme, event, userProfile);
+              } catch {
+                return 0.5;
+              }
+            })
+          );
+          
+          const avgScore = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+          
+          // Create insight score for the theme
+          const themeInsightScore: InsightScore = {
+            overallScore: avgScore,
+            breakdown: {
+              relevance: theme.relevanceScore,
+              impact: Math.min(1, (theme.growth || 0) / 100),
+              urgency: Math.min(1, (theme.growth || 0) / 200), // Growth indicates urgency
+              confidence: 0.7, // Emerging themes have moderate confidence
+              factors: {
+                relevance: {
+                  userProfileMatch: theme.relevanceScore,
+                  industryAlignment: theme.relevanceScore,
+                  icpMatch: theme.relevanceScore
+                },
+                impact: {
+                  businessValue: Math.min(1, (theme.growth || 0) / 100),
+                  roiEstimate: 0.6,
+                  marketSize: Math.min(1, theme.events.length / 10),
+                  competitiveAdvantage: 0.5
+                },
+                urgency: {
+                  timeSensitivity: Math.min(1, (theme.growth || 0) / 200),
+                  deadlineProximity: 0.5,
+                  marketTiming: theme.growth > 50 ? 0.8 : 0.5
+                },
+                confidence: {
+                  dataQuality: 0.7,
+                  statisticalSignificance: 0.6,
+                  sourceReliability: 0.7
+                }
+              }
+            },
+            weights: {
+              relevance: 0.3,
+              impact: 0.3,
+              urgency: 0.2,
+              confidence: 0.2
+            },
+            calculatedAt: new Date().toISOString()
+          };
+          
+          return { ...theme, insightScore: themeInsightScore };
+        }
+        
+        return theme;
+      } catch (error) {
+        console.error('[TrendAnalysis] Error calculating insight score for theme:', error);
+        return theme;
+      }
+    })
+  );
+  
+  // Sort by insight score (if available), then by growth
+  return themesWithScores
+    .sort((a, b) => {
+      const scoreA = a.insightScore?.overallScore ?? (a.growth / 100);
+      const scoreB = b.insightScore?.overallScore ?? (b.growth / 100);
+      return scoreB - scoreA;
+    })
     .slice(0, 10);
 }
 
