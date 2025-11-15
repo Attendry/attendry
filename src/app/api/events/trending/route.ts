@@ -276,7 +276,8 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrendingRespon
     let filteredCategories = categories;
     let filteredHotTopics = hotTopics;
     let filteredEmergingThemes = emergingThemes;
-    let filteredEvents = trendingEvents;
+    // Use trendingEvents directly for final results (filteredEvents already used above)
+    const finalFilteredEvents = trendingEvents;
 
     // Filter categories by insight score (if available in future, for now filter by significance)
     if (minScore > 0) {
