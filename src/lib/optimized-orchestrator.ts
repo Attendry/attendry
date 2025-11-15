@@ -430,6 +430,7 @@ export interface OptimizedSearchParams {
   location?: string | null;
   timeframe?: string | null;
   locale?: string;
+  useNaturalLanguage?: boolean; // If true, skip profile enrichment and use userText directly
 }
 
 export interface EventCandidate {
@@ -618,20 +619,22 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   });
   
   try {
-    // Step 1: Load user profile for personalized search
+    // Step 1: Load user profile for personalized search (skip for natural language queries)
     const userProfileStart = Date.now();
-    const userProfile = await getUserProfile();
+    const userProfile = params.useNaturalLanguage ? null : await getUserProfile();
     const userProfileTime = Date.now() - userProfileStart;
     
-    if (userProfile) {
+    if (userProfile && !params.useNaturalLanguage) {
       console.log('[optimized-orchestrator] User profile loaded:', {
         industryTerms: userProfile.industry_terms?.length || 0,
         icpTerms: userProfile.icp_terms?.length || 0,
         competitors: userProfile.competitors?.length || 0
       });
+    } else if (params.useNaturalLanguage) {
+      console.log('[optimized-orchestrator] Skipping profile enrichment for natural language query');
     }
     
-    // Step 2: Build optimized query with user profile
+    // Step 2: Build optimized query with user profile (or without if natural language)
     const queryBuildStart = Date.now();
     const queryResult = await buildOptimizedQuery(params, userProfile);
     const query = typeof queryResult === 'string' ? queryResult : queryResult.query;
@@ -1205,6 +1208,29 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
  * Build optimized search query using weighted templates with user profile integration
  */
 async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: any): Promise<{ query: string; narrativeQuery?: string }> {
+  // For natural language queries, use the query directly without profile enrichment
+  if (params.useNaturalLanguage) {
+    console.log('[optimized-orchestrator] Using natural language query directly:', params.userText);
+    const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
+    
+    const result = await buildUnifiedQuery({
+      userText: params.userText,
+      country: params.country,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      location: params.location,
+      timeframe: params.timeframe,
+      locale: params.locale,
+      language: 'en',
+      skipProfileEnrichment: true // Skip profile enrichment for NLP
+    });
+    
+    return {
+      query: result.query,
+      narrativeQuery: result.narrativeQuery
+    };
+  }
+  
   // Get search configuration to determine industry
   const searchConfig = await getSearchConfig();
   const industry = searchConfig?.industry || 'legal-compliance';

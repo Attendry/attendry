@@ -409,7 +409,8 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         country: normalizedCountry,
         dateFrom: dateRange.from,
         dateTo: dateRange.to,
-        locale
+        locale,
+        useNaturalLanguage: true // Skip profile enrichment for natural language queries
       });
 
       const events = (data.events || []).map((e: any) => ({
