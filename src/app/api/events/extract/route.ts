@@ -632,6 +632,89 @@ function pickData(d: any) {
   return d;
 }
 
+/**
+ * FIRECRAWL-V2: Process extraction response to extract images and data attributes
+ * Filters out logos/icons and keeps only relevant event images
+ */
+function processExtractionResponse(extractedData: any, fullResponse: any): any {
+  const processed = { ...extractedData };
+  
+  // Process images from response
+  if (fullResponse?.data?.images || fullResponse?.images) {
+    const images = fullResponse?.data?.images || fullResponse?.images || [];
+    // Filter out logos, icons, and small images, keep only event-relevant images
+    const eventImages = images
+      .filter((img: any) => {
+        const url = img.url || img.src || '';
+        const isLogo = url.toLowerCase().includes('logo') || 
+                      url.toLowerCase().includes('icon') ||
+                      url.toLowerCase().includes('favicon');
+        const isSmall = img.width && img.width < 200 || img.height && img.height < 200;
+        return !isLogo && !isSmall && url.startsWith('http');
+      })
+      .slice(0, 5) // Keep top 5 event images
+      .map((img: any) => ({
+        url: img.url || img.src,
+        alt: img.alt || null,
+        width: img.width || null,
+        height: img.height || null
+      }));
+    
+    if (eventImages.length > 0) {
+      processed.metadata = {
+        ...(processed.metadata || {}),
+        images: eventImages
+      };
+    }
+  }
+  
+  // Process data attributes from response
+  if (fullResponse?.data?.dataAttributes || fullResponse?.dataAttributes) {
+    const dataAttributes = fullResponse?.data?.dataAttributes || fullResponse?.dataAttributes || {};
+    
+    // Extract event-related data attributes
+    const eventDataAttributes: Record<string, any> = {};
+    const eventKeys = ['event-date', 'event-location', 'event-venue', 'event-title', 'event-start', 'event-end'];
+    
+    for (const key of eventKeys) {
+      if (dataAttributes[key]) {
+        eventDataAttributes[key] = dataAttributes[key];
+      }
+    }
+    
+    // Also check for common data attribute patterns
+    Object.keys(dataAttributes).forEach(key => {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey.includes('event') || lowerKey.includes('date') || lowerKey.includes('location')) {
+        eventDataAttributes[key] = dataAttributes[key];
+      }
+    });
+    
+    if (Object.keys(eventDataAttributes).length > 0) {
+      processed.metadata = {
+        ...(processed.metadata || {}),
+        dataAttributes: eventDataAttributes
+      };
+    }
+  }
+  
+  // Process PDF metadata if available
+  if (fullResponse?.data?.pdfMetadata || fullResponse?.pdfMetadata) {
+    const pdfMetadata = fullResponse?.data?.pdfMetadata || fullResponse?.pdfMetadata;
+    if (pdfMetadata?.title && !processed.title) {
+      processed.title = pdfMetadata.title;
+    }
+    if (pdfMetadata?.metadata) {
+      processed.metadata = {
+        ...(processed.metadata || {}),
+        pdfMetadata: pdfMetadata.metadata
+      };
+    }
+  }
+  
+  return processed;
+}
+
 function normalizeUrl(u: string) {
   try {
     const url = new URL(u);
@@ -817,7 +900,7 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
         showSources: false,
         scrapeOptions: {
           onlyMainContent: true, 
-          formats: ["markdown", "html"], 
+          formats: ["markdown", "html", "images"], // FIRECRAWL-V2: Added images format for event image extraction
           parsers: ["pdf"], 
           waitFor: 1200,
           location: { 
@@ -826,6 +909,13 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
           },
           blockAds: true,
           removeBase64Images: true,
+          // FIRECRAWL-V2: Extract data attributes for structured data from HTML
+          extractDataAttributes: true,
+          // FIRECRAWL-V2: Enhanced PDF parsing with title and metadata extraction
+          pdfOptions: {
+            extractTitle: true,
+            extractMetadata: true
+          },
           crawlerOptions: {
             maxDepth: Math.min(3, (crawl?.depth ?? 3)),
             maxPagesToCrawl: 12,
@@ -852,7 +942,7 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
           showSources: false,
           scrapeOptions: {
             onlyMainContent: true, 
-            formats: ["markdown", "html"], 
+            formats: ["markdown", "html", "images"], // FIRECRAWL-V2: Added images format
             parsers: ["pdf"], 
             waitFor: 1200,
             location: { 
@@ -861,6 +951,13 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
             },
             blockAds: true,
             removeBase64Images: true,
+            // FIRECRAWL-V2: Extract data attributes for structured data from HTML
+            extractDataAttributes: true,
+            // FIRECRAWL-V2: Enhanced PDF parsing with title and metadata extraction
+            pdfOptions: {
+              extractTitle: true,
+              extractMetadata: true
+            },
             crawlerOptions: {
               maxDepth: Math.min(3, (crawl?.depth ?? 3)),
               maxPagesToCrawl: 12,
@@ -889,12 +986,16 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
       // Batch format: results array with url and data
       for (const result of data.results) {
         if (result?.url && result?.data) {
-          results.push({ url: result.url, data: result.data });
+          // FIRECRAWL-V2: Process images and data attributes for each result
+          const processedData = processExtractionResponse(result.data, result);
+          results.push({ url: result.url, data: processedData });
         }
       }
     } else if (data?.data) {
       // Single result format (fallback)
-      results.push({ url: urls[0], data: data.data });
+      // FIRECRAWL-V2: Process images and data attributes
+      const processedData = processExtractionResponse(data.data, data);
+      results.push({ url: urls[0], data: processedData });
     }
     
     trace.push({ step: "batch_extract", urls_count: urls.length, results_count: results.length });
@@ -1079,7 +1180,7 @@ Return structured JSON matching the schema exactly. Include evidence array for a
         showSources: false,
         scrapeOptions: {
           onlyMainContent: true, 
-          formats: ["markdown", "html"], 
+          formats: ["markdown", "html", "images"], // FIRECRAWL-V2: Added images format for event image extraction
           parsers: ["pdf"], 
           waitFor: 1200,
           location: { 
@@ -1088,6 +1189,13 @@ Return structured JSON matching the schema exactly. Include evidence array for a
           },
           blockAds: true,
           removeBase64Images: true,
+          // FIRECRAWL-V2: Extract data attributes for structured data from HTML
+          extractDataAttributes: true,
+          // FIRECRAWL-V2: Enhanced PDF parsing with title and metadata extraction
+          pdfOptions: {
+            extractTitle: true,
+            extractMetadata: true
+          },
           crawlerOptions: {
             maxDepth: Math.min(3, (crawl?.depth ?? 3)),
             maxPagesToCrawl: 12,
@@ -1100,7 +1208,7 @@ Return structured JSON matching the schema exactly. Include evidence array for a
           ignoreInvalidURLs: true
         })
       }).then(r => r.json());
-      });
+      }); 
     } catch (rateLimitError) {
       console.warn('[extractOne] Rate limit check failed, continuing without rate limiting:', rateLimitError);
       // Fallback: make call without rate limiting
@@ -1114,7 +1222,7 @@ Return structured JSON matching the schema exactly. Include evidence array for a
           showSources: false,
           scrapeOptions: {
             onlyMainContent: true, 
-            formats: ["markdown", "html"], 
+            formats: ["markdown", "html", "images"], // FIRECRAWL-V2: Added images format
             parsers: ["pdf"], 
             waitFor: 1200,
             location: { 
@@ -1123,6 +1231,13 @@ Return structured JSON matching the schema exactly. Include evidence array for a
             },
             blockAds: true,
             removeBase64Images: true,
+            // FIRECRAWL-V2: Extract data attributes for structured data from HTML
+            extractDataAttributes: true,
+            // FIRECRAWL-V2: Enhanced PDF parsing with title and metadata extraction
+            pdfOptions: {
+              extractTitle: true,
+              extractMetadata: true
+            },
             crawlerOptions: {
               maxDepth: Math.min(3, (crawl?.depth ?? 3)),
               maxPagesToCrawl: 12,
@@ -1141,7 +1256,9 @@ Return structured JSON matching the schema exactly. Include evidence array for a
       const data = await pollExtract(kicked.id, key);
       const picked = pickData(data);
       if (picked) {
-        const ev = shape(url, picked);
+        // FIRECRAWL-V2: Process images and data attributes from extraction response
+        const processedData = processExtractionResponse(picked, data);
+        const ev = shape(url, processedData);
         const rich = ev.starts_at || ev.city || ev.country;
         trace.push({ url, step: "firecrawl", rich: !!rich });
         try {
@@ -1242,11 +1359,15 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventExtracti
 
     const targets = urls.slice(0, 20);
     
-    // PERF-2.2.5: Use batch extraction for 3+ URLs to reduce API overhead
+    // FIRECRAWL-V2: Increased batch size from 3 to 10 for better efficiency
+    // Firecrawl v2 supports larger batches, reducing API overhead
+    const BATCH_SIZE_THRESHOLD = 10;
+    
+    // PERF-2.2.5: Use batch extraction for 10+ URLs to reduce API overhead
     // For smaller batches, use individual extraction for better error handling
     let out: any[] = [];
     
-    if (targets.length >= 3) {
+    if (targets.length >= BATCH_SIZE_THRESHOLD) {
       // Try batch extraction first
       try {
         const batchResults = await extractBatch(

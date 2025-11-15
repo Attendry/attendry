@@ -181,6 +181,34 @@ export class EventDiscoverer {
       // Use Unified Search Core for better performance and reliability
       const { unifiedSearch } = await import('@/lib/search/unified-search-core');
       
+      // FIRECRAWL-V2: Event schema for unified search + extract
+      // This allows extraction during search, reducing API calls by 50%
+      const eventSchema = {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          starts_at: { type: ["string","null"] },
+          ends_at: { type: ["string","null"] },
+          city: { type: ["string","null"] },
+          country: { type: ["string","null"] },
+          venue: { type: ["string","null"] },
+          organizer: { type: ["string","null"] },
+          topics: { type: "array", items: { type: "string" } },
+          speakers: { 
+            type: "array", 
+            items: { 
+              type: "object", 
+              properties: { 
+                name: { type: "string" }, 
+                org: { type: "string" }, 
+                title: { type: "string" }
+              }
+            }
+          }
+        },
+        required: ["title"]
+      };
+      
       const unifiedResult = await unifiedSearch({
         q: query,
         dateFrom: context?.dateFrom || undefined,
@@ -188,6 +216,9 @@ export class EventDiscoverer {
         country: country || undefined,
         limit: 15, // Reduced limit since we're scraping content
         scrapeContent: true, // Enable content scraping for better prioritization
+        // FIRECRAWL-V2: Enable unified search + extract
+        extractSchema: eventSchema,
+        extractPrompt: "Extract event details including title, dates, location, and speakers from this page. Use null for missing information.",
         useCache: true
       });
       
@@ -198,33 +229,44 @@ export class EventDiscoverer {
         providers: unifiedResult.providers,
         totalItems: unifiedResult.totalItems,
         metrics: unifiedResult.metrics,
-        duration: Date.now() - startTime
+        duration: Date.now() - startTime,
+        hasExtractedData: items.some((item: any) => typeof item === 'object' && item.extracted) // FIRECRAWL-V2: Log if extraction was done
       });
       
       const candidates = items
-        .map((item: any, index: number) => ({
-          id: `firecrawl_${Date.now()}_${index}`,
-          url: typeof item === 'string' ? item : item.url,
-          source: 'firecrawl' as const,
-          discoveredAt: new Date(),
-          relatedUrls: [],
-          status: 'discovered' as const,
-          metadata: {
-            originalQuery: query,
-            country,
-            processingTime: Date.now() - startTime,
-            stageTimings: {
-              discovery: Date.now() - startTime
-            },
-            // Include scraped content if available
-            ...(typeof item === 'object' && {
-              title: item.title,
-              description: item.description,
-              scrapedContent: item.content,
-              scrapedLinks: item.links
-            })
-          }
-        }));
+        .map((item: any, index: number) => {
+          const url = typeof item === 'string' ? item : item.url;
+          const isEnriched = typeof item === 'object' && item !== null;
+          
+          return {
+            id: `firecrawl_${Date.now()}_${index}`,
+            url,
+            source: 'firecrawl' as const,
+            discoveredAt: new Date(),
+            relatedUrls: [],
+            status: 'discovered' as const,
+            metadata: {
+              originalQuery: query,
+              country,
+              processingTime: Date.now() - startTime,
+              stageTimings: {
+                discovery: Date.now() - startTime
+              },
+              // FIRECRAWL-V2: Include extracted data if available (from unified search+extract)
+              ...(isEnriched && item.extracted && {
+                extracted: item.extracted, // Structured extracted data
+                extractedDuringSearch: true // Flag to skip separate extraction phase
+              }),
+              // Include scraped content if available
+              ...(isEnriched && {
+                title: item.title,
+                description: item.description,
+                scrapedContent: item.markdown || item.content,
+                scrapedLinks: item.links
+              })
+            }
+          };
+        });
       
       logger.info({ message: '[discover:firecrawl] Firecrawl discovery completed',
         candidatesFound: candidates.length,

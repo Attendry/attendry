@@ -167,12 +167,15 @@ export interface UnifiedSearchParams {
   country?: string;
   limit?: number;
   scrapeContent?: boolean;
+  // FIRECRAWL-V2: Unified search + extract options
+  extractSchema?: any; // Schema for structured extraction during search
+  extractPrompt?: string; // Prompt for extraction during search
   useCache?: boolean;
   userProfile?: any; // Add user profile support
 }
 
 export interface UnifiedSearchResult {
-  items: string[];
+  items: string[] | Array<{ url: string; title?: string; description?: string; markdown?: string; extracted?: any }>; // FIRECRAWL-V2: Support enriched items with extracted data
   provider: 'firecrawl' | 'cse' | 'database';
   debug: {
     rawCount: number;
@@ -189,7 +192,7 @@ export interface UnifiedSearchResult {
 }
 
 export interface UnifiedSearchResponse {
-  items: string[];
+  items: string[] | Array<{ url: string; title?: string; description?: string; markdown?: string; extracted?: any }>; // FIRECRAWL-V2: Support enriched items
   providers: string[];
   totalItems: number;
   debug: {
@@ -356,12 +359,22 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
       timeout: 45000  // Reduced from 60000 to prevent long waits
     };
 
-    // Add content scraping if requested
-    if (params.scrapeContent) {
+    // FIRECRAWL-V2: Enhanced scraping with extraction support
+    if (params.scrapeContent || params.extractSchema) {
       body.scrapeOptions = {
-        formats: ['markdown'],
-        onlyMainContent: true
+        formats: ['markdown', 'html'], // Get both formats for better extraction
+        onlyMainContent: true,
+        blockAds: true,
+        removeBase64Images: true
       };
+      
+      // FIRECRAWL-V2: Add structured extraction if schema provided
+      if (params.extractSchema) {
+        body.scrapeOptions.extract = {
+          schema: params.extractSchema,
+          prompt: params.extractPrompt || "Extract event details including title, dates, location, and speakers from this page."
+        };
+      }
     }
 
     // Add location-based search for better regional results
@@ -416,12 +429,39 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
         console.log('[unified-firecrawl] Response received, items:', data?.data?.web?.length || 0);
 
-        // Parse Firecrawl v2 API response structure: data.data.web[]
+        // FIRECRAWL-V2: Parse response with extracted data support
         const webResults = data?.data?.web || [];
-        const items: string[] = Array.isArray(webResults) 
+        const items: Array<string | { url: string; title?: string; description?: string; markdown?: string; extracted?: any }> = Array.isArray(webResults) 
           ? webResults
-              .map((item: any) => item?.url)
-              .filter((url: string) => typeof url === 'string' && url.startsWith('http'))
+              .map((item: any) => {
+                const url = item?.url;
+                if (!url || !url.startsWith('http')) return null;
+                
+                // FIRECRAWL-V2: Return enriched item if extraction was done, otherwise just URL
+                if (params.extractSchema && item.extracted) {
+                  return {
+                    url,
+                    title: item.title,
+                    description: item.description,
+                    markdown: item.markdown,
+                    extracted: item.extracted // Structured extracted data
+                  };
+                }
+                
+                // Return enriched item if scraped content available
+                if (params.scrapeContent && (item.markdown || item.title || item.description)) {
+                  return {
+                    url,
+                    title: item.title,
+                    description: item.description,
+                    markdown: item.markdown
+                  };
+                }
+                
+                // Fallback to URL string for backward compatibility
+                return url;
+              })
+              .filter((item: any) => item !== null)
           : [];
 
         const result: UnifiedSearchResult = {
