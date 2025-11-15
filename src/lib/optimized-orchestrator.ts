@@ -2188,10 +2188,38 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
     return events;
   }
   
+  // CONTENT FILTER FIX: Include user search keyword in filtering
+  // When user searches for specific keyword (e.g., "Kartellrecht"), include it in search terms
+  // This prevents relevant keyword-specific events from being filtered out
+  const searchTerms: string[] = [];
+  
+  // Add user keyword if provided (e.g., "Kartellrecht")
+  if (params.userText && params.userText.trim()) {
+    const userKeyword = params.userText.trim().toLowerCase();
+    searchTerms.push(userKeyword);
+    
+    // Add keyword translations/context (e.g., "antitrust law", "competition law")
+    try {
+      const { getKeywordContext } = await import('../services/weighted-query-builder');
+      const keywordContext = getKeywordContext(userKeyword);
+      if (keywordContext) {
+        // Split "antitrust law, competition law, cartel law" into individual terms
+        const contextTerms = keywordContext.split(',').map(t => t.trim().toLowerCase());
+        searchTerms.push(...contextTerms);
+      }
+    } catch (error) {
+      // getKeywordContext might not be exported, continue without it
+      console.warn('[optimized-orchestrator] Could not get keyword context:', error);
+    }
+  }
+  
+  // Add profile industry terms
   const industryTerms = (userProfile.industry_terms as string[]).map(term => term.toLowerCase());
+  searchTerms.push(...industryTerms);
+  
   const icpTerms = (userProfile.icp_terms as string[] || []).map(term => term.toLowerCase());
   
-  console.log('[optimized-orchestrator] Filtering with industry terms:', industryTerms.slice(0, 5), 'and ICP terms:', icpTerms.slice(0, 3));
+  console.log('[optimized-orchestrator] Filtering with search terms:', searchTerms.slice(0, 8), 'and ICP terms:', icpTerms.slice(0, 3));
   
   // Non-event keywords that should immediately disqualify a result
   const NON_EVENT_KEYWORDS = [
@@ -2220,15 +2248,15 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
       return false;
     }
     
-    // Check if event content contains ANY industry term
-    const hasIndustryMatch = industryTerms.some(term => {
+    // Check if event content contains ANY search term (user keyword OR industry term)
+    const hasSearchMatch = searchTerms.some(term => {
       // Check for word boundary matches to avoid partial matches
       const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
       return regex.test(searchText);
     });
     
-    if (hasIndustryMatch) {
-      console.log(`[optimized-orchestrator] ✓ Event matches industry terms: "${eventTitle.substring(0, 80)}"`);
+    if (hasSearchMatch) {
+      console.log(`[optimized-orchestrator] ✓ Event matches search terms: "${eventTitle.substring(0, 80)}"`);
       return true;
     }
     

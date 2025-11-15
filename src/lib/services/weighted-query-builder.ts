@@ -274,7 +274,7 @@ function buildNarrativeQuery(
  * Get keyword context/translations for better search matching
  * Helps Firecrawl understand German keywords and find related English terms
  */
-function getKeywordContext(keyword: string): string | null {
+export function getKeywordContext(keyword: string): string | null {
   const keywordLower = keyword.toLowerCase().trim();
   
   // German legal terms with English translations
