@@ -15,6 +15,7 @@ import {
   cacheEventIntelligence,
   precomputeIntelligenceForEvent
 } from '@/lib/services/event-intelligence-service';
+import { queueIntelligenceGeneration } from '@/lib/services/intelligence-queue';
 
 /**
  * GET /api/events/[eventId]/intelligence
@@ -411,8 +412,9 @@ export async function POST(
       actualEventId = event.id;
     }
 
-    // Generate intelligence
-    console.log('[EventIntelligence] About to generate intelligence...');
+    // PERF-2.3.4: Queue intelligence generation in background instead of blocking
+    // This allows the API to return immediately while intelligence is generated asynchronously
+    console.log('[EventIntelligence] Queueing intelligence generation in background...');
     console.log('[EventIntelligence] Event data:', {
       title: event.title,
       source_url: event.source_url,
@@ -422,63 +424,27 @@ export async function POST(
       hasSponsors: !!(event.sponsors && event.sponsors.length > 0)
     });
     
-    let intelligence;
+    // Queue intelligence generation (non-blocking)
+    // Priority 8 = high priority for user-initiated requests
     try {
-      console.log('[EventIntelligence] Calling generateEventIntelligence...');
-      intelligence = await generateEventIntelligence(
-        event as any,
-        userProfile || undefined
-      );
-      console.log('[EventIntelligence] Intelligence generated successfully');
-    } catch (genError: any) {
-      console.error('[EventIntelligence] Generation failed:', genError);
-      console.error('[EventIntelligence] Error stack:', genError.stack);
-      console.error('[EventIntelligence] Error details:', {
-        message: genError.message,
-        name: genError.name,
-        cause: genError.cause
-      });
-      return NextResponse.json(
-        { 
-          error: 'Failed to generate intelligence',
-          details: genError.message || 'Unknown error'
-        },
-        { status: 500 }
-      );
+      await queueIntelligenceGeneration(actualEventId, 8);
+      console.log('[EventIntelligence] Intelligence generation queued successfully');
+    } catch (queueError) {
+      console.warn('[EventIntelligence] Failed to queue intelligence generation:', queueError);
+      // Continue - we'll return a pending status
     }
 
-    // Try to cache the result using the actual event ID
-    try {
-      await cacheEventIntelligence(
-        actualEventId,
-        intelligence,
-        userProfile || undefined
-      );
-      console.log('[EventIntelligence] Intelligence cached successfully');
-    } catch (cacheError) {
-      // Log but don't fail - intelligence generation succeeded
-      console.warn('[EventIntelligence] Cache failed (non-fatal):', cacheError);
-    }
-    
-    // Update intelligence eventId to match what was used
-    intelligence.eventId = cacheKey;
-
+    // PERF-2.3.4: Return immediately with pending status
+    // Frontend can poll the GET endpoint or use SSE to check when intelligence is ready
     const responseData = {
-      ...intelligence,
-      cached: false
+      eventId: cacheKey,
+      status: 'queued',
+      message: 'Intelligence generation queued and will be available shortly',
+      cached: false,
+      queued: true
     };
 
-    console.log('[EventIntelligence] Returning intelligence response:', {
-      eventId: responseData.eventId,
-      hasDiscussions: !!responseData.discussions,
-      hasSponsors: !!responseData.sponsors,
-      hasLocation: !!responseData.location,
-      hasOutreach: !!responseData.outreach,
-      discussionsKeys: responseData.discussions ? Object.keys(responseData.discussions) : [],
-      sponsorsKeys: responseData.sponsors ? Object.keys(responseData.sponsors) : [],
-      locationKeys: responseData.location ? Object.keys(responseData.location) : [],
-      outreachKeys: responseData.outreach ? Object.keys(responseData.outreach) : []
-    });
+    console.log('[EventIntelligence] Returning queued status response');
 
     return NextResponse.json(responseData);
 

@@ -4,6 +4,7 @@ import { buildUnifiedQuery } from '@/lib/unified-query-builder';
 import { getCountryContext, type CountryContext } from '@/lib/utils/country';
 import { parseEventDate } from '@/search/date';
 import { EVENT_KEYWORDS, SOCIAL_DOMAINS, DEFAULT_SHARD_KEYWORDS, detectCountryFromText, detectCityFromText } from '@/config/search-dictionaries';
+import { withRateLimit } from './rate-limit-service';
 
 /**
  * Firecrawl Search Service
@@ -224,23 +225,27 @@ export class FirecrawlSearchService {
         const payload = { ...ship.params, query: ship.query };
         console.log(JSON.stringify({ at: 'firecrawl_call', label: ship.label, query: ship.query, params: payload }));
 
-      // PHASE 1 OPTIMIZATION: Adaptive timeout with exponential backoff and jitter
-      // Timeouts: 8s → 12s → 18s with 0-20% jitter to reduce timeout failures by 30%
-      const adaptiveTimeout = this.getAdaptiveTimeout(0); // Start with first attempt
-      const response = await this.fetchWithAdaptiveRetry(
-        "firecrawl",
-        "search",
-        this.FIRECRAWL_SEARCH_URL,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${firecrawlKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-        },
-        adaptiveTimeout
-      );
+        // PERF-1.4.1: Check rate limit before making API call
+        // PERF-1.4.3: Automatically record response time for adaptive rate limiting
+        const response = await withRateLimit('firecrawl', async () => {
+          // PHASE 1 OPTIMIZATION: Adaptive timeout with exponential backoff and jitter
+          // Timeouts: 8s → 12s → 18s with 0-20% jitter to reduce timeout failures by 30%
+          const adaptiveTimeout = this.getAdaptiveTimeout(0); // Start with first attempt
+          return await this.fetchWithAdaptiveRetry(
+            "firecrawl",
+            "search",
+            this.FIRECRAWL_SEARCH_URL,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${firecrawlKey}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(payload)
+            },
+            adaptiveTimeout
+          );
+        });
 
       if (!response.ok) {
         const errorText = await response.text();

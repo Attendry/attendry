@@ -97,8 +97,24 @@ async function setCachedResult<T>(key: string, data: T): Promise<boolean> {
 export class SearchService {
   /**
    * Load search configuration from database or return default
+   * PERF-2.4.4: Cached in Redis with 1 hour TTL
    */
   static async loadSearchConfig(): Promise<SearchConfig> {
+    // PERF-2.4.4: Check cache first
+    const { getCacheService, CACHE_CONFIGS } = await import('@/lib/cache');
+    const cacheService = getCacheService();
+    const cacheKey = 'active_search_config';
+    
+    try {
+      const cached = await cacheService.get<SearchConfig>(cacheKey, CACHE_CONFIGS.CONFIGURATIONS);
+      if (cached) {
+        console.log('[search-service] Using cached search config');
+        return cached;
+      }
+    } catch (error) {
+      console.warn('[search-service] Cache read failed, loading from DB:', error);
+    }
+
     try {
       const admin = supabaseAdmin();
       const { data, error } = await admin
@@ -107,8 +123,10 @@ export class SearchService {
         .eq("is_active", true)
         .single();
       
+      let config: SearchConfig;
+      
       if (!error && data) {
-        return {
+        config = {
           id: data.id,
           name: data.name,
           industry: data.industry,
@@ -118,27 +136,51 @@ export class SearchService {
           icpTerms: data.icp_terms || [],
           is_active: data.is_active
         };
+      } else {
+        // Return default configuration with localized base queries
+        config = {
+          id: "default",
+          name: "Default Configuration",
+          industry: "general",
+          baseQuery: "conference OR event OR summit OR workshop OR seminar OR meeting OR symposium OR forum OR exhibition OR trade show",
+          excludeTerms: "reddit forum personal blog international global usa america instagram facebook twitter linkedin social media reel post",
+          industryTerms: ["business", "professional", "networking", "development", "technology", "innovation"],
+          icpTerms: ["professionals", "business leaders", "industry experts", "decision makers"],
+          is_active: true
+        };
       }
+
+      // PERF-2.4.4: Cache the result
+      await cacheService.set(cacheKey, config, CACHE_CONFIGS.CONFIGURATIONS).catch(err => {
+        console.warn('[search-service] Failed to cache search config:', err);
+      });
+
+      return config;
     } catch (dbError) {
       console.warn('Database not available for search config, using default:', dbError);
+      
+      // Return default even on error
+      const defaultConfig: SearchConfig = {
+        id: "default",
+        name: "Default Configuration",
+        industry: "general",
+        baseQuery: "conference OR event OR summit OR workshop OR seminar OR meeting OR symposium OR forum OR exhibition OR trade show",
+        excludeTerms: "reddit forum personal blog international global usa america instagram facebook twitter linkedin social media reel post",
+        industryTerms: ["business", "professional", "networking", "development", "technology", "innovation"],
+        icpTerms: ["professionals", "business leaders", "industry experts", "decision makers"],
+        is_active: true
+      };
+      
+      // Try to cache default config
+      await cacheService.set(cacheKey, defaultConfig, CACHE_CONFIGS.CONFIGURATIONS).catch(() => {});
+      
+      return defaultConfig;
     }
-
-    // Return default configuration with localized base queries  
-    
-    return {
-      id: "default",
-      name: "Default Configuration",
-      industry: "general",
-      baseQuery: "conference OR event OR summit OR workshop OR seminar OR meeting OR symposium OR forum OR exhibition OR trade show",
-      excludeTerms: "reddit forum personal blog international global usa america instagram facebook twitter linkedin social media reel post",
-      industryTerms: ["business", "professional", "networking", "development", "technology", "innovation"],
-      icpTerms: ["professionals", "business leaders", "industry experts", "decision makers"],
-      is_active: true
-    };
   }
 
   /**
    * Load user profile
+   * PERF-2.4.4: Cached in Redis with 5 minute TTL (user-specific)
    */
   static async loadUserProfile(): Promise<any> {
     try {
@@ -167,6 +209,21 @@ export class SearchService {
         return null;
       }
 
+      // PERF-2.4.4: Check cache first (user-specific key)
+      const { getCacheService, CACHE_CONFIGS } = await import('@/lib/cache');
+      const cacheService = getCacheService();
+      const cacheKey = `user_profile_${user.id}`;
+      
+      try {
+        const cached = await cacheService.get<any>(cacheKey, CACHE_CONFIGS.USER_PROFILES);
+        if (cached) {
+          console.log('[search-service] Using cached user profile');
+          return cached;
+        }
+      } catch (error) {
+        console.warn('[search-service] Cache read failed, loading from DB:', error);
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -177,6 +234,11 @@ export class SearchService {
         console.warn('Error loading user profile:', error.message);
         return null;
       }
+
+      // PERF-2.4.4: Cache the result
+      await cacheService.set(cacheKey, data, CACHE_CONFIGS.USER_PROFILES).catch(err => {
+        console.warn('[search-service] Failed to cache user profile:', err);
+      });
 
       console.log('User profile loaded successfully for user:', user.email);
       return data;

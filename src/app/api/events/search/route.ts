@@ -249,17 +249,67 @@ function hashItem(title: string, link: string) {
  * @returns Filtered array of search results that are likely events
  */
 async function filterWithGemini(items: SearchResultItem[], dropTitleRegex: RegExp, banHosts: Set<string>, searchConfig: any = {}): Promise<SearchResultItem[]> {
-  // Attempt to reuse AI decisions from DB
+  // PERF-2.3.2: Check Redis cache first, then database
+  const { getCacheService, CACHE_CONFIGS } = await import('@/lib/cache');
+  const cacheService = getCacheService();
   let decided: Record<string, { isEvent: boolean; confidence?: number }> = {};
+  
+  const hashes = items.map(it => hashItem(it.title, it.link));
+  
+  // PERF-2.3.2: Try Redis cache first (faster)
   try {
-    const supabase = await supabaseServer();
-    const hashes = items.map(it => hashItem(it.title, it.link));
-    const { data } = await supabase
-      .from("ai_decisions")
-      .select("item_hash, is_event, confidence")
-      .in("item_hash", hashes);
-    for (const row of data || []) decided[row.item_hash] = { isEvent: !!row.is_event, confidence: row.confidence };
-  } catch {}
+    const cachePromises = hashes.map(async (hash) => {
+      const cacheKey = hash;
+      const cached = await cacheService.get<{ isEvent: boolean; confidence?: number }>(
+        cacheKey,
+        CACHE_CONFIGS.AI_DECISIONS
+      );
+      if (cached) {
+        return { hash, decision: cached };
+      }
+      return null;
+    });
+    
+    const cacheResults = await Promise.all(cachePromises);
+    for (const result of cacheResults) {
+      if (result) {
+        decided[result.hash] = result.decision;
+      }
+    }
+  } catch (error) {
+    console.warn('[filterWithGemini] Redis cache read failed, trying database:', error);
+  }
+  
+  // PERF-2.3.2: Fallback to database for uncached items
+  const uncachedHashes = hashes.filter(hash => !decided[hash]);
+  if (uncachedHashes.length > 0) {
+    try {
+      const supabase = await supabaseServer();
+      const { data } = await supabase
+        .from("ai_decisions")
+        .select("item_hash, is_event, confidence")
+        .in("item_hash", uncachedHashes);
+      
+      // Store in both decided map and Redis cache
+      const cacheWrites: Promise<boolean>[] = [];
+      for (const row of data || []) {
+        const decision = { isEvent: !!row.is_event, confidence: row.confidence };
+        decided[row.item_hash] = decision;
+        
+        // PERF-2.3.2: Promote to Redis cache
+        cacheWrites.push(
+          cacheService.set(row.item_hash, decision, CACHE_CONFIGS.AI_DECISIONS)
+        );
+      }
+      
+      // Don't await cache writes - fire and forget
+      Promise.all(cacheWrites).catch(err => {
+        console.warn('[filterWithGemini] Failed to write some decisions to cache:', err);
+      });
+    } catch (error) {
+      console.warn('[filterWithGemini] Database read failed:', error);
+    }
+  }
 
   const preApproved: SearchResultItem[] = [];
   const undecided: { item: SearchResultItem; idx: number; hash: string }[] = [];
@@ -320,25 +370,48 @@ async function filterWithGemini(items: SearchResultItem[], dropTitleRegex: RegEx
       searchConfig
     });
 
-    // Store new decisions in the database for future reuse
+    // PERF-2.3.2: Store new decisions in Redis cache and database
     const upserts: any[] = [];
+    const cacheWrites: Promise<boolean>[] = [];
+    
     for (const decision of result.decisions) {
       const originalItem = items[decision.index];
       const itemHash = hashItem(originalItem.title, originalItem.link);
+      const decisionData = {
+        isEvent: decision.isEvent,
+        confidence: 0.8 // Default confidence for Gemini decisions
+      };
+      
+      // PERF-2.3.2: Write to Redis cache immediately
+      cacheWrites.push(
+        cacheService.set(itemHash, decisionData, CACHE_CONFIGS.AI_DECISIONS)
+      );
+      
       upserts.push({
         item_hash: itemHash,
         is_event: decision.isEvent,
-        confidence: 0.8, // Default confidence for Gemini decisions
+        confidence: 0.8,
         reason: decision.reason || "AI decision",
         created_at: new Date().toISOString()
       });
     }
     
+    // PERF-2.3.2: Write to cache (non-blocking)
+    Promise.all(cacheWrites).catch(err => {
+      console.warn("Failed to save AI decisions to cache:", err);
+    });
+    
+    // PERF-2.4.3: Make database writes async (non-blocking)
     if (upserts.length) {
-      try { 
-        const supabase = await supabaseServer(); 
-        await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" }); 
-      } catch {}
+      // Don't await - let it run in background
+      (async () => {
+        try { 
+          const supabase = await supabaseServer(); 
+          await supabase.from("ai_decisions").upsert(upserts, { onConflict: "item_hash" }); 
+        } catch (error) {
+          console.warn("Failed to save AI decisions to database:", error);
+        }
+      })();
     }
 
     return result.filteredItems;
@@ -785,10 +858,22 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     // excludeTerms might be causing 400 errors
     // params.set("excludeTerms", searchConfig.excludeTerms || "reddit Mumsnet \"legal advice\" forum");
 
-    // Make the actual search request to Google Custom Search API
+    // PERF-1.4.1: Check rate limit before making CSE API call
+    // PERF-1.4.3: Automatically record response time for adaptive rate limiting
     const url = `https://www.googleapis.com/customsearch/v1?${params}`;
     console.log(JSON.stringify({ at: "search", real: "calling_cse", query: enhancedQuery, url: url }));
-    const res = await fetchWithRetry(url, { cache: "no-store", timeoutMs: 10000, retries: 2, service: 'google_cse', operation: 'events_search' });
+    
+    let res: Response;
+    try {
+      const { withRateLimit } = await import('@/lib/services/rate-limit-service');
+      res = await withRateLimit('cse', async () => {
+        return await fetchWithRetry(url, { cache: "no-store", timeoutMs: 10000, retries: 2, service: 'google_cse', operation: 'events_search' });
+      });
+    } catch (rateLimitError) {
+      console.warn('[search] Rate limit check failed, continuing without rate limiting:', rateLimitError);
+      // Fallback: make call without rate limiting
+      res = await fetchWithRetry(url, { cache: "no-store", timeoutMs: 10000, retries: 2, service: 'google_cse', operation: 'events_search' });
+    }
     const data = await res.json();
     const rawItems = data.items || [];
     console.log(JSON.stringify({ correlationId, at: "search", real: "cse_result", status: res.status, items: rawItems.length }));
@@ -876,9 +961,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventSearchRe
     // Prepare the final response
     const result: EventSearchResponse = { provider: "cse", items };
     
+    // PERF-2.4.3: Make cache write async (non-blocking) for faster response
     // Cache the result for future requests using unified cache service
     // This will cache in Redis (primary) and Supabase (fallback)
-    await setCachedResult(cacheKey, result);
+    setCachedResult(cacheKey, result).catch(error => {
+      console.warn("Failed to cache search results:", error);
+    });
     
     // Save to database for persistence and analytics
     // Note: We don't await this to avoid slowing down the response
