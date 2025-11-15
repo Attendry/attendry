@@ -771,45 +771,46 @@ async function findCompetitorEvents(
       const batch = events.slice(i, i + batchSize) as EventData[];
       
       for (const event of batch) {
-      // Check speakers
-      if (event.speakers) {
-        const hasMatch = event.speakers.some(speaker => {
-          if (speaker.org) {
-            return normalizeCompanyName(speaker.org).includes(normalizedCompetitor) ||
-                   normalizedCompetitor.includes(normalizeCompanyName(speaker.org));
+        // Check speakers
+        if (event.speakers) {
+          const hasMatch = event.speakers.some(speaker => {
+            if (speaker.org) {
+              return normalizeCompanyName(speaker.org).includes(normalizedCompetitor) ||
+                     normalizedCompetitor.includes(normalizeCompanyName(speaker.org));
+            }
+            return false;
+          });
+          if (hasMatch) {
+            competitorEvents.push(event);
+            continue;
           }
-          return false;
-        });
-        if (hasMatch) {
-          competitorEvents.push(event);
-          continue;
         }
-      }
-      
-      // Check sponsors
-      if (event.sponsors) {
-        const hasMatch = event.sponsors.some(sponsor => {
-          const sponsorName = typeof sponsor === 'string' ? sponsor : sponsor.name;
-          if (sponsorName) {
-            return normalizeCompanyName(sponsorName).includes(normalizedCompetitor) ||
-                   normalizedCompetitor.includes(normalizeCompanyName(sponsorName));
+        
+        // Check sponsors
+        if (event.sponsors) {
+          const hasMatch = event.sponsors.some(sponsor => {
+            const sponsorName = typeof sponsor === 'string' ? sponsor : sponsor.name;
+            if (sponsorName) {
+              return normalizeCompanyName(sponsorName).includes(normalizedCompetitor) ||
+                     normalizedCompetitor.includes(normalizeCompanyName(sponsorName));
+            }
+            return false;
+          });
+          if (hasMatch) {
+            competitorEvents.push(event);
+            continue;
           }
-          return false;
-        });
-        if (hasMatch) {
-          competitorEvents.push(event);
-          continue;
         }
-      }
-      
-      // Check participating organizations
-      if (event.participating_organizations) {
-        const hasMatch = event.participating_organizations.some(org => {
-          return normalizeCompanyName(org).includes(normalizedCompetitor) ||
-                 normalizedCompetitor.includes(normalizeCompanyName(org));
-        });
-        if (hasMatch) {
-          competitorEvents.push(event);
+        
+        // Check participating organizations
+        if (event.participating_organizations) {
+          const hasMatch = event.participating_organizations.some(org => {
+            return normalizeCompanyName(org).includes(normalizedCompetitor) ||
+                   normalizedCompetitor.includes(normalizeCompanyName(org));
+          });
+          if (hasMatch) {
+            competitorEvents.push(event);
+          }
         }
       }
     }
