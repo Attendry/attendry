@@ -1207,7 +1207,9 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
       template,
       userProfile,
       params.country || 'DE',
-      params.userText
+      params.userText,
+      params.dateFrom,
+      params.dateTo
     );
     
     console.log('[optimized-orchestrator] Built weighted query:', {

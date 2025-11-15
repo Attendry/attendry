@@ -32,7 +32,9 @@ export function buildWeightedQuery(
   template: WeightedTemplate,
   userProfile: any,
   country: string,
-  userText?: string
+  userText?: string,
+  dateFrom?: string,
+  dateTo?: string
 ): WeightedQueryResult {
   let query = template.baseQuery;
   const negativeFilters: string[] = [];
@@ -133,7 +135,7 @@ export function buildWeightedQuery(
   }
   
   // Build narrative query for Firecrawl
-  const narrativeQuery = buildNarrativeQuery(template, userProfile, country, userText);
+  const narrativeQuery = buildNarrativeQuery(template, userProfile, country, userText, dateFrom, dateTo);
   
   // Apply quality requirements based on weight
   const qualityWeight = template.precision.qualityRequirements.weight;
@@ -167,7 +169,9 @@ function buildNarrativeQuery(
   template: WeightedTemplate,
   userProfile: any,
   country: string,
-  userText?: string
+  userText?: string,
+  dateFrom?: string,
+  dateTo?: string
 ): string {
   const countryName = getCountryName(country);
   const industryTerms = template.industryTerms.slice(0, 4);
@@ -184,9 +188,37 @@ function buildNarrativeQuery(
 
   const narrativeParts: string[] = [];
 
+  // Build temporal description from actual date range
+  let temporalDescription = 'scheduled through the upcoming 12 months'; // Default fallback
+  
+  const formatDate = (value: string): string => {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    }).format(d);
+  };
+  
+  if (dateFrom && dateTo) {
+    const fromDate = formatDate(dateFrom);
+    const toDate = formatDate(dateTo);
+    
+    if (dateFrom === dateTo) {
+      temporalDescription = `scheduled for ${fromDate}`;
+    } else {
+      temporalDescription = `scheduled between ${fromDate} and ${toDate}`;
+    }
+  } else if (dateFrom) {
+    temporalDescription = `scheduled on or after ${formatDate(dateFrom)}`;
+  } else if (dateTo) {
+    temporalDescription = `scheduled on or before ${formatDate(dateTo)}`;
+  }
+
   narrativeParts.push(
     `Find ${template.name.toLowerCase()} business events and professional conferences in ${locationPhrase}`,
-    'scheduled through the upcoming 12 months'
+    temporalDescription
   );
 
   if (industryTerms.length > 0) {
