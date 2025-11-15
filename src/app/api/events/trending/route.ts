@@ -355,8 +355,8 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrendingRespon
 
     return NextResponse.json({
       categories: filteredCategories,
-      events: filteredEvents,
-      total: filteredEvents.length,
+      events: finalFilteredEvents,
+      total: finalFilteredEvents.length,
       hotTopics: includeHotTopics ? filteredHotTopics : undefined,
       emergingThemes: includeHotTopics ? filteredEmergingThemes : undefined,
       recommendations: recommendations.length > 0 ? recommendations : undefined,
