@@ -178,7 +178,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrendingRespon
       .lt('collected_at', startDate.toISOString());
 
     // Filter events by user profile
-    const filteredEvents = filterEventsByUserProfile(recentEvents, userProfile || undefined);
+    let filteredEvents = filterEventsByUserProfile(recentEvents, userProfile || undefined);
     const totalEventCount = recentEvents.length;
     const filteredEventCount = filteredEvents.length;
 

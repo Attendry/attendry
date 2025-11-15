@@ -167,7 +167,7 @@ async function generateSponsorRecommendation(
   const prompt = `You are a strategic business advisor analyzing event sponsorship opportunities.
 
 Event: ${event.title}
-${event.description ? Description: ${event.description.substring(0, 500)} : ''}
+${event.description ? `Description: ${event.description.substring(0, 500)}` : ''}
 ${event.city ? `Location: ${event.city}, ${event.country || ''}` : ''}
 ${event.starts_at ? `Date: ${event.starts_at}` : ''}
 ${eventIntelligence?.sponsors ? `Current Sponsors: ${JSON.stringify(eventIntelligence.sponsors.tiers)}` : ''}
