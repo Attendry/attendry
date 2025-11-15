@@ -276,8 +276,8 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrendingRespon
     let filteredCategories = categories;
     let filteredHotTopics = hotTopics;
     let filteredEmergingThemes = emergingThemes;
-    // Reuse filteredEvents variable (already declared above)
-    filteredEvents = trendingEvents;
+    // Use trendingEvents directly for final results (filteredEvents already used above)
+    const finalFilteredEvents = trendingEvents;
 
     // Filter categories by insight score (if available in future, for now filter by significance)
     if (minScore > 0) {
@@ -356,8 +356,8 @@ export async function GET(req: NextRequest): Promise<NextResponse<TrendingRespon
 
     return NextResponse.json({
       categories: filteredCategories,
-      events: filteredEvents,
-      total: filteredEvents.length,
+      events: finalFilteredEvents,
+      total: finalFilteredEvents.length,
       hotTopics: includeHotTopics ? filteredHotTopics : undefined,
       emergingThemes: includeHotTopics ? filteredEmergingThemes : undefined,
       recommendations: recommendations.length > 0 ? recommendations : undefined,
