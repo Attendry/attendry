@@ -874,25 +874,16 @@ export class SearchService {
 
     // Get API credentials
     const key = process.env.GOOGLE_CSE_KEY;
+    const cx = process.env.GOOGLE_CSE_CX;
 
-    if (!key) {
-      // Return demo data if API keys are not configured
-      const demoItems: SearchItem[] = [
-        {
-          title: "Legal Tech Conference 2025 - Munich",
-          link: "https://example.com/legal-tech-2025",
-          snippet: "Join us for the premier legal technology conference in Munich, featuring compliance, e-discovery, and regulatory technology sessions."
-        }
-      ];
-      
-      const result = {
-        provider: "demo",
-        items: demoItems,
+    if (!key || !cx) {
+      // Return empty results if API keys are not fully configured
+      console.warn('[CSE] Missing GOOGLE_CSE_KEY or GOOGLE_CSE_CX, returning empty results');
+      return {
+        provider: "cse",
+        items: [],
         cached: false
       };
-      
-      await setCachedResult(cacheKey, result);
-      return result;
     }
 
     // Load user profile for query building
@@ -903,29 +894,32 @@ export class SearchService {
     
     // Build simplified query for Google CSE to avoid 400 errors
     const enhancedQuery = this.buildSimpleQuery(q, searchConfig, userProfile, country);
+    
+    // Trim query to 256 characters to prevent 400 errors
+    const trimmedQuery = enhancedQuery.slice(0, 256);
+    if (enhancedQuery.length > 256) {
+      console.log(`[CSE] Query trimmed from ${enhancedQuery.length} to 256 chars`);
+    }
 
     // Build search parameters
     const searchParams = new URLSearchParams({
-      q: enhancedQuery,
+      q: trimmedQuery,
       key,
+      cx,  // ✅ Add cx parameter (required by Google CSE API)
       num: num.toString(),
       safe: "off",
       hl: "en"
     });
 
-    // Add country restriction
+    // Add country restriction (use only gl parameter to avoid 400 errors from lr/cr combinations)
     if (country === "de") {
-      searchParams.set("cr", "countryDE");
       searchParams.set("gl", "de");
-      searchParams.set("lr", "lang_de|lang_en");
     } else if (country === "fr") {
-      searchParams.set("cr", "countryFR");
       searchParams.set("gl", "fr");
-      searchParams.set("lr", "lang_fr|lang_en");
     } else if (country === "uk") {
-      searchParams.set("cr", "countryGB");
       searchParams.set("gl", "gb");
-      searchParams.set("lr", "lang_en");
+    } else if (country === "us") {
+      searchParams.set("gl", "us");
     }
 
     // Make the search request with retry logic
@@ -941,17 +935,24 @@ export class SearchService {
     );
 
     const res = await executeWithFallback("google_cse", async () => {
-      return await deduplicateRequest(fingerprint, () =>
-        executeWithCircuitBreaker("google_cse", () =>
-          RetryService.fetchWithRetry(
-            "google_cse",
-            "search",
-            url,
-            { cache: "no-store" }
-          ),
-          CIRCUIT_BREAKER_CONFIGS.GOOGLE_CSE
-        )
-      );
+      return await deduplicateRequest(fingerprint, async () => {
+        // First attempt - check for 400 errors immediately
+        const response = await fetch(url);
+        
+        // Don't retry 400 errors - they're configuration issues, not service failures
+        if (response.status === 400) {
+          const errorText = await response.text();
+          console.error('[CSE] 400 error (configuration issue):', errorText);
+          throw new Error(`CSE 400: ${errorText}`);
+        }
+        
+        // For other errors, use retry logic
+        if (!response.ok) {
+          throw new Error(`CSE ${response.status}: ${response.statusText}`);
+        }
+        
+        return response;
+      });
     });
     const data = await res.json();
     console.log(JSON.stringify({ at: "search_service", real: "cse_result", status: res.status, items: data.items?.length || 0 }));
@@ -1271,6 +1272,18 @@ export class SearchService {
     version: string;
     trace: any[];
   }> {
+    // ✅ Early exit for empty URLs - prevents wasting time on extraction when no URLs are found
+    if (!urls || urls.length === 0) {
+      console.log('[extract] ⚠️ No URLs provided, skipping extraction');
+      return {
+        events: [],
+        version: "extract_v5",
+        trace: []
+      };
+    }
+    
+    console.log(`[extract] Starting extraction for ${urls.length} URLs`);
+    
     const firecrawlKey = process.env.FIRECRAWL_KEY;
     
     if (!firecrawlKey) {
@@ -1384,12 +1397,21 @@ export class SearchService {
    * Poll for extract results using the job ID
    */
   private static async pollExtractResults(jobId: string, firecrawlKey: string): Promise<any> {
-    const maxAttempts = 20; // 20 seconds max for better extraction success
+    const maxAttempts = 20; // 20 attempts max
     const pollInterval = 1000; // 1 second intervals
+    const absoluteTimeout = 60000; // 60 seconds absolute timeout to prevent infinite polling
+    const startTime = Date.now();
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // ✅ Check absolute timeout to prevent infinite polling
+      const elapsed = Date.now() - startTime;
+      if (elapsed > absoluteTimeout) {
+        console.warn(`[extract] Job ${jobId} exceeded absolute timeout: ${elapsed}ms > ${absoluteTimeout}ms`);
+        return null;
+      }
+      
       try {
-        console.log(`Polling extract job ${jobId}, attempt ${attempt + 1}/${maxAttempts}`);
+        console.log(`Polling extract job ${jobId}, attempt ${attempt + 1}/${maxAttempts} (${Math.round(elapsed / 1000)}s elapsed)`);
         
         const response = await RetryService.fetchWithRetry(
           "firecrawl",

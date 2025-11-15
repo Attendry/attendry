@@ -123,9 +123,18 @@ async function runDeepEventCollection() {
         const to = new Date(today.getFullYear(), today.getMonth() + monthsAhead, today.getDate())
           .toISOString().split('T')[0];
 
+        // Build industry-specific query instead of empty string for better results
+        const industryQueries: Record<string, string> = {
+          'legal-compliance': 'legal compliance conference event',
+          'fintech': 'fintech financial technology conference',
+          'healthcare': 'healthcare medical conference event',
+          'general': 'business professional conference event'
+        };
+        const searchQuery = industryQueries[industry] || 'conference event';
+
         // Run comprehensive search using shared service with Firecrawl
         const searchData = await SearchService.runEventDiscovery({
-          q: "", // Use default query from search config
+          q: searchQuery, // ✅ Meaningful query instead of empty string
           country,
           from,
           to,
