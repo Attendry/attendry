@@ -18,6 +18,14 @@ const PROTECTED_PATH_PREFIXES = [
 const ADMIN_PATH_PREFIXES = ['/admin', '/api/admin'];
 
 export async function middleware(req: NextRequest) {
+  const pathname = req.nextUrl.pathname;
+
+  // Early return for cron routes (skip auth checks - they have their own authentication)
+  // This must be done before any Supabase operations to avoid unnecessary overhead
+  if (pathname.startsWith('/api/cron/')) {
+    return NextResponse.next({ request: { headers: req.headers } });
+  }
+
   const res = NextResponse.next({ request: { headers: req.headers } });
 
   const supabase = createServerClient(
@@ -64,8 +72,6 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
 
-  const pathname = req.nextUrl.pathname;
-
   // Check if this is a public path
   const isPublicPath = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(path + '/'));
   
@@ -96,7 +102,8 @@ export async function middleware(req: NextRequest) {
   return res;
 }
 
-// run on everything except static assets; include /api so server routes also stay fresh
+// run on everything except static assets and cron routes
+// Cron routes are excluded because they have their own authentication logic
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/cron).*)"],
 };
