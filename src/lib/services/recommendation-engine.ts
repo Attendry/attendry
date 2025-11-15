@@ -164,17 +164,27 @@ async function generateSponsorRecommendation(
   const recommendationId = `rec_${crypto.createHash('sha256').update(`${insightId}_sponsor`).digest('hex').substring(0, 16)}`;
 
   // Use LLM to generate contextual recommendation
+  // Extract nested template strings to variables to avoid syntax errors
+  const descriptionText = event.description ? `Description: ${event.description.substring(0, 500)}` : '';
+  const locationText = event.city ? `Location: ${event.city}, ${event.country || ''}` : '';
+  const dateText = event.starts_at ? `Date: ${event.starts_at}` : '';
+  const sponsorsText = eventIntelligence?.sponsors ? `Current Sponsors: ${JSON.stringify(eventIntelligence.sponsors.tiers)}` : '';
+  const opportunityScoreText = opportunityScore ? `Opportunity Score: ${opportunityScore.overallScore.toFixed(2)}` : '';
+  const roiEstimateText = opportunityScore?.roiEstimate ? `ROI Estimate: ${opportunityScore.roiEstimate}` : '';
+  const companyText = userProfile?.company ? `Company: ${userProfile.company}` : '';
+  const industryText = userProfile?.industry_terms ? `Industry: ${userProfile.industry_terms.join(', ')}` : '';
+  
   const prompt = `You are a strategic business advisor analyzing event sponsorship opportunities.
 
 Event: ${event.title}
-${event.description ? `Description: ${event.description.substring(0, 500)}` : ''}
-${event.city ? `Location: ${event.city}, ${event.country || ''}` : ''}
-${event.starts_at ? `Date: ${event.starts_at}` : ''}
-${eventIntelligence?.sponsors ? `Current Sponsors: ${JSON.stringify(eventIntelligence.sponsors.tiers)}` : ''}
-${opportunityScore ? `Opportunity Score: ${opportunityScore.overallScore.toFixed(2)}` : ''}
-${opportunityScore?.roiEstimate ? `ROI Estimate: ${opportunityScore.roiEstimate}` : ''}
-${userProfile?.company ? `Company: ${userProfile.company}` : ''}
-${userProfile?.industry_terms ? `Industry: ${userProfile.industry_terms.join(', ')}` : ''}
+${descriptionText}
+${locationText}
+${dateText}
+${sponsorsText}
+${opportunityScoreText}
+${roiEstimateText}
+${companyText}
+${industryText}
 
 Generate a sponsorship recommendation with:
 1. A compelling title (max 60 chars)
