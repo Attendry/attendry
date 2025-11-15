@@ -66,7 +66,12 @@ function verifyCronRequest(req: NextRequest): boolean {
  * Run the event collection job
  */
 async function runEventCollection(collectionType: string) {
+  const startTime = Date.now();
+  const MAX_RUNTIME_MS = 240000; // 4 minutes (leave 60s buffer before 5min timeout)
+  const MIN_REMAINING_TIME_MS = 60000; // Exit if less than 60s remaining
+
   console.log(`[CRON] Starting ${collectionType} event collection`);
+  console.log(`[CRON] Max runtime: ${MAX_RUNTIME_MS / 1000}s, will exit with ${MIN_REMAINING_TIME_MS / 1000}s remaining`);
 
   const results = [];
   
@@ -95,11 +100,31 @@ async function runEventCollection(collectionType: string) {
     // ignore; does not impact user collection
   }
 
+  // Limit combinations per run to prevent timeout
+  // Process only 2-3 combinations per run for standard collection
+  const MAX_COMBINATIONS = collectionType === 'deep' ? 3 : 2;
+  let processedCount = 0;
+
   // Run comprehensive searches for each industry/country combination
   for (const industry of industries) {
     for (const country of countries) {
+      // Check if we've processed enough combinations
+      if (processedCount >= MAX_COMBINATIONS) {
+        console.log(`[CRON] Reached max combinations limit (${MAX_COMBINATIONS}), stopping to prevent timeout`);
+        break;
+      }
+
+      // Check remaining time before starting new combination
+      const elapsed = Date.now() - startTime;
+      const remaining = MAX_RUNTIME_MS - elapsed;
+      
+      if (remaining < MIN_REMAINING_TIME_MS) {
+        console.log(`[CRON] ⚠️ Only ${Math.round(remaining / 1000)}s remaining, exiting early to prevent timeout`);
+        break;
+      }
+
       try {
-        console.log(`[CRON] Collecting events for ${industry} in ${country}`);
+        console.log(`[CRON] Collecting events for ${industry} in ${country} (${Math.round(remaining / 1000)}s remaining)`);
         
         // Calculate date range for comprehensive search
         const today = new Date();
@@ -116,6 +141,11 @@ async function runEventCollection(collectionType: string) {
           provider: "firecrawl" // Use Firecrawl for better results
         });
 
+        // Log if no results found (extraction will be skipped)
+        if (searchData.events.length === 0) {
+          console.log(`[CRON] ⚠️ No events found for ${industry}/${country}, skipping extraction`);
+        }
+
         // Store events in database
         let eventsStored = 0;
         if (searchData.events.length > 0) {
@@ -129,16 +159,31 @@ async function runEventCollection(collectionType: string) {
           });
         }
 
+        processedCount++;
+        const elapsedAfter = Date.now() - startTime;
+        const remainingAfter = MAX_RUNTIME_MS - elapsedAfter;
+
         results.push({
           industry,
           country,
           success: true,
           eventsFound: searchData.events.length,
           eventsStored: eventsStored,
-          enhancement: searchData.enhancement
+          enhancement: searchData.enhancement,
+          elapsedSeconds: Math.round(elapsedAfter / 1000),
+          remainingSeconds: Math.round(remainingAfter / 1000)
         });
+
+        console.log(`[CRON] ✅ Completed ${industry}/${country}: ${eventsStored} events stored, ${Math.round(remainingAfter / 1000)}s remaining`);
+
+        // Check again after processing
+        if (remainingAfter < MIN_REMAINING_TIME_MS) {
+          console.log(`[CRON] ⚠️ Time running low after processing, exiting early`);
+          break;
+        }
       } catch (error: any) {
         console.error(`[CRON] Error collecting ${industry}/${country}:`, error);
+        processedCount++;
         results.push({
           industry,
           country,
@@ -147,12 +192,18 @@ async function runEventCollection(collectionType: string) {
         });
       }
     }
+    
+    // Break outer loop if we've hit limits
+    if (processedCount >= MAX_COMBINATIONS) {
+      break;
+    }
   }
 
   const successCount = results.filter(r => r.success).length;
   const totalEvents = results.reduce((sum, r) => sum + (r.eventsFound || 0), 0);
+  const totalElapsed = Math.round((Date.now() - startTime) / 1000);
 
-  console.log(`[CRON] Collection complete: ${successCount}/${results.length} successful, ${totalEvents} total events`);
+  console.log(`[CRON] Collection complete: ${successCount}/${results.length} successful, ${totalEvents} total events, ${totalElapsed}s elapsed`);
 
   return {
     success: true,
@@ -165,7 +216,10 @@ async function runEventCollection(collectionType: string) {
       totalEventsCollected: totalEvents,
       industries: industries.length,
       countries: countries.length,
-      monthsAhead
+      monthsAhead,
+      maxCombinations: MAX_COMBINATIONS,
+      elapsedSeconds: totalElapsed,
+      earlyExit: processedCount < (industries.length * countries.length)
     }
   };
 }
