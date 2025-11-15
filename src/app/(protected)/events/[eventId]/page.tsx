@@ -271,9 +271,10 @@ export default function EventDetailPage() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">{event.title}</h1>
             <div className="flex items-center gap-4 text-slate-600">
-              {formatEventDate(event.starts_at) && (
-                <span>{formatEventDate(event.starts_at)}</span>
-              )}
+              {(() => {
+                const formattedDate = formatEventDate(event.starts_at);
+                return formattedDate ? <span>{formattedDate}</span> : null;
+              })()}
               {(event.city || event.country) && (
                 <span>{[event.city, event.country].filter(Boolean).join(', ')}</span>
               )}

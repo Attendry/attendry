@@ -2161,6 +2161,9 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   console.log('[optimized-orchestrator] Extraction summary (before filtering):', {
     requested: prioritized.length,
     produced: events.length,
+    eventsWithSpeakers: events.filter(e => e.speakers && e.speakers.length > 0).length,
+    eventsWithDates: events.filter(e => e.date && e.date.trim().length > 0).length,
+    eventsWithLocations: events.filter(e => e.location && e.location.trim().length > 0).length,
     durationMs: Date.now() - startTime
   });
   
