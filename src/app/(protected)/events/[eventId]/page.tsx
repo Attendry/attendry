@@ -14,6 +14,27 @@ import { EventIntelligencePanel } from '@/components/EventIntelligencePanel';
 import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
 import EventCard from '@/components/EventCard';
 
+// Helper function to safely format date
+function formatEventDate(dateString: string | null | undefined): string | null {
+  if (!dateString) return null;
+  
+  // Skip invalid date strings
+  if (dateString === 'Unknown Date' || dateString.includes(' to ')) {
+    return null;
+  }
+  
+  try {
+    const date = new Date(dateString);
+    // Check if date is valid (not Invalid Date)
+    if (isNaN(date.getTime())) {
+      return null;
+    }
+    return date.toLocaleDateString();
+  } catch (e) {
+    return null;
+  }
+}
+
 export default function EventDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -250,8 +271,8 @@ export default function EventDetailPage() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900 mb-2">{event.title}</h1>
             <div className="flex items-center gap-4 text-slate-600">
-              {event.starts_at && (
-                <span>{new Date(event.starts_at).toLocaleDateString()}</span>
+              {formatEventDate(event.starts_at) && (
+                <span>{formatEventDate(event.starts_at)}</span>
               )}
               {(event.city || event.country) && (
                 <span>{[event.city, event.country].filter(Boolean).join(', ')}</span>

@@ -70,8 +70,11 @@ export function isSolidHit(m: CandidateMeta, window: QualityWindow): {
 } {
   const q = computeQuality(m, window);
   
-  // Speaker requirement: ≥2 speakers (as requested by user)
-  const enoughSpeakers = (m.speakersCount ?? 0) >= 2;
+  // Speaker requirement: ≥2 speakers preferred, but allow 1 speaker if quality is high enough
+  // This handles cases where speaker extraction finds only 1 valid speaker but event is otherwise high quality
+  const speakersCount = m.speakersCount ?? 0;
+  const enoughSpeakers = speakersCount >= 2;
+  const hasOneSpeakerWithHighQuality = speakersCount >= 1 && q >= 0.5;
   
   // Date validation: Adaptive tolerance based on window size
   // For short windows (14 days), be more lenient (2x window size)
@@ -123,7 +126,9 @@ export function isSolidHit(m: CandidateMeta, window: QualityWindow): {
   // PRAGMATIC RULE: If we have 5+ speakers and industry match, trust Firecrawl's search
   const trustSearchQuery = (m.speakersCount ?? 0) >= 5 && enoughSpeakers;
   
-  const ok = (meetsQuality && hasWhen && inDE && enoughSpeakers) || trustSearchQuery;
+  // Allow events with 1 speaker if quality is high enough (quality ≥ 0.5)
+  // This prevents filtering out valid events where speaker extraction only found 1 speaker
+  const ok = (meetsQuality && hasWhen && inDE && (enoughSpeakers || hasOneSpeakerWithHighQuality)) || trustSearchQuery;
   
   return {
     quality: q,
