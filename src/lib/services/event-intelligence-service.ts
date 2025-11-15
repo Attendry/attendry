@@ -606,10 +606,11 @@ export async function generateEventIntelligence(
   
   if (userProfile?.competitors && userProfile.competitors.length > 0 && userProfile.id) {
     try {
-      // Detect competitors in this event
+      // Detect competitors in this event (with user ID for personalized rules)
       const competitorMatches = await detectCompetitorsInEvent(
         event,
-        userProfile.competitors
+        userProfile.competitors,
+        userProfile.id
       );
       
       if (competitorMatches.length > 0) {

@@ -13,6 +13,14 @@
 
 import { EventData, SpeakerData, SponsorData, UserProfile } from '@/lib/types/core';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import {
+  getCachedCompetitorEvents,
+  cacheCompetitorEvents,
+  getCachedActivityComparison,
+  cacheActivityComparison,
+  getCachedUserEvents,
+  cacheUserEvents
+} from './competitive-intelligence-cache';
 
 /**
  * Competitor match in an event
@@ -327,15 +335,115 @@ function deduplicateMatches(matches: CompetitorMatch[]): CompetitorMatch[] {
 }
 
 /**
+ * Get learned matching rules for a user
+ */
+async function getLearnedRules(
+  userId: string | undefined,
+  competitors: string[]
+): Promise<Map<string, string[]>> {
+  if (!userId) return new Map();
+  
+  try {
+    const supabase = supabaseAdmin();
+    const { data: rules } = await supabase
+      .from('competitor_matching_rules')
+      .select('competitor_name, learned_pattern, confidence, feedback_count')
+      .in('competitor_name', competitors)
+      .or(`user_id.is.null,user_id.eq.${userId}`)
+      .gt('feedback_count', 0)
+      .order('feedback_count', { ascending: false });
+    
+    if (!rules) return new Map();
+    
+    const rulesMap = new Map<string, string[]>();
+    for (const rule of rules) {
+      if (!rulesMap.has(rule.competitor_name)) {
+        rulesMap.set(rule.competitor_name, []);
+      }
+      rulesMap.get(rule.competitor_name)!.push(rule.learned_pattern);
+    }
+    
+    return rulesMap;
+  } catch (error) {
+    console.error('[CompetitiveIntelligence] Error getting learned rules:', error);
+    return new Map();
+  }
+}
+
+/**
+ * Get user-specific exclusions
+ */
+async function getUserExclusions(
+  userId: string | undefined,
+  competitors: string[]
+): Promise<Set<string>> {
+  if (!userId) return new Set();
+  
+  try {
+    const supabase = supabaseAdmin();
+    const { data: exclusions } = await supabase
+      .from('competitor_exclusions')
+      .select('competitor_name, excluded_pattern')
+      .eq('user_id', userId)
+      .in('competitor_name', competitors);
+    
+    if (!exclusions) return new Set();
+    
+    const exclusionSet = new Set<string>();
+    for (const exclusion of exclusions) {
+      exclusionSet.add(`${exclusion.competitor_name}:${exclusion.excluded_pattern}`);
+    }
+    
+    return exclusionSet;
+  } catch (error) {
+    console.error('[CompetitiveIntelligence] Error getting exclusions:', error);
+    return new Set();
+  }
+}
+
+/**
+ * Check if a match should be excluded based on user feedback
+ */
+function isExcluded(
+  competitorName: string,
+  matchedName: string,
+  exclusions: Set<string>
+): boolean {
+  return exclusions.has(`${competitorName}:${matchedName}`);
+}
+
+/**
+ * Check learned rules for fast matching
+ */
+function checkLearnedRules(
+  competitorName: string,
+  matchedName: string,
+  learnedRules: Map<string, string[]>
+): boolean {
+  const patterns = learnedRules.get(competitorName);
+  if (!patterns) return false;
+  
+  return patterns.some(pattern => {
+    const normalizedPattern = normalizeCompanyName(pattern);
+    const normalizedMatched = normalizeCompanyName(matchedName);
+    return normalizedPattern === normalizedMatched ||
+           normalizedMatched.includes(normalizedPattern) ||
+           normalizedPattern.includes(normalizedMatched);
+  });
+}
+
+/**
  * Detect competitors in an event
  * 
  * @param event Event data to analyze
  * @param competitors List of competitor names to match
+ * @param userId Optional user ID for personalized rules and exclusions
  * @returns Array of competitor matches
  */
 export async function detectCompetitorsInEvent(
   event: EventData,
-  competitors: string[]
+  competitors: string[],
+  userId?: string
 ): Promise<CompetitorMatch[]> {
   if (!competitors || competitors.length === 0) {
     return [];
@@ -344,6 +452,12 @@ export async function detectCompetitorsInEvent(
   if (!event) {
     return [];
   }
+  
+  // Get learned rules and exclusions for user (if provided)
+  const [learnedRules, exclusions] = await Promise.all([
+    getLearnedRules(userId, competitors),
+    getUserExclusions(userId, competitors)
+  ]);
   
   const eventId = event.id || event.source_url;
   const eventTitle = event.title || 'Unknown Event';
@@ -354,50 +468,184 @@ export async function detectCompetitorsInEvent(
   for (const competitor of competitors) {
     // Check speakers
     if (event.speakers && event.speakers.length > 0) {
-      const speakerMatches = matchCompetitorInSpeakers(
-        competitor,
-        event.speakers,
-        eventId,
-        eventTitle,
-        eventDate
-      );
-      allMatches.push(...speakerMatches);
+      for (const speaker of event.speakers) {
+        if (speaker.org) {
+          const matchedName = speaker.org;
+          
+          // Check exclusions first
+          if (isExcluded(competitor, matchedName, exclusions)) {
+            continue; // Skip this match
+          }
+          
+          // Check learned rules (fast path)
+          if (checkLearnedRules(competitor, matchedName, learnedRules)) {
+            allMatches.push({
+              competitorName: competitor,
+              matchType: 'speaker',
+              matchConfidence: 0.95, // High confidence for learned rules
+              matchDetails: {
+                eventId,
+                eventTitle,
+                eventDate,
+                role: speaker.title || 'Speaker',
+                organization: speaker.org,
+                speakerName: speaker.name
+              }
+            });
+            continue;
+          }
+          
+          // Fall back to fuzzy matching
+          const similarity = calculateNameSimilarity(competitor, matchedName);
+          if (similarity >= 0.5) {
+            allMatches.push({
+              competitorName: competitor,
+              matchType: 'speaker',
+              matchConfidence: similarity,
+              matchDetails: {
+                eventId,
+                eventTitle,
+                eventDate,
+                role: speaker.title || 'Speaker',
+                organization: speaker.org,
+                speakerName: speaker.name
+              }
+            });
+          }
+        }
+      }
     }
     
     // Check sponsors
     if (event.sponsors && event.sponsors.length > 0) {
-      const sponsorMatches = matchCompetitorInSponsors(
-        competitor,
-        event.sponsors,
-        eventId,
-        eventTitle,
-        eventDate
-      );
-      allMatches.push(...sponsorMatches);
+      for (const sponsor of event.sponsors) {
+        const sponsorName = typeof sponsor === 'string' ? sponsor : sponsor.name;
+        if (!sponsorName) continue;
+        
+        // Check exclusions first
+        if (isExcluded(competitor, sponsorName, exclusions)) {
+          continue;
+        }
+        
+        // Check learned rules
+        if (checkLearnedRules(competitor, sponsorName, learnedRules)) {
+          const level = typeof sponsor === 'object' && sponsor.level ? sponsor.level : 'unknown';
+          allMatches.push({
+            competitorName: competitor,
+            matchType: 'sponsor',
+            matchConfidence: 0.95,
+            matchDetails: {
+              eventId,
+              eventTitle,
+              eventDate,
+              role: `${level} sponsor`,
+              organization: sponsorName
+            }
+          });
+          continue;
+        }
+        
+        // Fall back to fuzzy matching
+        const similarity = calculateNameSimilarity(competitor, sponsorName);
+        if (similarity >= 0.5) {
+          const level = typeof sponsor === 'object' && sponsor.level ? sponsor.level : 'unknown';
+          allMatches.push({
+            competitorName: competitor,
+            matchType: 'sponsor',
+            matchConfidence: similarity,
+            matchDetails: {
+              eventId,
+              eventTitle,
+              eventDate,
+              role: `${level} sponsor`,
+              organization: sponsorName
+            }
+          });
+        }
+      }
     }
     
     // Check attendees/organizations
     if (event.participating_organizations && event.participating_organizations.length > 0) {
-      const attendeeMatches = matchCompetitorInAttendees(
-        competitor,
-        event.participating_organizations,
-        eventId,
-        eventTitle,
-        eventDate
-      );
-      allMatches.push(...attendeeMatches);
+      for (const org of event.participating_organizations) {
+        // Check exclusions first
+        if (isExcluded(competitor, org, exclusions)) {
+          continue;
+        }
+        
+        // Check learned rules
+        if (checkLearnedRules(competitor, org, learnedRules)) {
+          allMatches.push({
+            competitorName: competitor,
+            matchType: 'attendee',
+            matchConfidence: 0.95,
+            matchDetails: {
+              eventId,
+              eventTitle,
+              eventDate,
+              role: 'Attendee',
+              organization: org
+            }
+          });
+          continue;
+        }
+        
+        // Fall back to fuzzy matching
+        const similarity = calculateNameSimilarity(competitor, org);
+        if (similarity >= 0.5) {
+          allMatches.push({
+            competitorName: competitor,
+            matchType: 'attendee',
+            matchConfidence: similarity,
+            matchDetails: {
+              eventId,
+              eventTitle,
+              eventDate,
+              role: 'Attendee',
+              organization: org
+            }
+          });
+        }
+      }
     }
     
     // Check organizer
     if (event.organizer) {
-      const organizerMatches = matchCompetitorInOrganizer(
-        competitor,
-        event.organizer,
-        eventId,
-        eventTitle,
-        eventDate
-      );
-      allMatches.push(...organizerMatches);
+      // Check exclusions first
+      if (!isExcluded(competitor, event.organizer, exclusions)) {
+        // Check learned rules
+        if (checkLearnedRules(competitor, event.organizer, learnedRules)) {
+          allMatches.push({
+            competitorName: competitor,
+            matchType: 'organizer',
+            matchConfidence: 0.95,
+            matchDetails: {
+              eventId,
+              eventTitle,
+              eventDate,
+              role: 'Organizer',
+              organization: event.organizer
+            }
+          });
+        } else {
+          // Fall back to fuzzy matching
+          const similarity = calculateNameSimilarity(competitor, event.organizer);
+          if (similarity >= 0.5) {
+            allMatches.push({
+              competitorName: competitor,
+              matchType: 'organizer',
+              matchConfidence: similarity,
+              matchDetails: {
+                eventId,
+                eventTitle,
+                eventDate,
+                role: 'Organizer',
+                organization: event.organizer
+              }
+            });
+          }
+        }
+      }
     }
   }
   
@@ -410,12 +658,18 @@ export async function detectCompetitorsInEvent(
 }
 
 /**
- * Get user's events from board
+ * Get user's events from board (with caching)
  */
 async function getUserEvents(
   userId: string,
   timeWindow?: { from: Date; to: Date }
 ): Promise<string[]> {
+  // Check cache first
+  const cached = await getCachedUserEvents(userId, timeWindow);
+  if (cached) {
+    return cached;
+  }
+
   try {
     const supabase = supabaseAdmin();
     let query = supabase
@@ -449,6 +703,9 @@ async function getUserEvents(
       })
       .filter((id): id is string => id !== null);
     
+    // Cache the result
+    await cacheUserEvents(userId, eventIds, timeWindow);
+    
     return eventIds;
   } catch (error) {
     console.error('[CompetitiveIntelligence] Exception getting user events:', error);
@@ -457,21 +714,37 @@ async function getUserEvents(
 }
 
 /**
- * Find events where a competitor is present
+ * Find events where a competitor is present (with caching and pagination)
  */
 async function findCompetitorEvents(
   competitorName: string,
-  timeWindow?: { from: Date; to: Date }
+  timeWindow?: { from: Date; to: Date },
+  options?: { page?: number; limit?: number }
 ): Promise<EventData[]> {
+  // Check cache first
+  const cached = await getCachedCompetitorEvents(competitorName, timeWindow);
+  if (cached) {
+    // Apply pagination to cached results
+    const page = options?.page || 0;
+    const limit = options?.limit || 100;
+    const start = page * limit;
+    const end = start + limit;
+    return cached.slice(start, end);
+  }
+
   try {
     const supabase = supabaseAdmin();
     
-    // Search in collected_events for competitor mentions
-    // This is a simplified version - in production, you might want to cache this
+    // Use optimized query with indexes
+    const limit = options?.limit || 100;
+    const page = options?.page || 0;
+    const offset = page * limit;
+    
     let query = supabase
       .from('collected_events')
-      .select('*')
-      .limit(1000); // Limit for performance
+      .select('id, source_url, title, starts_at, ends_at, speakers, sponsors, participating_organizations, organizer')
+      .limit(limit)
+      .range(offset, offset + limit - 1);
     
     if (timeWindow) {
       query = query
@@ -492,7 +765,12 @@ async function findCompetitorEvents(
     const competitorEvents: EventData[] = [];
     const normalizedCompetitor = normalizeCompanyName(competitorName);
     
-    for (const event of events as EventData[]) {
+    // Batch process events for better performance
+    const batchSize = 50;
+    for (let i = 0; i < events.length; i += batchSize) {
+      const batch = events.slice(i, i + batchSize) as EventData[];
+      
+      for (const event of batch) {
       // Check speakers
       if (event.speakers) {
         const hasMatch = event.speakers.some(speaker => {
@@ -630,17 +908,19 @@ function identifyHighValueCompetitors(
 }
 
 /**
- * Compare user activity vs. competitors
+ * Compare user activity vs. competitors (with caching and batching)
  * 
  * @param userId User ID
  * @param competitors List of competitor names
  * @param timeWindow Optional time window for comparison
+ * @param options Optional pagination and batching options
  * @returns Competitive context
  */
 export async function compareUserActivity(
   userId: string,
   competitors: string[],
-  timeWindow?: { from: Date; to: Date }
+  timeWindow?: { from: Date; to: Date },
+  options?: { page?: number; limit?: number; batchSize?: number }
 ): Promise<CompetitiveContext> {
   if (!competitors || competitors.length === 0) {
     return {
@@ -651,15 +931,41 @@ export async function compareUserActivity(
       activityComparison: []
     };
   }
+
+  // Check cache first
+  const cached = await getCachedActivityComparison(userId, competitors, timeWindow);
+  if (cached) {
+    return cached;
+  }
   
   // Get user's events
   const userEvents = await getUserEvents(userId, timeWindow);
   
-  // For each competitor, find their events
+  // Process competitors in batches for better performance
+  const batchSize = options?.batchSize || 5;
   const competitorEvents: Record<string, string[]> = {};
-  for (const competitor of competitors) {
-    const events = await findCompetitorEvents(competitor, timeWindow);
-    competitorEvents[competitor] = events.map(e => e.id || e.source_url).filter((id): id is string => id !== null);
+  
+  for (let i = 0; i < competitors.length; i += batchSize) {
+    const batch = competitors.slice(i, i + batchSize);
+    
+    // Process batch in parallel
+    const batchResults = await Promise.all(
+      batch.map(async (competitor) => {
+        const events = await findCompetitorEvents(competitor, timeWindow, {
+          page: options?.page || 0,
+          limit: options?.limit || 100
+        });
+        return {
+          competitor,
+          eventIds: events.map(e => e.id || e.source_url).filter((id): id is string => id !== null)
+        };
+      })
+    );
+    
+    // Merge results
+    for (const result of batchResults) {
+      competitorEvents[result.competitor] = result.eventIds;
+    }
   }
   
   // Calculate gaps
@@ -678,13 +984,18 @@ export async function compareUserActivity(
     userEvents
   );
   
-  return {
+  const result: CompetitiveContext = {
     competitorsPresent: [], // Will be populated in event intelligence
     competitorCount: competitors.length,
     highValueCompetitors,
     competitiveGaps: gaps,
     activityComparison
   };
+
+  // Cache the result
+  await cacheActivityComparison(userId, competitors, result, timeWindow);
+  
+  return result;
 }
 
 /**

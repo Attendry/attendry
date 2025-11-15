@@ -7,6 +7,7 @@
 
 import React from "react";
 import { Users, AlertTriangle, TrendingUp, TrendingDown } from "lucide-react";
+import { CompetitorMatchFeedback } from "../competitive-intelligence/CompetitorMatchFeedback";
 
 interface CompetitiveInsightsProps {
   context?: any; // CompetitiveContext
@@ -67,6 +68,14 @@ export function CompetitiveInsights({ context, alerts }: CompetitiveInsightsProp
                     </span>
                   </div>
                 </div>
+                {match.matchDetails?.eventId && (
+                  <div className="mt-2 pt-2 border-t border-orange-200">
+                    <CompetitorMatchFeedback
+                      match={match}
+                      eventId={match.matchDetails.eventId}
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
