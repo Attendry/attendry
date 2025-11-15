@@ -10,13 +10,17 @@ import EventCard from "@/components/EventCard";
 import EventsPagination from "@/components/EventsPagination";
 import { deriveLocale, toISO2Country } from "@/lib/utils/country";
 import { Button } from "@/components/ui/button";
-import { Search, Clock } from "lucide-react";
+import { Search, Clock, MessageSquare, Keyboard } from "lucide-react";
 import Link from "next/link";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import { useRouter } from "next/navigation";
 import { useSearchResults, EventRec } from "@/context/SearchResultsContext";
 import { ActiveFilters } from "@/components/ActiveFilters";
 import ProcessingStatusBar from "@/components/ProcessingStatusBar";
+import NaturalLanguageSearch from "@/components/NaturalLanguageSearch";
+import { SearchIntent } from "@/components/NaturalLanguageSearch";
+import { fetchEvents } from "@/lib/search/client";
+import { toast } from "sonner";
 
 // EventRec type is now imported from SearchResultsContext
 
@@ -46,6 +50,48 @@ function addDays(base: Date, n: number) {
   return d;
 }
 
+// Helper function to calculate date ranges from natural language
+function calculateDateRange(timeframe: string): { from: string; to: string } {
+  const today = new Date();
+  const from = new Date(today);
+  const to = new Date(today);
+  
+  switch (timeframe) {
+    case 'past-7':
+      from.setDate(today.getDate() - 7);
+      to.setDate(today.getDate() - 1);
+      break;
+    case 'past-14':
+      from.setDate(today.getDate() - 14);
+      to.setDate(today.getDate() - 1);
+      break;
+    case 'past-30':
+      from.setDate(today.getDate() - 30);
+      to.setDate(today.getDate() - 1);
+      break;
+    case 'next-7':
+      from.setDate(today.getDate());
+      to.setDate(today.getDate() + 7);
+      break;
+    case 'next-14':
+      from.setDate(today.getDate());
+      to.setDate(today.getDate() + 14);
+      break;
+    case 'next-30':
+      from.setDate(today.getDate());
+      to.setDate(today.getDate() + 30);
+      break;
+    default:
+      from.setDate(today.getDate());
+      to.setDate(today.getDate() + 30);
+  }
+  
+  return {
+    from: from.toISOString().split('T')[0],
+    to: to.toISOString().split('T')[0]
+  };
+}
+
 interface EventsPageNewProps {
   initialSavedSet: Set<string>;
 }
@@ -68,6 +114,8 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [promotionMessage, setPromotionMessage] = useState<string | null>(null);
   const [processingJobs, setProcessingJobs] = useState<any[]>([]);
+  const [searchMode, setSearchMode] = useState<'traditional' | 'natural'>('traditional');
+  const [lastIntent, setLastIntent] = useState<SearchIntent | null>(null);
   const router = useRouter();
 
   // Get current page events from context
@@ -311,6 +359,92 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     actions.clearResults();
   }, [handleQuickRange, actions]);
 
+  // Natural Language Search handler
+  const handleNaturalLanguageSearch = useCallback(async (query: string, intent: SearchIntent) => {
+    setLastIntent(intent);
+    actions.setError(null);
+    actions.setLoading(true);
+
+    try {
+      // Determine country from location entities or use current selection
+      let searchCountry = country;
+      if (intent.entities.location?.length) {
+        const location = intent.entities.location[0].toLowerCase();
+        if (location.includes('germany') || location.includes('deutschland')) searchCountry = 'DE';
+        else if (location.includes('austria') || location.includes('österreich')) searchCountry = 'AT';
+        else if (location.includes('switzerland') || location.includes('schweiz')) searchCountry = 'CH';
+        else if (location.includes('france') || location.includes('frankreich')) searchCountry = 'FR';
+        else if (location.includes('italy') || location.includes('italien')) searchCountry = 'IT';
+        else if (location.includes('spain') || location.includes('spanien')) searchCountry = 'ES';
+        else if (location.includes('netherlands') || location.includes('niederlande')) searchCountry = 'NL';
+        else if (location.includes('belgium') || location.includes('belgien')) searchCountry = 'BE';
+      }
+
+      // Calculate date range based on intent or use current settings
+      let dateRange = { from, to };
+      if (intent.entities.date?.length) {
+        const dateStr = intent.entities.date[0].toLowerCase();
+        if (dateStr.includes('past') || dateStr.includes('last')) {
+          if (dateStr.includes('7')) dateRange = calculateDateRange('past-7');
+          else if (dateStr.includes('14')) dateRange = calculateDateRange('past-14');
+          else if (dateStr.includes('30')) dateRange = calculateDateRange('past-30');
+        } else if (dateStr.includes('next') || dateStr.includes('upcoming')) {
+          if (dateStr.includes('7')) dateRange = calculateDateRange('next-7');
+          else if (dateStr.includes('14')) dateRange = calculateDateRange('next-14');
+          else if (dateStr.includes('30')) dateRange = calculateDateRange('next-30');
+        }
+      }
+
+      // Update form state to match natural language search
+      setCountry(searchCountry);
+      setFrom(dateRange.from);
+      setTo(dateRange.to);
+      setKeywords(query);
+
+      const normalizedCountry = toISO2Country(searchCountry) ?? 'EU';
+      const locale = deriveLocale(normalizedCountry);
+
+      const data = await fetchEvents({
+        userText: query || 'conference',
+        country: normalizedCountry,
+        dateFrom: dateRange.from,
+        dateTo: dateRange.to,
+        locale
+      });
+
+      const events = (data.events || []).map((e: any) => ({
+        ...e,
+        id: e.id || e.source_url,
+      }));
+
+      actions.setSearchResults(events, {
+        keywords: query,
+        country: searchCountry,
+        from: dateRange.from,
+        to: dateRange.to,
+        timestamp: Date.now(),
+        userProfile: userProfile ? {
+          industryTerms: userProfile.industry_terms || [],
+          icpTerms: userProfile.icp_terms || [],
+          competitors: userProfile.competitors || [],
+        } : undefined,
+      }, events.length);
+
+      toast.success('Search completed', {
+        description: `Found ${events.length} event${events.length !== 1 ? 's' : ''}`
+      });
+    } catch (err) {
+      console.error('Natural language search failed:', err);
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred while searching';
+      actions.setError(errorMessage);
+      toast.error('Search failed', {
+        description: errorMessage
+      });
+    } finally {
+      actions.setLoading(false);
+    }
+  }, [country, from, to, userProfile, actions]);
+
   async function run(e?: React.FormEvent) {
     e?.preventDefault();
     if (from > to) {
@@ -408,8 +542,8 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   return (
     <>
       <PageHeader
-        title="Events"
-        subtitle="Discover and manage your event calendar"
+        title="Speaker Search"
+        subtitle="Search for events and discover speakers using natural language or traditional filters"
         breadcrumbs={breadcrumbs}
         actions={
           <PageHeaderActions
@@ -428,9 +562,54 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         <div className="mb-6">
           <SetupStatusIndicator />
         </div>
-        <form onSubmit={run} className="space-y-4">
-          {/* Search Input */}
-          <div className="flex flex-col sm:flex-row gap-4">
+        
+        {/* Search Mode Toggle */}
+        <div className="mb-4 flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg w-fit">
+          <button
+            type="button"
+            onClick={() => setSearchMode('traditional')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              searchMode === 'traditional'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Keyboard className="w-4 h-4" />
+            Traditional
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchMode('natural')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              searchMode === 'natural'
+                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            Natural Language
+          </button>
+        </div>
+
+        {searchMode === 'natural' ? (
+          <div className="space-y-4">
+            <NaturalLanguageSearch
+              onSearch={handleNaturalLanguageSearch}
+              onIntentDetected={(intent) => setLastIntent(intent)}
+              placeholder="Ask me anything about events... e.g., 'Find fintech conferences in Germany next month'"
+              className="mb-4"
+            />
+            {lastIntent && (
+              <div className="text-sm text-slate-600 dark:text-slate-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
+                <span className="font-medium">Detected intent:</span> {lastIntent.type} 
+                ({(lastIntent.confidence * 100).toFixed(0)}% confidence)
+              </div>
+            )}
+          </div>
+        ) : (
+          <form onSubmit={run} className="space-y-4">
+            {/* Search Input */}
+            <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -555,7 +734,8 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
               </div>
             </div>
           </div>
-        </form>
+          </form>
+        )}
         <div className="mt-4 flex items-center gap-2 text-sm text-slate-500">
           <span>Need to adjust your search profile?</span>
           <button

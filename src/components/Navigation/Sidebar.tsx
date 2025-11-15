@@ -55,11 +55,11 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
       label: 'Events', 
       icon: Calendar,
       children: [
+        { href: '/events', label: 'Speaker Search', icon: Search },
         { href: '/recommendations', label: 'Event Recommendations', icon: Brain },
         { href: '/events-board', label: 'Events Board', icon: LayoutGrid }
       ]
     },
-    { href: '/search', label: 'Search', icon: Search },
     { 
       href: '/recommendations', 
       label: 'Intelligence', 

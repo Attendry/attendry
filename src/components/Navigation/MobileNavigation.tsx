@@ -33,7 +33,6 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
   const navigationItems: NavigationItem[] = [
     { href: '/', label: 'Dashboard', icon: Home },
     { href: '/events', label: 'Events', icon: Calendar },
-    { href: '/search', label: 'Search', icon: Search },
     { href: '/recommendations', label: 'Intelligence', icon: Brain },
     { href: '/activity', label: 'Reporting', icon: BarChart3 },
     { href: '/notifications', label: 'Notifications', icon: Bell, badge: 3 },
