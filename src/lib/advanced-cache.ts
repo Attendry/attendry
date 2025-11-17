@@ -688,13 +688,62 @@ const analysisCache = new AdvancedCacheManager<any>();
 const speakerCache = new AdvancedCacheManager<any>();
 
 // Cache key generators
+/**
+ * Normalize query for cache key generation
+ * This increases cache hit rate by treating semantically similar queries as the same
+ */
+function normalizeQueryForCache(query: string): string {
+  if (!query) return '';
+  
+  // Normalize whitespace
+  let normalized = query
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+  
+  // Remove common query variations that don't affect meaning
+  // Remove trailing event type terms (they're often added as variations)
+  const eventTypeSuffixes = [
+    ' conference', ' event', ' summit', ' workshop', ' seminar',
+    ' forum', ' symposium', ' trade show', ' expo', ' konferenz',
+    ' veranstaltung', ' arbeitskreis'
+  ];
+  
+  for (const suffix of eventTypeSuffixes) {
+    if (normalized.endsWith(suffix)) {
+      normalized = normalized.slice(0, -suffix.length).trim();
+      break; // Only remove one suffix
+    }
+  }
+  
+  // Normalize boolean operators (treat OR/AND variations as same)
+  normalized = normalized
+    .replace(/\s+or\s+/g, ' ')
+    .replace(/\s+and\s+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  // Extract core terms: keep quoted phrases and important keywords
+  // Remove excessive parentheses
+  normalized = normalized
+    .replace(/\s*\(+\s*/g, ' ')
+    .replace(/\s*\)+\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  return normalized;
+}
+
 export function generateSearchCacheKey(params: any, provider: string): string {
+  // Normalize query to increase cache hits for similar queries
+  const normalizedQuery = normalizeQueryForCache(params.q || '');
+  
   const keyData = {
-    q: params.q,
-    country: params.country,
-    dateFrom: params.dateFrom,
-    dateTo: params.dateTo,
-    limit: params.limit,
+    q: normalizedQuery,  // Use normalized query instead of raw
+    country: (params.country || '').toUpperCase(),  // Normalize country code
+    dateFrom: params.dateFrom || '',
+    dateTo: params.dateTo || '',
+    limit: params.limit || 20,  // Default limit for consistency
     provider
   };
   return `search:${createHash('md5').update(JSON.stringify(keyData)).digest('hex')}`;
