@@ -255,9 +255,13 @@ export function CommandCentre() {
       action: {
         label: 'Try a search',
         onClick: () => {
-          const searchInput = document.querySelector('[data-tour="quick-search"] input') as HTMLInputElement;
-          if (searchInput) {
-            searchInput.focus();
+          // Try to find the search input - it might be in a nested component
+          const searchContainer = document.querySelector('[data-tour="quick-search"]');
+          if (searchContainer) {
+            const searchInput = searchContainer.querySelector('input[type="text"]') as HTMLInputElement;
+            if (searchInput) {
+              searchInput.focus();
+            }
           }
         }
       }
@@ -688,6 +692,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRunAt, setLastRunAt] = useState<number | null>(null);
+  const [searchProgress, setSearchProgress] = useState<{ stage: number; message: string } | null>(null);
   const [savingSpeakerId, setSavingSpeakerId] = useState<string | null>(null);
   const [speakerStatus, setSpeakerStatus] = useState<Record<string, 'saved' | 'error'>>({});
   const [savedSignatures, setSavedSignatures] = useState<Record<string, 'saved'>>({});
@@ -809,7 +814,12 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
     setLoading(true);
     setError(null);
     setSpeakerStatus({});
+    setSearchProgress({ stage: 0, message: 'Preparing search...' });
+    
     try {
+      // Update progress: Discovering events
+      setSearchProgress({ stage: 1, message: 'Discovering events...' });
+      
       // Smart combination of free-text keywords and selected tags with deduplication
       const freeTextKeywords = config.keywords.trim();
       const selectedTags = config.selectedKeywordTags || [];
@@ -832,6 +842,10 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
 
       const normalizedCountry = toISO2Country(config.country) ?? 'EU';
       const locale = deriveLocale(normalizedCountry);
+      
+      // Update progress: Processing results
+      setSearchProgress({ stage: 2, message: 'Processing results...' });
+      
       const response = await fetch('/api/events/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -877,11 +891,19 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
         }))
         .filter((event) => !!event.source_url);
 
+      // Update progress: Finalizing
+      setSearchProgress({ stage: 3, message: 'Finalizing...' });
+
       setResults(normalizedEvents);
       setLastRunAt(Date.now());
+      
+      // Complete progress
+      setSearchProgress({ stage: 4, message: 'Complete' });
+      setTimeout(() => setSearchProgress(null), 500);
     } catch (err) {
       setResults([]);
       setError(err instanceof Error ? err.message : 'Search failed');
+      setSearchProgress(null);
     } finally {
       setLoading(false);
     }
@@ -1044,7 +1066,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   }, []);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm" data-tour="quick-search">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
         <div>
           <div className="flex items-center gap-2">
@@ -1318,7 +1340,27 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
             </div>
           )}
 
-          {loading && (
+          {/* Minimalist Status Bar */}
+          {loading && searchProgress && (
+            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800 px-4 py-2.5">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-blue-900 dark:text-blue-200 truncate">
+                    {searchProgress.message}
+                  </p>
+                  <div className="mt-1.5 w-full bg-blue-200 dark:bg-blue-800 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-blue-600 dark:bg-blue-400 transition-all duration-300 ease-out rounded-full"
+                      style={{ width: `${(searchProgress.stage / 4) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {loading && !searchProgress && (
             <div className="flex items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 py-12 text-sm text-slate-600">
               <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
               Gathering events…

@@ -39,24 +39,46 @@ export function OnboardingTour({ steps, isActive, onComplete, onSkip }: Onboardi
       // Try to find element by selector or data attribute
       let element: HTMLElement | null = null;
       
-      if (step.target.startsWith('[') && step.target.endsWith(']')) {
-        // Data attribute selector
-        const attr = step.target.slice(1, -1);
-        element = document.querySelector(`[data-tour="${attr}"]`) as HTMLElement;
-      } else {
-        // CSS selector
-        element = document.querySelector(step.target) as HTMLElement;
+      try {
+        if (step.target.startsWith('[') && step.target.endsWith(']')) {
+          // Data attribute selector - extract the attribute name
+          const attrMatch = step.target.match(/\[data-tour="([^"]+)"\]/);
+          if (attrMatch) {
+            const attrValue = attrMatch[1];
+            element = document.querySelector(`[data-tour="${attrValue}"]`) as HTMLElement;
+          }
+        } else {
+          // CSS selector
+          element = document.querySelector(step.target) as HTMLElement;
+        }
+      } catch (error) {
+        console.warn('OnboardingTour: Error finding target element:', error);
+        // If element not found, skip to next step or complete
+        if (currentStep < steps.length - 1) {
+          setTimeout(() => setCurrentStep(currentStep + 1), 500);
+        } else {
+          onComplete();
+        }
+        return;
       }
 
       setTargetElement(element);
       
       if (element) {
-        // Scroll element into view
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Scroll element into view with a small delay to ensure it's rendered
+        setTimeout(() => {
+          element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      } else {
+        // Element not found - wait a bit and try again, or skip
+        console.warn(`OnboardingTour: Target element not found: ${step.target}`);
       }
     };
 
-    updateTarget();
+    // Add a small delay to ensure DOM is ready
+    const timeoutId = setTimeout(() => {
+      updateTarget();
+    }, 200);
     
     // Update on scroll/resize
     const handleUpdate = () => updateTarget();
@@ -64,10 +86,11 @@ export function OnboardingTour({ steps, isActive, onComplete, onSkip }: Onboardi
     window.addEventListener('resize', handleUpdate);
 
     return () => {
+      clearTimeout(timeoutId);
       window.removeEventListener('scroll', handleUpdate, true);
       window.removeEventListener('resize', handleUpdate);
     };
-  }, [isActive, currentStep, steps]);
+  }, [isActive, currentStep, steps, onComplete]);
 
   if (!isActive || steps.length === 0 || currentStep >= steps.length) {
     return null;
