@@ -22,10 +22,12 @@ import AttendeeCard from "./AttendeeCard";
 import DynamicSpeakerLayout from "./DynamicSpeakerLayout"; // Dynamic speaker layout component
 import CompanyCard from "./CompanyCard"; // Company/sponsor card component
 import { EventIntelligenceQuickView } from "./EventIntelligenceQuickView"; // Event intelligence quick view
+import { RelevanceIndicator, extractMatchReasons } from "./RelevanceIndicator";
 import { SpeakerData } from "@/lib/types/core";
 import { Star, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useSearchResults } from "@/context/SearchResultsContext";
 
 /**
  * Event data structure interface
@@ -93,6 +95,7 @@ interface EventCardProps {
  */
 const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToComparison, watchlistMatch }: EventCardProps) {
   const router = useRouter();
+  const { state } = useSearchResults();
   
   // ============================================================================
   // STATE MANAGEMENT
@@ -566,6 +569,18 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         {ev.venue && (
           <div className="text-sm text-slate-600">
             <span className="font-medium text-slate-700">Venue:</span> {ev.venue}
+          </div>
+        )}
+        
+        {/* Relevance Indicator */}
+        {state.searchParams && (
+          <div className="mt-3">
+            <RelevanceIndicator
+              matchReasons={extractMatchReasons(ev, state.searchParams)}
+              confidence={ev.confidence || undefined}
+              searchQuery={state.searchParams.keywords}
+              compact={true}
+            />
           </div>
         )}
 

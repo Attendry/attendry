@@ -16,11 +16,14 @@ import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import { useRouter } from "next/navigation";
 import { useSearchResults, EventRec } from "@/context/SearchResultsContext";
 import { ActiveFilters } from "@/components/ActiveFilters";
+import { SearchContextBar } from "@/components/SearchContextBar";
+import { SearchProgressIndicator } from "@/components/SearchProgressIndicator";
 import ProcessingStatusBar from "@/components/ProcessingStatusBar";
 import NaturalLanguageSearch from "@/components/NaturalLanguageSearch";
 import { SearchIntent } from "@/components/NaturalLanguageSearch";
 import { fetchEvents } from "@/lib/search/client";
 import { toast } from "sonner";
+import { formatErrorForToast, getUserFriendlyMessage, CommonErrors } from "@/lib/errors/user-friendly-messages";
 
 // EventRec type is now imported from SearchResultsContext
 
@@ -116,6 +119,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [processingJobs, setProcessingJobs] = useState<any[]>([]);
   const [searchMode, setSearchMode] = useState<'traditional' | 'natural'>('traditional');
   const [lastIntent, setLastIntent] = useState<SearchIntent | null>(null);
+  const [searchProgress, setSearchProgress] = useState<{ stage: number; total: number; message?: string } | null>(null);
   const router = useRouter();
 
   // Get current page events from context
@@ -364,8 +368,13 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     setLastIntent(intent);
     actions.setError(null);
     actions.setLoading(true);
+    
+    // Initialize progress tracking
+    setSearchProgress({ stage: 0, total: 4, message: 'Processing your query...' });
 
     try {
+      // Update progress: Discovering events
+      setSearchProgress({ stage: 1, total: 4, message: 'Discovering events...' });
       // Determine country from location entities or use current selection
       let searchCountry = country;
       if (intent.entities.location?.length) {
@@ -404,6 +413,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
       const normalizedCountry = toISO2Country(searchCountry) ?? 'EU';
       const locale = deriveLocale(normalizedCountry);
 
+      // Update progress: Processing results
+      setSearchProgress({ stage: 2, total: 4, message: 'Processing results...' });
+
       const data = await fetchEvents({
         userText: query || 'conference',
         country: normalizedCountry,
@@ -412,6 +424,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         locale,
         useNaturalLanguage: true // Skip profile enrichment for natural language queries
       });
+
+      // Update progress: Finalizing
+      setSearchProgress({ stage: 3, total: 4, message: 'Finalizing results...' });
 
       const events = (data.events || []).map((e: any) => ({
         ...e,
@@ -431,34 +446,62 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         } : undefined,
       }, events.length);
 
+      // Complete progress
+      setSearchProgress({ stage: 4, total: 4, message: 'Search completed!' });
+
       toast.success('Search completed', {
         description: `Found ${events.length} event${events.length !== 1 ? 's' : ''}`
       });
+      
+      // Show info if no results
+      if (events.length === 0) {
+        const noResults = CommonErrors.noSearchResults(true);
+        toast.info('No results found', {
+          description: noResults.message
+        });
+      }
     } catch (err) {
       console.error('Natural language search failed:', err);
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred while searching';
-      actions.setError(errorMessage);
-      toast.error('Search failed', {
-        description: errorMessage
+      const errorInfo = formatErrorForToast(err, { action: 'search for events' });
+      actions.setError(errorInfo.description);
+      toast.error(errorInfo.title, {
+        description: errorInfo.description,
+        action: errorInfo.action
       });
     } finally {
       actions.setLoading(false);
+      setSearchProgress(null);
     }
   }, [country, from, to, userProfile, actions]);
 
   async function run(e?: React.FormEvent) {
     e?.preventDefault();
     if (from > to) {
-      actions.setError("'From' must be before 'To'");
+      const dateError = CommonErrors.invalidDateRange();
+      actions.setError(dateError.message);
+      toast.error('Invalid date range', {
+        description: dateError.message
+      });
       return;
+    }
+    
+    // Clear NLP intent for traditional searches
+    if (searchMode === 'traditional') {
+      setLastIntent(null);
     }
     
     actions.setError(null);
     actions.setLoading(true);
     
+    // Initialize progress tracking
+    setSearchProgress({ stage: 0, total: 4, message: 'Initializing search...' });
+    
     try {
       const normalizedCountry = toISO2Country(country) ?? 'EU';
       const locale = deriveLocale(normalizedCountry);
+
+      // Update progress: Discovering events
+      setSearchProgress({ stage: 1, total: 4, message: 'Discovering events...' });
 
       const res = await fetch(`/api/events/run`, {
         method: "POST",
@@ -472,6 +515,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         }),
       });
       
+      // Update progress: Processing results
+      setSearchProgress({ stage: 2, total: 4, message: 'Processing results...' });
+      
       let data;
       try {
         data = await res.json();
@@ -481,7 +527,13 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         throw new Error(`Server returned non-JSON response: ${res.status} ${res.statusText}`);
       }
       
-      if (!res.ok) throw new Error(data?.error || res.statusText);
+      if (!res.ok) {
+        const errorData = data?.error || res.statusText;
+        throw new Error(errorData);
+      }
+      
+      // Update progress: Finalizing
+      setSearchProgress({ stage: 3, total: 4, message: 'Finalizing results...' });
       
       setDebug(data);
       const events = (data.events || data.items || []).map((e: EventRec) => ({
@@ -525,9 +577,29 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         } : undefined,
       }, events.length);
       
+      // Complete progress
+      setSearchProgress({ stage: 4, total: 4, message: 'Search completed!' });
+      
+      // Show success message
+      if (events.length === 0) {
+        const noResults = CommonErrors.noSearchResults(true);
+        toast.info('No results found', {
+          description: noResults.message
+        });
+      }
+      
     } catch (err) {
-      actions.setError(err instanceof Error ? err.message : "Failed to load events");
       console.error("Search error:", err);
+      const errorInfo = formatErrorForToast(err, { action: 'search for events' });
+      actions.setError(errorInfo.description);
+      toast.error(errorInfo.title, {
+        description: errorInfo.description,
+        action: errorInfo.action
+      });
+    } finally {
+      actions.setLoading(false);
+      // Clear progress after a short delay to show completion
+      setTimeout(() => setSearchProgress(null), 1000);
     }
   }
 
@@ -600,12 +672,6 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
               placeholder="Ask me anything about events... e.g., 'Find fintech conferences in Germany next month'"
               className="mb-4"
             />
-            {lastIntent && (
-              <div className="text-sm text-slate-600 dark:text-slate-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3">
-                <span className="font-medium">Detected intent:</span> {lastIntent.type} 
-                ({(lastIntent.confidence * 100).toFixed(0)}% confidence)
-              </div>
-            )}
           </div>
         ) : (
           <form onSubmit={run} className="space-y-4">
@@ -775,11 +841,14 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         </div>
       )}
 
-      {/* Active Filters Display */}
+      {/* Search Context Bar */}
       {state.hasResults && state.searchParams && (
         <div className="px-6 py-4">
-          <ActiveFilters
+          <SearchContextBar
             searchParams={state.searchParams}
+            totalResults={state.pagination.totalResults}
+            intent={lastIntent}
+            isNaturalLanguage={searchMode === 'natural'}
             onClearFilters={handleResetFilters}
             onModifySearch={() => {
               // Scroll to search form
@@ -789,8 +858,6 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
               }
             }}
             onRefresh={run}
-            showTimestamp={true}
-            compact={false}
           />
         </div>
       )}
@@ -813,8 +880,19 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             </div>
           )}
 
+          {/* Search Progress Indicator */}
+          {state.isLoading && searchProgress && (
+            <div className="mb-6">
+              <SearchProgressIndicator
+                currentStage={searchProgress.stage}
+                totalStages={searchProgress.total}
+                message={searchProgress.message}
+              />
+            </div>
+          )}
+
           {/* Content */}
-          {state.isLoading ? (
+          {state.isLoading && !searchProgress ? (
             <SkeletonList count={3} />
           ) : state.error ? (
             <ErrorState

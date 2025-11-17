@@ -45,6 +45,8 @@ import { EventRec } from '@/context/SearchResultsContext';
 import { useSpeakerEnhancement } from '@/lib/hooks/useSpeakerEnhancement';
 import { SpeakerData } from '@/lib/types/core';
 import { EventIntelligenceQuickView } from '@/components/EventIntelligenceQuickView';
+import { WelcomeModal } from '@/components/onboarding/WelcomeModal';
+import { OnboardingTour, TourStep } from '@/components/onboarding/OnboardingTour';
 import { toast } from 'sonner';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
@@ -171,6 +173,24 @@ function shiftDate(base: Date, offset: number) {
 export function CommandCentre() {
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
+
+  // Check onboarding status
+  const checkOnboardingStatus = useCallback((uid: string) => {
+    try {
+      const stored = localStorage.getItem(`onboarding_completed_${uid}`);
+      if (!stored) {
+        // Show welcome modal for first-time users
+        setShowWelcomeModal(true);
+      } else {
+        setOnboardingCompleted(true);
+      }
+    } catch (error) {
+      console.error('Failed to check onboarding status:', error);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,6 +200,11 @@ export function CommandCentre() {
       if (!cancelled) {
         setUserId(data.session?.user?.id ?? null);
         setAuthReady(true);
+        
+        // Check if onboarding should be shown
+        if (data.session?.user?.id) {
+          checkOnboardingStatus(data.session.user.id);
+        }
       }
     });
 
@@ -191,7 +216,74 @@ export function CommandCentre() {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [checkOnboardingStatus]);
+
+  // Handle onboarding completion
+  const handleOnboardingComplete = () => {
+    if (userId) {
+      localStorage.setItem(`onboarding_completed_${userId}`, 'true');
+      setOnboardingCompleted(true);
+      setShowWelcomeModal(false);
+      setShowTour(false);
+    }
+  };
+
+  // Handle skip onboarding
+  const handleSkipOnboarding = () => {
+    if (userId) {
+      localStorage.setItem(`onboarding_completed_${userId}`, 'true');
+      setOnboardingCompleted(true);
+      setShowWelcomeModal(false);
+      setShowTour(false);
+    }
+  };
+
+  // Start tour
+  const handleStartTour = () => {
+    setShowWelcomeModal(false);
+    setShowTour(true);
+  };
+
+  // Tour steps
+  const tourSteps: TourStep[] = [
+    {
+      id: 'quick-search',
+      target: '[data-tour="quick-search"]',
+      title: 'Quick Event Search',
+      content: 'Start here! Search for events where your target accounts will be. Use natural language or filters to find the perfect prospecting opportunities.',
+      position: 'bottom',
+      action: {
+        label: 'Try a search',
+        onClick: () => {
+          const searchInput = document.querySelector('[data-tour="quick-search"] input') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+          }
+        }
+      }
+    },
+    {
+      id: 'saved-profiles',
+      target: '[data-tour="saved-profiles"]',
+      title: 'Saved Profiles',
+      content: 'Manage your saved speaker profiles here. Track outreach status, add notes, and move prospects through your pipeline.',
+      position: 'left'
+    },
+    {
+      id: 'account-intelligence',
+      target: '[data-tour="account-intelligence"]',
+      title: 'Account Intelligence',
+      content: 'See which events your target accounts are attending. Get insights on company participation and identify warm outreach opportunities.',
+      position: 'right'
+    },
+    {
+      id: 'trending-insights',
+      target: '[data-tour="trending-insights"]',
+      title: 'Trending Insights',
+      content: 'Discover trending events and topics in your industry. Stay ahead of the curve and find new prospecting opportunities.',
+      position: 'top'
+    }
+  ];
 
   const savedProfiles = useSavedProfiles({ statusFilter: 'not_started', enabled: authReady && !!userId });
   const {
@@ -289,14 +381,28 @@ export function CommandCentre() {
   }
 
   return (
-    <div className="space-y-8">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Command Centre</h1>
-          <p className="mt-2 text-slate-600">
-            Your cockpit for targeted outreach. Prioritize speakers, monitor accounts, and act on market signals.
-          </p>
-        </div>
+    <>
+      {/* Onboarding Components */}
+      <WelcomeModal
+        isOpen={showWelcomeModal}
+        onClose={handleSkipOnboarding}
+        onStartTour={handleStartTour}
+      />
+      <OnboardingTour
+        steps={tourSteps}
+        isActive={showTour}
+        onComplete={handleOnboardingComplete}
+        onSkip={handleSkipOnboarding}
+      />
+
+      <div className="space-y-8">
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Command Centre</h1>
+            <p className="mt-2 text-slate-600">
+              Your cockpit for targeted outreach. Prioritize speakers, monitor accounts, and act on market signals.
+            </p>
+          </div>
         <div className="flex gap-3">
           <button
             onClick={() => refreshProfiles()}
@@ -327,7 +433,7 @@ export function CommandCentre() {
       <CommandMetrics metrics={metrics} loading={profilesLoading && profiles.length === 0} />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2" data-tour="saved-profiles">
           <TargetedSpeakersPanel
             profiles={prioritizedProfiles}
             fullCount={profiles.length}
@@ -337,7 +443,7 @@ export function CommandCentre() {
             onStatusChange={updateStatus}
           />
         </div>
-        <div className="space-y-6">
+        <div className="space-y-6" data-tour="trending-insights">
           <SpeakerInsightsPanel profiles={recentSpeakers} loading={profilesLoading} />
           <TrendHighlightsPanel
             categories={trendingData.categories}
@@ -348,16 +454,19 @@ export function CommandCentre() {
         </div>
       </div>
 
-      <AccountIntelligencePanel
-        accounts={accountData.accounts}
-        summaries={accountData.summaries}
-        stats={accountData.stats}
-        loading={accountData.loading}
-        error={accountData.error}
-        onRefresh={accountData.refresh}
-        onAddAccount={accountData.addAccount}
-      />
-    </div>
+      <div data-tour="account-intelligence">
+        <AccountIntelligencePanel
+          accounts={accountData.accounts}
+          summaries={accountData.summaries}
+          stats={accountData.stats}
+          loading={accountData.loading}
+          error={accountData.error}
+          onRefresh={accountData.refresh}
+          onAddAccount={accountData.addAccount}
+        />
+      </div>
+      </div>
+    </>
   );
 }
 

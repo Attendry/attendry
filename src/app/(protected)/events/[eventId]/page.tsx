@@ -63,132 +63,123 @@ export default function EventDetailPage() {
       
       let eventData: EventData | null = null;
 
-      // First, try to get from board if it's a UUID (board item ID)
-      if (isUUID) {
-        console.log('[EventDetailPage] Checking board for UUID:', eventId);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: boardItem } = await supabase
+      // OPTIMIZATION: Run queries in parallel where possible
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Prepare parallel queries
+      const queries: Promise<any>[] = [];
+      
+      // Query 1: Check board if UUID
+      if (isUUID && user) {
+        queries.push(
+          supabase
             .from('user_event_board')
             .select('event_id, event_url, event_data')
             .eq('id', eventId)
             .eq('user_id', user.id)
-            .maybeSingle();
-          
-          console.log('[EventDetailPage] Board item found:', !!boardItem);
-          
-          if (boardItem) {
-            // Try to get event from collected_events if we have event_id
-            if (boardItem.event_id) {
-              const { data: collectedEvent } = await supabase
-                .from('collected_events')
-                .select('*')
-                .eq('id', boardItem.event_id)
-                .maybeSingle();
-              
-              if (collectedEvent) {
-                console.log('[EventDetailPage] Found event in collected_events by event_id');
-                eventData = collectedEvent as EventData;
-              }
-            }
-            
-            // If not found in collected_events, use event_data from board
-            if (!eventData && boardItem.event_data) {
-              console.log('[EventDetailPage] Using event_data from board');
-              eventData = boardItem.event_data as EventData;
-            }
-            
-            // If still not found, try by event_url
-            if (!eventData && boardItem.event_url) {
-              const { data: eventByUrl } = await supabase
-                .from('collected_events')
-                .select('*')
-                .eq('source_url', boardItem.event_url)
-                .maybeSingle();
-              
-              if (eventByUrl) {
-                console.log('[EventDetailPage] Found event in collected_events by event_url');
-                eventData = eventByUrl as EventData;
-              } else {
-                // Create event data from URL if we have it
-                console.log('[EventDetailPage] Creating event data from board URL');
-                eventData = {
-                  source_url: boardItem.event_url,
-                  title: 'Event',
-                  id: eventId
-                } as EventData;
-              }
-            }
-          }
-        }
+            .maybeSingle()
+            .then(({ data }) => ({ type: 'board', data }))
+        );
       }
-
-      // If not found in board, try collected_events directly
-      if (!eventData) {
-        console.log('[EventDetailPage] Searching collected_events for:', eventId);
-        
-        // Try by ID first
-        const { data: eventById, error: errorById } = await supabase
+      
+      // Query 2: Check collected_events by ID
+      queries.push(
+        supabase
           .from('collected_events')
           .select('*')
           .eq('id', eventId)
-          .maybeSingle();
-
-        if (eventById) {
-          console.log('[EventDetailPage] Found event by ID');
-          eventData = eventById as EventData;
-        } else {
-          // Try by source_url (handle URL encoding variations)
-          const normalizedUrl = eventId.replace(/\/$/, ''); // Remove trailing slash
-          
-          // Try exact match first
-          let { data: eventByUrl, error: errorByUrl } = await supabase
+          .maybeSingle()
+          .then(({ data }) => ({ type: 'byId', data }))
+      );
+      
+      // Query 3: Check collected_events by URL (if it's a URL)
+      if (isUrl) {
+        const normalizedUrl = eventId.replace(/\/$/, '');
+        queries.push(
+          supabase
             .from('collected_events')
             .select('*')
             .eq('source_url', eventId)
-            .maybeSingle();
-
-          // If not found and URL is different from normalized, try normalized
-          if (!eventByUrl && normalizedUrl !== eventId) {
-            const { data: eventByNormalizedUrl, error: errorByNormalized } = await supabase
+            .maybeSingle()
+            .then(({ data }) => ({ type: 'byUrl', data }))
+        );
+        
+        // Also try normalized URL
+        if (normalizedUrl !== eventId) {
+          queries.push(
+            supabase
               .from('collected_events')
               .select('*')
               .eq('source_url', normalizedUrl)
-              .maybeSingle();
-            
-            if (eventByNormalizedUrl) {
-              eventByUrl = eventByNormalizedUrl;
-              errorByUrl = errorByNormalized;
-            }
-          }
-
-          if (eventByUrl) {
-            console.log('[EventDetailPage] Found event by source_url');
-            eventData = eventByUrl as EventData;
-          } else {
-            console.log('[EventDetailPage] Event not found in collected_events', {
-              errorById: errorById?.message,
-              errorByUrl: errorByUrl?.message
-            });
-          }
+              .maybeSingle()
+              .then(({ data }) => ({ type: 'byNormalizedUrl', data }))
+          );
         }
       }
-
-      // If still not found and it's a URL, try checking board by URL
-      if (!eventData && isUrl) {
-        console.log('[EventDetailPage] Checking board by URL:', eventId);
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: boardItem } = await supabase
+      
+      // Query 4: Check board by URL (if it's a URL and user exists)
+      if (isUrl && user) {
+        queries.push(
+          supabase
             .from('user_event_board')
             .select('event_id, event_url, event_data')
             .eq('event_url', eventId)
             .eq('user_id', user.id)
-            .maybeSingle();
+            .maybeSingle()
+            .then(({ data }) => ({ type: 'boardByUrl', data }))
+        );
+      }
+      
+      // Execute all queries in parallel
+      const results = await Promise.all(queries);
+      
+      // Process results in priority order
+      for (const result of results) {
+        if (!result.data) continue;
+        
+        if (result.type === 'board' && result.data) {
+          const boardItem = result.data;
+          // Try to get event from collected_events if we have event_id
+          if (boardItem.event_id) {
+            const { data: collectedEvent } = await supabase
+              .from('collected_events')
+              .select('*')
+              .eq('id', boardItem.event_id)
+              .maybeSingle();
+            
+            if (collectedEvent) {
+              eventData = collectedEvent as EventData;
+              break;
+            }
+          }
           
-          if (boardItem && boardItem.event_data) {
-            console.log('[EventDetailPage] Found event in board by URL');
+          // Use event_data from board if available
+          if (boardItem.event_data) {
             eventData = boardItem.event_data as EventData;
+            break;
+          }
+          
+          // Try by event_url if available
+          if (boardItem.event_url) {
+            const { data: eventByUrl } = await supabase
+              .from('collected_events')
+              .select('*')
+              .eq('source_url', boardItem.event_url)
+              .maybeSingle();
+            
+            if (eventByUrl) {
+              eventData = eventByUrl as EventData;
+              break;
+            }
+          }
+        } else if ((result.type === 'byId' || result.type === 'byUrl' || result.type === 'byNormalizedUrl') && result.data) {
+          eventData = result.data as EventData;
+          break;
+        } else if (result.type === 'boardByUrl' && result.data) {
+          const boardItem = result.data;
+          if (boardItem.event_data) {
+            eventData = boardItem.event_data as EventData;
+            break;
           }
         }
       }
