@@ -18,7 +18,8 @@ import {
   TrendingUp,
   Briefcase,
   LayoutGrid,
-  Users
+  Users,
+  Target
 } from 'lucide-react';
 
 interface NavigationItem {
@@ -48,6 +49,14 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
       icon: Home,
       children: [
         { href: '/watchlist', label: 'Contacts', icon: Users }
+      ]
+    },
+    { 
+      href: '/opportunities', 
+      label: 'Opportunities', 
+      icon: Target,
+      children: [
+        { href: '/opportunities', label: 'My Opportunities', icon: Target }
       ]
     },
     { 
