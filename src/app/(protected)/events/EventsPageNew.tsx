@@ -684,11 +684,6 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     }
   }
 
-  // Use current page events from context instead of local state
-  const filteredEvents = useMemo(() => {
-    return currentPageEvents; // Events are already filtered by the API and paginated
-  }, [currentPageEvents]);
-
   const breadcrumbs = [
     { label: "Events" }
   ];
