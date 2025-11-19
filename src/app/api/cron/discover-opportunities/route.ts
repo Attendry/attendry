@@ -21,12 +21,22 @@ import { CostOptimizationService } from "@/lib/services/cost-optimization-servic
 
 /**
  * Verify cron request authentication
+ * Matches pattern from existing cron jobs for consistency
  */
 function verifyCronRequest(req: NextRequest): boolean {
-  // Check for Vercel Cron header
+  // Check for Vercel Cron header (automatically added by Vercel)
   const vercelCronHeader = req.headers.get('x-vercel-cron');
+  
+  // Log headers for debugging (matching existing cron pattern)
+  const userAgent = req.headers.get('user-agent') || '';
+  const vercelId = req.headers.get('x-vercel-id');
+  console.log('[discover-opportunities] [CRON AUTH] x-vercel-cron header:', vercelCronHeader);
+  console.log('[discover-opportunities] [CRON AUTH] user-agent:', userAgent);
+  console.log('[discover-opportunities] [CRON AUTH] x-vercel-id:', vercelId);
+  console.log('[discover-opportunities] [CRON AUTH] CRON_SECRET set:', !!process.env.CRON_SECRET);
+  
   if (vercelCronHeader) {
-    console.log('[CRON AUTH] ✅ Authenticated via x-vercel-cron header');
+    console.log('[discover-opportunities] [CRON AUTH] ✅ Authenticated via x-vercel-cron header');
     return true;
   }
 
@@ -35,27 +45,28 @@ function verifyCronRequest(req: NextRequest): boolean {
   const expectedToken = process.env.CRON_SECRET;
   
   if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
-    console.log('[CRON AUTH] ✅ Authenticated via Authorization header');
+    console.log('[discover-opportunities] [CRON AUTH] ✅ Authenticated via Authorization header');
     return true;
   }
 
-  // Additional check: Vercel infrastructure
-  const userAgent = req.headers.get('user-agent') || '';
-  const vercelId = req.headers.get('x-vercel-id');
+  // Additional check: Vercel infrastructure detection
+  // Vercel Cron may not always send x-vercel-cron header, but we can detect it
+  // by checking for Vercel-specific headers or user-agent
   const isVercelRequest = vercelId || userAgent.includes('vercel') || userAgent.includes('Vercel');
   
   if (isVercelRequest && !expectedToken) {
-    console.log('[CRON AUTH] ✅ Authenticated via Vercel infrastructure detection');
+    console.log('[discover-opportunities] [CRON AUTH] ✅ Authenticated via Vercel infrastructure detection (no CRON_SECRET)');
     return true;
   }
 
+  // If CRON_SECRET is set but no valid auth, reject
   if (expectedToken) {
-    console.log('[CRON AUTH] ❌ CRON_SECRET is set but no valid auth provided');
+    console.log('[discover-opportunities] [CRON AUTH] ❌ CRON_SECRET is set but no valid auth provided');
     return false;
   }
 
-  // Development mode - allow if no CRON_SECRET
-  console.log('[CRON AUTH] ⚠️ No CRON_SECRET set, allowing (development mode)');
+  // If no CRON_SECRET is set, allow (for development)
+  console.log('[discover-opportunities] [CRON AUTH] ⚠️ No CRON_SECRET set, allowing (development mode)');
   return true;
 }
 

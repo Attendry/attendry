@@ -14,10 +14,20 @@ import { LifecycleManagementEngine } from "@/lib/services/lifecycle-management-e
 
 /**
  * Verify cron request authentication
+ * Matches pattern from existing cron jobs for consistency
  */
 function verifyCronRequest(req: NextRequest): boolean {
   const vercelCronHeader = req.headers.get('x-vercel-cron');
+  const userAgent = req.headers.get('user-agent') || '';
+  const vercelId = req.headers.get('x-vercel-id');
+  
+  console.log('[refresh-event-lifecycle] [CRON AUTH] x-vercel-cron header:', vercelCronHeader);
+  console.log('[refresh-event-lifecycle] [CRON AUTH] user-agent:', userAgent);
+  console.log('[refresh-event-lifecycle] [CRON AUTH] x-vercel-id:', vercelId);
+  console.log('[refresh-event-lifecycle] [CRON AUTH] CRON_SECRET set:', !!process.env.CRON_SECRET);
+  
   if (vercelCronHeader) {
+    console.log('[refresh-event-lifecycle] [CRON AUTH] ✅ Authenticated via x-vercel-cron header');
     return true;
   }
 
@@ -25,21 +35,23 @@ function verifyCronRequest(req: NextRequest): boolean {
   const expectedToken = process.env.CRON_SECRET;
   
   if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+    console.log('[refresh-event-lifecycle] [CRON AUTH] ✅ Authenticated via Authorization header');
     return true;
   }
 
-  const userAgent = req.headers.get('user-agent') || '';
-  const vercelId = req.headers.get('x-vercel-id');
   const isVercelRequest = vercelId || userAgent.includes('vercel') || userAgent.includes('Vercel');
   
   if (isVercelRequest && !expectedToken) {
+    console.log('[refresh-event-lifecycle] [CRON AUTH] ✅ Authenticated via Vercel infrastructure detection (no CRON_SECRET)');
     return true;
   }
 
   if (expectedToken) {
+    console.log('[refresh-event-lifecycle] [CRON AUTH] ❌ CRON_SECRET is set but no valid auth provided');
     return false;
   }
 
+  console.log('[refresh-event-lifecycle] [CRON AUTH] ⚠️ No CRON_SECRET set, allowing (development mode)');
   return true; // Development mode
 }
 
