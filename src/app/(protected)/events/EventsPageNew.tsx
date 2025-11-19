@@ -120,10 +120,91 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [searchMode, setSearchMode] = useState<'traditional' | 'natural'>('traditional');
   const [lastIntent, setLastIntent] = useState<SearchIntent | null>(null);
   const [searchProgress, setSearchProgress] = useState<{ stage: number; total: number; message?: string } | null>(null);
+  const [boardStatusMap, setBoardStatusMap] = useState<Record<string, { inBoard: boolean; boardItemId: string | null }>>({});
   const router = useRouter();
 
   // Get current page events from context
   const currentPageEvents = actions.getCurrentPageEvents();
+
+  // Use current page events from context instead of local state
+  const filteredEvents = useMemo(() => {
+    return currentPageEvents; // Events are already filtered by the API and paginated
+  }, [currentPageEvents]);
+
+  // Batch fetch board status for visible events
+  useEffect(() => {
+    let cancelled = false;
+
+    const eventUrls = Array.from(
+      new Set(
+        filteredEvents
+          .map((event) => event?.source_url)
+          .filter((url): url is string => Boolean(url)),
+      ),
+    );
+
+    if (eventUrls.length === 0) {
+      setBoardStatusMap({});
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    async function fetchBoardStatuses() {
+      try {
+        const response = await fetch('/api/events/board/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventUrls }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch board statuses');
+        }
+
+        const data = await response.json();
+        if (cancelled) {
+          return;
+        }
+
+        const results = data?.results || {};
+        setBoardStatusMap(() => {
+          const next: Record<string, { inBoard: boolean; boardItemId: string | null }> = {};
+          eventUrls.forEach((url) => {
+            next[url] = results[url] || { inBoard: false, boardItemId: null };
+          });
+          return next;
+        });
+      } catch (error) {
+        console.error('Failed to fetch board statuses:', error);
+        if (cancelled) {
+          return;
+        }
+        setBoardStatusMap((prev) => {
+          const next: Record<string, { inBoard: boolean; boardItemId: string | null }> = {};
+          eventUrls.forEach((url) => {
+            next[url] = prev[url] || { inBoard: false, boardItemId: null };
+          });
+          return next;
+        });
+      }
+    }
+
+    fetchBoardStatuses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filteredEvents]);
+
+  // Callback for EventCard to update status
+  const handleBoardStatusChange = useCallback((eventUrl: string, status: { inBoard: boolean; boardItemId: string | null }) => {
+    if (!eventUrl) return;
+    setBoardStatusMap((prev) => ({
+      ...prev,
+      [eventUrl]: status,
+    }));
+  }, []);
 
   // Poll job status for background processing
   const pollJobStatus = async (jobId: string) => {
@@ -920,6 +1001,12 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                     ev={event as any}
                     initiallySaved={savedSet.has(event.id || event.source_url)}
                     watchlistMatch={watchlistMatches.get(event.id || event.source_url)}
+                    boardStatus={event.source_url ? boardStatusMap[event.source_url] : undefined}
+                    onBoardStatusChange={(status) => {
+                      if (event.source_url) {
+                        handleBoardStatusChange(event.source_url, status);
+                      }
+                    }}
                     onAddToComparison={(event) => {
                       console.log('Add to comparison:', event);
                     }}
