@@ -10,6 +10,8 @@
 import { useState, useEffect } from 'react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
+import { Settings } from 'lucide-react';
 import OpportunityCard from '@/components/OpportunityCard';
 import DiscoveryProfileWizard from '@/components/DiscoveryProfileWizard';
 
@@ -71,6 +73,7 @@ interface FeedResponse {
 }
 
 export default function OpportunitiesPage() {
+  const router = useRouter();
   const [authReady, setAuthReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -279,10 +282,24 @@ export default function OpportunitiesPage() {
       )}
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Opportunities</h1>
-        <p className="text-gray-600">
-          Discovered events with your target accounts and ICP matches
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Opportunities</h1>
+            <p className="text-gray-600">
+              Discovered events with your target accounts and ICP matches
+            </p>
+          </div>
+          {hasProfile && (
+            <button
+              onClick={() => router.push('/opportunities/settings')}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              title="Edit discovery profile settings"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Settings</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
