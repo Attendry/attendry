@@ -13,6 +13,9 @@ import { supabaseServer } from '@/lib/supabase-server';
 import { SearchService } from './search-service';
 import { normalizeOrg, orgSimilarity } from '@/lib/utils/org-normalizer';
 import { levenshteinSimilarity } from '@/lib/utils/levenshtein';
+import { TemporalIntelligenceEngine } from './temporal-intelligence-engine';
+import { CriticalAlertsService } from './critical-alerts-service';
+import { CostOptimizationService } from './cost-optimization-service';
 
 // ============================================================================
 // Types & Interfaces
@@ -156,8 +159,8 @@ export class DiscoveryEngine {
       // 6. Score relevance
       const scoredOpportunities = await this.scoreRelevance(opportunities, profile);
       
-      // 7. Store opportunities (shadow mode - no alerts yet)
-      await this.storeOrAlert(userId, scoredOpportunities, profile, false); // shadowMode = true
+      // 7. Store opportunities with temporal intelligence and critical alerts
+      await this.storeOrAlert(userId, scoredOpportunities, profile, false);
       
       // 8. Log discovery run
       const durationMs = Date.now() - startTime;
@@ -274,7 +277,7 @@ export class DiscoveryEngine {
   }
 
   /**
-   * Search for events using existing SearchService
+   * Search for events using existing SearchService with cost optimization
    */
   private static async searchEvents(
     query: string,
@@ -290,6 +293,15 @@ export class DiscoveryEngine {
 
       // Use first region or default
       const country = profile.regions.length > 0 ? profile.regions[0] : '';
+
+      // Check shared cache first (cost optimization)
+      const cacheKey = `${query}|${country}|${fromDate}|${toDate}`;
+      const cachedResults = await CostOptimizationService.getCachedResults(cacheKey, country);
+      
+      if (cachedResults) {
+        console.log('[discovery-engine] Cache hit for query:', query);
+        return cachedResults;
+      }
 
       // Use existing SearchService
       const searchResult = await SearchService.runEventDiscovery({
@@ -315,6 +327,9 @@ export class DiscoveryEngine {
         speakers: event.speakers || [],
         source_url: event.source_url || event.url || ''
       }));
+
+      // Cache results for future use (cost optimization)
+      await CostOptimizationService.cacheResults(cacheKey, country, events);
 
       return events;
     } catch (error) {
@@ -607,13 +622,13 @@ export class DiscoveryEngine {
   }
 
   /**
-   * Store opportunities or trigger Critical Alert (shadow mode for Phase 0)
+   * Store opportunities or trigger Critical Alert
    */
   private static async storeOrAlert(
     userId: string,
     opportunities: Opportunity[],
     profile: DiscoveryProfile,
-    shadowMode: boolean = true
+    shadowMode: boolean = false
   ): Promise<void> {
     const supabase = await supabaseServer();
 
@@ -649,16 +664,41 @@ export class DiscoveryEngine {
           continue;
         }
 
-        // In shadow mode, we don't send alerts yet
-        // In Phase 1, we'll implement critical alerts here
+        // Send critical alerts for high-confidence watchlist matches
         if (!shadowMode) {
-          // TODO: Implement critical alerts in Phase 1
           const hasHighConfidenceWatchlist = opp.signals.account_connections.some(
             ac => ac.confidence_score > 80
           );
 
           if (hasHighConfidenceWatchlist && profile.enable_critical_alerts) {
-            // await this.sendCriticalAlert(userId, opp);
+            // Get event details for alert (non-blocking)
+            supabase
+              .from('collected_events')
+              .select('title, starts_at')
+              .eq('id', opp.event_id)
+              .single()
+              .then(({ data: event }) => {
+                if (event) {
+                  CriticalAlertsService.sendCriticalAlert({
+                    userId,
+                    opportunity: opp,
+                    eventTitle: event.title,
+                    eventDate: event.starts_at,
+                    matchedAccounts: opp.signals.account_connections
+                      .filter(ac => ac.confidence_score > 80)
+                      .map(ac => ({
+                        account_name: ac.account_name,
+                        confidence_score: ac.confidence_score,
+                        speakers: ac.speakers
+                      }))
+                  }).catch(err => {
+                    console.error('[discovery-engine] Error sending critical alert:', err);
+                  });
+                }
+              })
+              .catch(err => {
+                console.error('[discovery-engine] Error fetching event for alert:', err);
+              });
           }
         }
       } catch (error) {
