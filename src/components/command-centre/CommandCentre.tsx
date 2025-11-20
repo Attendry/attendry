@@ -269,8 +269,8 @@ export function CommandCentre() {
     {
       id: 'saved-profiles',
       target: '[data-tour="saved-profiles"]',
-      title: 'Saved Profiles',
-      content: 'Manage your saved speaker profiles here. Track outreach status, add notes, and move prospects through your pipeline.',
+      title: 'Contacts Overview',
+      content: 'See quick stats, action items, and recent activity for your saved contacts. Click any status to filter, or manage all contacts from the full page.',
       position: 'left'
     },
     {
@@ -313,21 +313,29 @@ export function CommandCentre() {
         label: 'Ready for Outreach',
         value: readyForOutreach,
         icon: Target,
+        filterStatus: 'not_started' as OutreachStatus,
+        link: '/saved-profiles?status=not_started',
       },
       {
         label: 'Active Conversations',
         value: activeConversations,
         icon: MessageSquare,
+        filterStatus: null, // Multiple statuses
+        link: '/saved-profiles?status=contacted',
       },
       {
         label: 'Meetings Scheduled',
         value: meetingsScheduled,
         icon: Calendar,
+        filterStatus: 'meeting_scheduled' as OutreachStatus,
+        link: '/saved-profiles?status=meeting_scheduled',
       },
       {
         label: 'Monitored Accounts',
         value: accountData.stats.totalAccounts,
         icon: Building2,
+        filterStatus: null,
+        link: null,
       },
     ];
   }, [profiles, accountData.stats.totalAccounts]);
@@ -342,19 +350,6 @@ export function CommandCentre() {
     };
   }, [profiles]);
 
-  const prioritizedProfiles = useMemo(() => {
-    const filtered = statusFilter === 'all'
-      ? profiles
-      : profiles.filter((profile) => profile.outreach_status === statusFilter);
-
-    return [...filtered]
-      .sort((a, b) => {
-        const statusDiff = STATUS_PRIORITY[a.outreach_status] - STATUS_PRIORITY[b.outreach_status];
-        if (statusDiff !== 0) return statusDiff;
-        return new Date(a.saved_at).getTime() - new Date(b.saved_at).getTime();
-      })
-      .slice(0, 6);
-  }, [profiles, statusFilter]);
 
   const recentSpeakers = useMemo(() => {
     return [...profiles]
@@ -434,17 +429,25 @@ export function CommandCentre() {
         />
       </div>
 
-      <CommandMetrics metrics={metrics} loading={profilesLoading && profiles.length === 0} />
+      <CommandMetrics 
+        metrics={metrics} 
+        loading={profilesLoading && profiles.length === 0}
+        onMetricClick={(filterStatus) => {
+          if (filterStatus) {
+            setStatusFilter(filterStatus);
+          }
+        }}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2" data-tour="saved-profiles">
-          <TargetedSpeakersPanel
-            profiles={prioritizedProfiles}
-            fullCount={profiles.length}
+          <ContactsSummaryPanel
+            profiles={profiles}
+            statusCounts={statusCounts}
             loading={profilesLoading}
             error={profilesError}
             statusFilter={statusFilter}
-            onStatusChange={updateStatus}
+            onStatusFilterChange={setStatusFilter}
           />
         </div>
         <div className="space-y-6" data-tour="trending-insights">
@@ -1597,22 +1600,43 @@ function OutreachStatusPanel({ statusFilter, setStatusFilter, counts, loading }:
 }
 
 interface MetricsCardProps {
-  metrics: Array<{ label: string; value: number; icon: typeof Users }>;
+  metrics: Array<{ 
+    label: string; 
+    value: number; 
+    icon: typeof Users;
+    filterStatus?: OutreachStatus | null;
+    link?: string | null;
+  }>;
   loading: boolean;
+  onMetricClick?: (filterStatus: OutreachStatus | null) => void;
 }
 
-function CommandMetrics({ metrics, loading }: MetricsCardProps) {
+function CommandMetrics({ metrics, loading, onMetricClick }: MetricsCardProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {metrics.map((metric) => {
         const Icon = metric.icon;
-        return (
-          <div key={metric.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        const isClickable = metric.filterStatus !== null || metric.link !== null;
+        const handleClick = () => {
+          if (metric.filterStatus !== null && onMetricClick) {
+            onMetricClick(metric.filterStatus);
+          }
+        };
+
+        const content = (
+          <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all ${
+            isClickable ? 'cursor-pointer hover:border-blue-300 hover:shadow-md hover:bg-blue-50/50' : ''
+          }`}>
             <div className="flex items-center justify-between">
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-medium text-slate-600">{metric.label}</p>
-                <div className="mt-2 text-2xl font-semibold text-slate-900">
-                  {loading ? <Loader2 className="h-5 w-5 animate-spin text-blue-600" /> : metric.value}
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-semibold text-slate-900">
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin text-blue-600" /> : metric.value}
+                  </span>
+                  {!loading && metric.value > 0 && isClickable && (
+                    <span className="text-xs text-blue-600 font-medium">View all →</span>
+                  )}
                 </div>
               </div>
               <span className="rounded-full bg-blue-50 p-2 text-blue-600">
@@ -1621,64 +1645,135 @@ function CommandMetrics({ metrics, loading }: MetricsCardProps) {
             </div>
           </div>
         );
+
+        if (metric.link) {
+          return (
+            <Link key={metric.label} href={metric.link} className="block">
+              {content}
+            </Link>
+          );
+        }
+
+        if (isClickable && metric.filterStatus !== null) {
+          return (
+            <button
+              key={metric.label}
+              type="button"
+              onClick={handleClick}
+              className="text-left w-full"
+            >
+              {content}
+            </button>
+          );
+        }
+
+        return <div key={metric.label}>{content}</div>;
       })}
     </div>
   );
 }
 
-interface TargetedSpeakersPanelProps {
+interface ContactsSummaryPanelProps {
   profiles: SavedSpeakerProfile[];
-  fullCount: number;
+  statusCounts: StatusCounts;
   loading: boolean;
   error: string | null;
-  statusFilter: SavedSpeakerProfile['outreach_status'] | 'all';
-  onStatusChange: (id: string, status: SavedSpeakerProfile['outreach_status']) => Promise<void>;
+  statusFilter: OutreachStatus | 'all';
+  onStatusFilterChange: (status: OutreachStatus | 'all') => void;
 }
 
-function TargetedSpeakersPanel({
+function ContactsSummaryPanel({
   profiles,
-  fullCount,
+  statusCounts,
   loading,
   error,
   statusFilter,
-  onStatusChange,
-}: TargetedSpeakersPanelProps) {
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  const handleStatusChange = async (profileId: string, status: SavedSpeakerProfile['outreach_status']) => {
-    try {
-      setUpdatingId(profileId);
-      await onStatusChange(profileId, status);
-      toast.success("Status updated", {
-        description: `Outreach status changed to ${STATUS_LABELS[status]}`
+  onStatusFilterChange,
+}: ContactsSummaryPanelProps) {
+  // Calculate action items
+  const actionItems = useMemo(() => {
+    const items: Array<{ message: string; count: number; status?: OutreachStatus; link: string }> = [];
+    
+    // Contacts that haven't been contacted in 7+ days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const needsFollowUp = profiles.filter((profile) => {
+      if (profile.outreach_status === 'contacted') {
+        const lastUpdated = new Date(profile.last_updated || profile.saved_at);
+        return lastUpdated < sevenDaysAgo;
+      }
+      return false;
+    }).length;
+    
+    if (needsFollowUp > 0) {
+      items.push({
+        message: `${needsFollowUp} contact${needsFollowUp === 1 ? '' : 's'} haven't been followed up in 7+ days`,
+        count: needsFollowUp,
+        status: 'contacted',
+        link: '/saved-profiles?status=contacted',
       });
-    } catch (err) {
-      toast.error("Failed to update status", {
-        description: (err as Error).message || 'An error occurred. Please try again.'
-      });
-    } finally {
-      setUpdatingId(null);
     }
-  };
+    
+    // Ready for outreach
+    if (statusCounts.not_started > 0) {
+      items.push({
+        message: `${statusCounts.not_started} contact${statusCounts.not_started === 1 ? '' : 's'} ready for first outreach`,
+        count: statusCounts.not_started,
+        status: 'not_started',
+        link: '/saved-profiles?status=not_started',
+      });
+    }
+    
+    // Meetings this week
+    const meetingsThisWeek = profiles.filter((profile) => {
+      if (profile.outreach_status === 'meeting_scheduled') {
+        // Check if there's a meeting date in metadata or notes
+        // For now, just count all scheduled meetings
+        return true;
+      }
+      return false;
+    }).length;
+    
+    if (meetingsThisWeek > 0) {
+      items.push({
+        message: `${meetingsThisWeek} meeting${meetingsThisWeek === 1 ? '' : 's'} scheduled`,
+        count: meetingsThisWeek,
+        status: 'meeting_scheduled',
+        link: '/saved-profiles?status=meeting_scheduled',
+      });
+    }
+    
+    return items;
+  }, [profiles, statusCounts]);
+
+  // Recent activity (last 5 updates)
+  const recentActivity = useMemo(() => {
+    return [...profiles]
+      .sort((a, b) => {
+        const dateA = new Date(a.last_updated || a.saved_at);
+        const dateB = new Date(b.last_updated || b.saved_at);
+        return dateB.getTime() - dateA.getTime();
+      })
+      .slice(0, 5);
+  }, [profiles]);
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">Targeted Speakers</h2>
-          <p className="text-sm text-slate-600">
-            {statusFilter === 'all'
-              ? 'Top matches prioritized for outreach based on engagement signals.'
-              : `Focused on ${STATUS_LABELS[statusFilter]} contacts.`}
+          <h2 className="text-xl font-semibold text-slate-900">Contacts Overview</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Quick insights and actions for your saved contacts
           </p>
         </div>
-        <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-          <Target className="h-4 w-4 text-blue-600" />
-          <span>
-            Showing {profiles.length} {profiles.length === 1 ? 'profile' : 'profiles'}
-            {fullCount > profiles.length ? ` · ${fullCount - profiles.length} more saved` : ''}
-          </span>
-        </div>
+        <Link
+          href="/saved-profiles"
+          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          Manage All Contacts
+          <ArrowUpRight className="h-4 w-4" />
+        </Link>
       </div>
 
       {error && (
@@ -1689,144 +1784,106 @@ function TargetedSpeakersPanel({
       )}
 
       {loading && profiles.length === 0 ? (
-        <div className="flex items-center justify-center py-16 text-slate-500">
+        <div className="flex items-center justify-center py-12 text-slate-500">
           <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-          Loading targeted speakers...
-        </div>
-      ) : profiles.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-          <h3 className="text-lg font-semibold text-slate-900">No speakers found</h3>
-          <p className="mt-2 text-sm text-slate-600">
-            {statusFilter === 'all'
-              ? 'Save speakers from event pages to build your outreach list.'
-              : 'Try selecting a different status or save new speakers to target.'}
-          </p>
+          Loading contacts...
         </div>
       ) : (
-        <div className="space-y-4">
-          {profiles.map((profile) => (
-            <SpeakerCard
-              key={profile.id}
-              profile={profile}
-              isUpdating={updatingId === profile.id}
-              onStatusChange={handleStatusChange}
-            />
-          ))}
-        </div>
-      )}
-
-      {fullCount > profiles.length && (
-        <div className="mt-6 rounded-lg bg-blue-50 p-4 text-sm text-blue-700">
-          Showing top {profiles.length} of {fullCount} saved speakers. Visit
-          <Link href="/saved-profiles" className="ml-1 font-medium underline">
-            Saved Speaker Profiles
-          </Link>
-          {' '}to view the full list.
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface SpeakerCardProps {
-  profile: SavedSpeakerProfile;
-  isUpdating: boolean;
-  onStatusChange: (id: string, status: SavedSpeakerProfile['outreach_status']) => Promise<void>;
-}
-
-function SpeakerCard({ profile, isUpdating, onStatusChange }: SpeakerCardProps) {
-  const { speaker_data, enhanced_data, outreach_status } = profile;
-  const displayTitle = enhanced_data.title || speaker_data.title;
-  const displayOrg = enhanced_data.organization || speaker_data.org;
-  const location = enhanced_data.location;
-  const confidence = enhanced_data.confidence;
-
-  return (
-    <div className="rounded-xl border border-slate-200 p-4 shadow-sm transition-shadow hover:shadow-md">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-slate-900">{speaker_data.name}</h3>
-          <p className="text-sm text-slate-600">
-            {displayTitle ? <span className="font-medium text-slate-700">{displayTitle}</span> : 'Role TBD'}
-            {displayOrg && <span className="text-slate-400"> · </span>}
-            {displayOrg}
-          </p>
-          {location && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-              <MapPinSmall />
-              {location}
-            </p>
-          )}
-          {confidence != null && (
-            <p className="mt-2 text-xs text-slate-500">
-              Data confidence: <span className="font-medium text-slate-700">{Math.round(confidence * 100)}%</span>
-            </p>
-          )}
-        </div>
-        <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${STATUS_COLORS[outreach_status]}`}>
-          {STATUS_LABELS[outreach_status]}
-        </span>
-      </div>
-
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {speaker_data.email && (
-          <a
-            href={`mailto:${speaker_data.email}`}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <Mail className="h-4 w-4" /> Email
-          </a>
-        )}
-        {enhanced_data.social_links?.linkedin || speaker_data.linkedin_url ? (
-          <a
-            href={enhanced_data.social_links?.linkedin || speaker_data.linkedin_url || '#'}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <Linkedin className="h-4 w-4" /> LinkedIn
-          </a>
-        ) : null}
-      </div>
-
-      {profile.notes && (
-        <p className="mt-3 line-clamp-3 text-sm text-slate-600">{profile.notes}</p>
-      )}
-
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="w-full sm:max-w-xs">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <label
-              htmlFor={`status-${profile.id}`}
-              className="block text-xs font-semibold uppercase tracking-wide text-slate-500"
-            >
-              Outreach status
-            </label>
-            <select
-              id={`status-${profile.id}`}
-              value={outreach_status}
-              onChange={(event) => onStatusChange(profile.id, event.target.value as SavedSpeakerProfile['outreach_status'])}
-              disabled={isUpdating}
-              className="mt-2 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-200 disabled:cursor-not-allowed"
-            >
-              {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+        <div className="space-y-6">
+          {/* Quick Stats */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {(['not_started', 'contacted', 'responded', 'meeting_scheduled'] as OutreachStatus[]).map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => onStatusFilterChange(statusFilter === status ? 'all' : status)}
+                className={`rounded-lg border p-3 text-left transition ${
+                  statusFilter === status
+                    ? 'border-blue-200 bg-blue-50 shadow-sm'
+                    : 'border-slate-200 bg-white hover:bg-slate-50'
+                }`}
+              >
+                <p className="text-xs font-medium text-slate-600">{STATUS_LABELS[status]}</p>
+                <p className="mt-1 text-2xl font-semibold text-slate-900">{statusCounts[status]}</p>
+              </button>
+            ))}
           </div>
+
+          {/* Action Items */}
+          {actionItems.length > 0 && (
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-slate-900">Action Items</h3>
+              <div className="space-y-2">
+                {actionItems.map((item, index) => (
+                  <Link
+                    key={index}
+                    href={item.link}
+                    className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm transition hover:bg-amber-100"
+                  >
+                    <span className="text-amber-900">{item.message}</span>
+                    <ArrowUpRight className="h-4 w-4 text-amber-600" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Activity */}
+          {recentActivity.length > 0 && (
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-slate-900">Recent Activity</h3>
+              <div className="space-y-2">
+                {recentActivity.map((profile) => {
+                  const lastUpdated = new Date(profile.last_updated || profile.saved_at);
+                  const timeAgo = getTimeAgo(lastUpdated);
+                  
+                  return (
+                    <Link
+                      key={profile.id}
+                      href="/saved-profiles"
+                      className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm transition hover:bg-slate-100"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-slate-900">{profile.speaker_data.name}</p>
+                        <p className="text-xs text-slate-600">
+                          {STATUS_LABELS[profile.outreach_status]} · {timeAgo}
+                        </p>
+                      </div>
+                      <ArrowUpRight className="h-4 w-4 text-slate-400" />
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {profiles.length === 0 && (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+              <h3 className="text-lg font-semibold text-slate-900">No contacts yet</h3>
+              <p className="mt-2 text-sm text-slate-600">
+                Save speakers from event pages to build your contact list.
+              </p>
+            </div>
+          )}
         </div>
-        <Link
-          href={`/saved-profiles`}
-          className="inline-flex items-center gap-2 rounded-lg border border-blue-100 px-3 py-2 text-sm font-medium text-blue-600 transition hover:border-blue-200 hover:bg-blue-50"
-        >
-          View full profile
-          <ArrowUpRight className="h-4 w-4" />
-        </Link>
-      </div>
+      )}
     </div>
   );
+}
+
+function getTimeAgo(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
 }
 
 interface SpeakerInsightsPanelProps {
