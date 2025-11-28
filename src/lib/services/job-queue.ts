@@ -4,35 +4,137 @@
  */
 
 import { Queue, Worker, Job } from 'bullmq';
-import { ConnectionOptions } from 'ioredis';
+import type { RedisOptions } from 'ioredis';
 import { OutreachAgent } from '@/lib/agents/outreach-agent';
 
 // Redis connection configuration
-const connection: ConnectionOptions = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
-  password: process.env.REDIS_PASSWORD,
-  maxRetriesPerRequest: null, // Required for BullMQ
-};
+function getRedisConnection(): RedisOptions | null {
+  // Priority 1: Check for Upstash REST credentials and construct TCP connection
+  const upstashRestUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const upstashRestToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const upstashTcpPassword = process.env.UPSTASH_REDIS_TCP_PASSWORD;
+  
+  if (upstashRestUrl && upstashTcpPassword) {
+    try {
+      // Extract hostname from REST URL (e.g., https://xxx-xxx.upstash.io -> xxx-xxx.upstash.io)
+      const restUrl = new URL(upstashRestUrl);
+      const hostname = restUrl.hostname;
+      
+      // Upstash TCP endpoint uses the same hostname but port 6379 (or from env)
+      const tcpPort = parseInt(process.env.UPSTASH_REDIS_TCP_PORT || '6379');
+      
+      console.log('[Job Queue] Using Upstash TCP connection for BullMQ');
+      return {
+        host: hostname,
+        port: tcpPort,
+        password: upstashTcpPassword,
+        maxRetriesPerRequest: null, // Required for BullMQ
+        enableReadyCheck: false, // Don't check connection on init
+        lazyConnect: true, // Connect only when needed
+        tls: {
+          // Upstash requires TLS for TCP connections
+          rejectUnauthorized: true,
+        },
+      };
+    } catch (error) {
+      console.warn('[Job Queue] Failed to parse Upstash REST URL, trying other configs:', error);
+    }
+  } else if (upstashRestUrl && !upstashTcpPassword) {
+    console.warn('[Job Queue] Upstash REST URL found but TCP password missing. Add UPSTASH_REDIS_TCP_PASSWORD to use queue.');
+  }
 
-// Job queue for agent tasks
-export const agentTaskQueue = new Queue('agent-tasks', {
-  connection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000, // Start with 2 seconds, exponential backoff
-    },
-    removeOnComplete: {
-      age: 24 * 3600, // Keep completed jobs for 24 hours
-      count: 1000, // Keep last 1000 completed jobs
-    },
-    removeOnFail: {
-      age: 7 * 24 * 3600, // Keep failed jobs for 7 days
-    },
-  },
-});
+  // Priority 2: Check for standard Redis URL
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    try {
+      const url = new URL(redisUrl);
+      const isTls = url.protocol === 'rediss:'; // rediss:// means TLS
+      
+      const connection: RedisOptions = {
+        host: url.hostname,
+        port: parseInt(url.port || '6379'),
+        password: url.password || undefined,
+        maxRetriesPerRequest: null, // Required for BullMQ
+        enableReadyCheck: false, // Don't check connection on init
+        lazyConnect: true, // Connect only when needed
+      };
+
+      // Enable TLS if using rediss:// protocol (Upstash requires TLS)
+      if (isTls) {
+        connection.tls = {
+          rejectUnauthorized: true,
+        };
+        console.log('[Job Queue] Using REDIS_URL with TLS (rediss://)');
+      } else {
+        console.log('[Job Queue] Using REDIS_URL without TLS (redis://)');
+      }
+
+      return connection;
+    } catch (error) {
+      console.warn('[Job Queue] Invalid REDIS_URL, falling back to direct processing');
+    }
+  }
+
+  // Priority 3: Check for individual Redis config
+  const redisHost = process.env.REDIS_HOST;
+  if (redisHost && redisHost !== 'localhost') {
+    return {
+      host: redisHost,
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD,
+      maxRetriesPerRequest: null, // Required for BullMQ
+      enableReadyCheck: false, // Don't check connection on init
+      lazyConnect: true, // Connect only when needed
+    };
+  }
+
+  // No Redis config found
+  return null;
+}
+
+// Lazy initialization of queue (only create if Redis is available)
+let agentTaskQueue: Queue | null = null;
+
+function getQueue(): Queue | null {
+  if (agentTaskQueue) {
+    return agentTaskQueue;
+  }
+
+  const connection = getRedisConnection();
+  if (!connection) {
+    return null;
+  }
+
+  try {
+    agentTaskQueue = new Queue('agent-tasks', {
+      connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000, // Start with 2 seconds, exponential backoff
+        },
+        removeOnComplete: {
+          age: 24 * 3600, // Keep completed jobs for 24 hours
+          count: 1000, // Keep last 1000 completed jobs
+        },
+        removeOnFail: {
+          age: 7 * 24 * 3600, // Keep failed jobs for 7 days
+        },
+      },
+    });
+
+    // Handle connection errors gracefully
+    agentTaskQueue.on('error', (error) => {
+      console.warn('[Job Queue] Queue error (will use fallback):', error.message);
+    });
+
+    return agentTaskQueue;
+  } catch (error: any) {
+    console.warn('[Job Queue] Failed to create queue (will use fallback):', error.message);
+    return null;
+  }
+}
 
 // Worker for processing agent tasks
 // Note: In serverless environments, workers may not run continuously
@@ -47,6 +149,11 @@ function initializeWorker(): Worker | null {
   // Instead, rely on the cron job to process tasks
   if (process.env.VERCEL || process.env.NEXT_PUBLIC_VERCEL_ENV) {
     console.log('[Job Queue] Running in serverless environment - worker will be created per request');
+    return null;
+  }
+
+  const connection = getRedisConnection();
+  if (!connection) {
     return null;
   }
 
@@ -138,11 +245,26 @@ export async function queueAgentTask(
   agentType: string,
   priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium'
 ): Promise<void> {
+  const queue = getQueue();
+  
+  // If no queue available (Redis not configured), process directly
+  if (!queue) {
+    console.log(`[Job Queue] Redis not configured, processing task ${taskId} directly`);
+    try {
+      await processAgentTask(agentId, taskId, agentType);
+      console.log(`[Job Queue] Successfully processed task ${taskId} directly (no Redis)`);
+      return;
+    } catch (processError: any) {
+      console.error(`[Job Queue] Failed to process task ${taskId} directly:`, processError);
+      throw processError;
+    }
+  }
+
   try {
     // Try to add to queue
     const jobPriority = priority === 'urgent' ? 1 : priority === 'high' ? 2 : priority === 'medium' ? 3 : 4;
 
-    await agentTaskQueue.add(
+    await queue.add(
       'process-task',
       { agentId, taskId, agentType },
       {
@@ -176,21 +298,40 @@ export async function getQueueStatus(): Promise<{
   completed: number;
   failed: number;
 }> {
-  const [waiting, active, completed, failed] = await Promise.all([
-    agentTaskQueue.getWaitingCount(),
-    agentTaskQueue.getActiveCount(),
-    agentTaskQueue.getCompletedCount(),
-    agentTaskQueue.getFailedCount(),
-  ]);
+  const queue = getQueue();
+  if (!queue) {
+    return { waiting: 0, active: 0, completed: 0, failed: 0 };
+  }
 
-  return { waiting, active, completed, failed };
+  try {
+    const [waiting, active, completed, failed] = await Promise.all([
+      queue.getWaitingCount(),
+      queue.getActiveCount(),
+      queue.getCompletedCount(),
+      queue.getFailedCount(),
+    ]);
+
+    return { waiting, active, completed, failed };
+  } catch (error) {
+    console.warn('[Job Queue] Failed to get queue status:', error);
+    return { waiting: 0, active: 0, completed: 0, failed: 0 };
+  }
 }
 
 /**
  * Clean up old jobs (can be called periodically)
  */
 export async function cleanOldJobs(): Promise<void> {
-  await agentTaskQueue.clean(24 * 3600 * 1000, 1000, 'completed'); // Clean completed jobs older than 24h
-  await agentTaskQueue.clean(7 * 24 * 3600 * 1000, 100, 'failed'); // Clean failed jobs older than 7 days
+  const queue = getQueue();
+  if (!queue) {
+    return;
+  }
+
+  try {
+    await queue.clean(24 * 3600 * 1000, 1000, 'completed'); // Clean completed jobs older than 24h
+    await queue.clean(7 * 24 * 3600 * 1000, 100, 'failed'); // Clean failed jobs older than 7 days
+  } catch (error) {
+    console.warn('[Job Queue] Failed to clean old jobs:', error);
+  }
 }
 
