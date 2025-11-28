@@ -2,6 +2,8 @@
 
 import React, { useState } from "react";
 import { SavedSpeakerProfile } from "@/lib/types/database";
+import { supabaseBrowser } from "@/lib/supabase-browser";
+import { toast } from "sonner";
 import {
   User,
   Building2,
@@ -62,11 +64,64 @@ export function ContactCard({
   const isArchived = contact.archived || false;
   const status = contact.outreach_status || "not_started";
 
-  const handleCopy = (e: React.MouseEvent) => {
+  const handleCopyDraft = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    // TODO: Copy email draft when available
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    
+    try {
+      const supabase = supabaseBrowser();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Not authenticated");
+        return;
+      }
+
+      // Get user's outreach agents
+      const { data: agents } = await supabase
+        .from('ai_agents')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('agent_type', 'outreach')
+        .limit(1);
+
+      if (!agents || agents.length === 0) {
+        toast.error("No outreach agent found", {
+          description: "Please generate a draft first"
+        });
+        return;
+      }
+
+      // Get latest draft for this contact
+      const { data: drafts } = await supabase
+        .from('agent_outreach_drafts')
+        .select('*')
+        .eq('contact_id', contact.id)
+        .eq('agent_id', agents[0].id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (!drafts || drafts.length === 0) {
+        toast.error("No draft found", {
+          description: "Generate a draft in the contact details first"
+        });
+        return;
+      }
+
+      const latestDraft = drafts[0];
+      let draftText = latestDraft.message_body || "";
+      if (latestDraft.subject && latestDraft.channel === 'email') {
+        draftText = `Subject: ${latestDraft.subject}\n\n${draftText}`;
+      }
+
+      await navigator.clipboard.writeText(draftText);
+      setCopied(true);
+      toast.success("Draft copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error: any) {
+      console.error("Error copying draft:", error);
+      toast.error("Failed to copy draft", {
+        description: error.message || "Please try again"
+      });
+    }
   };
 
   const name = contact.speaker_data?.name || "Unknown";
@@ -104,6 +159,19 @@ export function ContactCard({
           {status.replace(/_/g, " ")}
         </span>
         <div className="flex items-center gap-1">
+          {!isArchived && (
+            <button
+              onClick={handleCopyDraft}
+              className="rounded-full p-1 text-slate-400 opacity-0 transition-opacity hover:bg-indigo-50 hover:text-indigo-500 group-hover:opacity-100"
+              title="Copy draft"
+            >
+              {copied ? (
+                <Check className="w-4 h-4 text-green-500" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          )}
           {!isArchived && onArchive && (
             <button
               onClick={(e) => {

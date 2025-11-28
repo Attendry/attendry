@@ -65,6 +65,65 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
   // Research data
   const [research, setResearch] = useState(contact.contact_research);
 
+  // Load existing draft when modal opens
+  useEffect(() => {
+    const loadDraft = async () => {
+      try {
+        // Get user's outreach agents to find drafts
+        const supabase = supabaseBrowser();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Get user's outreach agents
+        const { data: agents } = await supabase
+          .from('ai_agents')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('agent_type', 'outreach')
+          .limit(1);
+
+        if (!agents || agents.length === 0) return;
+
+        // Get latest draft for this contact
+        const { data: drafts } = await supabase
+          .from('agent_outreach_drafts')
+          .select('*')
+          .eq('contact_id', contact.id)
+          .eq('agent_id', agents[0].id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (drafts && drafts.length > 0) {
+          const latestDraft = drafts[0];
+          let draftText = latestDraft.message_body || "";
+          if (latestDraft.subject && latestDraft.channel === 'email') {
+            draftText = `Subject: ${latestDraft.subject}\n\n${draftText}`;
+          }
+          setEmailDraft(draftText);
+          
+          // Update draft settings from the draft
+          if (latestDraft.personalization_context) {
+            const context = latestDraft.personalization_context as any;
+            if (context.language) {
+              setDraftLanguage(context.language as "English" | "German");
+            }
+            if (context.tone) {
+              setDraftTone(context.tone as "Formal" | "Informal");
+            }
+            if (latestDraft.channel) {
+              setDraftChannel(latestDraft.channel as OutreachChannel);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading draft:', error);
+        // Don't show error - just continue without draft
+      }
+    };
+
+    loadDraft();
+  }, [contact.id]);
+
   // Sync prop changes
   useEffect(() => {
     if (!isSaving || localContact.id !== contact.id) {
@@ -250,6 +309,7 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
         }
         setEmailDraft(draftText);
         
+        // Draft is already saved in database via the API, so it will persist
         toast.success("Draft generated", {
           description: "Your personalized outreach message is ready",
         });

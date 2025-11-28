@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import { linkSpeakerToEvent } from "@/lib/services/speaker-service";
+import { researchContact, saveContactResearch } from "@/lib/services/contact-research-service";
 
 export const runtime = "nodejs";
 
@@ -121,6 +122,28 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         // Don't fail the save if history linking fails
         console.error('[phase2-speaker-history] Failed to link speaker to event:', historyError);
       }
+    }
+
+    // Auto-research: Trigger research in background when contact is added
+    if (data?.id && speaker_data?.name) {
+      // Don't await - let it run in background
+      (async () => {
+        try {
+          const name = speaker_data.name || 'Unknown';
+          const company = speaker_data.org || speaker_data.organization || 'Unknown';
+          
+          // Research the contact
+          const researchResult = await researchContact(name, company);
+          
+          // Save to database
+          await saveContactResearch(userRes.user.id, data.id, researchResult);
+          
+          console.log('[auto-research] Research completed for contact:', data.id);
+        } catch (error) {
+          console.error('[auto-research] Failed to research contact:', error);
+          // Don't fail the save if research fails
+        }
+      })();
     }
 
     return NextResponse.json({ 
