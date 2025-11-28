@@ -68,7 +68,7 @@ const STATUS_COLORS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'bg-blue-100 text-blue-800',
   contacted: 'bg-yellow-100 text-yellow-800',
   responded: 'bg-green-100 text-green-800',
-  meeting_scheduled: 'bg-purple-100 text-purple-800',
+  meeting_scheduled: 'bg-blue-100 text-blue-800',
 };
 
 type OutreachStatus = SavedSpeakerProfile['outreach_status'];
@@ -442,41 +442,17 @@ export function CommandCentre() {
 
       <AgentDashboardPanel />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2" data-tour="saved-profiles">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Contacts Overview</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Manage your outreach contacts with research and monitoring
-                </p>
-              </div>
-              <Link
-                href="/contacts"
-                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-              >
-                Manage Contacts
-                <ArrowUpRight className="h-4 w-4" />
-              </Link>
-            </div>
-            
-            {/* Quick Stats */}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {(['not_started', 'contacted', 'responded', 'meeting_scheduled'] as OutreachStatus[]).map((status) => (
-                <Link
-                  key={status}
-                  href="/contacts"
-                  className="rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:bg-slate-50"
-                >
-                  <p className="text-xs font-medium text-slate-600">{STATUS_LABELS[status]}</p>
-                  <p className="mt-1 text-2xl font-semibold text-slate-900">{statusCounts[status]}</p>
-                </Link>
-              ))}
-            </div>
-          </div>
+      <div className="grid gap-6 lg:grid-cols-3" data-tour="trending-insights">
+        <div className="lg:col-span-2">
+          <Link
+            href="/contacts"
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            Manage Contacts
+            <ArrowUpRight className="h-4 w-4" />
+          </Link>
         </div>
-        <div className="space-y-6" data-tour="trending-insights">
+        <div className="space-y-6">
           <SpeakerInsightsPanel profiles={recentSpeakers} loading={profilesLoading} />
           <TrendHighlightsPanel
             categories={trendingData.categories}
@@ -597,7 +573,7 @@ function DashboardSpeakerItem({
             {[speaker.title, organization].filter(Boolean).join(' · ') || 'Role pending'}
           </span>
           {appearsMultiple && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 font-semibold text-purple-700">
+            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 font-semibold text-blue-700">
               <Sparkles className="h-3 w-3" />
               {duplicateEventsCount === 1
                 ? 'Also in 1 other event'
@@ -613,7 +589,7 @@ function DashboardSpeakerItem({
         
         {/* Enhanced Information */}
         {showEnhanced && enhancedSpeaker && hasEnhancedData && (
-          <div className="mt-3 space-y-2 rounded-lg border border-purple-200 bg-purple-50 p-3 text-xs">
+          <div className="mt-3 space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs">
             {enhancedSpeaker.bio && (
               <p className="text-slate-700 line-clamp-2">{enhancedSpeaker.bio}</p>
             )}
@@ -647,7 +623,7 @@ function DashboardSpeakerItem({
         )}
         
         {enhancing && (
-          <div className="mt-2 flex items-center gap-2 text-xs text-purple-600">
+          <div className="mt-2 flex items-center gap-2 text-xs text-blue-600">
             <Loader2 className="h-3 w-3 animate-spin" />
             <span>Enhancing profile...</span>
           </div>
@@ -664,7 +640,7 @@ function DashboardSpeakerItem({
           type="button"
           onClick={handleEnhance}
           disabled={enhancing}
-          className="inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700 transition hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
+          className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 whitespace-nowrap"
           title={enhancing ? "Enhancing..." : hasEnhancedData ? "Show enhanced details" : "Enhance profile with AI"}
         >
           {enhancing ? (
@@ -1095,7 +1071,7 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   }, []);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm" data-tour="quick-search">
+    <div className="rounded-lg border border-slate-200 bg-white shadow-sm" data-tour="quick-search">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
         <div>
           <div className="flex items-center gap-2">
@@ -1582,7 +1558,7 @@ function OutreachStatusPanel({ statusFilter, setStatusFilter, counts, loading }:
   }, [counts]);
 
   return (
-    <div className="h-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="h-full rounded-lg border border-slate-200 bg-white p-6">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Outreach Focus</h2>
@@ -1604,7 +1580,7 @@ function OutreachStatusPanel({ statusFilter, setStatusFilter, counts, loading }:
               onClick={() => setStatusFilter(option.value)}
               className={`w-full rounded-xl border px-4 py-3 text-left transition ${
                 isActive
-                  ? 'border-blue-200 bg-blue-50 shadow-sm'
+                  ? 'border-blue-200 bg-blue-50'
                   : 'border-slate-200 bg-white hover:bg-slate-50'
               }`}
             >
@@ -1650,8 +1626,8 @@ function CommandMetrics({ metrics, loading, onMetricClick }: MetricsCardProps) {
         };
 
         const content = (
-          <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all ${
-            isClickable ? 'cursor-pointer hover:border-blue-300 hover:shadow-md hover:bg-blue-50/50' : ''
+          <div className={`rounded-lg border border-slate-200 bg-white p-4 transition-all ${
+            isClickable ? 'cursor-pointer hover:border-blue-300 hover:bg-blue-50/50' : ''
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex-1">
@@ -1719,10 +1695,25 @@ interface SpeakerInsightsPanelProps {
 }
 
 function SpeakerInsightsPanel({ profiles, loading }: SpeakerInsightsPanelProps) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-900">Recent Speaker Activity</h3>
-      <p className="mt-2 text-sm text-slate-600">Latest additions and status changes from your saved speakers.</p>
+    <div className="rounded-lg border-0 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">Recent Speaker Activity</h3>
+          <p className="mt-1 text-xs text-slate-600">Latest additions and status changes from your saved speakers.</p>
+        </div>
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          aria-label={isCollapsed ? 'Expand panel' : 'Collapse panel'}
+        >
+          {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+        </button>
+      </div>
+      
+      {!isCollapsed && (
 
       {loading && profiles.length === 0 ? (
         <div className="flex items-center justify-center py-12 text-slate-500">
@@ -1763,15 +1754,28 @@ interface TrendHighlightsPanelProps {
 }
 
 function TrendHighlightsPanel({ categories, events, loading, error }: TrendHighlightsPanelProps) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-    <div className="flex items-center justify-between">
-      <div>
-        <h3 className="text-lg font-semibold text-slate-900">Trend Signals</h3>
-        <p className="mt-1 text-sm text-slate-600">Top categories and events influencing your outreach focus.</p>
+    <div className="rounded-lg border-0 bg-white p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">Trend Signals</h3>
+          <p className="mt-1 text-xs text-slate-600">Top categories and events influencing your outreach focus.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-blue-600" />
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            aria-label={isCollapsed ? 'Expand panel' : 'Collapse panel'}
+          >
+            {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
-      <TrendingUp className="h-5 w-5 text-blue-600" />
-    </div>
+      
+      {!isCollapsed && (
 
     {error && (
       <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -1828,7 +1832,8 @@ function TrendHighlightsPanel({ categories, events, loading, error }: TrendHighl
       Explore full trend insights
       <ArrowUpRight className="h-4 w-4" />
     </Link>
-  </div>
+      )}
+    </div>
   );
 }
 
@@ -1889,7 +1894,7 @@ function AccountIntelligencePanel({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-lg border border-slate-200 bg-white p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">Account Intelligence</h2>

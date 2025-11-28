@@ -5,7 +5,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import { useSavedProfiles } from "@/lib/hooks/useSavedProfiles";
 import { toast } from "sonner";
-import { Loader2, Archive, History, Plus, Zap, RefreshCw } from "lucide-react";
+import { Loader2, Archive, History, Plus, Zap, RefreshCw, X } from "lucide-react";
 import Link from "next/link";
 import { ContactCard } from "@/components/contacts/ContactCard";
 import { ContactModal } from "@/components/contacts/ContactModal";
@@ -20,6 +20,8 @@ export default function ContactsPage() {
   const [activeTab, setActiveTab] = useState<TabType>("focus");
   const [selectedContact, setSelectedContact] = useState<SavedSpeakerProfile | null>(null);
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [isAddingContact, setIsAddingContact] = useState(false);
   const [contactsWithResearch, setContactsWithResearch] = useState<
     Array<SavedSpeakerProfile & { contact_research?: any }>
   >([]);
@@ -117,6 +119,65 @@ export default function ContactsPage() {
   const totalMonitoringCount = useMemo(() => {
     return profiles.filter((p) => p.monitor_updates).length;
   }, [profiles]);
+
+  // Handle adding a new contact
+  const handleAddContact = async (formData: {
+    name: string;
+    company: string;
+    title?: string;
+    email?: string;
+    linkedin?: string;
+  }) => {
+    if (activeContacts.length >= MAX_FOCUS_CONTACTS) {
+      toast.error("Focus list is full", {
+        description: `You can only have ${MAX_FOCUS_CONTACTS} active contacts. Archive one first.`,
+      });
+      return;
+    }
+
+    setIsAddingContact(true);
+    try {
+      const response = await fetch("/api/profiles/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          speaker_data: {
+            name: formData.name,
+            org: formData.company,
+            organization: formData.company,
+            title: formData.title || null,
+            email: formData.email || null,
+            linkedin: formData.linkedin || null,
+          },
+          enhanced_data: {
+            name: formData.name,
+            organization: formData.company,
+            title: formData.title || null,
+            email: formData.email || null,
+            linkedin_url: formData.linkedin || null,
+          },
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to add contact");
+      }
+
+      await refreshProfiles();
+      setShowAddContactModal(false);
+      toast.success("Contact added", {
+        description: `${formData.name} has been added and research is in progress.`,
+      });
+    } catch (error: any) {
+      toast.error("Failed to add contact", {
+        description: error.message || "An error occurred. Please try again.",
+      });
+    } finally {
+      setIsAddingContact(false);
+    }
+  };
 
   // Daily Briefing - check for updates on monitored contacts
   const handleRunDailyBriefing = async () => {
@@ -222,28 +283,28 @@ export default function ContactsPage() {
         <div className="mb-6 flex gap-6 border-b border-slate-200">
           <button
             onClick={() => setActiveTab("focus")}
-            className={`pb-4 px-2 text-sm font-medium transition-all relative ${
+                  className={`pb-4 px-2 text-sm font-medium transition-all relative ${
               activeTab === "focus"
-                ? "text-indigo-600"
+                ? "text-blue-600"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
             Focus ({activeContacts.length}/{MAX_FOCUS_CONTACTS})
             {activeTab === "focus" && (
-              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 rounded-t-full" />
+              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full" />
             )}
           </button>
           <button
             onClick={() => setActiveTab("history")}
             className={`pb-4 px-2 text-sm font-medium transition-all relative ${
               activeTab === "history"
-                ? "text-indigo-600"
+                ? "text-blue-600"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
             History & Archives ({archivedContacts.length})
             {activeTab === "history" && (
-              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600 rounded-t-full" />
+              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full" />
             )}
           </button>
         </div>
@@ -263,7 +324,7 @@ export default function ContactsPage() {
                   <button
                     onClick={handleRunDailyBriefing}
                     disabled={isBriefingLoading}
-                    className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
                   >
                     {isBriefingLoading ? (
                       <RefreshCw className="h-4 w-4 animate-spin" />
@@ -273,19 +334,20 @@ export default function ContactsPage() {
                     {isBriefingLoading ? "Scanning..." : "Daily Briefing"}
                   </button>
                 )}
-                <Link
-                  href="/saved-profiles"
-                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                <button
+                  onClick={() => setShowAddContactModal(true)}
+                  disabled={activeContacts.length >= MAX_FOCUS_CONTACTS}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
                 >
                   <Plus className="h-4 w-4" />
                   Add Contact ({activeContacts.length}/{MAX_FOCUS_CONTACTS})
-                </Link>
+                </button>
               </div>
             </div>
 
             {profilesLoading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
               </div>
             ) : activeContacts.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
@@ -296,13 +358,13 @@ export default function ContactsPage() {
                 <p className="mt-2 text-sm text-slate-600">
                   Add contacts from saved profiles to start researching and drafting.
                 </p>
-                <Link
-                  href="/saved-profiles"
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                <button
+                  onClick={() => setShowAddContactModal(true)}
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
                   <Plus className="h-4 w-4" />
-                  Add Contacts
-                </Link>
+                  Add Contact
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -412,6 +474,174 @@ export default function ContactsPage() {
             }}
           />
         )}
+
+        {/* Add Contact Modal */}
+        {showAddContactModal && (
+          <AddContactModal
+            onClose={() => setShowAddContactModal(false)}
+            onAdd={handleAddContact}
+            isAdding={isAddingContact}
+            maxReached={activeContacts.length >= MAX_FOCUS_CONTACTS}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Add Contact Modal Component
+interface AddContactModalProps {
+  onClose: () => void;
+  onAdd: (data: {
+    name: string;
+    company: string;
+    title?: string;
+    email?: string;
+    linkedin?: string;
+  }) => Promise<void>;
+  isAdding: boolean;
+  maxReached: boolean;
+}
+
+function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactModalProps) {
+  const [formData, setFormData] = useState({
+    name: "",
+    company: "",
+    title: "",
+    email: "",
+    linkedin: "",
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name.trim() || !formData.company.trim()) {
+      toast.error("Name and company are required");
+      return;
+    }
+    await onAdd(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white shadow-lg">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <h2 className="text-lg font-semibold text-slate-900">Add New Contact</h2>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+            disabled={isAdding}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {maxReached && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              Focus list is full. Archive a contact first to add a new one.
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              placeholder="John Doe"
+              disabled={isAdding || maxReached}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Company <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.company}
+              onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              placeholder="Acme Corp"
+              disabled={isAdding || maxReached}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Title
+            </label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              placeholder="VP of Sales"
+              disabled={isAdding || maxReached}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Email
+            </label>
+            <input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              placeholder="john@acme.com"
+              disabled={isAdding || maxReached}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              LinkedIn URL
+            </label>
+            <input
+              type="url"
+              value={formData.linkedin}
+              onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              placeholder="https://linkedin.com/in/johndoe"
+              disabled={isAdding || maxReached}
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isAdding}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isAdding || maxReached || !formData.name.trim() || !formData.company.trim()}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {isAdding ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  Add Contact
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
