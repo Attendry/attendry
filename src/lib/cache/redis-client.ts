@@ -155,7 +155,29 @@ export class RedisClient {
   }
 
   /**
-   * Check if Redis is available
+   * Ensure Redis is connected (lazy connection)
+   * Called automatically by operations
+   */
+  private async ensureConnected(): Promise<void> {
+    if (this.isConnected) {
+      return;
+    }
+
+    // If connection is in progress, wait for it
+    if (this.connectionPromise) {
+      await this.connectionPromise;
+      return;
+    }
+
+    // Start connection if credentials are available
+    if (this.config.upstashRestUrl || this.config.url || this.config.host) {
+      await this.connect();
+    }
+  }
+
+  /**
+   * Check if Redis is available (synchronous)
+   * Note: This checks current state, doesn't trigger connection
    */
   isAvailable(): boolean {
     return (this.client !== null && this.isConnected) || 
@@ -166,6 +188,8 @@ export class RedisClient {
    * Get value from Redis
    */
   async get(key: string): Promise<string | null> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return null;
     }
@@ -188,6 +212,8 @@ export class RedisClient {
    * Set value in Redis with TTL
    */
   async set(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return false;
     }
@@ -219,6 +245,8 @@ export class RedisClient {
    * Delete key from Redis
    */
   async del(key: string): Promise<boolean> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return false;
     }
@@ -242,6 +270,8 @@ export class RedisClient {
    * Check if key exists in Redis
    */
   async exists(key: string): Promise<boolean> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return false;
     }
@@ -265,6 +295,8 @@ export class RedisClient {
    * Get multiple keys from Redis
    */
   async mget(keys: string[]): Promise<(string | null)[]> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable() || keys.length === 0) {
       return keys.map(() => null);
     }
@@ -287,6 +319,8 @@ export class RedisClient {
    * Set multiple key-value pairs in Redis
    */
   async mset(keyValuePairs: Record<string, string>, ttlSeconds?: number): Promise<boolean> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return false;
     }
@@ -326,6 +360,8 @@ export class RedisClient {
    * Get keys matching pattern
    */
   async keys(pattern: string): Promise<string[]> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return [];
     }
@@ -355,6 +391,8 @@ export class RedisClient {
    * Get TTL for key
    */
   async ttl(key: string): Promise<number> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return -1;
     }
@@ -377,6 +415,8 @@ export class RedisClient {
    * Increment counter
    */
   async incr(key: string): Promise<number> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return 0;
     }
@@ -398,6 +438,8 @@ export class RedisClient {
    * Set expiration for key
    */
   async expire(key: string, seconds: number): Promise<boolean> {
+    await this.ensureConnected();
+    
     if (!this.isAvailable()) {
       return false;
     }

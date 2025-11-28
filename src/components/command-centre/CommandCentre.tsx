@@ -47,6 +47,7 @@ import { SpeakerData } from '@/lib/types/core';
 import { EventIntelligenceQuickView } from '@/components/EventIntelligenceQuickView';
 import { WelcomeModal } from '@/components/onboarding/WelcomeModal';
 import { OnboardingTour, TourStep } from '@/components/onboarding/OnboardingTour';
+import { AgentDashboardPanel } from '@/components/agents/AgentDashboardPanel';
 import { toast } from 'sonner';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
@@ -438,6 +439,8 @@ export function CommandCentre() {
           }
         }}
       />
+
+      <AgentDashboardPanel />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2" data-tour="saved-profiles">

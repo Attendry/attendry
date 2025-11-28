@@ -128,16 +128,16 @@ export class RateLimitService {
    */
   async recordResponseTime(service: ServiceType, responseTimeMs: number): Promise<void> {
     try {
-      if (!this.redis.isAvailable()) {
-        return;
-      }
-
       const now = Date.now();
       const minute = Math.floor(now / 60000);
       const metricsKey = `rate_limit:${service}:metrics:${minute}`;
       
-      // Get current metrics
+      // Get current metrics (will auto-connect if needed)
       const metricsJson = await this.redis.get(metricsKey);
+      if (metricsJson === null && !this.redis.isAvailable()) {
+        return; // Redis not available, skip
+      }
+      
       let metrics: PerformanceMetrics = metricsJson 
         ? JSON.parse(metricsJson)
         : { averageResponseTime: 0, requestCount: 0, lastUpdated: now };
@@ -148,7 +148,7 @@ export class RateLimitService {
       metrics.averageResponseTime = totalTime / metrics.requestCount;
       metrics.lastUpdated = now;
 
-      // Store updated metrics (1 minute TTL)
+      // Store updated metrics (1 minute TTL) - will auto-connect if needed
       await this.redis.set(metricsKey, JSON.stringify(metrics), 60);
 
       // PERF-1.4.3: Adjust rate limit based on performance
@@ -219,13 +219,14 @@ export class RateLimitService {
    */
   private async getAdaptiveLimit(service: ServiceType): Promise<number> {
     try {
-      if (!this.redis.isAvailable()) {
-        const config = this.configs.get(service) || DEFAULT_RATE_LIMITS[service];
-        return config.maxRequestsPerMinute;
-      }
-
+      const config = this.configs.get(service) || DEFAULT_RATE_LIMITS[service];
       const adaptiveKey = `rate_limit:${service}:adaptive`;
+      
+      // Get adaptive limit (will auto-connect if needed)
       const adaptiveJson = await this.redis.get(adaptiveKey);
+      if (adaptiveJson === null && !this.redis.isAvailable()) {
+        return config.maxRequestsPerMinute; // Fallback to default
+      }
       if (adaptiveJson) {
         return parseInt(adaptiveJson, 10);
       }
@@ -244,15 +245,15 @@ export class RateLimitService {
    */
   async getPerformanceMetrics(service: ServiceType): Promise<PerformanceMetrics | null> {
     try {
-      if (!this.redis.isAvailable()) {
-        return null;
-      }
-
       const now = Date.now();
       const minute = Math.floor(now / 60000);
       const metricsKey = `rate_limit:${service}:metrics:${minute}`;
       
+      // Get metrics (will auto-connect if needed)
       const metricsJson = await this.redis.get(metricsKey);
+      if (metricsJson === null && !this.redis.isAvailable()) {
+        return null;
+      }
       if (metricsJson) {
         return JSON.parse(metricsJson);
       }
@@ -372,7 +373,9 @@ export class RateLimitService {
    */
   private async getRequestCount(key: string): Promise<number> {
     try {
-      if (!this.redis.isAvailable()) {
+      // Try to use Redis (will auto-connect if needed)
+      const value = await this.redis.get(key);
+      if (value === null && !this.redis.isAvailable()) {
         console.warn(`[rate-limit] Redis not available for ${key}`);
         return 0;
       }
@@ -390,7 +393,9 @@ export class RateLimitService {
    */
   private async incrementRequestCount(key: string, ttl: number): Promise<void> {
     try {
-      if (!this.redis.isAvailable()) {
+      // Try to increment (will auto-connect if needed)
+      const count = await this.redis.incr(key);
+      if (count === 0 && !this.redis.isAvailable()) {
         console.warn(`[rate-limit] Redis not available for incrementing ${key}`);
         return;
       }
@@ -442,15 +447,14 @@ export class RateLimitService {
    */
   async reset(service: ServiceType): Promise<void> {
     try {
-      if (!this.redis.isAvailable()) {
+      // Get keys (will auto-connect if needed)
+      const pattern = `rate_limit:${service}:*`;
+      const keys = await this.redis.keys(pattern);
+      
+      if (keys.length === 0 && !this.redis.isAvailable()) {
         console.warn(`[rate-limit] Redis not available for resetting ${service}`);
         return;
       }
-      
-      // Delete all rate limit keys for this service
-      // Use KEYS (acceptable for admin operations, but could use SCAN for production)
-      const pattern = `rate_limit:${service}:*`;
-      const keys = await this.redis.keys(pattern);
       
       if (keys.length > 0) {
         // Delete in batches to avoid blocking

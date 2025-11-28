@@ -80,3 +80,4 @@ The application maintains multiple search paths:
 3.  **Verify Indexes** in Supabase/Postgres for `collected_events` and `search_documents`.
 
 
+

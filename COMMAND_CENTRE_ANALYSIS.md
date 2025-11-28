@@ -313,3 +313,4 @@ We can transform it from a cluttered dashboard into a focused action center that
 
 **Key Insight**: The Command Centre should be a **cockpit for decision-making**, not a **repository for all features**. Users should land here, see what needs attention, and take action—not be overwhelmed by configuration options and duplicate functionality.
 
+
