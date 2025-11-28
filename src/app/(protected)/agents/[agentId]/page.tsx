@@ -54,7 +54,6 @@ export default function AgentDetailPage() {
   const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
