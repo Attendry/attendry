@@ -1714,33 +1714,35 @@ function SpeakerInsightsPanel({ profiles, loading }: SpeakerInsightsPanelProps) 
       </div>
       
       {!isCollapsed && (
-
-      {loading && profiles.length === 0 ? (
-        <div className="flex items-center justify-center py-12 text-slate-500">
-          <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-          Loading activity...
-        </div>
-      ) : profiles.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">No recent activity yet. Save speakers to populate this feed.</p>
-      ) : (
-        <ul className="mt-4 space-y-3">
-          {profiles.map((profile) => (
-            <li key={profile.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{profile.speaker_data.name}</p>
-                  <p className="text-xs text-slate-600">{STATUS_LABELS[profile.outreach_status]}</p>
-                </div>
-                <span className="text-xs text-slate-500">
-                  {new Date(profile.saved_at).toLocaleDateString()}
-                </span>
-              </div>
-              {profile.enhanced_data.title && (
-                <p className="mt-1 text-xs text-slate-500">{profile.enhanced_data.title}</p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          {loading && profiles.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-slate-500">
+              <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+              Loading activity...
+            </div>
+          ) : profiles.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">No recent activity yet. Save speakers to populate this feed.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {profiles.map((profile) => (
+                <li key={profile.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{profile.speaker_data.name}</p>
+                      <p className="text-xs text-slate-600">{STATUS_LABELS[profile.outreach_status]}</p>
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      {new Date(profile.saved_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {profile.enhanced_data.title && (
+                    <p className="mt-1 text-xs text-slate-500">{profile.enhanced_data.title}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
@@ -1776,62 +1778,63 @@ function TrendHighlightsPanel({ categories, events, loading, error }: TrendHighl
       </div>
       
       {!isCollapsed && (
-
-    {error && (
-      <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-        <AlertCircle className="h-4 w-4" />
-        {error}
-      </div>
-    )}
-
-    {loading && categories.length === 0 ? (
-      <div className="flex items-center justify-center py-12 text-slate-500">
-        <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-        Loading trends...
-      </div>
-    ) : categories.length === 0 ? (
-      <p className="mt-4 text-sm text-slate-500">Trend data will appear here once event engagement builds.</p>
-    ) : (
-      <div className="mt-4 space-y-4">
-        {categories.slice(0, 3).map((category) => (
-          <div key={category.name} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-slate-900">{category.name}</p>
-                <p className="text-xs text-slate-500">{category.count} events</p>
-              </div>
-              <span className={`text-xs font-medium ${category.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {category.growth >= 0 ? '+' : ''}{category.growth.toFixed(1)}%
-              </span>
+        <>
+          {error && (
+            <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4" />
+              {error}
             </div>
-          </div>
-        ))}
-      </div>
-    )}
+          )}
 
-    {events.length > 0 && (
-      <div className="mt-6">
-        <h4 className="text-sm font-semibold text-slate-700">High-signal events</h4>
-        <ul className="mt-3 space-y-2 text-sm text-slate-600">
-          {events.slice(0, 3).map((event) => (
-            <li key={event.id || event.title} className="flex justify-between">
-              <span className="truncate pr-2 font-medium text-slate-800">{event.title}</span>
-              {event.starts_at && (
-                <span className="text-xs text-slate-500">{new Date(event.starts_at).toLocaleDateString()}</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
-    )}
+          {loading && categories.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-slate-500">
+              <Loader2 className="mr-3 h-5 w-5 animate-spin" />
+              Loading trends...
+            </div>
+          ) : categories.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">Trend data will appear here once event engagement builds.</p>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {categories.slice(0, 3).map((category) => (
+                <div key={category.name} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{category.name}</p>
+                      <p className="text-xs text-slate-500">{category.count} events</p>
+                    </div>
+                    <span className={`text-xs font-medium ${category.growth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {category.growth >= 0 ? '+' : ''}{category.growth.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
-    <Link
-      href="/trending"
-      className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
-    >
-      Explore full trend insights
-      <ArrowUpRight className="h-4 w-4" />
-    </Link>
+          {events.length > 0 && (
+            <div className="mt-6">
+              <h4 className="text-sm font-semibold text-slate-700">High-signal events</h4>
+              <ul className="mt-3 space-y-2 text-sm text-slate-600">
+                {events.slice(0, 3).map((event) => (
+                  <li key={event.id || event.title} className="flex justify-between">
+                    <span className="truncate pr-2 font-medium text-slate-800">{event.title}</span>
+                    {event.starts_at && (
+                      <span className="text-xs text-slate-500">{new Date(event.starts_at).toLocaleDateString()}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <Link
+            href="/trending"
+            className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
+          >
+            Explore full trend insights
+            <ArrowUpRight className="h-4 w-4" />
+          </Link>
+        </>
       )}
     </div>
   );
