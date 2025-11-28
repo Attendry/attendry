@@ -16,7 +16,7 @@ import { supabaseServer } from '@/lib/supabase-server';
  */
 export class OutreachAgent extends BaseAgent {
   private llmService: LLMService;
-  private config: OutreachAgentConfig;
+  protected config: OutreachAgentConfig;
 
   constructor(agentId: string) {
     super(agentId);
@@ -221,31 +221,11 @@ Return a concise summary (maximum 300 words) with only the most relevant points.
 
 If the research data is not relevant for outreach, return "No relevant outreach information found."`;
 
-      // Use LLMService to extract relevant points (not as JSON, just text)
-      const response = await this.llmService.generateOutreachMessage(extractionPrompt, { maxTokens: 512 });
+      // Use LLMService to extract relevant points (as plain text, not JSON)
+      const response = await this.llmService.generateTextSummary(extractionPrompt, { maxTokens: 512 });
       
       // Parse and return the extracted points
       let extractedPoints = response.content.trim();
-      
-      // Remove JSON formatting if present
-      if (extractedPoints.startsWith('{') || extractedPoints.startsWith('[')) {
-        try {
-          const parsed = JSON.parse(extractedPoints);
-          // If it's an object with a messageBody or text field, extract that
-          if (parsed.messageBody) {
-            extractedPoints = parsed.messageBody;
-          } else if (parsed.text) {
-            extractedPoints = parsed.text;
-          } else if (parsed.summary) {
-            extractedPoints = parsed.summary;
-          } else {
-            // If we can't extract, use original
-            extractedPoints = researchText.length > 500 ? researchText.substring(0, 500) + '...' : researchText;
-          }
-        } catch {
-          // If JSON parsing fails, use as-is
-        }
-      }
       
       // If extraction failed or returned no relevant info, return a truncated version
       if (extractedPoints.includes('No relevant outreach information found') || extractedPoints.length < 50) {

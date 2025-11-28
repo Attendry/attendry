@@ -62,6 +62,24 @@ export class LLMService {
   }
 
   /**
+   * Generate text summary (not JSON formatted)
+   */
+  async generateTextSummary(prompt: string, options?: { maxTokens?: number }): Promise<LLMResponse> {
+    if (!this.apiKey) {
+      throw new Error('LLM API key not configured');
+    }
+
+    const maxTokens = options?.maxTokens || 512;
+
+    if (this.provider === 'gemini') {
+      return await this.callGemini(prompt, maxTokens, false); // false = don't force JSON
+    } else {
+      // For other providers, use regular method
+      return await this.generateOutreachMessage(prompt, { maxTokens });
+    }
+  }
+
+  /**
    * Call OpenAI API
    */
   private async callOpenAI(prompt: string, maxTokensOverride?: number): Promise<LLMResponse> {
@@ -158,7 +176,7 @@ export class LLMService {
   /**
    * Call Gemini API
    */
-  private async callGemini(prompt: string, maxTokensOverride?: number): Promise<LLMResponse> {
+  private async callGemini(prompt: string, maxTokensOverride?: number, forceJSON: boolean = true): Promise<LLMResponse> {
     const tokens = maxTokensOverride || this.maxTokens;
     const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -191,7 +209,7 @@ export class LLMService {
           maxOutputTokens: tokens,
           topP: 0.8,
           topK: 10,
-          responseMimeType: 'application/json'
+          ...(forceJSON ? { responseMimeType: 'application/json' } : {})
         },
         safetySettings: [
           {
