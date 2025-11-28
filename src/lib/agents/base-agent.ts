@@ -15,18 +15,22 @@ export abstract class BaseAgent {
   protected agentId: string;
   protected agentType: AgentType;
   protected config: Record<string, any>;
-  protected supabase: ReturnType<typeof supabaseServer>;
+  protected supabase: Awaited<ReturnType<typeof supabaseServer>> | null = null;
   protected agent: AIAgent | null = null;
 
   constructor(agentId: string) {
     this.agentId = agentId;
-    this.supabase = supabaseServer();
   }
 
   /**
    * Initialize agent (load from database)
    */
   async initialize(): Promise<void> {
+    // Initialize Supabase client
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const { data: agent, error } = await this.supabase
       .from('ai_agents')
       .select('*')
@@ -56,6 +60,10 @@ export abstract class BaseAgent {
    * Update agent status
    */
   protected async updateStatus(status: AgentStatus): Promise<void> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const { error } = await this.supabase
       .from('ai_agents')
       .update({ 
@@ -84,6 +92,10 @@ export abstract class BaseAgent {
     taskId?: string,
     metadata?: Record<string, any>
   ): Promise<void> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const { error } = await this.supabase.rpc('log_agent_activity', {
       p_agent_id: this.agentId,
       p_task_id: taskId || null,
@@ -107,6 +119,10 @@ export abstract class BaseAgent {
     output?: Record<string, any>,
     errorMessage?: string
   ): Promise<void> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const updateData: any = {
       status,
       ...(status === 'in_progress' && { started_at: new Date().toISOString() }),
@@ -134,6 +150,10 @@ export abstract class BaseAgent {
    * Get pending tasks for this agent
    */
   async getPendingTasks(): Promise<AgentTask[]> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const { data, error } = await this.supabase
       .from('agent_tasks')
       .select('*')
@@ -198,6 +218,10 @@ export abstract class BaseAgent {
    * Update performance metrics
    */
   private async updateMetrics(event: 'task_completed' | 'task_failed' | 'message_sent' | 'response_received'): Promise<void> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const today = new Date().toISOString().split('T')[0];
     
     // Get or create today's metrics

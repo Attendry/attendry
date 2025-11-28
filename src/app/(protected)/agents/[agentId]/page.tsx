@@ -24,9 +24,10 @@ import { toast } from 'sonner';
 import { AgentStatus } from '@/lib/types/agents';
 import { AssignTaskModal } from '@/components/agents/AssignTaskModal';
 import { AgentActivityFeed } from '@/components/agents/AgentActivityFeed';
+import { AgentConfigEditor } from '@/components/agents/AgentConfigEditor';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAgentActivity } from '@/lib/hooks/useAgentActivity';
-import { Activity } from 'lucide-react';
+import { Activity, Edit } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
   active: { icon: CheckCircle2, color: 'text-green-600', label: 'Active' },
@@ -49,6 +50,8 @@ export default function AgentDetailPage() {
   const agentId = params.agentId as string;
   const { agents, loading, updateAgent, deleteAgent, refresh } = useAgents();
   const [activeTab, setActiveTab] = useState('overview');
+  const [showConfigEditor, setShowConfigEditor] = useState(false);
+  const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
@@ -229,10 +232,7 @@ export default function AgentDetailPage() {
           )}
 
           <button
-            onClick={() => {
-              // TODO: Open configuration modal/page
-              toast.info('Configuration editing coming soon');
-            }}
+            onClick={() => setShowConfigEditor(true)}
             disabled={processing}
             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
@@ -359,13 +359,55 @@ export default function AgentDetailPage() {
               )}
             </div>
 
-            {/* Configuration */}
+            {/* Configuration Summary */}
             {agent.config && Object.keys(agent.config).length > 0 && (
               <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="mb-4 text-lg font-semibold text-slate-900">Configuration</h2>
-                <pre className="overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-700">
-                  {JSON.stringify(agent.config, null, 2)}
-                </pre>
+                <div className="mb-4 flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-slate-900">Configuration</h2>
+                  <button
+                    onClick={() => setShowConfigEditor(true)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <Edit className="h-4 w-4" />
+                    Edit
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {agent.agent_type === 'outreach' && (() => {
+                    const config = agent.config as any;
+                    return (
+                      <>
+                        <ConfigItem label="Auto-Approve" value={config.autoApprove ? 'Enabled' : 'Disabled'} />
+                        <ConfigItem label="Max Daily Outreach" value={config.maxDailyOutreach || 'N/A'} />
+                        <ConfigItem label="Message Tone" value={config.messageTone || 'N/A'} />
+                        <ConfigItem label="Include Event Context" value={config.includeEventContext !== false ? 'Yes' : 'No'} />
+                        <ConfigItem label="Include Account Intelligence" value={config.includeAccountIntelligence !== false ? 'Yes' : 'No'} />
+                      </>
+                    );
+                  })()}
+                  {agent.agent_type === 'followup' && (() => {
+                    const config = agent.config as any;
+                    return (
+                      <>
+                        <ConfigItem label="Default Follow-up Delay" value={`${config.defaultFollowupDelayDays || 'N/A'} days`} />
+                        <ConfigItem label="Max Follow-ups" value={config.maxFollowups || 'N/A'} />
+                        <ConfigItem label="Escalation After" value={`${config.escalationAfterAttempts || 'N/A'} attempts`} />
+                        <ConfigItem label="Follow-up Types" value={(config.followupTypes || []).join(', ') || 'None'} />
+                      </>
+                    );
+                  })()}
+                  {agent.agent_type === 'planning' && (() => {
+                    const config = agent.config as any;
+                    return (
+                      <>
+                        <ConfigItem label="Min Relevance Score" value={`${config.minRelevanceScore || 'N/A'}%`} />
+                        <ConfigItem label="Max Opportunities/Day" value={config.maxOpportunitiesPerDay || 'N/A'} />
+                        <ConfigItem label="Prioritize By Signal" value={config.prioritizeBySignalStrength !== false ? 'Yes' : 'No'} />
+                        <ConfigItem label="Coordinate With Outreach" value={config.coordinateWithOutreach !== false ? 'Yes' : 'No'} />
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             )}
           </TabsContent>
@@ -389,7 +431,27 @@ export default function AgentDetailPage() {
             toast.success('Task assigned! Check the activity feed for updates.');
           }}
         />
+
+        {/* Config Editor Modal */}
+        <AgentConfigEditor
+          agent={agent}
+          isOpen={showConfigEditor}
+          onClose={() => setShowConfigEditor(false)}
+          onSuccess={() => {
+            refresh();
+          }}
+        />
       </div>
+    </div>
+  );
+}
+
+// Helper component for config summary
+function ConfigItem({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex items-center justify-between border-b border-slate-100 pb-2 last:border-b-0">
+      <span className="text-sm text-slate-600">{label}</span>
+      <span className="text-sm font-medium text-slate-900">{value}</span>
     </div>
   );
 }

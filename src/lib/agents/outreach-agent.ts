@@ -8,6 +8,7 @@ import {
 } from '@/lib/types/agents';
 import { SavedSpeakerProfile } from '@/lib/types/database';
 import { LLMService } from '@/lib/services/llm-service';
+import { supabaseServer } from '@/lib/supabase-server';
 
 /**
  * Outreach Agent
@@ -130,6 +131,11 @@ export class OutreachAgent extends BaseAgent {
       llmResponse.content, 
       preferredChannel
     );
+
+    // Ensure supabase is initialized
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
 
     // Store draft
     const { data: draft, error } = await this.supabase
@@ -368,6 +374,10 @@ export class OutreachAgent extends BaseAgent {
    * Helper methods to fetch data
    */
   private async getContact(contactId: string): Promise<SavedSpeakerProfile> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const { data, error } = await this.supabase
       .from('saved_speaker_profiles')
       .select('*')
@@ -382,6 +392,10 @@ export class OutreachAgent extends BaseAgent {
   }
 
   private async getOpportunity(opportunityId: string): Promise<any> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const { data, error } = await this.supabase
       .from('user_opportunities')
       .select(`
@@ -406,6 +420,10 @@ export class OutreachAgent extends BaseAgent {
   }
 
   private async getHistoricalOutreach(contactId: string): Promise<any[]> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const { data } = await this.supabase
       .from('agent_outreach_drafts')
       .select('*')
@@ -420,6 +438,10 @@ export class OutreachAgent extends BaseAgent {
    * Get contact research data if available
    */
   private async getContactResearch(contactId: string): Promise<any | null> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
     const { data, error } = await this.supabase
       .from('contact_research')
       .select('*')
