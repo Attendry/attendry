@@ -102,14 +102,24 @@ export class OutreachAgent extends BaseAgent {
       : null;
     const historicalOutreach = await this.getHistoricalOutreach(input.contactId);
 
+    // Fetch contact research if available
+    const contactResearch = await this.getContactResearch(input.contactId);
+
+    // Use preferences from contact or input context
+    const preferredLanguage = input.context?.preferredLanguage || contact.preferred_language || 'English';
+    const preferredTone = input.context?.preferredTone || contact.preferred_tone || this.config.messageTone;
+    const preferredChannel = input.channel || (contact.preferred_channel as OutreachChannel) || 'email';
+
     // Build LLM prompt
     const prompt = this.buildOutreachPrompt({
       contact,
       opportunity,
       accountIntel,
       historicalOutreach,
-      channel: input.channel,
-      tone: this.config.messageTone
+      contactResearch,
+      channel: preferredChannel,
+      tone: preferredTone,
+      language: preferredLanguage
     });
 
     // Call LLM
@@ -118,7 +128,7 @@ export class OutreachAgent extends BaseAgent {
     // Parse response
     const { subject, messageBody, reasoning } = this.parseLLMResponse(
       llmResponse.content, 
-      input.channel
+      preferredChannel
     );
 
     // Store draft
@@ -129,14 +139,16 @@ export class OutreachAgent extends BaseAgent {
         task_id: taskId,
         contact_id: input.contactId,
         opportunity_id: input.opportunityId || null,
-        channel: input.channel,
-        subject: input.channel === 'email' ? subject : null,
+        channel: preferredChannel,
+        subject: preferredChannel === 'email' ? subject : null,
         message_body: messageBody,
         personalization_context: {
           reasoning,
           keyPoints: this.extractKeyPoints(contact, opportunity, accountIntel),
-          tone: this.config.messageTone,
-          channel: input.channel
+          tone: preferredTone,
+          channel: preferredChannel,
+          language: preferredLanguage,
+          usedResearch: !!contactResearch
         },
         status: this.config.autoApprove ? 'approved' : 'pending_approval'
       })
@@ -168,12 +180,21 @@ export class OutreachAgent extends BaseAgent {
     opportunity: any | null;
     accountIntel: any | null;
     historicalOutreach: any[];
+    contactResearch: any | null;
     channel: OutreachChannel;
     tone: string;
+    language: string;
   }): string {
-    const { contact, opportunity, accountIntel, historicalOutreach, channel, tone } = context;
+    const { contact, opportunity, accountIntel, historicalOutreach, contactResearch, channel, tone, language } = context;
     
     let prompt = `Draft a personalized ${channel} outreach message for ${contact.speaker_data.name}.\n\n`;
+    
+    // Language instruction
+    if (language === 'German') {
+      prompt += `IMPORTANT: Write the entire message in German.\n\n`;
+    } else {
+      prompt += `IMPORTANT: Write the entire message in English.\n\n`;
+    }
 
     // Contact information
     prompt += `CONTACT INFORMATION:\n`;
@@ -197,6 +218,21 @@ export class OutreachAgent extends BaseAgent {
       }
     }
     prompt += `\n`;
+
+    // Contact research (background intel)
+    if (contactResearch?.background_info) {
+      prompt += `CONTACT RESEARCH & BACKGROUND:\n`;
+      prompt += `${contactResearch.background_info}\n`;
+      if (contactResearch.grounding_links && Array.isArray(contactResearch.grounding_links) && contactResearch.grounding_links.length > 0) {
+        prompt += `\nSources:\n`;
+        contactResearch.grounding_links.slice(0, 3).forEach((link: any, idx: number) => {
+          if (link.title && link.url) {
+            prompt += `${idx + 1}. ${link.title} (${link.url})\n`;
+          }
+        });
+      }
+      prompt += `\n`;
+    }
 
     // Opportunity context
     if (opportunity && this.config.includeEventContext) {
@@ -247,12 +283,18 @@ export class OutreachAgent extends BaseAgent {
 
     // Requirements
     prompt += `REQUIREMENTS:\n`;
-    prompt += `- Tone: ${tone}\n`;
+    prompt += `- Tone: ${tone} (${tone === 'Formal' ? 'use formal language, titles, and professional structure' : 'use friendly, conversational language while remaining professional'})\n`;
     prompt += `- Channel: ${channel}\n`;
     if (channel === 'email') {
       prompt += `- Include a clear, compelling subject line\n`;
+    } else if (channel === 'linkedin') {
+      prompt += `- Format as a LinkedIn message (no subject line needed)\n`;
+      prompt += `- Keep it shorter and more casual than email\n`;
     }
-    prompt += `- Reference specific context (event, role, company)\n`;
+    if (contactResearch?.background_info) {
+      prompt += `- Reference specific details from the contact research above\n`;
+    }
+    prompt += `- Reference specific context (event, role, company, recent achievements)\n`;
     prompt += `- Include clear value proposition\n`;
     prompt += `- Call-to-action for next step\n`;
     prompt += `- Keep message concise (2-3 paragraphs max)\n`;
@@ -372,6 +414,23 @@ export class OutreachAgent extends BaseAgent {
       .limit(5);
 
     return data || [];
+  }
+
+  /**
+   * Get contact research data if available
+   */
+  private async getContactResearch(contactId: string): Promise<any | null> {
+    const { data, error } = await this.supabase
+      .from('contact_research')
+      .select('*')
+      .eq('contact_id', contactId)
+      .single();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return data;
   }
 }
 

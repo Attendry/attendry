@@ -23,6 +23,10 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { AgentStatus } from '@/lib/types/agents';
 import { AssignTaskModal } from '@/components/agents/AssignTaskModal';
+import { AgentActivityFeed } from '@/components/agents/AgentActivityFeed';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAgentActivity } from '@/lib/hooks/useAgentActivity';
+import { Activity } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
   active: { icon: CheckCircle2, color: 'text-green-600', label: 'Active' },
@@ -44,6 +48,7 @@ export default function AgentDetailPage() {
   const router = useRouter();
   const agentId = params.agentId as string;
   const { agents, loading, updateAgent, deleteAgent, refresh } = useAgents();
+  const [activeTab, setActiveTab] = useState('overview');
   const [authReady, setAuthReady] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
@@ -70,6 +75,15 @@ export default function AgentDetailPage() {
 
   const agent = agents.find(a => a.id === agentId);
   const statusConfig = agent ? STATUS_CONFIG[agent.status] || STATUS_CONFIG.idle : null;
+  
+  // Fetch recent activity for overview
+  const { activities: recentActivities } = useAgentActivity({
+    agentId: agentId,
+    enabled: !!agent,
+    limit: 5,
+    autoRefresh: agent?.status === 'active',
+    refreshInterval: 15000
+  });
 
   const handleStatusChange = async (newStatus: AgentStatus) => {
     if (!agent || processing) return;
@@ -236,67 +250,134 @@ export default function AgentDetailPage() {
           </button>
         </div>
 
-        {/* Agent Details */}
-        <div className="space-y-6">
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold text-slate-900">Agent Information</h2>
-            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-sm font-medium text-slate-500">Type</dt>
-                <dd className="mt-1 text-sm text-slate-900">
-                  {AGENT_TYPE_LABELS[agent.agent_type] || agent.agent_type}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-slate-500">Status</dt>
-                <dd className="mt-1 text-sm text-slate-900">
-                  {statusConfig?.label || agent.status}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-slate-500">Created</dt>
-                <dd className="mt-1 text-sm text-slate-900">
-                  {new Date(agent.created_at).toLocaleDateString()}
-                </dd>
-              </div>
-              {agent.last_active_at && (
+        {/* Agent Details with Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-6">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+          </TabsList>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-6">
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-lg font-semibold text-slate-900">Agent Information</h2>
+              <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <dt className="text-sm font-medium text-slate-500">Last Active</dt>
+                  <dt className="text-sm font-medium text-slate-500">Type</dt>
                   <dd className="mt-1 text-sm text-slate-900">
-                    {new Date(agent.last_active_at).toLocaleDateString()}
+                    {AGENT_TYPE_LABELS[agent.agent_type] || agent.agent_type}
                   </dd>
                 </div>
-              )}
-            </dl>
-          </div>
+                <div>
+                  <dt className="text-sm font-medium text-slate-500">Status</dt>
+                  <dd className="mt-1 text-sm text-slate-900">
+                    {statusConfig?.label || agent.status}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm font-medium text-slate-500">Created</dt>
+                  <dd className="mt-1 text-sm text-slate-900">
+                    {new Date(agent.created_at).toLocaleDateString()}
+                  </dd>
+                </div>
+                {agent.last_active_at && (
+                  <div>
+                    <dt className="text-sm font-medium text-slate-500">Last Active</dt>
+                    <dd className="mt-1 text-sm text-slate-900">
+                      {new Date(agent.last_active_at).toLocaleDateString()}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
 
-          {/* Capabilities */}
-          {agent.capabilities && agent.capabilities.length > 0 && (
-            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-slate-900">Capabilities</h2>
-              <div className="flex flex-wrap gap-2">
-                {agent.capabilities.map((capability, index) => (
-                  <span
-                    key={index}
-                    className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"
-                  >
-                    {capability}
-                  </span>
-                ))}
+            {/* Capabilities */}
+            {agent.capabilities && agent.capabilities.length > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Capabilities</h2>
+                <div className="flex flex-wrap gap-2">
+                  {agent.capabilities.map((capability, index) => (
+                    <span
+                      key={index}
+                      className="rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700"
+                    >
+                      {capability}
+                    </span>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Configuration */}
-          {agent.config && Object.keys(agent.config).length > 0 && (
+            {/* Recent Activity Summary */}
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-slate-900">Configuration</h2>
-              <pre className="overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-700">
-                {JSON.stringify(agent.config, null, 2)}
-              </pre>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">Recent Activity</h2>
+                <button
+                  onClick={() => setActiveTab('activity')}
+                  className="text-sm text-blue-600 hover:text-blue-700"
+                >
+                  View All →
+                </button>
+              </div>
+              {recentActivities.length === 0 ? (
+                <p className="text-sm text-slate-500">No recent activity</p>
+              ) : (
+                <div className="space-y-3">
+                  {recentActivities.slice(0, 5).map((activity) => {
+                    const timeAgo = (() => {
+                      const now = new Date();
+                      const date = new Date(activity.created_at);
+                      const diffMs = now.getTime() - date.getTime();
+                      const diffMins = Math.floor(diffMs / 60000);
+                      const diffHours = Math.floor(diffMins / 60);
+                      if (diffMins < 60) return `${diffMins}m ago`;
+                      if (diffHours < 24) return `${diffHours}h ago`;
+                      return date.toLocaleDateString();
+                    })();
+
+                    const getActionLabel = () => {
+                      const labels: Record<string, string> = {
+                        task_started: 'Started task',
+                        task_completed: 'Completed task',
+                        task_failed: 'Task failed',
+                        draft_created: 'Created draft',
+                        draft_approved: 'Draft approved',
+                        message_sent: 'Sent message'
+                      };
+                      return labels[activity.action_type] || activity.action_type.replace(/_/g, ' ');
+                    };
+
+                    return (
+                      <div key={activity.id} className="flex items-center gap-3 text-sm">
+                        <Activity className="h-4 w-4 text-slate-400" />
+                        <span className="flex-1 text-slate-700">{getActionLabel()}</span>
+                        <span className="text-slate-500">{timeAgo}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {/* Configuration */}
+            {agent.config && Object.keys(agent.config).length > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Configuration</h2>
+                <pre className="overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-700">
+                  {JSON.stringify(agent.config, null, 2)}
+                </pre>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Activity Tab */}
+          <TabsContent value="activity">
+            <AgentActivityFeed 
+              agentId={agent.id} 
+              autoRefresh={agent.status === 'active'}
+            />
+          </TabsContent>
+        </Tabs>
 
         {/* Assign Task Modal */}
         <AssignTaskModal

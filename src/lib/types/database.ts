@@ -201,6 +201,14 @@ export interface SavedSpeakerProfile {
   outreach_status: 'not_started' | 'contacted' | 'responded' | 'meeting_scheduled';
   saved_at: string;
   last_updated: string;
+  // Contact preferences and monitoring (added in migration 20250226000001)
+  preferred_language?: 'English' | 'German' | null;
+  preferred_tone?: 'Formal' | 'Informal' | null;
+  preferred_channel?: 'email' | 'linkedin' | 'other' | null;
+  reminder_date?: string | null;
+  monitor_updates?: boolean | null;
+  archived?: boolean | null;
+  last_contacted_date?: string | null;
 }
 
 /**

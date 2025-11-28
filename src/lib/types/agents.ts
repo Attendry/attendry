@@ -148,6 +148,8 @@ export interface DraftOutreachTaskInput {
     eventDate?: string;
     speakerRole?: string;
     accountName?: string;
+    preferredLanguage?: string;
+    preferredTone?: string;
   };
 }
 

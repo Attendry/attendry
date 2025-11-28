@@ -444,14 +444,37 @@ export function CommandCentre() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2" data-tour="saved-profiles">
-          <ContactsSummaryPanel
-            profiles={profiles}
-            statusCounts={statusCounts}
-            loading={profilesLoading}
-            error={profilesError}
-            statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
-          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Contacts Overview</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Manage your outreach contacts with research and monitoring
+                </p>
+              </div>
+              <Link
+                href="/contacts"
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                Manage Contacts
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            </div>
+            
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {(['not_started', 'contacted', 'responded', 'meeting_scheduled'] as OutreachStatus[]).map((status) => (
+                <Link
+                  key={status}
+                  href="/contacts"
+                  className="rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:bg-slate-50"
+                >
+                  <p className="text-xs font-medium text-slate-600">{STATUS_LABELS[status]}</p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-900">{statusCounts[status]}</p>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="space-y-6" data-tour="trending-insights">
           <SpeakerInsightsPanel profiles={recentSpeakers} loading={profilesLoading} />
@@ -1672,205 +1695,6 @@ function CommandMetrics({ metrics, loading, onMetricClick }: MetricsCardProps) {
 
         return <div key={metric.label}>{content}</div>;
       })}
-    </div>
-  );
-}
-
-interface ContactsSummaryPanelProps {
-  profiles: SavedSpeakerProfile[];
-  statusCounts: StatusCounts;
-  loading: boolean;
-  error: string | null;
-  statusFilter: OutreachStatus | 'all';
-  onStatusFilterChange: (status: OutreachStatus | 'all') => void;
-}
-
-function ContactsSummaryPanel({
-  profiles,
-  statusCounts,
-  loading,
-  error,
-  statusFilter,
-  onStatusFilterChange,
-}: ContactsSummaryPanelProps) {
-  // Calculate action items
-  const actionItems = useMemo(() => {
-    const items: Array<{ message: string; count: number; status?: OutreachStatus; link: string }> = [];
-    
-    // Contacts that haven't been contacted in 7+ days
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
-    const needsFollowUp = profiles.filter((profile) => {
-      if (profile.outreach_status === 'contacted') {
-        const lastUpdated = new Date(profile.last_updated || profile.saved_at);
-        return lastUpdated < sevenDaysAgo;
-      }
-      return false;
-    }).length;
-    
-    if (needsFollowUp > 0) {
-      items.push({
-        message: `${needsFollowUp} contact${needsFollowUp === 1 ? '' : 's'} haven't been followed up in 7+ days`,
-        count: needsFollowUp,
-        status: 'contacted',
-        link: '/saved-profiles?status=contacted',
-      });
-    }
-    
-    // Ready for outreach
-    if (statusCounts.not_started > 0) {
-      items.push({
-        message: `${statusCounts.not_started} contact${statusCounts.not_started === 1 ? '' : 's'} ready for first outreach`,
-        count: statusCounts.not_started,
-        status: 'not_started',
-        link: '/saved-profiles?status=not_started',
-      });
-    }
-    
-    // Meetings this week
-    const meetingsThisWeek = profiles.filter((profile) => {
-      if (profile.outreach_status === 'meeting_scheduled') {
-        // Check if there's a meeting date in metadata or notes
-        // For now, just count all scheduled meetings
-        return true;
-      }
-      return false;
-    }).length;
-    
-    if (meetingsThisWeek > 0) {
-      items.push({
-        message: `${meetingsThisWeek} meeting${meetingsThisWeek === 1 ? '' : 's'} scheduled`,
-        count: meetingsThisWeek,
-        status: 'meeting_scheduled',
-        link: '/saved-profiles?status=meeting_scheduled',
-      });
-    }
-    
-    return items;
-  }, [profiles, statusCounts]);
-
-  // Recent activity (last 5 updates)
-  const recentActivity = useMemo(() => {
-    return [...profiles]
-      .sort((a, b) => {
-        const dateA = new Date(a.last_updated || a.saved_at);
-        const dateB = new Date(b.last_updated || b.saved_at);
-        return dateB.getTime() - dateA.getTime();
-      })
-      .slice(0, 5);
-  }, [profiles]);
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-slate-900">Contacts Overview</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Quick insights and actions for your saved contacts
-          </p>
-        </div>
-        <Link
-          href="/saved-profiles"
-          className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          Manage All Contacts
-          <ArrowUpRight className="h-4 w-4" />
-        </Link>
-      </div>
-
-      {error && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
-
-      {loading && profiles.length === 0 ? (
-        <div className="flex items-center justify-center py-12 text-slate-500">
-          <Loader2 className="mr-3 h-5 w-5 animate-spin" />
-          Loading contacts...
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {(['not_started', 'contacted', 'responded', 'meeting_scheduled'] as OutreachStatus[]).map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => onStatusFilterChange(statusFilter === status ? 'all' : status)}
-                className={`rounded-lg border p-3 text-left transition ${
-                  statusFilter === status
-                    ? 'border-blue-200 bg-blue-50 shadow-sm'
-                    : 'border-slate-200 bg-white hover:bg-slate-50'
-                }`}
-              >
-                <p className="text-xs font-medium text-slate-600">{STATUS_LABELS[status]}</p>
-                <p className="mt-1 text-2xl font-semibold text-slate-900">{statusCounts[status]}</p>
-              </button>
-            ))}
-          </div>
-
-          {/* Action Items */}
-          {actionItems.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-sm font-semibold text-slate-900">Action Items</h3>
-              <div className="space-y-2">
-                {actionItems.map((item, index) => (
-                  <Link
-                    key={index}
-                    href={item.link}
-                    className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm transition hover:bg-amber-100"
-                  >
-                    <span className="text-amber-900">{item.message}</span>
-                    <ArrowUpRight className="h-4 w-4 text-amber-600" />
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recent Activity */}
-          {recentActivity.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-sm font-semibold text-slate-900">Recent Activity</h3>
-              <div className="space-y-2">
-                {recentActivity.map((profile) => {
-                  const lastUpdated = new Date(profile.last_updated || profile.saved_at);
-                  const timeAgo = getTimeAgo(lastUpdated);
-                  
-                  return (
-                    <Link
-                      key={profile.id}
-                      href="/saved-profiles"
-                      className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm transition hover:bg-slate-100"
-                    >
-                      <div className="flex-1">
-                        <p className="font-medium text-slate-900">{profile.speaker_data.name}</p>
-                        <p className="text-xs text-slate-600">
-                          {STATUS_LABELS[profile.outreach_status]} · {timeAgo}
-                        </p>
-                      </div>
-                      <ArrowUpRight className="h-4 w-4 text-slate-400" />
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Empty State */}
-          {profiles.length === 0 && (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-              <h3 className="text-lg font-semibold text-slate-900">No contacts yet</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                Save speakers from event pages to build your contact list.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
