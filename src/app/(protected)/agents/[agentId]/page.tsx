@@ -16,11 +16,13 @@ import {
   Play,
   Trash2,
   Settings,
-  Power
+  Power,
+  Sparkles
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { AgentStatus } from '@/lib/types/agents';
+import { AssignTaskModal } from '@/components/agents/AssignTaskModal';
 
 const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
   active: { icon: CheckCircle2, color: 'text-green-600', label: 'Active' },
@@ -44,6 +46,7 @@ export default function AgentDetailPage() {
   const { agents, loading, updateAgent, deleteAgent, refresh } = useAgents();
   const [authReady, setAuthReady] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,6 +174,15 @@ export default function AgentDetailPage() {
 
         {/* Management Actions */}
         <div className="mb-6 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowAssignTaskModal(true)}
+            disabled={processing || agent.status === 'paused' || agent.status === 'error'}
+            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Sparkles className="h-4 w-4" />
+            Assign Task
+          </button>
+
           {agent.status === 'idle' || agent.status === 'paused' ? (
             <button
               onClick={() => handleStatusChange('active')}
@@ -285,6 +297,17 @@ export default function AgentDetailPage() {
             </div>
           )}
         </div>
+
+        {/* Assign Task Modal */}
+        <AssignTaskModal
+          agent={agent}
+          isOpen={showAssignTaskModal}
+          onClose={() => setShowAssignTaskModal(false)}
+          onSuccess={() => {
+            refresh();
+            toast.success('Task assigned! Check the activity feed for updates.');
+          }}
+        />
       </div>
     </div>
   );

@@ -15,10 +15,12 @@ import {
   Sparkles,
   Play,
   Settings,
-  Trash2
+  Trash2,
+  Plus
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { AssignTaskModal } from './AssignTaskModal';
 
 interface AgentStatusCardProps {
   agent: AIAgent | null;
@@ -29,6 +31,7 @@ interface AgentStatusCardProps {
 function AgentStatusCard({ agent, agentType, loading }: AgentStatusCardProps) {
   const { updateAgent, deleteAgent, refresh } = useAgents();
   const [processing, setProcessing] = useState(false);
+  const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
 
   const handleStatusChange = async (newStatus: AgentStatus) => {
     if (!agent || processing) return;
@@ -146,7 +149,17 @@ function AgentStatusCard({ agent, agentType, loading }: AgentStatusCardProps) {
       </div>
       
       {/* Quick Actions */}
-      <div className="mt-3 flex items-center gap-2 border-t border-slate-200 pt-3">
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+        <button
+          onClick={() => setShowAssignTaskModal(true)}
+          disabled={processing || agent.status === 'paused' || agent.status === 'error'}
+          className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+          title="Assign task to agent"
+        >
+          <Plus className="h-3 w-3" />
+          Assign Task
+        </button>
+
         {agent.status === 'idle' || agent.status === 'paused' ? (
           <button
             onClick={() => handleStatusChange('active')}
@@ -172,10 +185,10 @@ function AgentStatusCard({ agent, agentType, loading }: AgentStatusCardProps) {
         <Link
           href={`/agents/${agent.id}`}
           className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
-          title="Configure agent"
+          title="View agent details"
         >
           <Settings className="h-3 w-3" />
-          Configure
+          View
         </Link>
         
         <button
@@ -188,6 +201,19 @@ function AgentStatusCard({ agent, agentType, loading }: AgentStatusCardProps) {
           Delete
         </button>
       </div>
+
+      {/* Assign Task Modal */}
+      {agent && (
+        <AssignTaskModal
+          agent={agent}
+          isOpen={showAssignTaskModal}
+          onClose={() => setShowAssignTaskModal(false)}
+          onSuccess={() => {
+            refresh();
+            toast.success('Task assigned! The agent will process it shortly.');
+          }}
+        />
+      )}
     </div>
   );
 }
