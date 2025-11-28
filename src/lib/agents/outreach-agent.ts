@@ -16,7 +16,6 @@ import { supabaseServer } from '@/lib/supabase-server';
  */
 export class OutreachAgent extends BaseAgent {
   private llmService: LLMService;
-  protected config: OutreachAgentConfig;
 
   constructor(agentId: string) {
     super(agentId);
@@ -25,30 +24,31 @@ export class OutreachAgent extends BaseAgent {
 
   async initialize(): Promise<void> {
     await super.initialize();
-    this.config = this.config as OutreachAgentConfig;
+    const baseConfig = this.config as OutreachAgentConfig;
     
     // Set defaults if config is incomplete
-    if (!this.config.autoApprove !== undefined) {
-      this.config.autoApprove = false;
+    if (baseConfig.autoApprove === undefined) {
+      baseConfig.autoApprove = false;
     }
-    if (!this.config.maxDailyOutreach) {
-      this.config.maxDailyOutreach = 10;
+    if (!baseConfig.maxDailyOutreach) {
+      baseConfig.maxDailyOutreach = 10;
     }
-    if (!this.config.messageTone) {
-      this.config.messageTone = 'professional';
+    if (!baseConfig.messageTone) {
+      baseConfig.messageTone = 'professional';
     }
-    if (this.config.includeEventContext === undefined) {
-      this.config.includeEventContext = true;
+    if (baseConfig.includeEventContext === undefined) {
+      baseConfig.includeEventContext = true;
     }
-    if (this.config.includeAccountIntelligence === undefined) {
-      this.config.includeAccountIntelligence = true;
+    if (baseConfig.includeAccountIntelligence === undefined) {
+      baseConfig.includeAccountIntelligence = true;
     }
-    if (this.config.notifyFollowupAgent === undefined) {
-      this.config.notifyFollowupAgent = true;
+    if (baseConfig.notifyFollowupAgent === undefined) {
+      baseConfig.notifyFollowupAgent = true;
     }
-    if (!this.config.defaultFollowupDelayDays) {
-      this.config.defaultFollowupDelayDays = 3;
+    if (!baseConfig.defaultFollowupDelayDays) {
+      baseConfig.defaultFollowupDelayDays = 3;
     }
+    this.config = baseConfig;
   }
 
   async processTask(task: AgentTask): Promise<{
