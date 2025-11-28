@@ -40,6 +40,8 @@ export function AssignTaskModal({
   const [selectedContactId, setSelectedContactId] = useState<string>(preselectedContactId || '');
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>(preselectedOpportunityId || '');
   const [selectedChannel, setSelectedChannel] = useState<OutreachChannel>('email');
+  const [selectedLanguage, setSelectedLanguage] = useState<'English' | 'German'>('English');
+  const [selectedTone, setSelectedTone] = useState<'Formal' | 'Informal'>('Formal');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -48,6 +50,19 @@ export function AssignTaskModal({
     if (isOpen) {
       if (preselectedContactId) {
         setSelectedContactId(preselectedContactId);
+        // Load contact preferences if available
+        const contact = profiles.find(p => p.id === preselectedContactId);
+        if (contact) {
+          if (contact.preferred_language) {
+            setSelectedLanguage(contact.preferred_language as 'English' | 'German');
+          }
+          if (contact.preferred_tone) {
+            setSelectedTone(contact.preferred_tone as 'Formal' | 'Informal');
+          }
+          if (contact.preferred_channel) {
+            setSelectedChannel(contact.preferred_channel as OutreachChannel);
+          }
+        }
       }
       if (preselectedOpportunityId) {
         setSelectedOpportunityId(preselectedOpportunityId);
@@ -56,10 +71,12 @@ export function AssignTaskModal({
       setSelectedContactId('');
       setSelectedOpportunityId('');
       setSelectedChannel('email');
+      setSelectedLanguage('English');
+      setSelectedTone('Formal');
       setPriority('medium');
       setSearchTerm('');
     }
-  }, [isOpen, preselectedContactId, preselectedOpportunityId]);
+  }, [isOpen, preselectedContactId, preselectedOpportunityId, profiles]);
 
   const selectedContact = useMemo(() => {
     return profiles.find(p => p.id === selectedContactId);
@@ -114,6 +131,10 @@ export function AssignTaskModal({
 
     if (agent.agent_type === 'outreach') {
       inputData.channel = selectedChannel;
+      inputData.context = {
+        preferredLanguage: selectedLanguage,
+        preferredTone: selectedTone,
+      };
     }
 
     const task = await assignTask({
@@ -124,8 +145,12 @@ export function AssignTaskModal({
 
     if (task) {
       toast.success('Task assigned successfully! The agent will process it shortly.');
-      onSuccess?.();
+      // Close modal immediately - don't wait for task to complete
       onClose();
+      // Call onSuccess after modal closes (non-blocking)
+      setTimeout(() => {
+        onSuccess?.();
+      }, 100);
     } else {
       toast.error(error || 'Failed to assign task');
     }
@@ -273,50 +298,83 @@ export function AssignTaskModal({
               </div>
             )}
 
-            {/* Channel Selection (for outreach agents) */}
+            {/* Outreach Options (for outreach agents) */}
             {agent.agent_type === 'outreach' && (
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-900">
-                  Outreach Channel
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedChannel('email')}
-                    className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 transition-all ${
-                      selectedChannel === 'email'
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <Mail className="h-4 w-4" />
-                    <span className="text-sm font-medium">Email</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedChannel('linkedin')}
-                    className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 transition-all ${
-                      selectedChannel === 'linkedin'
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <Linkedin className="h-4 w-4" />
-                    <span className="text-sm font-medium">LinkedIn</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedChannel('other')}
-                    className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 transition-all ${
-                      selectedChannel === 'other'
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-slate-200 bg-white hover:border-slate-300'
-                    }`}
-                  >
-                    <span className="text-sm font-medium">Other</span>
-                  </button>
+              <>
+                {/* Channel Selection */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-900">
+                    Outreach Channel
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChannel('email')}
+                      className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 transition-all ${
+                        selectedChannel === 'email'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <Mail className="h-4 w-4" />
+                      <span className="text-sm font-medium">Email</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChannel('linkedin')}
+                      className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 transition-all ${
+                        selectedChannel === 'linkedin'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <Linkedin className="h-4 w-4" />
+                      <span className="text-sm font-medium">LinkedIn</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedChannel('other')}
+                      className={`flex items-center justify-center gap-2 rounded-lg border-2 p-3 transition-all ${
+                        selectedChannel === 'other'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="text-sm font-medium">Other</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+
+                {/* Language Selection */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-900">
+                    Language
+                  </label>
+                  <select
+                    value={selectedLanguage}
+                    onChange={(e) => setSelectedLanguage(e.target.value as 'English' | 'German')}
+                    className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="English">English</option>
+                    <option value="German">German</option>
+                  </select>
+                </div>
+
+                {/* Tone Selection */}
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-900">
+                    Tone
+                  </label>
+                  <select
+                    value={selectedTone}
+                    onChange={(e) => setSelectedTone(e.target.value as 'Formal' | 'Informal')}
+                    className="w-full rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Formal">Formal</option>
+                    <option value="Informal">Informal</option>
+                  </select>
+                </div>
+              </>
             )}
 
             {/* Priority Selection */}
@@ -346,7 +404,11 @@ export function AssignTaskModal({
                   <p><span className="font-medium">Contact:</span> {selectedContact.speaker_data?.name}</p>
                 )}
                 {agent.agent_type === 'outreach' && (
-                  <p><span className="font-medium">Channel:</span> {selectedChannel}</p>
+                  <>
+                    <p><span className="font-medium">Channel:</span> {selectedChannel}</p>
+                    <p><span className="font-medium">Language:</span> {selectedLanguage}</p>
+                    <p><span className="font-medium">Tone:</span> {selectedTone}</p>
+                  </>
                 )}
                 <p><span className="font-medium">Priority:</span> {priority}</p>
               </div>

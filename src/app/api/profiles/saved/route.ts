@@ -126,24 +126,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Auto-research: Trigger research in background when contact is added
     if (data?.id && speaker_data?.name) {
-      // Don't await - let it run in background
-      (async () => {
-        try {
-          const name = speaker_data.name || 'Unknown';
-          const company = speaker_data.org || speaker_data.organization || 'Unknown';
-          
-          // Research the contact
-          const researchResult = await researchContact(name, company);
-          
-          // Save to database
-          await saveContactResearch(userRes.user.id, data.id, researchResult);
-          
-          console.log('[auto-research] Research completed for contact:', data.id);
-        } catch (error) {
-          console.error('[auto-research] Failed to research contact:', error);
-          // Don't fail the save if research fails
-        }
-      })();
+      const name = speaker_data.name || 'Unknown';
+      const company = speaker_data.org || speaker_data.organization || 'Unknown';
+      
+      // Use setImmediate or setTimeout to ensure it runs after response is sent
+      // In serverless, we need to ensure the function doesn't terminate before research starts
+      if (typeof setImmediate !== 'undefined') {
+        setImmediate(async () => {
+          try {
+            console.log(`[auto-research] Starting research for contact ${data.id}: ${name} at ${company}`);
+            const researchResult = await researchContact(name, company);
+            await saveContactResearch(userRes.user.id, data.id, researchResult);
+            console.log(`[auto-research] Research completed for contact: ${data.id}`);
+          } catch (error: any) {
+            console.error(`[auto-research] Failed to research contact ${data.id}:`, error?.message || error);
+          }
+        });
+      } else {
+        // Fallback for environments without setImmediate
+        setTimeout(async () => {
+          try {
+            console.log(`[auto-research] Starting research for contact ${data.id}: ${name} at ${company}`);
+            const researchResult = await researchContact(name, company);
+            await saveContactResearch(userRes.user.id, data.id, researchResult);
+            console.log(`[auto-research] Research completed for contact: ${data.id}`);
+          } catch (error: any) {
+            console.error(`[auto-research] Failed to research contact ${data.id}:`, error?.message || error);
+          }
+        }, 100);
+      }
     }
 
     return NextResponse.json({ 
