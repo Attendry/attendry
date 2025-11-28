@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase-server';
 import { ApproveDraftRequest, AgentOutreachDraft } from '@/lib/types/agents';
+import { sendOutreachEmail } from '@/lib/services/email-service';
 
 export const runtime = 'nodejs';
 
@@ -89,14 +90,100 @@ export async function POST(
       );
     }
 
-    // Send message via appropriate channel
-    const sentAt = await sendOutreachMessage(updatedDraft as AgentOutreachDraft);
+    // Get contact information for sending
+    const { data: contact } = await supabase
+      .from('saved_speaker_profiles')
+      .select('speaker_data, email')
+      .eq('id', draft.contact_id)
+      .single();
 
-    // Update draft with sent_at
+    // Send message via appropriate channel
+    let sentRecord = null;
+    let sentAt: string | null = null;
+    let deliveryStatus = 'pending';
+    let errorMessage: string | null = null;
+
+    if (updatedDraft.channel === 'email' && contact?.email) {
+      const emailResult = await sendOutreachEmail(
+        contact.email,
+        updatedDraft.subject || 'Follow-up',
+        updatedDraft.message_body,
+        {
+          fromName: process.env.EMAIL_FROM_NAME,
+        }
+      );
+
+      sentAt = new Date().toISOString();
+      
+      if (emailResult.success) {
+        deliveryStatus = emailResult.blocked ? 'pending' : 'sent';
+        
+        // Create sent record
+        const { data: sentData } = await supabase
+          .from('agent_outreach_sent')
+          .insert({
+            draft_id: draftId,
+            agent_id: draft.agent_id,
+            contact_id: draft.contact_id,
+            opportunity_id: draft.opportunity_id,
+            channel: 'email',
+            recipient_email: contact.email,
+            recipient_name: contact.speaker_data?.name || null,
+            subject: updatedDraft.subject,
+            message_body: updatedDraft.message_body,
+            sent_at: sentAt,
+            delivery_status: deliveryStatus,
+            metadata: {
+              messageId: emailResult.messageId,
+              blocked: emailResult.blocked || false,
+            },
+          })
+          .select()
+          .single();
+
+        sentRecord = sentData;
+
+        if (emailResult.blocked) {
+          console.log('[Approve Draft] Email sending is blocked - message not actually sent');
+        }
+      } else {
+        deliveryStatus = 'failed';
+        errorMessage = emailResult.error || 'Failed to send email';
+        
+        // Still create sent record to track the failure
+        const { data: sentData } = await supabase
+          .from('agent_outreach_sent')
+          .insert({
+            draft_id: draftId,
+            agent_id: draft.agent_id,
+            contact_id: draft.contact_id,
+            opportunity_id: draft.opportunity_id,
+            channel: 'email',
+            recipient_email: contact.email,
+            recipient_name: contact.speaker_data?.name || null,
+            subject: updatedDraft.subject,
+            message_body: updatedDraft.message_body,
+            sent_at: sentAt,
+            delivery_status: 'failed',
+            error_message: errorMessage,
+          })
+          .select()
+          .single();
+
+        sentRecord = sentData;
+      }
+    } else if (updatedDraft.channel === 'linkedin') {
+      // LinkedIn integration will be added in future phase
+      console.log('[Approve Draft] LinkedIn sending not yet implemented');
+      deliveryStatus = 'pending';
+      errorMessage = 'LinkedIn integration not yet implemented';
+    }
+
+    // Update draft with sent_at and status
     await supabase
       .from('agent_outreach_drafts')
       .update({ 
-        status: 'sent',
+        status: sentAt ? 'sent' : 'approved',
         sent_at: sentAt 
       })
       .eq('id', draftId);
@@ -147,9 +234,11 @@ export async function POST(
       success: true,
       draft: {
         ...updatedDraft,
-        status: 'sent',
+        status: sentAt ? 'sent' : 'approved',
         sent_at: sentAt
-      } as AgentOutreachDraft
+      } as AgentOutreachDraft,
+      sentRecord,
+      emailBlocked: updatedDraft.channel === 'email' && deliveryStatus === 'pending' && !errorMessage,
     });
   } catch (error: any) {
     console.error('Error approving draft:', error);
@@ -158,28 +247,6 @@ export async function POST(
       { status: 500 }
     );
   }
-}
-
-/**
- * Send outreach message via appropriate channel
- * For Phase 1, this is a placeholder - actual sending would integrate with email/LinkedIn APIs
- */
-async function sendOutreachMessage(draft: AgentOutreachDraft): Promise<string> {
-  // TODO: Integrate with actual email/LinkedIn sending services
-  // For now, just return current timestamp to simulate sending
-  
-  if (draft.channel === 'email') {
-    // Would use email service (SendGrid, Resend, etc.)
-    console.log(`[SIMULATED] Sending email to contact ${draft.contact_id}`);
-    console.log(`Subject: ${draft.subject}`);
-    console.log(`Body: ${draft.message_body.substring(0, 100)}...`);
-  } else if (draft.channel === 'linkedin') {
-    // Would use LinkedIn API
-    console.log(`[SIMULATED] Sending LinkedIn message to contact ${draft.contact_id}`);
-    console.log(`Message: ${draft.message_body.substring(0, 100)}...`);
-  }
-
-  return new Date().toISOString();
 }
 
 

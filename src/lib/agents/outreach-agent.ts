@@ -183,6 +183,11 @@ export class OutreachAgent extends BaseAgent {
       { draftId: draft.id, channel: input.channel }
     );
 
+    // Notify Follow-up Agent if configured
+    if (this.config.notifyFollowupAgent) {
+      await this.notifyFollowupAgent(draft.id, input.contactId, input.opportunityId, this.config.defaultFollowupDelayDays);
+    }
+
     // Update metrics (count as message sent when approved/sent)
     // We'll update this when the draft is actually sent
 
@@ -222,21 +227,29 @@ Return a concise summary (maximum 300 words) with only the most relevant points.
 If the research data is not relevant for outreach, return "No relevant outreach information found."`;
 
       // Use LLMService to extract relevant points (as plain text, not JSON)
-      const response = await this.llmService.generateTextSummary(extractionPrompt, { maxTokens: 512 });
+      // Increase max tokens to avoid MAX_TOKENS error
+      const response = await this.llmService.generateTextSummary(extractionPrompt, { maxTokens: 1024 });
       
       // Parse and return the extracted points
       let extractedPoints = response.content.trim();
       
-      // If extraction failed or returned no relevant info, return a truncated version
+      // If extraction failed, returned empty, or returned no relevant info, return a truncated version
+      if (!extractedPoints || extractedPoints.length === 0) {
+        // MAX_TOKENS or other issue - use truncation
+        console.warn('[Outreach Agent] Research extraction returned empty, using truncation');
+        return researchText.length > 500 ? researchText.substring(0, 500) + '...' : researchText;
+      }
+      
       if (extractedPoints.includes('No relevant outreach information found') || extractedPoints.length < 50) {
         // Fallback: return first 500 chars with ellipsis
         return researchText.length > 500 ? researchText.substring(0, 500) + '...' : researchText;
       }
       
       return extractedPoints;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error extracting relevant research points:', error);
       // Fallback to truncation if extraction fails
+      // Don't throw - this is a non-critical operation
       return researchText.length > 500 ? researchText.substring(0, 500) + '...' : researchText;
     }
   }
@@ -534,6 +547,60 @@ If the research data is not relevant for outreach, return "No relevant outreach 
     }
 
     return data;
+  }
+
+  /**
+   * Notify Follow-up Agent to schedule a follow-up
+   */
+  private async notifyFollowupAgent(
+    draftId: string,
+    contactId: string,
+    opportunityId: string | undefined,
+    delayDays: number
+  ): Promise<void> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
+    try {
+      // Find user's Follow-up Agent
+      const { data: user } = await this.supabase.auth.getUser();
+      if (!user?.user) return;
+
+      const { data: followupAgent } = await this.supabase
+        .from('ai_agents')
+        .select('id')
+        .eq('user_id', user.user.id)
+        .eq('agent_type', 'followup')
+        .single();
+
+      if (!followupAgent) {
+        // No Follow-up Agent exists yet, skip notification
+        return;
+      }
+
+      // Create task for Follow-up Agent to schedule follow-up
+      await this.supabase
+        .from('agent_tasks')
+        .insert({
+          agent_id: followupAgent.id,
+          task_type: 'schedule_followup',
+          status: 'pending',
+          priority: 'medium',
+          input_data: {
+            contactId,
+            originalOutreachId: draftId,
+            opportunityId,
+            delayDays,
+          },
+          requires_approval: false,
+        });
+
+      console.log(`[Outreach Agent] Notified Follow-up Agent to schedule follow-up for contact ${contactId}`);
+    } catch (error) {
+      console.error('[Outreach Agent] Error notifying Follow-up Agent:', error);
+      // Don't throw - notification failure shouldn't break draft creation
+    }
   }
 }
 

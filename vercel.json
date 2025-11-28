@@ -36,6 +36,14 @@
     {
       "path": "/api/cron/refresh-event-lifecycle",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/process-agent-tasks",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/execute-followups",
+      "schedule": "0 * * * *"
     }
   ],
   "installCommand": "npm install --legacy-peer-deps",

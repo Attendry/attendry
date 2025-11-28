@@ -26,9 +26,11 @@ import { AssignTaskModal } from '@/components/agents/AssignTaskModal';
 import { AgentActivityFeed } from '@/components/agents/AgentActivityFeed';
 import { AgentConfigEditor } from '@/components/agents/AgentConfigEditor';
 import { AgentPerformanceDashboard } from '@/components/agents/AgentPerformanceDashboard';
+import { FollowupSchedulePanel } from '@/components/agents/FollowupSchedulePanel';
+import { FollowupHistoryPanel } from '@/components/agents/FollowupHistoryPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAgentActivity } from '@/lib/hooks/useAgentActivity';
-import { Activity, Edit } from 'lucide-react';
+import { Activity, Edit, Calendar } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
   active: { icon: CheckCircle2, color: 'text-green-600', label: 'Active' },
@@ -252,9 +254,15 @@ export default function AgentDetailPage() {
 
         {/* Agent Details with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsList className={`grid w-full mb-6 ${agent.agent_type === 'followup' ? 'grid-cols-4' : 'grid-cols-3'}`}>
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
+            {agent.agent_type === 'followup' && (
+              <TabsTrigger value="schedule">
+                <Calendar className="h-4 w-4 mr-2" />
+                Schedule
+              </TabsTrigger>
+            )}
             <TabsTrigger value="performance">Performance</TabsTrigger>
           </TabsList>
 
@@ -420,6 +428,21 @@ export default function AgentDetailPage() {
               autoRefresh={agent.status === 'active'}
             />
           </TabsContent>
+
+          {/* Follow-up Schedule Tab (only for followup agent) */}
+          {agent.agent_type === 'followup' && (
+            <TabsContent value="schedule" className="space-y-6">
+              <FollowupSchedulePanel 
+                agentId={agent.id}
+                showUpcoming={false}
+                limit={50}
+              />
+              <FollowupHistoryPanel 
+                agentId={agent.id}
+                limit={50}
+              />
+            </TabsContent>
+          )}
 
           {/* Performance Tab */}
           <TabsContent value="performance">

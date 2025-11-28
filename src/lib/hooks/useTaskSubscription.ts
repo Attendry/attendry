@@ -169,8 +169,8 @@ export function useTaskSubscription({
                 updated[existingIndex] = fullTask as TaskUpdate;
                 return updated;
               } else {
-                // Add new task (if it's pending or in_progress)
-                if (['pending', 'in_progress'].includes(fullTask.status)) {
+                // Add new task (include completed/failed for recent completion notifications)
+                if (['pending', 'in_progress', 'completed', 'failed'].includes(fullTask.status)) {
                   return [fullTask as TaskUpdate, ...prev];
                 }
                 return prev;

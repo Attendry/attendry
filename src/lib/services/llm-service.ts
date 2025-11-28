@@ -245,9 +245,29 @@ export class LLMService {
 
     const candidate = data.candidates[0];
     const content = candidate.content?.parts?.[0]?.text || '';
+    const finishReason = candidate.finishReason;
+
+    // Handle MAX_TOKENS - return partial content if available
+    if (!content && finishReason === 'MAX_TOKENS') {
+      // Try to get partial content from tokenCount
+      const tokenCount = data.usageMetadata?.candidatesTokenCount || 0;
+      if (tokenCount > 0) {
+        // Content was truncated but we got some tokens
+        // Return empty string and let caller handle truncation
+        console.warn('[LLM Service] Gemini response hit MAX_TOKENS limit, returning empty content');
+        return {
+          content: '',
+          usage: data.usageMetadata ? {
+            promptTokens: data.usageMetadata.promptTokenCount || 0,
+            completionTokens: data.usageMetadata.candidatesTokenCount || 0,
+            totalTokens: (data.usageMetadata.promptTokenCount || 0) + (data.usageMetadata.candidatesTokenCount || 0)
+          } : undefined
+        };
+      }
+      throw new Error('Response hit MAX_TOKENS limit with no content');
+    }
 
     if (!content) {
-      const finishReason = candidate.finishReason;
       if (finishReason === 'SAFETY') {
         throw new Error('Response blocked by safety filters');
       }

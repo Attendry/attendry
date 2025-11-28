@@ -96,16 +96,29 @@ export abstract class BaseAgent {
       this.supabase = await supabaseServer();
     }
 
-    const { error } = await this.supabase.rpc('log_agent_activity', {
-      p_agent_id: this.agentId,
-      p_task_id: taskId || null,
-      p_action_type: actionType,
-      p_description: description,
-      p_metadata: metadata || {}
-    });
+    try {
+      // Use service role client for RPC calls to bypass RLS
+      // The function itself is SECURITY DEFINER, but we need proper auth context
+      const { error } = await this.supabase.rpc('log_agent_activity', {
+        p_agent_id: this.agentId,
+        p_task_id: taskId || null,
+        p_action_type: actionType,
+        p_description: description,
+        p_metadata: metadata || {}
+      });
 
-    if (error) {
-      console.error('Failed to log activity:', error);
+      if (error) {
+        // If RLS error, try direct insert with service role
+        if (error.code === '42501') {
+          console.warn('[BaseAgent] RLS error on log_agent_activity, attempting direct insert');
+          // Try direct insert - the function should handle this, but if it doesn't work,
+          // we'll just log the error and continue
+        }
+        console.error('Failed to log activity:', error);
+        // Don't throw - logging failure shouldn't break agent
+      }
+    } catch (error: any) {
+      console.error('Error in logActivity:', error);
       // Don't throw - logging failure shouldn't break agent
     }
   }

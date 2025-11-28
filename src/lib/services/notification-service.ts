@@ -62,13 +62,21 @@ class NotificationService {
     task_type: string;
     status: string;
     agent_name?: string;
+    contact_name?: string;
   }): Promise<void> {
     const statusText = task.status === 'completed' ? 'completed' : 'failed';
     const emoji = task.status === 'completed' ? '✅' : '❌';
+    const taskTypeText = task.task_type.replace(/_/g, ' ');
+    
+    // Build notification body with contact context if available
+    let body = `${task.agent_name || 'Agent'} ${statusText} ${taskTypeText}`;
+    if (task.contact_name) {
+      body = `${task.contact_name}: ${body}`;
+    }
     
     await this.showNotification({
       title: `${emoji} Agent Task ${statusText}`,
-      body: `${task.agent_name || 'Agent'} ${statusText} ${task.task_type.replace('_', ' ')}`,
+      body,
       tag: `task-${task.status}`,
       requireInteraction: task.status === 'failed',
     });

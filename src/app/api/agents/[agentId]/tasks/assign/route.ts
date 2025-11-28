@@ -6,7 +6,7 @@ import {
   TaskPriority,
   AgentTask
 } from '@/lib/types/agents';
-import { OutreachAgent } from '@/lib/agents/outreach-agent';
+import { queueAgentTask } from '@/lib/services/job-queue';
 
 export const runtime = 'nodejs';
 
@@ -95,14 +95,13 @@ export async function POST(
       );
     }
 
-    // Trigger task processing asynchronously
-    // In production, this would use a job queue
-    // For now, we'll process immediately if agent is idle
-    if (agent.status === 'idle') {
-      // Process task in background (don't await)
-      processTaskAsync(agentId, task.id, agent.agent_type).catch(error => {
-        console.error('Error processing task asynchronously:', error);
-      });
+    // Queue task for background processing
+    try {
+      await queueAgentTask(agentId, task.id, agent.agent_type, priority);
+    } catch (queueError: any) {
+      console.error('Error queueing task:', queueError);
+      // Don't fail the request if queueing fails - task is still created
+      // It can be processed later via cron job
     }
 
     return NextResponse.json({
@@ -115,27 +114,6 @@ export async function POST(
       { success: false, error: error.message || 'Internal server error' },
       { status: 500 }
     );
-  }
-}
-
-/**
- * Process task asynchronously
- * In production, this would be handled by a job queue worker
- */
-async function processTaskAsync(agentId: string, taskId: string, agentType: string): Promise<void> {
-  try {
-    // Import agent class based on type
-    let agent;
-    if (agentType === 'outreach') {
-      agent = new OutreachAgent(agentId);
-      await agent.initialize();
-      await agent.processNextTask();
-    } else {
-      // Other agent types will be implemented in later phases
-      console.log(`Agent type ${agentType} not yet implemented for async processing`);
-    }
-  } catch (error) {
-    console.error('Error in async task processing:', error);
   }
 }
 

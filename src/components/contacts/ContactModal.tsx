@@ -204,11 +204,13 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
     agentIds,
     enabled: availableAgents.length > 0,
     onTaskComplete: async (task) => {
+      const contactName = contact.speaker_data?.name || 'Contact';
       // Show notification when task completes
       await notificationService.notifyTaskComplete({
         task_type: task.task_type,
         status: task.status,
         agent_name: task.agent?.name,
+        contact_name: contactName,
       });
       
       // Refresh drafts when task completes

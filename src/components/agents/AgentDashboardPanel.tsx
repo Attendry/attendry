@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useAgents } from '@/lib/hooks/useAgents';
 import { useOutreachDrafts } from '@/lib/hooks/useOutreachDrafts';
+import { useFollowupSchedule } from '@/lib/hooks/useFollowupSchedule';
 import { AIAgent, AgentType, AgentStatus } from '@/lib/types/agents';
 import { 
   Loader2, 
@@ -16,11 +17,13 @@ import {
   Play,
   Settings,
   Trash2,
-  Plus
+  Plus,
+  Calendar
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { AssignTaskModal } from './AssignTaskModal';
+import { FollowupSchedulePanel } from './FollowupSchedulePanel';
 
 interface AgentStatusCardProps {
   agent: AIAgent | null;
@@ -232,6 +235,18 @@ export function AgentDashboardPanel() {
 
   const pendingCount = draftsArray.length;
 
+  // Get upcoming follow-ups count
+  const { schedules: upcomingFollowups } = useFollowupSchedule({
+    status: 'scheduled',
+    limit: 10,
+    enabled: !!followupAgent,
+  });
+
+  const upcomingCount = upcomingFollowups.filter(s => {
+    const scheduledDate = new Date(s.scheduled_for);
+    return scheduledDate >= new Date();
+  }).length;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex items-center justify-between">
@@ -285,6 +300,17 @@ export function AgentDashboardPanel() {
           loading={agentsLoading}
         />
       </div>
+
+      {/* Follow-up Schedule Section */}
+      {followupAgent && (
+        <div className="mt-6">
+          <FollowupSchedulePanel 
+            agentId={followupAgent.id}
+            showUpcoming={true}
+            limit={5}
+          />
+        </div>
+      )}
 
       {agentsArray.length === 0 && !agentsLoading && (
         <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">

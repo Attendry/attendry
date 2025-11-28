@@ -67,6 +67,7 @@ export function ContactCard({
   const [hasPendingDraft, setHasPendingDraft] = useState(false);
   const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
   const [outreachAgent, setOutreachAgent] = useState<any>(null);
+  const [followupAgent, setFollowupAgent] = useState<any>(null);
   const [activeTask, setActiveTask] = useState<{
     id: string;
     status: string;
@@ -83,9 +84,9 @@ export function ContactCard({
   const isArchived = contact.archived || false;
   const status = contact.outreach_status || "not_started";
 
-  // Get user's outreach agent
+  // Get user's agents (outreach and followup)
   useEffect(() => {
-    const getOutreachAgent = async () => {
+    const getAgents = async () => {
       try {
         const supabase = supabaseBrowser();
         const { data: { user } } = await supabase.auth.getUser();
@@ -95,19 +96,21 @@ export function ContactCard({
           .from('ai_agents')
           .select('*')
           .eq('user_id', user.id)
-          .eq('agent_type', 'outreach')
           .eq('status', 'active')
-          .limit(1);
+          .in('agent_type', ['outreach', 'followup']);
 
-        if (agentData && agentData.length > 0) {
-          setOutreachAgent(agentData[0]);
+        if (agentData) {
+          const outreach = agentData.find(a => a.agent_type === 'outreach');
+          const followup = agentData.find(a => a.agent_type === 'followup');
+          if (outreach) setOutreachAgent(outreach);
+          if (followup) setFollowupAgent(followup);
         }
       } catch (error) {
-        console.error('Error loading outreach agent:', error);
+        console.error('Error loading agents:', error);
       }
     };
 
-    getOutreachAgent();
+    getAgents();
   }, [agents]);
 
   // Check for pending drafts
@@ -134,17 +137,23 @@ export function ContactCard({
     checkDraft();
   }, [contact.id, outreachAgent]);
 
-  // Real-time task subscription
+  // Real-time task subscription (include both outreach and followup agents)
+  const agentIds = [
+    ...(outreachAgent ? [outreachAgent.id] : []),
+    ...(followupAgent ? [followupAgent.id] : []),
+  ];
   const { activeTasks } = useTaskSubscription({
     contactId: contact.id,
-    agentIds: outreachAgent ? [outreachAgent.id] : [],
-    enabled: !!outreachAgent && !isArchived,
+    agentIds,
+    enabled: agentIds.length > 0 && !isArchived,
     onTaskComplete: async (task) => {
+      const contactName = contact.speaker_data?.name || 'Contact';
       // Show notification when task completes
       await notificationService.notifyTaskComplete({
         task_type: task.task_type,
         status: task.status,
         agent_name: task.agent?.name,
+        contact_name: contactName,
       });
       
       if (task.status === 'completed') {
@@ -157,8 +166,14 @@ export function ContactCard({
 
   // Update activeTask state from subscription
   useEffect(() => {
+    // Prioritize active tasks, but also show completed tasks briefly
     const activeTask = activeTasks.find(
       (t) => ['pending', 'in_progress'].includes(t.status)
+    ) || activeTasks.find(
+      (t) => t.status === 'completed' && 
+      // Show completed tasks that were completed in the last 5 minutes
+      t.completed_at && 
+      new Date(t.completed_at).getTime() > Date.now() - 5 * 60 * 1000
     );
     
     if (activeTask) {
