@@ -50,7 +50,7 @@ export function AssignTaskModal({
     if (isOpen) {
       if (preselectedContactId) {
         setSelectedContactId(preselectedContactId);
-        // Load contact preferences if available
+        // Load contact preferences if available (only when modal opens)
         const contact = profiles.find(p => p.id === preselectedContactId);
         if (contact) {
           if (contact.preferred_language) {
@@ -68,6 +68,7 @@ export function AssignTaskModal({
         setSelectedOpportunityId(preselectedOpportunityId);
       }
     } else {
+      // Reset all state when modal closes
       setSelectedContactId('');
       setSelectedOpportunityId('');
       setSelectedChannel('email');
@@ -76,7 +77,30 @@ export function AssignTaskModal({
       setPriority('medium');
       setSearchTerm('');
     }
-  }, [isOpen, preselectedContactId, preselectedOpportunityId, profiles]);
+    // Only depend on isOpen and preselectedContactId to prevent unnecessary re-runs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, preselectedContactId, preselectedOpportunityId]);
+  
+  // Separate effect to load preferences when contact is selected (not just preselected)
+  useEffect(() => {
+    if (isOpen && selectedContactId && profiles.length > 0) {
+      const contact = profiles.find(p => p.id === selectedContactId);
+      if (contact) {
+        // Only update if values are different to prevent unnecessary re-renders
+        if (contact.preferred_language && contact.preferred_language !== selectedLanguage) {
+          setSelectedLanguage(contact.preferred_language as 'English' | 'German');
+        }
+        if (contact.preferred_tone && contact.preferred_tone !== selectedTone) {
+          setSelectedTone(contact.preferred_tone as 'Formal' | 'Informal');
+        }
+        if (contact.preferred_channel && contact.preferred_channel !== selectedChannel) {
+          setSelectedChannel(contact.preferred_channel as OutreachChannel);
+        }
+      }
+    }
+    // Only run when selectedContactId changes, not on every profile change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedContactId, isOpen]);
 
   const selectedContact = useMemo(() => {
     return profiles.find(p => p.id === selectedContactId);
@@ -110,6 +134,7 @@ export function AssignTaskModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent event bubbling
 
     // For planning agents analyzing opportunities, contact is optional
     if (agent.agent_type === 'planning' && selectedOpportunityId && !selectedContactId) {
@@ -137,22 +162,27 @@ export function AssignTaskModal({
       };
     }
 
-    const task = await assignTask({
-      taskType: getTaskType(),
-      priority,
-      inputData
-    });
+    try {
+      const task = await assignTask({
+        taskType: getTaskType(),
+        priority,
+        inputData
+      });
 
-    if (task) {
-      toast.success('Task assigned successfully! The agent will process it shortly.');
-      // Close modal immediately - don't wait for task to complete
-      onClose();
-      // Call onSuccess after modal closes (non-blocking)
-      setTimeout(() => {
-        onSuccess?.();
-      }, 100);
-    } else {
-      toast.error(error || 'Failed to assign task');
+      if (task) {
+        toast.success('Task assigned successfully! The agent will process it shortly.');
+        // Close modal immediately - don't wait for task to complete
+        onClose();
+        // Call onSuccess after modal closes (non-blocking)
+        setTimeout(() => {
+          onSuccess?.();
+        }, 100);
+      } else {
+        toast.error(error || 'Failed to assign task');
+      }
+    } catch (err: any) {
+      console.error('Error assigning task:', err);
+      toast.error(err.message || 'Failed to assign task');
     }
   };
 
@@ -174,10 +204,21 @@ export function AssignTaskModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="relative w-full max-w-2xl rounded-xl border border-slate-200 bg-white shadow-xl">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={(e) => {
+        // Close modal when clicking backdrop
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div 
+        className="relative w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-200 bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header - Fixed */}
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 flex-shrink-0">
           <div>
             <h2 className="text-xl font-semibold text-slate-900">Assign Task to {agent.name}</h2>
             <p className="mt-1 text-sm text-slate-600">{getAgentDescription()}</p>
@@ -190,16 +231,18 @@ export function AssignTaskModal({
           </button>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="mx-6 mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            <AlertCircle className="h-4 w-4 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Error Message */}
+          {error && (
+            <div className="mx-6 mt-4 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6">
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-6">
             {/* Contact Selection */}
             {/* For planning agents with preselected opportunity, contact is optional */}
@@ -415,34 +458,40 @@ export function AssignTaskModal({
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="mt-6 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={(!selectedContactId && !(agent.agent_type === 'planning' && selectedOpportunityId)) || assignmentLoading}
-              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {assignmentLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Assigning...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="h-4 w-4" />
-                  Assign Task
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+            {/* Actions - Fixed at bottom */}
+            <div className="mt-6 flex items-center justify-end gap-3 border-t border-slate-200 pt-4">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onClose();
+                }}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={(!selectedContactId && !(agent.agent_type === 'planning' && selectedOpportunityId)) || assignmentLoading}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {assignmentLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Assigning...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Assign Task
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
