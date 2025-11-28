@@ -82,6 +82,7 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
   const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
   const [agentDrafts, setAgentDrafts] = useState<any[]>([]);
   const [loadingDrafts, setLoadingDrafts] = useState(false);
+  const [activeTasks, setActiveTasks] = useState<any[]>([]);
   const { assignTask, loading: assignmentLoading } = useTaskAssignment({ 
     agentId: selectedAgentId || undefined 
   });
@@ -143,6 +144,63 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
     };
 
     loadDraft();
+    
+    // Load active tasks for this contact
+    const loadTasks = async () => {
+      try {
+        const supabase = supabaseBrowser();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Get user's agents
+        const { data: agentData } = await supabase
+          .from('ai_agents')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('status', 'active');
+
+        if (!agentData || agentData.length === 0) return;
+
+        const agentIds = agentData.map(a => a.id);
+
+        // Get all tasks for user's agents
+        const { data: allTasks } = await supabase
+          .from('agent_tasks')
+          .select(`
+            id,
+            status,
+            task_type,
+            assigned_at,
+            started_at,
+            completed_at,
+            input_data,
+            agent:ai_agents(id, name, agent_type)
+          `)
+          .in('agent_id', agentIds)
+          .order('assigned_at', { ascending: false })
+          .limit(20);
+
+        // Filter tasks for this contact
+        const contactTasks = (allTasks || []).filter((task: any) => {
+          const inputData = task.input_data || {};
+          return inputData.contactId === contact.id;
+        });
+
+        setActiveTasks(contactTasks);
+      } catch (error) {
+        console.error('Error loading tasks:', error);
+      }
+    };
+
+    loadTasks();
+    
+    // Refresh every 5 seconds to check for status updates
+    const taskInterval = setInterval(loadTasks, 5000);
+    
+    return () => {
+      clearInterval(taskInterval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contact.id]);
 
   // Load available agents and their drafts for this contact
@@ -674,6 +732,85 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
                 </div>
               )}
 
+              {/* Active Tasks */}
+              {activeTasks.filter((t: any) => ['pending', 'in_progress'].includes(t.status)).length > 0 && (
+                <div className="space-y-2 mb-4">
+                  <h4 className="text-sm font-semibold text-slate-700">Active Agent Tasks</h4>
+                  <div className="space-y-2">
+                    {activeTasks
+                      .filter((t: any) => ['pending', 'in_progress'].includes(t.status))
+                      .slice(0, 3)
+                      .map((task: any) => {
+                        const agent = task.agent;
+                        const getTaskStatusIcon = () => {
+                          switch (task.status) {
+                            case 'in_progress':
+                              return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
+                            case 'pending':
+                              return <Clock className="h-4 w-4 text-yellow-500" />;
+                            default:
+                              return <Bot className="h-4 w-4 text-slate-400" />;
+                          }
+                        };
+
+                        const getTaskStatusColor = () => {
+                          switch (task.status) {
+                            case 'in_progress':
+                              return 'border-blue-200 bg-blue-50';
+                            case 'pending':
+                              return 'border-yellow-200 bg-yellow-50';
+                            default:
+                              return 'border-slate-200 bg-slate-50';
+                          }
+                        };
+
+                        const formatTimeAgo = (date: string) => {
+                          const now = new Date();
+                          const taskDate = new Date(date);
+                          const diffMs = now.getTime() - taskDate.getTime();
+                          const diffMins = Math.floor(diffMs / 60000);
+                          const diffHours = Math.floor(diffMs / 3600000);
+                          
+                          if (diffMins < 1) return 'Just now';
+                          if (diffMins < 60) return `${diffMins}m ago`;
+                          if (diffHours < 24) return `${diffHours}h ago`;
+                          return taskDate.toLocaleDateString();
+                        };
+
+                        return (
+                          <div
+                            key={task.id}
+                            className={`rounded-lg border p-3 ${getTaskStatusColor()}`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  {getTaskStatusIcon()}
+                                  <span className="text-xs font-medium text-slate-700">
+                                    {task.status === 'in_progress' ? 'Agent Working' : 'Task Queued'}
+                                  </span>
+                                  {agent && (
+                                    <>
+                                      <span className="text-slate-400">•</span>
+                                      <span className="text-xs text-slate-500">{agent.name}</span>
+                                    </>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-600 mb-1">
+                                  {task.task_type.replace('_', ' ')}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {formatTimeAgo(task.assigned_at)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
               {/* Agent Drafts History */}
               {agentDrafts.length > 0 && (
                 <div className="space-y-2">
@@ -757,7 +894,7 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
                 </div>
               )}
 
-              {agentDrafts.length === 0 && !loadingDrafts && (
+              {agentDrafts.length === 0 && activeTasks.length === 0 && !loadingDrafts && (
                 <div className="rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center">
                   <Bot className="mx-auto h-8 w-8 text-slate-400 mb-2" />
                   <p className="text-sm text-slate-500 mb-3">
@@ -765,7 +902,7 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
                   </p>
                   <button
                     onClick={() => setShowAssignTaskModal(true)}
-                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                   >
                     <Plus className="h-4 w-4" />
                     Assign First Task

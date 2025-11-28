@@ -21,6 +21,8 @@ import {
   Check,
   Bot,
   Plus,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { AssignTaskModal } from "@/components/agents/AssignTaskModal";
 import { useAgents } from "@/lib/hooks/useAgents";
@@ -63,6 +65,13 @@ export function ContactCard({
   const [hasPendingDraft, setHasPendingDraft] = useState(false);
   const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
   const [outreachAgent, setOutreachAgent] = useState<any>(null);
+  const [activeTask, setActiveTask] = useState<{
+    id: string;
+    status: string;
+    task_type: string;
+    agent_name: string;
+    assigned_at: string;
+  } | null>(null);
   const { agents } = useAgents();
   
   const isDue =
@@ -72,9 +81,9 @@ export function ContactCard({
   const isArchived = contact.archived || false;
   const status = contact.outreach_status || "not_started";
 
-  // Check for pending drafts and get outreach agent
+  // Check for active tasks and pending drafts
   useEffect(() => {
-    const checkDraft = async () => {
+    const checkAgentActivity = async () => {
       try {
         const supabase = supabaseBrowser();
         const { data: { user } } = await supabase.auth.getUser();
@@ -102,13 +111,51 @@ export function ContactCard({
             .limit(1);
 
           setHasPendingDraft(drafts && drafts.length > 0);
+
+          // Check for active tasks (pending or in_progress)
+          const { data: tasks } = await supabase
+            .from('agent_tasks')
+            .select(`
+              id,
+              status,
+              task_type,
+              assigned_at,
+              input_data,
+              agent:ai_agents(id, name, agent_type)
+            `)
+            .eq('agent_id', agentData[0].id)
+            .in('status', ['pending', 'in_progress'])
+            .order('assigned_at', { ascending: false })
+            .limit(5);
+
+          // Find task for this contact
+          const contactTask = tasks?.find((task: any) => {
+            const inputData = task.input_data || {};
+            return inputData.contactId === contact.id;
+          });
+
+          if (contactTask) {
+            setActiveTask({
+              id: contactTask.id,
+              status: contactTask.status,
+              task_type: contactTask.task_type,
+              agent_name: contactTask.agent?.name || 'Agent',
+              assigned_at: contactTask.assigned_at,
+            });
+          } else {
+            setActiveTask(null);
+          }
         }
       } catch (error) {
-        console.error('Error checking draft:', error);
+        console.error('Error checking agent activity:', error);
       }
     };
 
-    checkDraft();
+    checkAgentActivity();
+    
+    // Refresh every 5 seconds to check for status updates
+    const interval = setInterval(checkAgentActivity, 5000);
+    return () => clearInterval(interval);
   }, [contact.id, agents]);
 
   const handleCopyDraft = async (e: React.MouseEvent) => {
@@ -194,7 +241,7 @@ export function ContactCard({
         className={`absolute left-0 top-0 h-full w-1 transition-opacity ${
           isArchived
             ? "bg-slate-300"
-            : "bg-indigo-500 opacity-0 group-hover:opacity-100"
+            : "bg-blue-500 opacity-0 group-hover:opacity-100"
         }`}
       />
 
@@ -209,7 +256,7 @@ export function ContactCard({
           {!isArchived && (
             <button
               onClick={handleCopyDraft}
-              className="rounded-full p-1 text-slate-400 opacity-0 transition-opacity hover:bg-indigo-50 hover:text-indigo-500 group-hover:opacity-100"
+              className="rounded-full p-1 text-slate-400 opacity-0 transition-opacity hover:bg-blue-50 hover:text-blue-500 group-hover:opacity-100"
               title="Copy draft"
             >
               {copied ? (
@@ -225,7 +272,7 @@ export function ContactCard({
                 e.stopPropagation();
                 onArchive(contact);
               }}
-              className="rounded-full p-1 text-slate-400 opacity-0 transition-opacity hover:bg-indigo-50 hover:text-indigo-500 group-hover:opacity-100"
+              className="rounded-full p-1 text-slate-400 opacity-0 transition-opacity hover:bg-blue-50 hover:text-blue-500 group-hover:opacity-100"
               title="Archive to History"
             >
               <Archive className="w-4 h-4" />
@@ -237,7 +284,7 @@ export function ContactCard({
                 e.stopPropagation();
                 onRestore(contact);
               }}
-              className="rounded-full p-1 text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-500"
+              className="rounded-full p-1 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-500"
               title="Restore to Active"
             >
               <RotateCcw className="w-4 h-4" />
@@ -284,6 +331,25 @@ export function ContactCard({
 
       {/* Reminder / Monitoring Badges */}
       <div className="mb-4 flex flex-wrap gap-2">
+        {activeTask && !isArchived && (
+          <span className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+            activeTask.status === 'in_progress' 
+              ? 'bg-blue-100 text-blue-700' 
+              : activeTask.status === 'pending'
+              ? 'bg-yellow-100 text-yellow-700'
+              : activeTask.status === 'completed'
+              ? 'bg-green-100 text-green-700'
+              : 'bg-red-100 text-red-700'
+          }`}>
+            {activeTask.status === 'in_progress' && <Loader2 className="w-3 h-3 animate-spin" />}
+            {activeTask.status === 'pending' && <Clock className="w-3 h-3" />}
+            {activeTask.status === 'completed' && <CheckCircle className="w-3 h-3" />}
+            {(activeTask.status === 'failed' || activeTask.status === 'cancelled') && <AlertCircle className="w-3 h-3" />}
+            {activeTask.status === 'in_progress' ? 'Agent Working' :
+             activeTask.status === 'pending' ? 'Task Queued' :
+             activeTask.status === 'completed' ? 'Draft Ready' : 'Task Failed'}
+          </span>
+        )}
         {hasNewIntel && !isArchived && (
           <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
             <Sparkles className="w-3 h-3" /> New Intel
@@ -294,7 +360,7 @@ export function ContactCard({
             <Clock className="w-3 h-3" /> Follow Up Due
           </span>
         )}
-        {hasPendingDraft && !isArchived && (
+        {hasPendingDraft && !activeTask && !isArchived && (
           <span className="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
             <Bot className="w-3 h-3" /> Draft Pending
           </span>
@@ -333,7 +399,7 @@ export function ContactCard({
               : `Added: ${contact.saved_at ? new Date(contact.saved_at).toLocaleDateString() : "N/A"}`}
           </span>
         </div>
-        <ChevronRight className="h-5 w-5 text-slate-300 transition-colors group-hover:text-indigo-500" />
+        <ChevronRight className="h-5 w-5 text-slate-300 transition-colors group-hover:text-blue-500" />
       </div>
 
       {/* Assign Task Modal */}
@@ -345,8 +411,42 @@ export function ContactCard({
           onSuccess={async () => {
             setShowAssignTaskModal(false);
             toast.success('Task assigned! The agent will draft outreach shortly.');
-            // Refresh draft status
+            
+            // Refresh task and draft status
             const supabase = supabaseBrowser();
+            
+            // Check for new task
+            const { data: tasks } = await supabase
+              .from('agent_tasks')
+              .select(`
+                id,
+                status,
+                task_type,
+                assigned_at,
+                input_data,
+                agent:ai_agents(id, name, agent_type)
+              `)
+              .eq('agent_id', outreachAgent.id)
+              .in('status', ['pending', 'in_progress'])
+              .order('assigned_at', { ascending: false })
+              .limit(5);
+
+            const contactTask = tasks?.find((task: any) => {
+              const inputData = task.input_data || {};
+              return inputData.contactId === contact.id;
+            });
+
+            if (contactTask) {
+              setActiveTask({
+                id: contactTask.id,
+                status: contactTask.status,
+                task_type: contactTask.task_type,
+                agent_name: contactTask.agent?.name || 'Agent',
+                assigned_at: contactTask.assigned_at,
+              });
+            }
+            
+            // Check for pending draft
             const { data: drafts } = await supabase
               .from('agent_outreach_drafts')
               .select('id')
