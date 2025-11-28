@@ -23,6 +23,7 @@ interface AssignTaskModalProps {
   onClose: () => void;
   onSuccess?: () => void;
   preselectedContactId?: string;
+  preselectedOpportunityId?: string;
 }
 
 export function AssignTaskModal({
@@ -30,13 +31,14 @@ export function AssignTaskModal({
   isOpen,
   onClose,
   onSuccess,
-  preselectedContactId
+  preselectedContactId,
+  preselectedOpportunityId
 }: AssignTaskModalProps) {
   const { profiles, loading: profilesLoading } = useSavedProfiles({ enabled: isOpen });
   const { assignTask, loading: assignmentLoading, error } = useTaskAssignment({ agentId: agent.id });
   
   const [selectedContactId, setSelectedContactId] = useState<string>(preselectedContactId || '');
-  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>('');
+  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string>(preselectedOpportunityId || '');
   const [selectedChannel, setSelectedChannel] = useState<OutreachChannel>('email');
   const [priority, setPriority] = useState<TaskPriority>('medium');
   const [searchTerm, setSearchTerm] = useState('');
@@ -47,6 +49,9 @@ export function AssignTaskModal({
       if (preselectedContactId) {
         setSelectedContactId(preselectedContactId);
       }
+      if (preselectedOpportunityId) {
+        setSelectedOpportunityId(preselectedOpportunityId);
+      }
     } else {
       setSelectedContactId('');
       setSelectedOpportunityId('');
@@ -54,7 +59,7 @@ export function AssignTaskModal({
       setPriority('medium');
       setSearchTerm('');
     }
-  }, [isOpen, preselectedContactId]);
+  }, [isOpen, preselectedContactId, preselectedOpportunityId]);
 
   const selectedContact = useMemo(() => {
     return profiles.find(p => p.id === selectedContactId);
@@ -89,22 +94,26 @@ export function AssignTaskModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedContactId) {
+    // For planning agents analyzing opportunities, contact is optional
+    if (agent.agent_type === 'planning' && selectedOpportunityId && !selectedContactId) {
+      // Allow planning agents to analyze opportunities without a contact
+    } else if (!selectedContactId) {
       toast.error('Please select a contact');
       return;
     }
 
-    const inputData: Record<string, any> = {
-      contactId: selectedContactId
-    };
+    const inputData: Record<string, any> = {};
+    
+    if (selectedContactId) {
+      inputData.contactId = selectedContactId;
+    }
+    
+    if (selectedOpportunityId) {
+      inputData.opportunityId = selectedOpportunityId;
+    }
 
     if (agent.agent_type === 'outreach') {
       inputData.channel = selectedChannel;
-      if (selectedOpportunityId) {
-        inputData.opportunityId = selectedOpportunityId;
-      }
-    } else if (selectedOpportunityId) {
-      inputData.opportunityId = selectedOpportunityId;
     }
 
     const task = await assignTask({
@@ -168,9 +177,11 @@ export function AssignTaskModal({
         <form onSubmit={handleSubmit} className="p-6">
           <div className="space-y-6">
             {/* Contact Selection */}
+            {/* For planning agents with preselected opportunity, contact is optional */}
+            {(agent.agent_type !== 'planning' || !preselectedOpportunityId) && (
             <div>
               <label className="mb-2 block text-sm font-semibold text-slate-900">
-                Select Contact <span className="text-red-500">*</span>
+                Select Contact {agent.agent_type !== 'planning' && <span className="text-red-500">*</span>}
               </label>
               
               {/* Search */}
@@ -248,6 +259,19 @@ export function AssignTaskModal({
                 </div>
               )}
             </div>
+            )}
+
+            {/* Opportunity Info (if preselected) */}
+            {preselectedOpportunityId && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-900">
+                    Opportunity preselected for analysis
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Channel Selection (for outreach agents) */}
             {agent.agent_type === 'outreach' && (
@@ -340,7 +364,7 @@ export function AssignTaskModal({
             </button>
             <button
               type="submit"
-              disabled={!selectedContactId || assignmentLoading}
+              disabled={(!selectedContactId && !(agent.agent_type === 'planning' && selectedOpportunityId)) || assignmentLoading}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {assignmentLoading ? (

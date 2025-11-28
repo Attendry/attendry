@@ -19,9 +19,19 @@ import {
   Loader2,
   Cloud,
   Share2,
+  Bot,
+  Plus,
+  Mail,
+  Clock,
+  CheckCircle2,
 } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { toast } from "sonner";
+import { useAgents } from "@/lib/hooks/useAgents";
+import { useTaskAssignment } from "@/lib/hooks/useTaskAssignment";
+import { AssignTaskModal } from "@/components/agents/AssignTaskModal";
+import { AIAgent, OutreachChannel, TaskPriority } from "@/lib/types/agents";
+import Link from "next/link";
 
 interface ContactModalProps {
   contact: SavedSpeakerProfile & {
@@ -64,6 +74,17 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
 
   // Research data
   const [research, setResearch] = useState(contact.contact_research);
+
+  // Agent integration
+  const { agents } = useAgents();
+  const [availableAgents, setAvailableAgents] = useState<AIAgent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
+  const [agentDrafts, setAgentDrafts] = useState<any[]>([]);
+  const [loadingDrafts, setLoadingDrafts] = useState(false);
+  const { assignTask, loading: assignmentLoading } = useTaskAssignment({ 
+    agentId: selectedAgentId || undefined 
+  });
 
   // Load existing draft when modal opens
   useEffect(() => {
@@ -123,6 +144,54 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
 
     loadDraft();
   }, [contact.id]);
+
+  // Load available agents and their drafts for this contact
+  useEffect(() => {
+    const loadAgentData = async () => {
+      try {
+        const supabase = supabaseBrowser();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Get user's active agents
+        const agentsArray = Array.isArray(agents) ? agents : [];
+        const activeAgents = agentsArray.filter(a => a?.status === 'active');
+        setAvailableAgents(activeAgents);
+
+        if (activeAgents.length > 0) {
+          // Set default to outreach agent if available
+          const outreachAgent = activeAgents.find(a => a.agent_type === 'outreach');
+          if (outreachAgent) {
+            setSelectedAgentId(outreachAgent.id);
+          } else {
+            setSelectedAgentId(activeAgents[0].id);
+          }
+
+          // Load drafts for this contact
+          setLoadingDrafts(true);
+          const agentIds = activeAgents.map(a => a.id);
+          const { data: drafts } = await supabase
+            .from('agent_outreach_drafts')
+            .select(`
+              *,
+              agent:ai_agents(id, name, agent_type)
+            `)
+            .eq('contact_id', contact.id)
+            .in('agent_id', agentIds)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+          setAgentDrafts(drafts || []);
+        }
+      } catch (error) {
+        console.error('Error loading agent data:', error);
+      } finally {
+        setLoadingDrafts(false);
+      }
+    };
+
+    loadAgentData();
+  }, [contact.id, agents]);
 
   // Sync prop changes
   useEffect(() => {
@@ -565,6 +634,147 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
             )}
           </div>
 
+          {/* Agent Assignment Section */}
+          {availableAgents.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
+                  <Bot className="h-5 w-5 text-indigo-500" />
+                  AI Agent Assignment
+                </h3>
+                {selectedAgentId && (
+                  <button
+                    onClick={() => setShowAssignTaskModal(true)}
+                    disabled={assignmentLoading}
+                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Assign Task
+                  </button>
+                )}
+              </div>
+
+              {/* Agent Selection */}
+              {availableAgents.length > 1 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Select Agent
+                  </label>
+                  <select
+                    value={selectedAgentId}
+                    onChange={(e) => setSelectedAgentId(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm text-slate-700 focus:border-indigo-500 focus:ring-indigo-500"
+                  >
+                    {availableAgents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name} ({agent.agent_type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Agent Drafts History */}
+              {agentDrafts.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-slate-700">Recent Agent Activity</h4>
+                  <div className="space-y-2">
+                    {agentDrafts.slice(0, 3).map((draft) => {
+                      const agent = (draft as any).agent;
+                      const getStatusIcon = () => {
+                        switch (draft.status) {
+                          case 'pending_approval':
+                            return <Clock className="h-4 w-4 text-amber-500" />;
+                          case 'approved':
+                            return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+                          case 'rejected':
+                            return <X className="h-4 w-4 text-red-500" />;
+                          default:
+                            return <Mail className="h-4 w-4 text-slate-400" />;
+                        }
+                      };
+
+                      const getStatusColor = () => {
+                        switch (draft.status) {
+                          case 'pending_approval':
+                            return 'border-amber-200 bg-amber-50';
+                          case 'approved':
+                            return 'border-green-200 bg-green-50';
+                          case 'rejected':
+                            return 'border-red-200 bg-red-50';
+                          default:
+                            return 'border-slate-200 bg-slate-50';
+                        }
+                      };
+
+                      return (
+                        <div
+                          key={draft.id}
+                          className={`rounded-lg border p-3 ${getStatusColor()}`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                {getStatusIcon()}
+                                <span className="text-xs font-medium text-slate-700">
+                                  {draft.status.replace('_', ' ')}
+                                </span>
+                                {agent && (
+                                  <>
+                                    <span className="text-slate-400">•</span>
+                                    <span className="text-xs text-slate-500">{agent.name}</span>
+                                  </>
+                                )}
+                              </div>
+                              {draft.subject && (
+                                <p className="text-xs text-slate-600 mb-1">{draft.subject}</p>
+                              )}
+                              <p className="text-xs text-slate-500">
+                                {new Date(draft.created_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            {draft.status === 'pending_approval' && (
+                              <Link
+                                href="/agents/approvals"
+                                className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                              >
+                                Review →
+                              </Link>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {agentDrafts.length > 3 && (
+                    <Link
+                      href="/agents/approvals"
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                    >
+                      View all {agentDrafts.length} drafts →
+                    </Link>
+                  )}
+                </div>
+              )}
+
+              {agentDrafts.length === 0 && !loadingDrafts && (
+                <div className="rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                  <Bot className="mx-auto h-8 w-8 text-slate-400 mb-2" />
+                  <p className="text-sm text-slate-500 mb-3">
+                    No agent tasks assigned yet
+                  </p>
+                  <button
+                    onClick={() => setShowAssignTaskModal(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Assign First Task
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Email Draft Section */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -705,6 +915,39 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
               </p>
             </div>
           </div>
+        )}
+
+        {/* Assign Task Modal */}
+        {selectedAgentId && availableAgents.length > 0 && (
+          <AssignTaskModal
+            agent={availableAgents.find(a => a.id === selectedAgentId)!}
+            isOpen={showAssignTaskModal}
+            onClose={() => setShowAssignTaskModal(false)}
+            onSuccess={async () => {
+              setShowAssignTaskModal(false);
+              toast.success('Task assigned! The agent will process it shortly.');
+              
+              // Refresh agent drafts
+              try {
+                const supabase = supabaseBrowser();
+                const agentIds = availableAgents.map(a => a.id);
+                const { data: drafts } = await supabase
+                  .from('agent_outreach_drafts')
+                  .select(`
+                    *,
+                    agent:ai_agents(id, name, agent_type)
+                  `)
+                  .eq('contact_id', contact.id)
+                  .in('agent_id', agentIds)
+                  .order('created_at', { ascending: false })
+                  .limit(10);
+                setAgentDrafts(drafts || []);
+              } catch (error) {
+                console.error('Error refreshing drafts:', error);
+              }
+            }}
+            preselectedContactId={contact.id}
+          />
         )}
       </div>
     </div>

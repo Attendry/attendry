@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { usePathname } from "next/navigation";
+import { AgentNotifications } from "@/components/agents/AgentNotifications";
 
 type UserLite = { id: string; email?: string | null };
 
@@ -116,6 +117,8 @@ export function TopBar({ onMenuClick, mobileMenuButton }: TopBarProps) {
         <div className="flex items-center gap-4">
           {authReady && user && (
             <>
+              {/* Agent Notifications */}
+              <AgentNotifications />
               {/* Profile button */}
               <div className="relative" ref={userMenuRef}>
                 <button

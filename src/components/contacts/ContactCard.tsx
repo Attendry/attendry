@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { toast } from "sonner";
@@ -19,7 +19,11 @@ import {
   RotateCcw,
   Copy,
   Check,
+  Bot,
+  Plus,
 } from "lucide-react";
+import { AssignTaskModal } from "@/components/agents/AssignTaskModal";
+import { useAgents } from "@/lib/hooks/useAgents";
 
 interface ContactCardProps {
   contact: SavedSpeakerProfile & {
@@ -56,6 +60,10 @@ export function ContactCard({
   onRestore,
 }: ContactCardProps) {
   const [copied, setCopied] = useState(false);
+  const [hasPendingDraft, setHasPendingDraft] = useState(false);
+  const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
+  const [outreachAgent, setOutreachAgent] = useState<any>(null);
+  const { agents } = useAgents();
   
   const isDue =
     contact.reminder_date &&
@@ -63,6 +71,45 @@ export function ContactCard({
   const hasNewIntel = contact.contact_research?.has_new_intel || false;
   const isArchived = contact.archived || false;
   const status = contact.outreach_status || "not_started";
+
+  // Check for pending drafts and get outreach agent
+  useEffect(() => {
+    const checkDraft = async () => {
+      try {
+        const supabase = supabaseBrowser();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Get user's outreach agents
+        const { data: agentData } = await supabase
+          .from('ai_agents')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('agent_type', 'outreach')
+          .eq('status', 'active')
+          .limit(1);
+
+        if (agentData && agentData.length > 0) {
+          setOutreachAgent(agentData[0]);
+
+          // Check for pending draft
+          const { data: drafts } = await supabase
+            .from('agent_outreach_drafts')
+            .select('id')
+            .eq('contact_id', contact.id)
+            .eq('agent_id', agentData[0].id)
+            .eq('status', 'pending_approval')
+            .limit(1);
+
+          setHasPendingDraft(drafts && drafts.length > 0);
+        }
+      } catch (error) {
+        console.error('Error checking draft:', error);
+      }
+    };
+
+    checkDraft();
+  }, [contact.id, agents]);
 
   const handleCopyDraft = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -247,6 +294,11 @@ export function ContactCard({
             <Clock className="w-3 h-3" /> Follow Up Due
           </span>
         )}
+        {hasPendingDraft && !isArchived && (
+          <span className="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+            <Bot className="w-3 h-3" /> Draft Pending
+          </span>
+        )}
         {contact.monitor_updates && !hasNewIntel && !isArchived && (
           <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
             <Eye className="w-3 h-3" /> Monitoring
@@ -261,13 +313,52 @@ export function ContactCard({
       </div>
 
       <div className="mt-auto flex items-center justify-between border-t border-slate-100 pt-4">
-        <span className="text-xs text-slate-400">
-          {contact.last_contacted_date
-            ? `Contacted: ${new Date(contact.last_contacted_date).toLocaleDateString()}`
-            : `Added: ${contact.saved_at ? new Date(contact.saved_at).toLocaleDateString() : "N/A"}`}
-        </span>
+        <div className="flex items-center gap-2">
+          {outreachAgent && !isArchived && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAssignTaskModal(true);
+              }}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+              title="Assign outreach task to agent"
+            >
+              <Plus className="h-3 w-3" />
+              Draft Outreach
+            </button>
+          )}
+          <span className="text-xs text-slate-400">
+            {contact.last_contacted_date
+              ? `Contacted: ${new Date(contact.last_contacted_date).toLocaleDateString()}`
+              : `Added: ${contact.saved_at ? new Date(contact.saved_at).toLocaleDateString() : "N/A"}`}
+          </span>
+        </div>
         <ChevronRight className="h-5 w-5 text-slate-300 transition-colors group-hover:text-indigo-500" />
       </div>
+
+      {/* Assign Task Modal */}
+      {outreachAgent && (
+        <AssignTaskModal
+          agent={outreachAgent}
+          isOpen={showAssignTaskModal}
+          onClose={() => setShowAssignTaskModal(false)}
+          onSuccess={async () => {
+            setShowAssignTaskModal(false);
+            toast.success('Task assigned! The agent will draft outreach shortly.');
+            // Refresh draft status
+            const supabase = supabaseBrowser();
+            const { data: drafts } = await supabase
+              .from('agent_outreach_drafts')
+              .select('id')
+              .eq('contact_id', contact.id)
+              .eq('agent_id', outreachAgent.id)
+              .eq('status', 'pending_approval')
+              .limit(1);
+            setHasPendingDraft(drafts && drafts.length > 0);
+          }}
+          preselectedContactId={contact.id}
+        />
+      )}
     </div>
   );
 }

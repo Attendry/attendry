@@ -7,7 +7,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   MapPin, 
@@ -22,10 +22,20 @@ import {
   Target,
   CheckCircle2,
   RefreshCw,
-  Info
+  Info,
+  Bot,
+  Brain,
+  Mail,
+  Plus
 } from 'lucide-react';
 import { TemporalIntelligenceEngine } from '@/lib/services/temporal-intelligence-engine';
 import { toast } from 'sonner';
+import { useAgents } from '@/lib/hooks/useAgents';
+import { useTaskAssignment } from '@/lib/hooks/useTaskAssignment';
+import { AssignTaskModal } from '@/components/agents/AssignTaskModal';
+import { AIAgent } from '@/lib/types/agents';
+import { supabaseBrowser } from '@/lib/supabase-browser';
+import Link from 'next/link';
 
 interface Opportunity {
   id: string;
@@ -90,8 +100,79 @@ export default function OpportunityCard({
 }: OpportunityCardProps) {
   const [showDismissMenu, setShowDismissMenu] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showAssignTaskModal, setShowAssignTaskModal] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<AIAgent | null>(null);
+  const [agentTaskType, setAgentTaskType] = useState<'planning' | 'outreach'>('planning');
+  const [hasAgentAnalysis, setHasAgentAnalysis] = useState(false);
+
+  const { agents } = useAgents();
+  const { assignTask, loading: assignmentLoading } = useTaskAssignment({ 
+    agentId: selectedAgent?.id || undefined 
+  });
 
   const { event, signals, relevance, action_timing, status } = opportunity;
+
+  // Get available agents
+  const agentsArray = Array.isArray(agents) ? agents : [];
+  const planningAgent = agentsArray.find(a => a?.agent_type === 'planning' && a?.status === 'active');
+  const outreachAgent = agentsArray.find(a => a?.agent_type === 'outreach' && a?.status === 'active');
+
+  // Check if opportunity has been analyzed by planning agent
+  useEffect(() => {
+    const checkAgentAnalysis = async () => {
+      if (!planningAgent) return;
+      
+      try {
+        const supabase = supabaseBrowser();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Check if there are tasks for this opportunity
+        const { data: tasks } = await supabase
+          .from('agent_tasks')
+          .select('id')
+          .eq('agent_id', planningAgent.id)
+          .eq('opportunity_id', opportunity.id)
+          .limit(1);
+
+        setHasAgentAnalysis(tasks && tasks.length > 0);
+      } catch (error) {
+        console.error('Error checking agent analysis:', error);
+      }
+    };
+
+    checkAgentAnalysis();
+  }, [opportunity.id, planningAgent]);
+
+  // Determine if we should show agent suggestions
+  const shouldShowAgentSuggestion = 
+    relevance.score >= 70 && 
+    (signals.target_accounts_attending > 0 || signals.icp_matches > 0) &&
+    !hasAgentAnalysis;
+
+  const handleAnalyzeWithPlanning = () => {
+    if (!planningAgent) {
+      toast.error('No planning agent available', {
+        description: 'Please create a planning agent first'
+      });
+      return;
+    }
+    setSelectedAgent(planningAgent);
+    setAgentTaskType('planning');
+    setShowAssignTaskModal(true);
+  };
+
+  const handleDraftOutreach = () => {
+    if (!outreachAgent) {
+      toast.error('No outreach agent available', {
+        description: 'Please create an outreach agent first'
+      });
+      return;
+    }
+    setSelectedAgent(outreachAgent);
+    setAgentTaskType('outreach');
+    setShowAssignTaskModal(true);
+  };
 
   // Format date
   const eventDate = event.starts_at
@@ -275,16 +356,74 @@ export default function OpportunityCard({
         </div>
       </div>
 
+      {/* Agent Suggestions */}
+      {shouldShowAgentSuggestion && planningAgent && (
+        <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <Brain className="w-4 h-4 text-indigo-600" />
+                <span className="font-semibold text-indigo-900">
+                  Recommended: Planning Agent Analysis
+                </span>
+              </div>
+              <p className="text-sm text-indigo-700 mb-3">
+                This high-relevance opportunity would benefit from agent analysis to identify optimal outreach strategies.
+              </p>
+              <button
+                onClick={handleAnalyzeWithPlanning}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition-colors"
+              >
+                <Bot className="w-4 h-4" />
+                Analyze with Planning Agent
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Agent Analysis Status */}
+      {hasAgentAnalysis && planningAgent && (
+        <div className="mb-4 bg-green-50 border border-green-200 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-green-600" />
+              <span className="text-sm font-medium text-green-900">
+                Analyzed by {planningAgent.name}
+              </span>
+            </div>
+            <Link
+              href={`/agents/${planningAgent.id}`}
+              className="text-xs font-medium text-green-700 hover:text-green-800"
+            >
+              View Analysis →
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Signals Section */}
       <div className="mb-4 space-y-3">
         {/* Target Accounts */}
         {signals.target_accounts_attending > 0 && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="w-4 h-4 text-blue-600" />
-              <span className="font-semibold text-blue-900">
-                {signals.target_accounts_attending} Target Account{signals.target_accounts_attending !== 1 ? 's' : ''} Attending
-              </span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Target className="w-4 h-4 text-blue-600" />
+                <span className="font-semibold text-blue-900">
+                  {signals.target_accounts_attending} Target Account{signals.target_accounts_attending !== 1 ? 's' : ''} Attending
+                </span>
+              </div>
+              {outreachAgent && signals.account_connections.length > 0 && (
+                <button
+                  onClick={handleDraftOutreach}
+                  className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                  title="Draft outreach for speakers"
+                >
+                  <Mail className="w-3 h-3" />
+                  Draft Outreach
+                </button>
+              )}
             </div>
             <div className="space-y-1">
               {signals.account_connections.slice(0, 3).map((conn, idx) => (
@@ -410,6 +549,30 @@ export default function OpportunityCard({
           View event →
         </a>
       </div>
+
+      {/* Assign Task Modal */}
+      {selectedAgent && (
+        <AssignTaskModal
+          agent={selectedAgent}
+          isOpen={showAssignTaskModal}
+          onClose={() => {
+            setShowAssignTaskModal(false);
+            setSelectedAgent(null);
+          }}
+          onSuccess={async () => {
+            setShowAssignTaskModal(false);
+            setSelectedAgent(null);
+            
+            if (agentTaskType === 'planning') {
+              toast.success('Analysis task assigned! The planning agent will analyze this opportunity shortly.');
+              setHasAgentAnalysis(true);
+            } else {
+              toast.success('Outreach task assigned! The agent will draft messages for speakers shortly.');
+            }
+          }}
+          preselectedOpportunityId={opportunity.id}
+        />
+      )}
     </div>
   );
 }
