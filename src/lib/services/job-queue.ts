@@ -9,41 +9,7 @@ import { OutreachAgent } from '@/lib/agents/outreach-agent';
 
 // Redis connection configuration
 function getRedisConnection(): RedisOptions | null {
-  // Priority 1: Check for Upstash REST credentials and construct TCP connection
-  const upstashRestUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const upstashRestToken = process.env.UPSTASH_REDIS_REST_TOKEN;
-  const upstashTcpPassword = process.env.UPSTASH_REDIS_TCP_PASSWORD;
-  
-  if (upstashRestUrl && upstashTcpPassword) {
-    try {
-      // Extract hostname from REST URL (e.g., https://xxx-xxx.upstash.io -> xxx-xxx.upstash.io)
-      const restUrl = new URL(upstashRestUrl);
-      const hostname = restUrl.hostname;
-      
-      // Upstash TCP endpoint uses the same hostname but port 6379 (or from env)
-      const tcpPort = parseInt(process.env.UPSTASH_REDIS_TCP_PORT || '6379');
-      
-      console.log('[Job Queue] Using Upstash TCP connection for BullMQ');
-      return {
-        host: hostname,
-        port: tcpPort,
-        password: upstashTcpPassword,
-        maxRetriesPerRequest: null, // Required for BullMQ
-        enableReadyCheck: false, // Don't check connection on init
-        lazyConnect: true, // Connect only when needed
-        tls: {
-          // Upstash requires TLS for TCP connections
-          rejectUnauthorized: true,
-        },
-      };
-    } catch (error) {
-      console.warn('[Job Queue] Failed to parse Upstash REST URL, trying other configs:', error);
-    }
-  } else if (upstashRestUrl && !upstashTcpPassword) {
-    console.warn('[Job Queue] Upstash REST URL found but TCP password missing. Add UPSTASH_REDIS_TCP_PASSWORD to use queue.');
-  }
-
-  // Priority 2: Check for standard Redis URL
+  // Priority 1: Check for standard Redis URL (most common, especially for Upstash)
   const redisUrl = process.env.REDIS_URL;
   if (redisUrl) {
     try {
@@ -72,6 +38,38 @@ function getRedisConnection(): RedisOptions | null {
       return connection;
     } catch (error) {
       console.warn('[Job Queue] Invalid REDIS_URL, falling back to direct processing');
+    }
+  }
+
+  // Priority 2: Check for Upstash REST credentials and construct TCP connection
+  // (Only if REDIS_URL is not set)
+  const upstashRestUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const upstashTcpPassword = process.env.UPSTASH_REDIS_TCP_PASSWORD;
+  
+  if (upstashRestUrl && upstashTcpPassword) {
+    try {
+      // Extract hostname from REST URL (e.g., https://xxx-xxx.upstash.io -> xxx-xxx.upstash.io)
+      const restUrl = new URL(upstashRestUrl);
+      const hostname = restUrl.hostname;
+      
+      // Upstash TCP endpoint uses the same hostname but port 6379 (or from env)
+      const tcpPort = parseInt(process.env.UPSTASH_REDIS_TCP_PORT || '6379');
+      
+      console.log('[Job Queue] Using Upstash TCP connection for BullMQ');
+      return {
+        host: hostname,
+        port: tcpPort,
+        password: upstashTcpPassword,
+        maxRetriesPerRequest: null, // Required for BullMQ
+        enableReadyCheck: false, // Don't check connection on init
+        lazyConnect: true, // Connect only when needed
+        tls: {
+          // Upstash requires TLS for TCP connections
+          rejectUnauthorized: true,
+        },
+      };
+    } catch (error) {
+      console.warn('[Job Queue] Failed to parse Upstash REST URL, trying other configs:', error);
     }
   }
 
@@ -211,6 +209,7 @@ if (!process.env.VERCEL && !process.env.NEXT_PUBLIC_VERCEL_ENV) {
 
 /**
  * Process an agent task directly (used by worker and fallback)
+ * Processes the specific task by ID
  */
 export async function processAgentTask(
   agentId: string,
@@ -223,16 +222,16 @@ export async function processAgentTask(
   if (agentType === 'outreach') {
     agent = new OutreachAgent(agentId);
     await agent.initialize();
-    await agent.processNextTask();
   } else if (agentType === 'followup') {
-    // Will be implemented below
     const { FollowupAgent } = await import('@/lib/agents/followup-agent');
     agent = new FollowupAgent(agentId);
     await agent.initialize();
-    await agent.processNextTask();
   } else {
     throw new Error(`Agent type ${agentType} not yet implemented for job queue processing`);
   }
+
+  // Process the specific task by ID
+  await agent.processTaskById(taskId);
 }
 
 /**
@@ -246,6 +245,7 @@ export async function queueAgentTask(
   priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium'
 ): Promise<void> {
   const queue = getQueue();
+  const isServerless = process.env.VERCEL || process.env.NEXT_PUBLIC_VERCEL_ENV;
   
   // If no queue available (Redis not configured), process directly
   if (!queue) {
@@ -274,6 +274,19 @@ export async function queueAgentTask(
     );
 
     console.log(`[Job Queue] Queued task ${taskId} for agent ${agentId} with priority ${priority}`);
+
+    // In serverless environments, process immediately after queueing
+    // since there's no persistent worker to process queued tasks
+    if (isServerless) {
+      console.log(`[Job Queue] Serverless environment detected, processing task ${taskId} immediately`);
+      try {
+        await processAgentTask(agentId, taskId, agentType);
+        console.log(`[Job Queue] Successfully processed task ${taskId} immediately (serverless mode)`);
+      } catch (processError: any) {
+        console.error(`[Job Queue] Failed to process task ${taskId} immediately:`, processError);
+        // Don't throw - task is queued and will be processed by cron job
+      }
+    }
   } catch (error: any) {
     // If queue fails (e.g., Redis unavailable), process directly
     console.warn(`[Job Queue] Failed to queue task ${taskId}, processing directly:`, error.message);

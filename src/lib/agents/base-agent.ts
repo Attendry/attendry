@@ -13,8 +13,8 @@ import {
  */
 export abstract class BaseAgent {
   protected agentId: string;
-  protected agentType: AgentType;
-  protected config: Record<string, any>;
+  protected agentType!: AgentType; // Initialized in initialize()
+  protected config!: Record<string, any>; // Initialized in initialize()
   protected supabase: Awaited<ReturnType<typeof supabaseServer>> | null = null;
   protected agent: AIAgent | null = null;
 
@@ -192,6 +192,35 @@ export abstract class BaseAgent {
     }
 
     const task = tasks[0];
+    return await this.processTaskById(task.id);
+  }
+
+  /**
+   * Process a specific task by ID
+   */
+  async processTaskById(taskId: string): Promise<boolean> {
+    if (!this.supabase) {
+      this.supabase = await supabaseServer();
+    }
+
+    // Fetch the specific task
+    const { data: task, error: taskError } = await this.supabase
+      .from('agent_tasks')
+      .select('*')
+      .eq('id', taskId)
+      .eq('agent_id', this.agentId)
+      .single();
+
+    if (taskError || !task) {
+      throw new Error(`Task ${taskId} not found: ${taskError?.message || 'Unknown error'}`);
+    }
+
+    // Check if task is already processed
+    if (task.status !== 'pending') {
+      console.log(`[BaseAgent] Task ${taskId} is already ${task.status}, skipping`);
+      return false;
+    }
+
     await this.updateTaskStatus(task.id, 'in_progress');
     await this.updateStatus('active');
 
