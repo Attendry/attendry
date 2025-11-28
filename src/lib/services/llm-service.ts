@@ -1,238 +1,269 @@
 /**
- * LLM Service Abstraction
- * 
- * Provides a unified interface for multiple LLM providers (Gemini default, Claude optional for premium)
- * Follows existing Gemini service patterns for consistency
+ * LLM Service
+ * Handles communication with LLM providers (OpenAI, Anthropic, etc.)
  */
-
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GeminiService } from './gemini-service';
-import { EnhancedGeminiService } from './enhanced-gemini-service';
-import { RetryService } from './retry-service';
-import { safeParseJson } from '@/lib/utils/json-parser';
-
-export type LLMProvider = 'gemini' | 'claude';
-export type LLMModel = 'gemini-2.5-flash' | 'claude-3.5-sonnet';
-
-export interface LLMRequest {
-  prompt: string;
-  data?: any;
-  systemPrompt?: string;
-  temperature?: number;
-  maxTokens?: number;
-  responseFormat?: 'json' | 'text';
-}
 
 export interface LLMResponse {
-  content: any;
-  tokensUsed?: number;
-  provider: LLMProvider;
-  model: string;
-  processingTime: number;
+  content: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 }
 
-export interface LLMOptions {
-  provider?: LLMProvider;
-  model?: LLMModel;
-  useCache?: boolean;
-  timeout?: number;
-}
-
-/**
- * LLM Service Class
- * 
- * Provides unified interface for LLM calls with provider abstraction
- */
 export class LLMService {
-  private static geminiService: EnhancedGeminiService | null = null;
-  private static readonly DEFAULT_PROVIDER: LLMProvider = 'gemini';
-  private static readonly DEFAULT_MODEL: LLMModel = 'gemini-2.5-flash';
-  private static readonly DEFAULT_TEMPERATURE = 0.1;
-  private static readonly DEFAULT_MAX_TOKENS = 4096;
-  private static readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
+  private apiKey: string;
+  private provider: 'openai' | 'anthropic' | 'gemini';
+  private model: string;
+  private maxTokens: number;
+  private baseURL: string;
 
-  /**
-   * Initialize Gemini service instance
-   */
-  private static getGeminiService(): EnhancedGeminiService {
-    if (!this.geminiService) {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('GEMINI_API_KEY not configured');
-      }
-      this.geminiService = new EnhancedGeminiService(apiKey);
+  constructor() {
+    // Support both LLM_API_KEY (generic) and GEMINI_API_KEY (existing pattern)
+    this.apiKey = process.env.LLM_API_KEY || process.env.GEMINI_API_KEY || '';
+    this.provider = (process.env.LLM_PROVIDER as 'openai' | 'anthropic' | 'gemini') || 'gemini';
+    this.model = process.env.LLM_MODEL || this.getDefaultModel();
+    this.maxTokens = parseInt(process.env.LLM_MAX_TOKENS || '1000');
+    this.baseURL = process.env.LLM_BASE_URL || '';
+  }
+
+  private getDefaultModel(): string {
+    switch (this.provider) {
+      case 'openai':
+        return 'gpt-4-turbo-preview';
+      case 'anthropic':
+        return 'claude-3-opus-20240229';
+      case 'gemini':
+        return process.env.GEMINI_MODEL_PATH?.replace(':generateContent', '') || 'gemini-2.5-flash';
+      default:
+        return 'gemini-2.5-flash';
     }
-    return this.geminiService;
   }
 
   /**
-   * Analyze trends using LLM
+   * Generate outreach message
    */
-  static async analyzeTrends(
-    prompt: string,
-    data: any,
-    options: LLMOptions = {}
-  ): Promise<LLMResponse> {
-    const startTime = Date.now();
-    const provider = options.provider || this.DEFAULT_PROVIDER;
-    const model = options.model || this.DEFAULT_MODEL;
+  async generateOutreachMessage(prompt: string): Promise<LLMResponse> {
+    if (!this.apiKey) {
+      throw new Error('LLM API key not configured');
+    }
 
-    if (provider === 'gemini') {
-      return this.callGemini(prompt, data, {
-        ...options,
-        model: model as 'gemini-2.5-flash',
-        responseFormat: 'json'
-      });
-    } else if (provider === 'claude') {
-      // TODO: Implement Claude support when needed
-      throw new Error('Claude provider not yet implemented. Use Gemini for now.');
+    if (this.provider === 'openai') {
+      return await this.callOpenAI(prompt);
+    } else if (this.provider === 'anthropic') {
+      return await this.callAnthropic(prompt);
     } else {
-      throw new Error(`Unsupported provider: ${provider}`);
+      return await this.callGemini(prompt);
     }
   }
 
   /**
-   * Extract topics using LLM
+   * Call OpenAI API
    */
-  static async extractTopics(
-    prompt: string,
-    data: any,
-    options: LLMOptions = {}
-  ): Promise<LLMResponse> {
-    return this.analyzeTrends(prompt, data, {
-      ...options,
-      responseFormat: 'json'
-    });
-  }
-
-  /**
-   * Generate event intelligence using LLM
-   */
-  static async generateIntelligence(
-    prompt: string,
-    data: any,
-    options: LLMOptions = {}
-  ): Promise<LLMResponse> {
-    const startTime = Date.now();
-    const provider = options.provider || this.DEFAULT_PROVIDER;
-    const model = options.model || this.DEFAULT_MODEL;
-
-    if (provider === 'gemini') {
-      return this.callGemini(prompt, data, {
-        ...options,
-        model: model as 'gemini-2.5-flash',
-        responseFormat: 'json'
-      });
-    } else if (provider === 'claude') {
-      // TODO: Implement Claude support when needed
-      throw new Error('Claude provider not yet implemented. Use Gemini for now.');
-    } else {
-      throw new Error(`Unsupported provider: ${provider}`);
-    }
-  }
-
-  /**
-   * Call Gemini API with unified interface
-   */
-  private static async callGemini(
-    prompt: string,
-    data: any,
-    options: LLMOptions & { model?: 'gemini-2.5-flash'; responseFormat?: 'json' | 'text' }
-  ): Promise<LLMResponse> {
-    const startTime = Date.now();
-    const apiKey = process.env.GEMINI_API_KEY;
+  private async callOpenAI(prompt: string): Promise<LLMResponse> {
+    const url = this.baseURL || 'https://api.openai.com/v1/chat/completions';
     
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert sales outreach specialist. Draft personalized, professional outreach messages that are warm, specific, and action-oriented. Always respond with valid JSON when requested.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        max_tokens: this.maxTokens,
+        temperature: 0.7,
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+      throw new Error(`OpenAI API error: ${error.error?.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content || '';
+    
+    return {
+      content,
+      usage: data.usage ? {
+        promptTokens: data.usage.prompt_tokens,
+        completionTokens: data.usage.completion_tokens,
+        totalTokens: data.usage.total_tokens
+      } : undefined
+    };
+  }
+
+  /**
+   * Call Anthropic API
+   */
+  private async callAnthropic(prompt: string): Promise<LLMResponse> {
+    const url = this.baseURL || 'https://api.anthropic.com/v1/messages';
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: this.maxTokens,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        system: 'You are an expert sales outreach specialist. Draft personalized, professional outreach messages that are warm, specific, and action-oriented. Always respond with valid JSON when requested.'
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+      throw new Error(`Anthropic API error: ${error.error?.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+    const content = data.content[0]?.text || '';
+    
+    return {
+      content,
+      usage: data.usage ? {
+        promptTokens: data.usage.input_tokens,
+        completionTokens: data.usage.output_tokens,
+        totalTokens: data.usage.input_tokens + data.usage.output_tokens
+      } : undefined
+    };
+  }
+
+  /**
+   * Call Gemini API
+   */
+  private async callGemini(prompt: string): Promise<LLMResponse> {
+    const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      console.error('[LLMService] GEMINI_API_KEY not configured');
-      throw new Error('GEMINI_API_KEY not configured');
+      throw new Error('Gemini API key not configured');
     }
 
-    // Use model name consistent with rest of codebase
-    const modelName = options.model || this.DEFAULT_MODEL;
-    
-    console.log(`[LLMService] Calling Gemini API with model: ${modelName}`);
-    
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: modelName,
-      generationConfig: {
-        responseMimeType: options.responseFormat === 'json' ? 'application/json' : undefined,
-        temperature: options.temperature ?? this.DEFAULT_TEMPERATURE,
-        maxOutputTokens: options.maxTokens ?? this.DEFAULT_MAX_TOKENS,
-      }
+    const modelPath = process.env.GEMINI_MODEL_PATH || 'v1beta/models/gemini-2.5-flash:generateContent';
+    const url = `https://generativelanguage.googleapis.com/${modelPath}?key=${apiKey}`;
+
+    const systemInstruction = 'You are an expert sales outreach specialist. Draft personalized, professional outreach messages that are warm, specific, and action-oriented. Always respond with valid JSON when requested.';
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
+        }],
+        systemInstruction: {
+          parts: [{
+            text: systemInstruction
+          }]
+        },
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: this.maxTokens,
+          topP: 0.8,
+          topK: 10,
+          responseMimeType: 'application/json'
+        },
+        safetySettings: [
+          {
+            category: 'HARM_CATEGORY_HARASSMENT',
+            threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            category: 'HARM_CATEGORY_HATE_SPEECH',
+            threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+            threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+            threshold: 'BLOCK_MEDIUM_AND_ABOVE'
+          }
+        ]
+      })
     });
 
-    // Build full prompt with data context
-    const fullPrompt = data 
-      ? `${prompt}\n\nData:\n${JSON.stringify(data, null, 2)}`
-      : prompt;
-
-    console.log(`[LLMService] Prompt length: ${fullPrompt.length} characters`);
-
-    try {
-      const retryResult = await RetryService.executeWithRetry(
-        'gemini',
-        'llm_call',
-        async () => {
-          console.log('[LLMService] Making Gemini API call...');
-          const response = await model.generateContent(fullPrompt);
-          const text = response.response.text();
-          console.log(`[LLMService] Gemini API call successful, response length: ${text.length}`);
-          return text;
-        }
-      );
-      
-      const result = retryResult.data;
-
-      let content: any;
-      if (options.responseFormat === 'json') {
-        content = safeParseJson(result);
-        if (!content) {
-          console.warn('[LLMService] Failed to parse JSON response, using raw text');
-          content = result;
-        }
-      } else {
-        content = result;
-      }
-
-      // Estimate tokens (rough: 1 token ≈ 4 characters)
-      const tokensUsed = Math.ceil((fullPrompt.length + result.length) / 4);
-
-      console.log(`[LLMService] Intelligence generation complete, tokens: ~${tokensUsed}, time: ${Date.now() - startTime}ms`);
-
-      return {
-        content,
-        tokensUsed,
-        provider: 'gemini',
-        model: modelName,
-        processingTime: Date.now() - startTime
-      };
-    } catch (error: any) {
-      console.error('[LLMService] Gemini call failed:', error);
-      console.error('[LLMService] Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      throw error;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
     }
+
+    const data = await response.json();
+
+    if (!data.candidates || data.candidates.length === 0) {
+      throw new Error('No candidates in Gemini response');
+    }
+
+    const candidate = data.candidates[0];
+    const content = candidate.content?.parts?.[0]?.text || '';
+
+    if (!content) {
+      const finishReason = candidate.finishReason;
+      if (finishReason === 'SAFETY') {
+        throw new Error('Response blocked by safety filters');
+      }
+      throw new Error(`No content in Gemini response (finishReason: ${finishReason || 'unknown'})`);
+    }
+
+    return {
+      content,
+      usage: data.usageMetadata ? {
+        promptTokens: data.usageMetadata.promptTokenCount || 0,
+        completionTokens: data.usageMetadata.candidatesTokenCount || 0,
+        totalTokens: (data.usageMetadata.promptTokenCount || 0) + (data.usageMetadata.candidatesTokenCount || 0)
+      } : undefined
+    };
   }
 
   /**
-   * Check if user has premium access (for Claude support)
+   * Parse JSON response from LLM
    */
-  static async isPremiumUser(userId?: string): Promise<boolean> {
-    // TODO: Implement premium user check
-    // For now, always return false (use Gemini only)
-    return false;
-  }
-
-  /**
-   * Get recommended provider for user
-   */
-  static async getRecommendedProvider(userId?: string): Promise<LLMProvider> {
-    const isPremium = await this.isPremiumUser(userId);
-    return isPremium ? 'claude' : 'gemini';
+  parseJSONResponse<T = any>(content: string): T {
+    try {
+      // Try to extract JSON from markdown code blocks if present
+      const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[1]);
+      }
+      
+      // Try direct JSON parse
+      return JSON.parse(content);
+    } catch (error) {
+      // If parsing fails, try to extract JSON object from text
+      const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonObjectMatch) {
+        try {
+          return JSON.parse(jsonObjectMatch[0]);
+        } catch {
+          throw new Error('Failed to parse LLM response as JSON');
+        }
+      }
+      throw new Error('No valid JSON found in LLM response');
+    }
   }
 }
-
