@@ -123,7 +123,7 @@ export default function CreateAgentPage() {
 
       if (agent) {
         toast.success('Agent created successfully!');
-        router.push('/command-centre');
+        router.push('/dashboard');
       } else {
         setError('Failed to create agent. Please try again.');
       }
@@ -148,7 +148,7 @@ export default function CreateAgentPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            href="/command-centre"
+            href="/dashboard"
             className="mb-4 inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -289,7 +289,7 @@ export default function CreateAgentPage() {
               )}
             </button>
             <Link
-              href="/command-centre"
+              href="/dashboard"
               className="rounded-lg border border-slate-300 px-6 py-3 font-medium text-slate-700 hover:bg-slate-50"
             >
               Cancel

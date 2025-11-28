@@ -114,7 +114,7 @@ export default function AgentDetailPage() {
     try {
       await deleteAgent(agentId);
       toast.success('Agent deleted successfully');
-      router.push('/command-centre');
+      router.push('/dashboard');
     } catch (error: any) {
       toast.error(error.message || 'Failed to delete agent');
     } finally {
@@ -143,7 +143,7 @@ export default function AgentDetailPage() {
               </div>
             </div>
             <Link
-              href="/command-centre"
+              href="/dashboard"
               className="mt-4 inline-block text-sm text-red-700 hover:text-red-900"
             >
               ← Back to Command Centre
@@ -162,7 +162,7 @@ export default function AgentDetailPage() {
         {/* Header */}
         <div className="mb-8">
           <Link
-            href="/command-centre"
+            href="/dashboard"
             className="mb-4 inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />
