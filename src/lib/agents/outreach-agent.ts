@@ -228,7 +228,12 @@ export class OutreachAgent extends BaseAgent {
     // Contact research (background intel)
     if (contactResearch?.background_info) {
       prompt += `CONTACT RESEARCH & BACKGROUND:\n`;
-      prompt += `${contactResearch.background_info}\n`;
+      // Truncate research to prevent prompt from being too long (max 1000 chars)
+      const researchText = contactResearch.background_info;
+      const truncatedResearch = researchText.length > 1000 
+        ? researchText.substring(0, 1000) + '...' 
+        : researchText;
+      prompt += `${truncatedResearch}\n`;
       if (contactResearch.grounding_links && Array.isArray(contactResearch.grounding_links) && contactResearch.grounding_links.length > 0) {
         prompt += `\nSources:\n`;
         contactResearch.grounding_links.slice(0, 3).forEach((link: any, idx: number) => {

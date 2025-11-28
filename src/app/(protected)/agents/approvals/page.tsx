@@ -15,14 +15,16 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { DraftReviewModal } from '@/components/agents/DraftReviewModal';
+import { AgentOutreachDraft } from '@/lib/types/agents';
 
 export default function AgentApprovalsPage() {
   const router = useRouter();
-  const { drafts, loading, approveDraft, rejectDraft } = useOutreachDrafts({ 
+  const { drafts, loading, approveDraft, rejectDraft, refresh } = useOutreachDrafts({ 
     status: 'pending_approval' 
   });
   const [authReady, setAuthReady] = useState(false);
-  const [processing, setProcessing] = useState<string | null>(null);
+  const [selectedDraft, setSelectedDraft] = useState<(AgentOutreachDraft & { contact?: any; opportunity?: any; agent?: any }) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,30 +46,21 @@ export default function AgentApprovalsPage() {
     };
   }, []);
 
-  const handleApprove = async (draftId: string) => {
-    setProcessing(draftId);
+  const handleApprove = async (draftId: string, edits?: { subject?: string; messageBody?: string }) => {
     try {
-      await approveDraft(draftId);
-      toast.success('Draft approved successfully');
+      await approveDraft(draftId, edits);
+      await refresh();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to approve draft');
-    } finally {
-      setProcessing(null);
+      throw error; // Let modal handle the error display
     }
   };
 
-  const handleReject = async (draftId: string) => {
-    const reason = prompt('Please provide a reason for rejection:');
-    if (!reason) return;
-
-    setProcessing(draftId);
+  const handleReject = async (draftId: string, reason: string) => {
     try {
       await rejectDraft(draftId, reason);
-      toast.success('Draft rejected');
+      await refresh();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to reject draft');
-    } finally {
-      setProcessing(null);
+      throw error; // Let modal handle the error display
     }
   };
 
@@ -125,68 +118,86 @@ export default function AgentApprovalsPage() {
         {/* Drafts List */}
         {!loading && drafts.length > 0 && (
           <div className="space-y-4">
-            {drafts.map((draft) => (
-              <div
-                key={draft.id}
-                className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
-              >
-                <div className="mb-4 flex items-start justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-amber-500" />
-                      <span className="text-sm font-medium text-slate-600">
-                        Pending Approval
-                      </span>
+            {drafts.map((draft) => {
+              const contact = (draft as any).contact;
+              const opportunity = (draft as any).opportunity;
+              const agent = (draft as any).agent;
+              
+              return (
+                <div
+                  key={draft.id}
+                  className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => setSelectedDraft({ ...draft, contact, opportunity, agent })}
+                >
+                  <div className="mb-4 flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Clock className="h-4 w-4 text-amber-500" />
+                        <span className="text-sm font-medium text-slate-600">
+                          Pending Approval
+                        </span>
+                        {agent && (
+                          <>
+                            <span className="text-slate-400">•</span>
+                            <span className="text-sm text-slate-500">{agent.name}</span>
+                          </>
+                        )}
+                      </div>
+                      {contact && (
+                        <div className="mb-2">
+                          <h3 className="text-lg font-semibold text-slate-900">
+                            {contact.speaker_data?.name || 'Unknown Contact'}
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            {contact.speaker_data?.org || contact.speaker_data?.organization || 'No company'}
+                          </p>
+                        </div>
+                      )}
+                      {draft.subject && (
+                        <p className="text-sm font-medium text-slate-700 mb-1">
+                          {draft.subject}
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-500">
+                        Channel: {draft.channel} • Created: {new Date(draft.created_at).toLocaleDateString()}
+                      </p>
                     </div>
-                    {draft.subject && (
-                      <h3 className="mt-2 text-lg font-semibold text-slate-900">
-                        {draft.subject}
-                      </h3>
-                    )}
-                    <p className="mt-1 text-sm text-slate-500">
-                      Channel: {draft.channel} • Created: {new Date(draft.created_at).toLocaleDateString()}
+                  </div>
+
+                  <div className="mb-4 rounded-lg bg-slate-50 p-4">
+                    <p className="line-clamp-3 whitespace-pre-wrap text-sm text-slate-700">
+                      {draft.message_body}
                     </p>
                   </div>
-                </div>
 
-                <div className="mb-4 rounded-lg bg-slate-50 p-4">
-                  <p className="whitespace-pre-wrap text-sm text-slate-700">
-                    {draft.message_body}
-                  </p>
+                  <div className="flex items-center justify-end">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDraft({ ...draft, contact, opportunity, agent });
+                      }}
+                      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    >
+                      Review & Approve →
+                    </button>
+                  </div>
                 </div>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => handleApprove(draft.id)}
-                    disabled={processing === draft.id}
-                    className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                  >
-                    {processing === draft.id ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="h-4 w-4" />
-                        Approve
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleReject(draft.id)}
-                    disabled={processing === draft.id}
-                    className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    <XCircle className="h-4 w-4" />
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+
+      {/* Draft Review Modal */}
+      {selectedDraft && (
+        <DraftReviewModal
+          draft={selectedDraft}
+          isOpen={!!selectedDraft}
+          onClose={() => setSelectedDraft(null)}
+          onApprove={handleApprove}
+          onReject={handleReject}
+        />
+      )}
     </div>
   );
 }

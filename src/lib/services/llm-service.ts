@@ -44,24 +44,28 @@ export class LLMService {
   /**
    * Generate outreach message
    */
-  async generateOutreachMessage(prompt: string): Promise<LLMResponse> {
+  async generateOutreachMessage(prompt: string, options?: { maxTokens?: number }): Promise<LLMResponse> {
     if (!this.apiKey) {
       throw new Error('LLM API key not configured');
     }
 
+    // Use higher default for outreach messages (subject + body can be long)
+    const maxTokens = options?.maxTokens || 2048;
+
     if (this.provider === 'openai') {
-      return await this.callOpenAI(prompt);
+      return await this.callOpenAI(prompt, maxTokens);
     } else if (this.provider === 'anthropic') {
-      return await this.callAnthropic(prompt);
+      return await this.callAnthropic(prompt, maxTokens);
     } else {
-      return await this.callGemini(prompt);
+      return await this.callGemini(prompt, maxTokens);
     }
   }
 
   /**
    * Call OpenAI API
    */
-  private async callOpenAI(prompt: string): Promise<LLMResponse> {
+  private async callOpenAI(prompt: string, maxTokensOverride?: number): Promise<LLMResponse> {
+    const tokens = maxTokensOverride || this.maxTokens;
     const url = this.baseURL || 'https://api.openai.com/v1/chat/completions';
     
     const response = await fetch(url, {
@@ -82,7 +86,7 @@ export class LLMService {
             content: prompt
           }
         ],
-        max_tokens: this.maxTokens,
+        max_tokens: tokens,
         temperature: 0.7,
         response_format: { type: 'json_object' }
       })
@@ -109,7 +113,8 @@ export class LLMService {
   /**
    * Call Anthropic API
    */
-  private async callAnthropic(prompt: string): Promise<LLMResponse> {
+  private async callAnthropic(prompt: string, maxTokensOverride?: number): Promise<LLMResponse> {
+    const tokens = maxTokensOverride || this.maxTokens;
     const url = this.baseURL || 'https://api.anthropic.com/v1/messages';
     
     const response = await fetch(url, {
@@ -121,7 +126,7 @@ export class LLMService {
       },
       body: JSON.stringify({
         model: this.model,
-        max_tokens: this.maxTokens,
+        max_tokens: tokens,
         messages: [
           {
             role: 'user',
@@ -153,7 +158,8 @@ export class LLMService {
   /**
    * Call Gemini API
    */
-  private async callGemini(prompt: string): Promise<LLMResponse> {
+  private async callGemini(prompt: string, maxTokensOverride?: number): Promise<LLMResponse> {
+    const tokens = maxTokensOverride || this.maxTokens;
     const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error('Gemini API key not configured');
@@ -182,7 +188,7 @@ export class LLMService {
         },
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: this.maxTokens,
+          maxOutputTokens: tokens,
           topP: 0.8,
           topK: 10,
           responseMimeType: 'application/json'
