@@ -26,14 +26,8 @@ export async function POST(
 
     const contactId = params.contactId;
     const body = await req.json();
-    const {
-      language = "English",
-      tone = "Formal",
-      channel = "email",
-      opportunityId,
-    } = body;
 
-    // Verify contact ownership
+    // Verify contact ownership first to get saved preferences
     const { data: contact, error: contactError } = await supabase
       .from("saved_speaker_profiles")
       .select("*")
@@ -47,6 +41,14 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    // Use saved preferences as defaults if not provided in request
+    const {
+      language = (contact.preferred_language as string) || "English",
+      tone = (contact.preferred_tone as string) || "Formal",
+      channel = (contact.preferred_channel as string) || "email",
+      opportunityId,
+    } = body;
 
     // Get or create Outreach Agent for user
     let { data: agents, error: agentsError } = await supabase
