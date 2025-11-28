@@ -106,6 +106,16 @@ export class OutreachAgent extends BaseAgent {
     // Fetch contact research if available
     const contactResearch = await this.getContactResearch(input.contactId);
 
+    // Extract relevant outreach points from research if available
+    let relevantResearchPoints: string | null = null;
+    if (contactResearch?.background_info) {
+      relevantResearchPoints = await this.extractRelevantResearchPoints(
+        contactResearch.background_info,
+        contact.speaker_data.name,
+        opportunity
+      );
+    }
+
     // Use preferences from contact or input context
     const preferredLanguage = input.context?.preferredLanguage || contact.preferred_language || 'English';
     const preferredTone = input.context?.preferredTone || contact.preferred_tone || this.config.messageTone;
@@ -117,6 +127,7 @@ export class OutreachAgent extends BaseAgent {
       opportunity,
       accountIntel,
       historicalOutreach,
+      relevantResearchPoints,
       contactResearch,
       channel: preferredChannel,
       tone: preferredTone,
@@ -179,6 +190,78 @@ export class OutreachAgent extends BaseAgent {
   }
 
   /**
+   * Extract relevant points from research data for outreach
+   */
+  private async extractRelevantResearchPoints(
+    researchText: string,
+    contactName: string,
+    opportunity: any | null
+  ): Promise<string> {
+    try {
+      // If research is already short, return as-is
+      if (researchText.length <= 500) {
+        return researchText;
+      }
+
+      // Build extraction prompt
+      const extractionPrompt = `You are analyzing background research about ${contactName} for professional outreach purposes.
+
+RESEARCH DATA:
+${researchText}
+
+${opportunity ? `CONTEXT: This outreach is related to an event opportunity.` : ''}
+
+Extract ONLY the most relevant and useful information for crafting a personalized outreach message. Focus on:
+- Recent achievements, projects, or news
+- Professional background and expertise
+- Industry trends or insights they're involved in
+- Any information that would help personalize the outreach
+
+Return a concise summary (maximum 300 words) with only the most relevant points. Format as a clear, structured summary that can be directly used in an outreach message prompt.
+
+If the research data is not relevant for outreach, return "No relevant outreach information found."`;
+
+      // Use LLMService to extract relevant points (not as JSON, just text)
+      const response = await this.llmService.generateOutreachMessage(extractionPrompt, { maxTokens: 512 });
+      
+      // Parse and return the extracted points
+      let extractedPoints = response.content.trim();
+      
+      // Remove JSON formatting if present
+      if (extractedPoints.startsWith('{') || extractedPoints.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(extractedPoints);
+          // If it's an object with a messageBody or text field, extract that
+          if (parsed.messageBody) {
+            extractedPoints = parsed.messageBody;
+          } else if (parsed.text) {
+            extractedPoints = parsed.text;
+          } else if (parsed.summary) {
+            extractedPoints = parsed.summary;
+          } else {
+            // If we can't extract, use original
+            extractedPoints = researchText.length > 500 ? researchText.substring(0, 500) + '...' : researchText;
+          }
+        } catch {
+          // If JSON parsing fails, use as-is
+        }
+      }
+      
+      // If extraction failed or returned no relevant info, return a truncated version
+      if (extractedPoints.includes('No relevant outreach information found') || extractedPoints.length < 50) {
+        // Fallback: return first 500 chars with ellipsis
+        return researchText.length > 500 ? researchText.substring(0, 500) + '...' : researchText;
+      }
+      
+      return extractedPoints;
+    } catch (error) {
+      console.error('Error extracting relevant research points:', error);
+      // Fallback to truncation if extraction fails
+      return researchText.length > 500 ? researchText.substring(0, 500) + '...' : researchText;
+    }
+  }
+
+  /**
    * Build LLM prompt for outreach message
    */
   private buildOutreachPrompt(context: {
@@ -186,12 +269,13 @@ export class OutreachAgent extends BaseAgent {
     opportunity: any | null;
     accountIntel: any | null;
     historicalOutreach: any[];
+    relevantResearchPoints: string | null;
     contactResearch: any | null;
     channel: OutreachChannel;
     tone: string;
     language: string;
   }): string {
-    const { contact, opportunity, accountIntel, historicalOutreach, contactResearch, channel, tone, language } = context;
+    const { contact, opportunity, accountIntel, historicalOutreach, relevantResearchPoints, contactResearch, channel, tone, language } = context;
     
     let prompt = `Draft a personalized ${channel} outreach message for ${contact.speaker_data.name}.\n\n`;
     
@@ -225,13 +309,25 @@ export class OutreachAgent extends BaseAgent {
     }
     prompt += `\n`;
 
-    // Contact research (background intel)
-    if (contactResearch?.background_info) {
+    // Contact research (background intel) - use extracted relevant points if available
+    if (relevantResearchPoints) {
       prompt += `CONTACT RESEARCH & BACKGROUND:\n`;
-      // Truncate research to prevent prompt from being too long (max 1000 chars)
+      prompt += `${relevantResearchPoints}\n`;
+      if (contactResearch?.grounding_links && Array.isArray(contactResearch.grounding_links) && contactResearch.grounding_links.length > 0) {
+        prompt += `\nSources:\n`;
+        contactResearch.grounding_links.slice(0, 3).forEach((link: any, idx: number) => {
+          if (link.title && link.url) {
+            prompt += `${idx + 1}. ${link.title} (${link.url})\n`;
+          }
+        });
+      }
+      prompt += `\n`;
+    } else if (contactResearch?.background_info) {
+      // Fallback: use original research if extraction failed
+      prompt += `CONTACT RESEARCH & BACKGROUND:\n`;
       const researchText = contactResearch.background_info;
-      const truncatedResearch = researchText.length > 1000 
-        ? researchText.substring(0, 1000) + '...' 
+      const truncatedResearch = researchText.length > 500 
+        ? researchText.substring(0, 500) + '...' 
         : researchText;
       prompt += `${truncatedResearch}\n`;
       if (contactResearch.grounding_links && Array.isArray(contactResearch.grounding_links) && contactResearch.grounding_links.length > 0) {

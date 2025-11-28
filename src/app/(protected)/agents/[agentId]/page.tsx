@@ -25,6 +25,7 @@ import { AgentStatus } from '@/lib/types/agents';
 import { AssignTaskModal } from '@/components/agents/AssignTaskModal';
 import { AgentActivityFeed } from '@/components/agents/AgentActivityFeed';
 import { AgentConfigEditor } from '@/components/agents/AgentConfigEditor';
+import { AgentPerformanceDashboard } from '@/components/agents/AgentPerformanceDashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAgentActivity } from '@/lib/hooks/useAgentActivity';
 import { Activity, Edit } from 'lucide-react';
@@ -251,9 +252,10 @@ export default function AgentDetailPage() {
 
         {/* Agent Details with Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsList className="grid w-full grid-cols-3 mb-6">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="performance">Performance</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -416,6 +418,14 @@ export default function AgentDetailPage() {
             <AgentActivityFeed 
               agentId={agent.id} 
               autoRefresh={agent.status === 'active'}
+            />
+          </TabsContent>
+
+          {/* Performance Tab */}
+          <TabsContent value="performance">
+            <AgentPerformanceDashboard 
+              agentId={agent.id}
+              agentType={agent.agent_type}
             />
           </TabsContent>
         </Tabs>
