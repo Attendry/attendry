@@ -12,9 +12,15 @@ import {
   CheckCircle2,
   Clock,
   PauseCircle,
-  XCircle
+  XCircle,
+  Play,
+  Trash2,
+  Settings,
+  Power
 } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from 'sonner';
+import { AgentStatus } from '@/lib/types/agents';
 
 const STATUS_CONFIG: Record<string, { icon: typeof CheckCircle2; color: string; label: string }> = {
   active: { icon: CheckCircle2, color: 'text-green-600', label: 'Active' },
@@ -35,8 +41,9 @@ export default function AgentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const agentId = params.agentId as string;
-  const { agents, loading } = useAgents();
+  const { agents, loading, updateAgent, deleteAgent, refresh } = useAgents();
   const [authReady, setAuthReady] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +67,40 @@ export default function AgentDetailPage() {
 
   const agent = agents.find(a => a.id === agentId);
   const statusConfig = agent ? STATUS_CONFIG[agent.status] || STATUS_CONFIG.idle : null;
+
+  const handleStatusChange = async (newStatus: AgentStatus) => {
+    if (!agent || processing) return;
+    
+    setProcessing(true);
+    try {
+      await updateAgent(agentId, { status: newStatus });
+      toast.success(`Agent ${newStatus === 'active' ? 'activated' : newStatus === 'paused' ? 'paused' : 'updated'} successfully`);
+      await refresh();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update agent status');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!agent || processing) return;
+    
+    if (!confirm(`Are you sure you want to delete "${agent.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      await deleteAgent(agentId);
+      toast.success('Agent deleted successfully');
+      router.push('/command-centre');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete agent');
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   if (!authReady || loading) {
     return (
@@ -126,6 +167,61 @@ export default function AgentDetailPage() {
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Management Actions */}
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          {agent.status === 'idle' || agent.status === 'paused' ? (
+            <button
+              onClick={() => handleStatusChange('active')}
+              disabled={processing}
+              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              <Play className="h-4 w-4" />
+              Activate
+            </button>
+          ) : agent.status === 'active' ? (
+            <button
+              onClick={() => handleStatusChange('paused')}
+              disabled={processing}
+              className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              <PauseCircle className="h-4 w-4" />
+              Pause
+            </button>
+          ) : null}
+          
+          {agent.status === 'error' && (
+            <button
+              onClick={() => handleStatusChange('idle')}
+              disabled={processing}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Power className="h-4 w-4" />
+              Reset
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              // TODO: Open configuration modal/page
+              toast.info('Configuration editing coming soon');
+            }}
+            disabled={processing}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            <Settings className="h-4 w-4" />
+            Configure
+          </button>
+
+          <button
+            onClick={handleDelete}
+            disabled={processing}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </button>
         </div>
 
         {/* Agent Details */}

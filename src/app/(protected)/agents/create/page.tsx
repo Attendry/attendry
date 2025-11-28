@@ -80,23 +80,23 @@ export default function CreateAgentPage() {
     };
   }, []);
 
-  // Check if agent type already exists
-  useEffect(() => {
-    if (selectedType && agents.length > 0) {
-      const exists = agents.some(a => a.agent_type === selectedType);
-      if (exists) {
-        setError(`You already have a ${AGENT_TYPES.find(t => t.type === selectedType)?.label}. Only one agent of each type is allowed.`);
-      } else {
-        setError(null);
-      }
-    }
-  }, [selectedType, agents]);
+  // Check if agent type already exists (only show warning, don't block)
+  const checkIfTypeExists = (type: AgentType | null): boolean => {
+    if (!type || agents.length === 0) return false;
+    return agents.some(a => a.agent_type === type);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!selectedType) {
       setError('Please select an agent type');
+      return;
+    }
+
+    // Check if this type already exists
+    if (checkIfTypeExists(selectedType)) {
+      setError(`You already have a ${AGENT_TYPES.find(t => t.type === selectedType)?.label}. Only one agent of each type is allowed.`);
       return;
     }
 
@@ -184,14 +184,19 @@ export default function CreateAgentPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               {AGENT_TYPES.map((agentType) => {
                 const Icon = agentType.icon;
-                const exists = agents.some(a => a.agent_type === agentType.type);
+                const exists = checkIfTypeExists(agentType.type);
                 const isSelected = selectedType === agentType.type;
 
                 return (
                   <button
                     key={agentType.type}
                     type="button"
-                    onClick={() => !exists && setSelectedType(agentType.type)}
+                    onClick={() => {
+                      if (!exists) {
+                        setSelectedType(agentType.type);
+                        setError(null);
+                      }
+                    }}
                     disabled={exists}
                     className={`rounded-xl border-2 p-6 text-left transition-all ${
                       exists
@@ -220,7 +225,7 @@ export default function CreateAgentPage() {
                         </div>
                         <p className="mt-1 text-sm text-slate-600">{agentType.description}</p>
                       </div>
-                      {isSelected && (
+                      {isSelected && !exists && (
                         <div className="rounded-full bg-blue-600 p-1">
                           <svg
                             className="h-4 w-4 text-white"

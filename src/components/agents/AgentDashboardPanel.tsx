@@ -1,8 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { useAgents } from '@/lib/hooks/useAgents';
 import { useOutreachDrafts } from '@/lib/hooks/useOutreachDrafts';
-import { AIAgent, AgentType } from '@/lib/types/agents';
+import { AIAgent, AgentType, AgentStatus } from '@/lib/types/agents';
 import { 
   Loader2, 
   AlertCircle, 
@@ -11,9 +12,13 @@ import {
   Clock, 
   PauseCircle,
   XCircle,
-  Sparkles
+  Sparkles,
+  Play,
+  Settings,
+  Trash2
 } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 
 interface AgentStatusCardProps {
   agent: AIAgent | null;
@@ -22,6 +27,42 @@ interface AgentStatusCardProps {
 }
 
 function AgentStatusCard({ agent, agentType, loading }: AgentStatusCardProps) {
+  const { updateAgent, deleteAgent, refresh } = useAgents();
+  const [processing, setProcessing] = useState(false);
+
+  const handleStatusChange = async (newStatus: AgentStatus) => {
+    if (!agent || processing) return;
+    
+    setProcessing(true);
+    try {
+      await updateAgent(agent.id, { status: newStatus });
+      toast.success(`Agent ${newStatus === 'active' ? 'activated' : 'paused'} successfully`);
+      await refresh();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update agent');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!agent || processing) return;
+    
+    if (!confirm(`Are you sure you want to delete "${agent.name}"?`)) {
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      await deleteAgent(agent.id);
+      toast.success('Agent deleted successfully');
+      await refresh();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete agent');
+    } finally {
+      setProcessing(false);
+    }
+  };
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'active':
@@ -103,6 +144,50 @@ function AgentStatusCard({ agent, agentType, loading }: AgentStatusCardProps) {
           View →
         </Link>
       </div>
+      
+      {/* Quick Actions */}
+      <div className="mt-3 flex items-center gap-2 border-t border-slate-200 pt-3">
+        {agent.status === 'idle' || agent.status === 'paused' ? (
+          <button
+            onClick={() => handleStatusChange('active')}
+            disabled={processing}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-50"
+            title="Activate agent"
+          >
+            <Play className="h-3 w-3" />
+            Activate
+          </button>
+        ) : agent.status === 'active' ? (
+          <button
+            onClick={() => handleStatusChange('paused')}
+            disabled={processing}
+            className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+            title="Pause agent"
+          >
+            <PauseCircle className="h-3 w-3" />
+            Pause
+          </button>
+        ) : null}
+        
+        <Link
+          href={`/agents/${agent.id}`}
+          className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+          title="Configure agent"
+        >
+          <Settings className="h-3 w-3" />
+          Configure
+        </Link>
+        
+        <button
+          onClick={handleDelete}
+          disabled={processing}
+          className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+          title="Delete agent"
+        >
+          <Trash2 className="h-3 w-3" />
+          Delete
+        </button>
+      </div>
     </div>
   );
 }
@@ -130,15 +215,24 @@ export function AgentDashboardPanel() {
             Manage your AI agent team for automated outreach and follow-up
           </p>
         </div>
-        {pendingCount > 0 && (
+        <div className="flex items-center gap-3">
+          {pendingCount > 0 && (
+            <Link
+              href="/agents/approvals"
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <Sparkles className="h-4 w-4" />
+              {pendingCount} Pending Approval{pendingCount !== 1 ? 's' : ''}
+            </Link>
+          )}
           <Link
-            href="/agents/approvals"
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            href="/agents/create"
+            className="inline-flex items-center gap-2 rounded-lg border border-blue-600 bg-white px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50"
           >
             <Sparkles className="h-4 w-4" />
-            {pendingCount} Pending Approval{pendingCount !== 1 ? 's' : ''}
+            Create Agent
           </Link>
-        )}
+        </div>
       </div>
 
       {agentsError && (
