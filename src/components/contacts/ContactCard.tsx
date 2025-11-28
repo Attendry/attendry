@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { AssignTaskModal } from "@/components/agents/AssignTaskModal";
 import { useAgents } from "@/lib/hooks/useAgents";
+import { useTaskSubscription } from "@/lib/hooks/useTaskSubscription";
+import { notificationService } from "@/lib/services/notification-service";
 
 interface ContactCardProps {
   contact: SavedSpeakerProfile & {
@@ -81,15 +83,14 @@ export function ContactCard({
   const isArchived = contact.archived || false;
   const status = contact.outreach_status || "not_started";
 
-  // Check for active tasks and pending drafts
+  // Get user's outreach agent
   useEffect(() => {
-    const checkAgentActivity = async () => {
+    const getOutreachAgent = async () => {
       try {
         const supabase = supabaseBrowser();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        // Get user's outreach agents
         const { data: agentData } = await supabase
           .from('ai_agents')
           .select('*')
@@ -100,63 +101,78 @@ export function ContactCard({
 
         if (agentData && agentData.length > 0) {
           setOutreachAgent(agentData[0]);
-
-          // Check for pending draft
-          const { data: drafts } = await supabase
-            .from('agent_outreach_drafts')
-            .select('id')
-            .eq('contact_id', contact.id)
-            .eq('agent_id', agentData[0].id)
-            .eq('status', 'pending_approval')
-            .limit(1);
-
-          setHasPendingDraft(drafts && drafts.length > 0);
-
-          // Check for active tasks (pending or in_progress)
-          const { data: tasks } = await supabase
-            .from('agent_tasks')
-            .select(`
-              id,
-              status,
-              task_type,
-              assigned_at,
-              input_data,
-              agent:ai_agents(id, name, agent_type)
-            `)
-            .eq('agent_id', agentData[0].id)
-            .in('status', ['pending', 'in_progress'])
-            .order('assigned_at', { ascending: false })
-            .limit(5);
-
-          // Find task for this contact
-          const contactTask = tasks?.find((task: any) => {
-            const inputData = task.input_data || {};
-            return inputData.contactId === contact.id;
-          });
-
-          if (contactTask) {
-            setActiveTask({
-              id: contactTask.id,
-              status: contactTask.status,
-              task_type: contactTask.task_type,
-              agent_name: contactTask.agent?.name || 'Agent',
-              assigned_at: contactTask.assigned_at,
-            });
-          } else {
-            setActiveTask(null);
-          }
         }
       } catch (error) {
-        console.error('Error checking agent activity:', error);
+        console.error('Error loading outreach agent:', error);
       }
     };
 
-    checkAgentActivity();
+    getOutreachAgent();
+  }, [agents]);
+
+  // Check for pending drafts
+  useEffect(() => {
+    const checkDraft = async () => {
+      if (!outreachAgent) return;
+      
+      try {
+        const supabase = supabaseBrowser();
+        const { data: drafts } = await supabase
+          .from('agent_outreach_drafts')
+          .select('id')
+          .eq('contact_id', contact.id)
+          .eq('agent_id', outreachAgent.id)
+          .eq('status', 'pending_approval')
+          .limit(1);
+
+        setHasPendingDraft(drafts && drafts.length > 0);
+      } catch (error) {
+        console.error('Error checking draft:', error);
+      }
+    };
+
+    checkDraft();
+  }, [contact.id, outreachAgent]);
+
+  // Real-time task subscription
+  const { activeTasks } = useTaskSubscription({
+    contactId: contact.id,
+    agentIds: outreachAgent ? [outreachAgent.id] : [],
+    enabled: !!outreachAgent && !isArchived,
+    onTaskComplete: async (task) => {
+      // Show notification when task completes
+      await notificationService.notifyTaskComplete({
+        task_type: task.task_type,
+        status: task.status,
+        agent_name: task.agent?.name,
+      });
+      
+      if (task.status === 'completed') {
+        toast.success('Agent task completed! Draft is ready.');
+      } else if (task.status === 'failed') {
+        toast.error('Agent task failed. Please check the task details.');
+      }
+    },
+  });
+
+  // Update activeTask state from subscription
+  useEffect(() => {
+    const activeTask = activeTasks.find(
+      (t) => ['pending', 'in_progress'].includes(t.status)
+    );
     
-    // Refresh every 5 seconds to check for status updates
-    const interval = setInterval(checkAgentActivity, 5000);
-    return () => clearInterval(interval);
-  }, [contact.id, agents]);
+    if (activeTask) {
+      setActiveTask({
+        id: activeTask.id,
+        status: activeTask.status,
+        task_type: activeTask.task_type,
+        agent_name: activeTask.agent?.name || 'Agent',
+        assigned_at: activeTask.assigned_at,
+      });
+    } else {
+      setActiveTask(null);
+    }
+  }, [activeTasks]);
 
   const handleCopyDraft = async (e: React.MouseEvent) => {
     e.stopPropagation();

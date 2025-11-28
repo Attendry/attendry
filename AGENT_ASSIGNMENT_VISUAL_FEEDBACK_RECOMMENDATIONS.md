@@ -145,6 +145,8 @@ Show full assignment history and agent relationship:
 2. ⏳ Auto-refresh task status
 3. ⏳ Push notifications for completion
 
+**📋 Detailed Implementation Plan:** See `PHASE3_REALTIME_IMPLEMENTATION_PLAN.md`
+
 ---
 
 ## Specific UI Recommendations

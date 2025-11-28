@@ -29,7 +29,9 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { toast } from "sonner";
 import { useAgents } from "@/lib/hooks/useAgents";
 import { useTaskAssignment } from "@/lib/hooks/useTaskAssignment";
+import { useTaskSubscription } from "@/lib/hooks/useTaskSubscription";
 import { AssignTaskModal } from "@/components/agents/AssignTaskModal";
+import { notificationService } from "@/lib/services/notification-service";
 import { AIAgent, OutreachChannel, TaskPriority } from "@/lib/types/agents";
 import Link from "next/link";
 
@@ -144,62 +146,6 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
     };
 
     loadDraft();
-    
-    // Load active tasks for this contact
-    const loadTasks = async () => {
-      try {
-        const supabase = supabaseBrowser();
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // Get user's agents
-        const { data: agentData } = await supabase
-          .from('ai_agents')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('status', 'active');
-
-        if (!agentData || agentData.length === 0) return;
-
-        const agentIds = agentData.map(a => a.id);
-
-        // Get all tasks for user's agents
-        const { data: allTasks } = await supabase
-          .from('agent_tasks')
-          .select(`
-            id,
-            status,
-            task_type,
-            assigned_at,
-            started_at,
-            completed_at,
-            input_data,
-            agent:ai_agents(id, name, agent_type)
-          `)
-          .in('agent_id', agentIds)
-          .order('assigned_at', { ascending: false })
-          .limit(20);
-
-        // Filter tasks for this contact
-        const contactTasks = (allTasks || []).filter((task: any) => {
-          const inputData = task.input_data || {};
-          return inputData.contactId === contact.id;
-        });
-
-        setActiveTasks(contactTasks);
-      } catch (error) {
-        console.error('Error loading tasks:', error);
-      }
-    };
-
-    loadTasks();
-    
-    // Refresh every 5 seconds to check for status updates
-    const taskInterval = setInterval(loadTasks, 5000);
-    
-    return () => {
-      clearInterval(taskInterval);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contact.id]);
 
@@ -250,6 +196,48 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
 
     loadAgentData();
   }, [contact.id, agents]);
+
+  // Real-time task subscription
+  const agentIds = availableAgents.map(a => a.id);
+  const { activeTasks: subscribedTasks } = useTaskSubscription({
+    contactId: contact.id,
+    agentIds,
+    enabled: availableAgents.length > 0,
+    onTaskComplete: async (task) => {
+      // Show notification when task completes
+      await notificationService.notifyTaskComplete({
+        task_type: task.task_type,
+        status: task.status,
+        agent_name: task.agent?.name,
+      });
+      
+      // Refresh drafts when task completes
+      if (task.status === 'completed') {
+        // Reload agent data to refresh drafts
+        const supabase = supabaseBrowser();
+        const agentIds = availableAgents.map(a => a.id);
+        const { data: drafts } = await supabase
+          .from('agent_outreach_drafts')
+          .select(`
+            *,
+            agent:ai_agents(id, name, agent_type)
+          `)
+          .eq('contact_id', contact.id)
+          .in('agent_id', agentIds)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        setAgentDrafts(drafts || []);
+        toast.success('Agent task completed!');
+      } else if (task.status === 'failed') {
+        toast.error('Agent task failed. Please check the task details.');
+      }
+    },
+  });
+
+  // Update activeTasks state from subscription
+  useEffect(() => {
+    setActiveTasks(subscribedTasks);
+  }, [subscribedTasks]);
 
   // Sync prop changes
   useEffect(() => {
