@@ -68,10 +68,19 @@ CREATE INDEX IF NOT EXISTS idx_saved_profiles_reminder ON saved_speaker_profiles
 -- ============================================================================
 -- Update Trigger for contact_research
 -- ============================================================================
+-- Create a specific function for contact_research that sets updated_at (not last_updated)
+CREATE OR REPLACE FUNCTION update_contact_research_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER update_contact_research_updated_at
   BEFORE UPDATE ON contact_research
   FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
+  EXECUTE FUNCTION update_contact_research_updated_at();
 
 -- ============================================================================
 -- Helper Function: Get contacts needing follow-up

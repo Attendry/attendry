@@ -163,7 +163,7 @@ export async function saveContactResearch(
       last_research_date: new Date().toISOString(),
       has_new_intel: false,
       new_intel_summary: null,
-      updated_at: new Date().toISOString(),
+      // updated_at is handled by database default and trigger
     }, {
       onConflict: 'contact_id',
     })
@@ -226,7 +226,7 @@ export async function updateContactResearchWithIntel(
       has_new_intel: true,
       new_intel_summary: newIntelSummary,
       last_checked_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      // updated_at is handled by database trigger
     })
     .eq('user_id', userId)
     .eq('contact_id', contactId);
@@ -250,7 +250,7 @@ export async function clearNewIntelFlag(
     .update({
       has_new_intel: false,
       new_intel_summary: null,
-      updated_at: new Date().toISOString(),
+      // updated_at is handled by database trigger
     })
     .eq('user_id', userId)
     .eq('contact_id', contactId);
