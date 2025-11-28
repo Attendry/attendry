@@ -9,7 +9,6 @@ import { Loader2, Archive, History, Plus, Zap, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { ContactCard } from "@/components/contacts/ContactCard";
 import { ContactModal } from "@/components/contacts/ContactModal";
-import { supabaseBrowser } from "@/lib/supabase-browser";
 
 const MAX_FOCUS_CONTACTS = 4;
 
