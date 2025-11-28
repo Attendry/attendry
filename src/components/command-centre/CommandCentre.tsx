@@ -72,7 +72,6 @@ const STATUS_COLORS: Record<SavedSpeakerProfile['outreach_status'], string> = {
 };
 
 type OutreachStatus = SavedSpeakerProfile['outreach_status'];
-type StatusCounts = Record<OutreachStatus | 'all', number>;
 
 const STATUS_HELPERS: Record<OutreachStatus, string> = {
   not_started: 'Need first contact',
@@ -290,13 +289,11 @@ export function CommandCentre() {
     }
   ];
 
-  const savedProfiles = useSavedProfiles({ statusFilter: 'not_started', enabled: authReady && !!userId });
+  const savedProfiles = useSavedProfiles({ statusFilter: 'all', enabled: authReady && !!userId });
   const {
     profiles,
     loading: profilesLoading,
     error: profilesError,
-    statusFilter,
-    setStatusFilter,
     updateStatus,
     refresh: refreshProfiles,
   } = savedProfiles;
@@ -314,22 +311,22 @@ export function CommandCentre() {
         label: 'Ready for Outreach',
         value: readyForOutreach,
         icon: Target,
-        filterStatus: 'not_started' as OutreachStatus,
-        link: '/saved-profiles?status=not_started',
+        filterStatus: null, // Navigate directly, no filter needed
+        link: '/contacts?status=not_started',
       },
       {
         label: 'Active Conversations',
         value: activeConversations,
         icon: MessageSquare,
-        filterStatus: null, // Multiple statuses
-        link: '/saved-profiles?status=contacted',
+        filterStatus: null, // Multiple statuses - navigate to contacts page
+        link: '/contacts',
       },
       {
         label: 'Meetings Scheduled',
         value: meetingsScheduled,
         icon: Calendar,
-        filterStatus: 'meeting_scheduled' as OutreachStatus,
-        link: '/saved-profiles?status=meeting_scheduled',
+        filterStatus: null, // Navigate directly, no filter needed
+        link: '/contacts?status=meeting_scheduled',
       },
       {
         label: 'Monitored Accounts',
@@ -340,17 +337,6 @@ export function CommandCentre() {
       },
     ];
   }, [profiles, accountData.stats.totalAccounts]);
-
-  const statusCounts = useMemo<StatusCounts>(() => {
-    return {
-      all: profiles.length,
-      not_started: profiles.filter((profile) => profile.outreach_status === 'not_started').length,
-      contacted: profiles.filter((profile) => profile.outreach_status === 'contacted').length,
-      responded: profiles.filter((profile) => profile.outreach_status === 'responded').length,
-      meeting_scheduled: profiles.filter((profile) => profile.outreach_status === 'meeting_scheduled').length,
-    };
-  }, [profiles]);
-
 
   const recentSpeakers = useMemo(() => {
     return [...profiles]
@@ -411,40 +397,6 @@ export function CommandCentre() {
             <RefreshCw className="h-4 w-4" /> Refresh
           </button>
           <Link
-            href="/saved-profiles"
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            Manage Saved Speakers
-            <ArrowUpRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </header>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <QuickEventSearchPanel onSpeakerSaved={refreshProfiles} />
-        <OutreachStatusPanel
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
-          counts={statusCounts}
-          loading={profilesLoading}
-        />
-      </div>
-
-      <CommandMetrics 
-        metrics={metrics} 
-        loading={profilesLoading && profiles.length === 0}
-        onMetricClick={(filterStatus) => {
-          if (filterStatus) {
-            setStatusFilter(filterStatus);
-          }
-        }}
-      />
-
-      <AgentDashboardPanel />
-
-      <div className="grid gap-6 lg:grid-cols-3" data-tour="trending-insights">
-        <div className="lg:col-span-2">
-          <Link
             href="/contacts"
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
@@ -452,8 +404,24 @@ export function CommandCentre() {
             <ArrowUpRight className="h-4 w-4" />
           </Link>
         </div>
-        <div className="space-y-6">
+      </header>
+
+      <div className="grid gap-6">
+        <QuickEventSearchPanel onSpeakerSaved={refreshProfiles} />
+      </div>
+
+      <CommandMetrics 
+        metrics={metrics} 
+        loading={profilesLoading && profiles.length === 0}
+      />
+
+      <AgentDashboardPanel />
+
+      <div className="grid gap-6 lg:grid-cols-3" data-tour="trending-insights">
+        <div className="lg:col-span-2 space-y-6">
           <SpeakerInsightsPanel profiles={recentSpeakers} loading={profilesLoading} />
+        </div>
+        <div className="space-y-6">
           <TrendHighlightsPanel
             categories={trendingData.categories}
             events={trendingData.events}
@@ -691,7 +659,7 @@ function DashboardSpeakerItem({
 function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   const [config, setConfig] = useState(QUICK_SEARCH_DEFAULTS);
   const [isPinned, setIsPinned] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [results, setResults] = useState<EventRec[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1539,67 +1507,6 @@ function QuickEventSearchPanel({ onSpeakerSaved }: QuickEventSearchPanelProps) {
   );
 }
 
-interface OutreachStatusPanelProps {
-  statusFilter: OutreachStatus | 'all';
-  setStatusFilter: (status: OutreachStatus | 'all') => void;
-  counts: StatusCounts;
-  loading: boolean;
-}
-
-function OutreachStatusPanel({ statusFilter, setStatusFilter, counts, loading }: OutreachStatusPanelProps) {
-  const options = useMemo(() => {
-    const order: Array<OutreachStatus | 'all'> = ['all', 'not_started', 'contacted', 'responded', 'meeting_scheduled'];
-    return order.map((value) => ({
-      value,
-      label: value === 'all' ? 'All saved' : STATUS_LABELS[value as OutreachStatus],
-      helper: value === 'all' ? 'Every profile in your queue' : STATUS_HELPERS[value as OutreachStatus],
-      count: counts[value],
-    }));
-  }, [counts]);
-
-  return (
-    <div className="h-full rounded-lg border border-slate-200 bg-white p-6">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">Outreach Focus</h2>
-          <p className="mt-1 text-sm text-slate-600">Pick a stage to see prioritised contacts.</p>
-        </div>
-        {loading && <Loader2 className="h-4 w-4 animate-spin text-blue-600" aria-label="Loading outreach states" />}
-      </div>
-      <div className="mt-5 space-y-2">
-        {options.map((option) => {
-          const isActive = statusFilter === option.value;
-          const colorClasses =
-            option.value !== 'all'
-              ? STATUS_COLORS[option.value as OutreachStatus]
-              : 'bg-slate-100 text-slate-700';
-          return (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setStatusFilter(option.value)}
-              className={`w-full rounded-xl border px-4 py-3 text-left transition ${
-                isActive
-                  ? 'border-blue-200 bg-blue-50'
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">{option.label}</p>
-                  <p className="text-xs text-slate-600">{option.helper}</p>
-                </div>
-                <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${colorClasses}`}>
-                  {option.count}
-                </span>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 interface MetricsCardProps {
   metrics: Array<{ 
@@ -1610,20 +1517,14 @@ interface MetricsCardProps {
     link?: string | null;
   }>;
   loading: boolean;
-  onMetricClick?: (filterStatus: OutreachStatus | null) => void;
 }
 
-function CommandMetrics({ metrics, loading, onMetricClick }: MetricsCardProps) {
+function CommandMetrics({ metrics, loading }: MetricsCardProps) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {metrics.map((metric) => {
         const Icon = metric.icon;
-        const isClickable = metric.filterStatus !== null || metric.link !== null;
-        const handleClick = () => {
-          if (metric.filterStatus !== null && onMetricClick) {
-            onMetricClick(metric.filterStatus);
-          }
-        };
+        const isClickable = metric.link !== null;
 
         const content = (
           <div className={`rounded-lg border border-slate-200 bg-white p-4 transition-all ${
@@ -1653,19 +1554,6 @@ function CommandMetrics({ metrics, loading, onMetricClick }: MetricsCardProps) {
             <Link key={metric.label} href={metric.link} className="block">
               {content}
             </Link>
-          );
-        }
-
-        if (isClickable && metric.filterStatus !== null) {
-          return (
-            <button
-              key={metric.label}
-              type="button"
-              onClick={handleClick}
-              className="text-left w-full"
-            >
-              {content}
-            </button>
           );
         }
 
