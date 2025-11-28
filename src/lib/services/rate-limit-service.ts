@@ -380,7 +380,6 @@ export class RateLimitService {
         return 0;
       }
       
-      const value = await this.redis.get(key);
       return value ? parseInt(value, 10) : 0;
     } catch (error) {
       console.warn(`[rate-limit] Failed to get request count for ${key}:`, error);
