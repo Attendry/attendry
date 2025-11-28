@@ -50,7 +50,6 @@ interface ContactModalProps {
 }
 
 type OutreachStatus = SavedSpeakerProfile["outreach_status"];
-type OutreachChannel = "email" | "linkedin" | "other";
 
 export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) {
   const [localContact, setLocalContact] = useState(contact);
@@ -86,7 +85,7 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
   const [loadingDrafts, setLoadingDrafts] = useState(false);
   const [activeTasks, setActiveTasks] = useState<any[]>([]);
   const { assignTask, loading: assignmentLoading } = useTaskAssignment({ 
-    agentId: selectedAgentId || undefined 
+    agentId: selectedAgentId 
   });
 
   // Load existing draft when modal opens
@@ -313,6 +312,34 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
         preferred_channel: draftChannel,
       };
       onUpdate(updated);
+
+      // Trigger automated workflow: research + draft generation
+      const hasAllPreferences = draftLanguage && draftTone && draftChannel;
+      if (hasAllPreferences) {
+        // Don't await - let it run in background
+        fetch(`/api/contacts/${contact.id}/auto-workflow`, {
+          method: 'POST',
+        })
+          .then(async (response) => {
+            const data = await response.json();
+            if (data.success) {
+              if (data.researchTriggered) {
+                toast.success('Research started', {
+                  description: 'Background research is in progress...',
+                });
+              }
+              if (data.draftTriggered) {
+                toast.success('Draft generation started', {
+                  description: 'Your outreach draft will be ready shortly!',
+                });
+              }
+            }
+          })
+          .catch((error) => {
+            console.error('Failed to trigger auto-workflow:', error);
+            // Don't show error to user - workflow will run via cron if needed
+          });
+      }
     } catch (error: any) {
       console.error("Failed to save contact:", error);
       toast.error("Failed to save", {

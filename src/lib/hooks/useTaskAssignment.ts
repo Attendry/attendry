@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { AssignTaskRequest, AssignTaskResponse, AgentTask, TaskPriority } from '@/lib/types/agents';
 
 interface UseTaskAssignmentOptions {
-  agentId: string;
+  agentId?: string;
 }
 
 interface UseTaskAssignmentReturn {
@@ -21,6 +21,11 @@ export function useTaskAssignment(options: UseTaskAssignmentOptions): UseTaskAss
   const assignTask = useCallback(async (
     request: Omit<AssignTaskRequest, 'taskType'> & { taskType: string }
   ): Promise<AgentTask | null> => {
+    if (!agentId) {
+      setError('No agent selected');
+      return null;
+    }
+
     setLoading(true);
     setError(null);
 
