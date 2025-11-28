@@ -27,15 +27,19 @@ CREATE INDEX IF NOT EXISTS idx_ai_agents_user_type ON ai_agents(user_id, agent_t
 -- RLS policies for ai_agents
 ALTER TABLE ai_agents ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own agents" ON ai_agents;
 CREATE POLICY "Users can view own agents" ON ai_agents
   FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own agents" ON ai_agents;
 CREATE POLICY "Users can insert own agents" ON ai_agents
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own agents" ON ai_agents;
 CREATE POLICY "Users can update own agents" ON ai_agents
   FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own agents" ON ai_agents;
 CREATE POLICY "Users can delete own agents" ON ai_agents
   FOR DELETE USING (auth.uid() = user_id);
 
@@ -70,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_tasks_assigned_at ON agent_tasks(assigned_a
 -- RLS policies for agent_tasks
 ALTER TABLE agent_tasks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own agent tasks" ON agent_tasks;
 CREATE POLICY "Users can view own agent tasks" ON agent_tasks
   FOR SELECT USING (
     EXISTS (
@@ -79,6 +84,7 @@ CREATE POLICY "Users can view own agent tasks" ON agent_tasks
     )
   );
 
+DROP POLICY IF EXISTS "Users can insert own agent tasks" ON agent_tasks;
 CREATE POLICY "Users can insert own agent tasks" ON agent_tasks
   FOR INSERT WITH CHECK (
     EXISTS (
@@ -88,6 +94,7 @@ CREATE POLICY "Users can insert own agent tasks" ON agent_tasks
     )
   );
 
+DROP POLICY IF EXISTS "Users can update own agent tasks" ON agent_tasks;
 CREATE POLICY "Users can update own agent tasks" ON agent_tasks
   FOR UPDATE USING (
     EXISTS (
@@ -123,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_messages_unread ON agent_messages(to_agent_
 -- RLS policies for agent_messages
 ALTER TABLE agent_messages ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own agent messages" ON agent_messages;
 CREATE POLICY "Users can view own agent messages" ON agent_messages
   FOR SELECT USING (
     EXISTS (
@@ -163,6 +171,7 @@ CREATE INDEX IF NOT EXISTS idx_outreach_drafts_created ON agent_outreach_drafts(
 -- RLS policies for agent_outreach_drafts
 ALTER TABLE agent_outreach_drafts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own outreach drafts" ON agent_outreach_drafts;
 CREATE POLICY "Users can view own outreach drafts" ON agent_outreach_drafts
   FOR SELECT USING (
     EXISTS (
@@ -172,6 +181,7 @@ CREATE POLICY "Users can view own outreach drafts" ON agent_outreach_drafts
     )
   );
 
+DROP POLICY IF EXISTS "Users can insert own outreach drafts" ON agent_outreach_drafts;
 CREATE POLICY "Users can insert own outreach drafts" ON agent_outreach_drafts
   FOR INSERT WITH CHECK (
     EXISTS (
@@ -181,6 +191,7 @@ CREATE POLICY "Users can insert own outreach drafts" ON agent_outreach_drafts
     )
   );
 
+DROP POLICY IF EXISTS "Users can update own outreach drafts" ON agent_outreach_drafts;
 CREATE POLICY "Users can update own outreach drafts" ON agent_outreach_drafts
   FOR UPDATE USING (
     EXISTS (
@@ -213,6 +224,7 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_agent_created ON agent_activity_log(
 -- RLS policies for agent_activity_log
 ALTER TABLE agent_activity_log ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own agent activity" ON agent_activity_log;
 CREATE POLICY "Users can view own agent activity" ON agent_activity_log
   FOR SELECT USING (
     EXISTS (
@@ -248,6 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_performance_metrics_agent_date ON agent_performan
 -- RLS policies for agent_performance_metrics
 ALTER TABLE agent_performance_metrics ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own agent metrics" ON agent_performance_metrics;
 CREATE POLICY "Users can view own agent metrics" ON agent_performance_metrics
   FOR SELECT USING (
     EXISTS (
@@ -273,6 +286,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger to update last_active_at on task creation/update
+DROP TRIGGER IF EXISTS update_agent_last_active_on_task ON agent_tasks;
 CREATE TRIGGER update_agent_last_active_on_task
   AFTER INSERT OR UPDATE ON agent_tasks
   FOR EACH ROW
