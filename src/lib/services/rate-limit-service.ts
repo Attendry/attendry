@@ -394,15 +394,13 @@ export class RateLimitService {
     try {
       // Try to increment (will auto-connect if needed)
       const count = await this.redis.incr(key);
-      if (count === 0 && !this.redis.isAvailable()) {
+      if (count === null && !this.redis.isAvailable()) {
         console.warn(`[rate-limit] Redis not available for incrementing ${key}`);
         return;
       }
       
-      // Use INCR and set TTL
-      const count = await this.redis.incr(key);
+      // If this is the first time setting this key, set TTL
       if (count === 1) {
-        // First time setting this key, set TTL
         await this.redis.expire(key, ttl);
       }
     } catch (error) {
