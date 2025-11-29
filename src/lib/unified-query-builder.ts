@@ -376,25 +376,21 @@ function buildNarrativeQuery(params: {
     temporalDescription = 'scheduled through the upcoming 12 months';
   }
   
-  // PRIORITY: Include user's search term if provided (this is the actual search query)
-  let searchTermContext = '';
-  if (baseQuery && baseQuery.trim()) {
-    // Only add if baseQuery is a simple search term (not a complex structured query)
-    const isSimpleTerm = !baseQuery.includes(' OR ') && 
-                         !baseQuery.includes(' AND ') &&
-                         !baseQuery.includes('(') &&
-                         baseQuery.length < 100 &&
-                         baseQuery.trim().split(/\s+/).length <= 5;
-    
-    if (isSimpleTerm) {
-      const cleanTerm = baseQuery.trim();
-      searchTermContext = ` related to ${cleanTerm}`;
-    }
-  }
+  // PRIORITY FIX: User's search term is PRIMARY, not secondary
+  // If user provided a search term, it should be the main focus of the query
+  const hasUserSearchTerm = baseQuery && baseQuery.trim() && 
+    !baseQuery.includes(' OR ') && 
+    !baseQuery.includes(' AND ') &&
+    !baseQuery.includes('(') &&
+    baseQuery.length < 100 &&
+    baseQuery.trim().split(/\s+/).length <= 10; // Increased limit for better coverage
   
-  // Build user-specific context for narrative query (secondary to search term)
+  const userSearchTerm = hasUserSearchTerm ? baseQuery.trim() : '';
+  
+  // Build user-specific context for narrative query (secondary to user search term)
   let userContext = '';
-  if (userProfile) {
+  if (userProfile && !hasUserSearchTerm) {
+    // Only use profile context if user didn't provide search term
     const industryTerms = userProfile.industry_terms || [];
     const icpTerms = userProfile.icp_terms || [];
     
@@ -411,30 +407,38 @@ function buildNarrativeQuery(params: {
     }
   }
 
-  // Build narrative query based on language with user context
-  // If user has specific industry terms, prioritize those over generic "business"
+  // Build narrative query based on language
+  // PRIORITY: User search term comes FIRST
   const industryTerms = userProfile?.industry_terms || [];
   const hasSpecificIndustry = industryTerms.length > 0;
   
   if (language === 'de') {
-    if (hasSpecificIndustry) {
+    if (userSearchTerm) {
+      // User provided search term - make it primary
+      return `Finde Events und Konferenzen über "${userSearchTerm}" in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}.`;
+    } else if (hasSpecificIndustry) {
       const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Finde ${primaryIndustry} Events und Konferenzen in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}${searchTermContext}${userContext}.`;
+      return `Finde ${primaryIndustry} Events und Konferenzen in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}${userContext}.`;
     }
-    return `Finde Geschäftsveranstaltungen und professionelle Events in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}${searchTermContext}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
+    return `Finde Geschäftsveranstaltungen und professionelle Events in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
   } else if (language === 'fr') {
-    if (hasSpecificIndustry) {
+    if (userSearchTerm) {
+      return `Trouvez des événements et conférences sur "${userSearchTerm}" en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}.`;
+    } else if (hasSpecificIndustry) {
       const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Trouvez des événements et conférences ${primaryIndustry} en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}${searchTermContext}${userContext}.`;
+      return `Trouvez des événements et conférences ${primaryIndustry} en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}${userContext}.`;
     }
-    return `Trouvez des événements d'affaires et professionnels en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}${searchTermContext}. Focus sur les affaires et le développement professionnel${userContext}.`;
+    return `Trouvez des événements d'affaires et professionnels en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}. Focus sur les affaires et le développement professionnel${userContext}.`;
   } else {
-    if (hasSpecificIndustry) {
-      // Lead with specific industry terms, not generic "business"
+    if (userSearchTerm) {
+      // User provided search term - make it PRIMARY focus
+      return `Find events and conferences about "${userSearchTerm}" in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}.`;
+    } else if (hasSpecificIndustry) {
+      // No user term - use industry terms
       const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Find ${primaryIndustry} events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}${searchTermContext}${userContext}.`;
+      return `Find ${primaryIndustry} events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}${userContext}.`;
     }
-    return `Find business events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}${searchTermContext}. Focus on business and professional development${userContext}.`;
+    return `Find business events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}. Focus on business and professional development${userContext}.`;
   }
 }
 

@@ -148,6 +148,7 @@ export function RelevanceIndicator({
 
 /**
  * Helper function to extract match reasons from event data and search params
+ * Now enhanced to use relevance data from API if available
  */
 export function extractMatchReasons(
   event: {
@@ -157,6 +158,13 @@ export function extractMatchReasons(
     topics?: string[] | null;
     organizer?: string | null;
     speakers?: Array<{ name?: string }> | null;
+    // Relevance data from API (if available)
+    relevance_reasons?: string[];
+    relevance_matched_terms?: {
+      industry?: string[];
+      icp?: string[];
+      competitors?: string[];
+    };
   },
   searchParams?: {
     keywords?: string;
@@ -167,49 +175,120 @@ export function extractMatchReasons(
 ): MatchReason[] {
   const reasons: MatchReason[] = [];
 
-  // Location match
+  // If relevance_reasons are available from API, use them (more comprehensive)
+  if (event.relevance_reasons && event.relevance_reasons.length > 0) {
+    // Parse relevance reasons from API
+    event.relevance_reasons.forEach((reason) => {
+      // Industry match
+      if (reason.includes('industry') || reason.includes('Industry')) {
+        const matchedTerms = event.relevance_matched_terms?.industry || [];
+        if (matchedTerms.length > 0) {
+          reasons.push({ 
+            type: 'industry', 
+            value: matchedTerms[0], 
+            confidence: 0.9 
+          });
+        }
+      }
+      // ICP match
+      if (reason.includes('ICP') || reason.includes('icp')) {
+        const matchedTerms = event.relevance_matched_terms?.icp || [];
+        if (matchedTerms.length > 0) {
+          reasons.push({ 
+            type: 'keyword', 
+            value: `ICP: ${matchedTerms[0]}`, 
+            confidence: 0.85 
+          });
+        }
+      }
+      // Competitor match
+      if (reason.includes('competitor') || reason.includes('Competitor')) {
+        const matchedTerms = event.relevance_matched_terms?.competitors || [];
+        if (matchedTerms.length > 0) {
+          reasons.push({ 
+            type: 'industry', 
+            value: `Competitor: ${matchedTerms[0]}`, 
+            confidence: 0.8 
+          });
+        }
+      }
+      // Data quality
+      if (reason.includes('High data quality')) {
+        reasons.push({ 
+          type: 'keyword', 
+          value: 'High quality data', 
+          confidence: 0.7 
+        });
+      }
+      // Upcoming event
+      if (reason.includes('Upcoming event')) {
+        // Will be handled by date match below
+      }
+    });
+
+    // Add matched terms as industry/keyword reasons
+    if (event.relevance_matched_terms) {
+      event.relevance_matched_terms.industry?.forEach(term => {
+        if (!reasons.some(r => r.value === term)) {
+          reasons.push({ type: 'industry', value: term, confidence: 0.85 });
+        }
+      });
+      event.relevance_matched_terms.icp?.forEach(term => {
+        if (!reasons.some(r => r.value.includes(term))) {
+          reasons.push({ type: 'keyword', value: term, confidence: 0.8 });
+        }
+      });
+    }
+  }
+
+  // Location match (always check, even if relevance data exists)
   if (searchParams?.country && event.country) {
     if (event.country.toLowerCase() === searchParams.country.toLowerCase() || 
         searchParams.country === 'EU') {
       const location = [event.city, event.country].filter(Boolean).join(', ');
-      if (location) {
+      if (location && !reasons.some(r => r.type === 'location')) {
         reasons.push({ type: 'location', value: location, confidence: 0.9 });
       }
     }
   }
 
-  // Date match
+  // Date match (always check)
   if (searchParams?.from && searchParams?.to && event.starts_at) {
     const eventDate = new Date(event.starts_at);
     const fromDate = new Date(searchParams.from);
     const toDate = new Date(searchParams.to);
     
     if (eventDate >= fromDate && eventDate <= toDate) {
-      reasons.push({ 
-        type: 'date', 
-        value: eventDate.toLocaleDateString(), 
-        confidence: 0.8 
-      });
+      if (!reasons.some(r => r.type === 'date')) {
+        reasons.push({ 
+          type: 'date', 
+          value: eventDate.toLocaleDateString(), 
+          confidence: 0.8 
+        });
+      }
     }
   }
 
-  // Keyword match (simple check - could be enhanced)
+  // Keyword match from search query (if not already covered by relevance)
   if (searchParams?.keywords && event.topics) {
     const keywords = searchParams.keywords.toLowerCase().split(/\s+/);
     const matchingTopics = event.topics.filter(topic => 
       keywords.some(keyword => topic.toLowerCase().includes(keyword))
     );
     if (matchingTopics.length > 0) {
-      reasons.push({ 
-        type: 'keyword', 
-        value: matchingTopics[0], 
-        confidence: 0.7 
-      });
+      const topic = matchingTopics[0];
+      if (!reasons.some(r => r.value === topic)) {
+        reasons.push({ 
+          type: 'keyword', 
+          value: topic, 
+          confidence: 0.7 
+        });
+      }
     }
   }
 
   // Organizer match
-  if (event.organizer) {
+  if (event.organizer && !reasons.some(r => r.type === 'organizer')) {
     reasons.push({ type: 'organizer', value: event.organizer, confidence: 0.6 });
   }
 

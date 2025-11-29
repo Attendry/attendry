@@ -57,6 +57,14 @@ interface Event {
   confidence_reason?: string | null; // Confidence reason
   pipeline_metadata?: any | null;   // Pipeline metadata (LLM enhanced, quality scores, etc.)
   dateRangeSource?: 'original' | '2-weeks' | '1-month';  // Date range expansion source
+  // Relevance scoring data (from RelevanceService)
+  relevance_score?: number | null;   // Relevance score (0-100)
+  relevance_reasons?: string[];      // Array of relevance reason strings
+  relevance_matched_terms?: {       // Matched terms breakdown
+    industry?: string[];
+    icp?: string[];
+    competitors?: string[];
+  };
 }
 
 /**
@@ -178,7 +186,15 @@ const EventCard = memo(function EventCard({
 
   const matchReasons = useMemo(() => {
     if (!state.searchParams) return [];
-    return extractMatchReasons(ev, state.searchParams);
+    return extractMatchReasons(
+      {
+        ...ev,
+        // Pass relevance data from API if available
+        relevance_reasons: ev.relevance_reasons,
+        relevance_matched_terms: ev.relevance_matched_terms,
+      },
+      state.searchParams
+    );
   }, [ev, state.searchParams]);
 
   const salesHookMessage = useMemo(() => {
@@ -723,7 +739,12 @@ const EventCard = memo(function EventCard({
           <div className="mt-3">
             <RelevanceIndicator
               matchReasons={matchReasons}
-              confidence={ev.confidence || undefined}
+              confidence={
+                // Use relevance_score from API if available (0-100), otherwise use confidence (0-1)
+                (ev as any).relevance_score !== undefined && (ev as any).relevance_score !== null
+                  ? (ev as any).relevance_score / 100
+                  : ev.confidence || undefined
+              }
               searchQuery={state.searchParams.keywords}
               compact={true}
             />
