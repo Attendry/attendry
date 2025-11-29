@@ -7,6 +7,7 @@
 
 import { getRedisClient } from './redis-client';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { safeParseJson } from '@/lib/utils/json-parser';
 
 /**
  * Cache configuration
@@ -108,7 +109,16 @@ export class UnifiedCacheService {
       const redisData = await this.redis.get(redisKey);
       if (redisData) {
         this.stats.hits++;
-        const parsedData = JSON.parse(redisData);
+        // Use safe JSON parsing to handle malformed or already-parsed data
+        const parsedData = safeParseJson<T>(redisData);
+        
+        if (parsedData === null) {
+          // If parsing failed, log and treat as miss
+          console.warn(`[CACHE] Failed to parse Redis data for key: ${redisKey}, treating as miss`);
+          this.stats.misses++;
+          this.stats.errors++;
+          return null;
+        }
         
         // Promote to L1
         this.l1Cache.set(redisKey, {
@@ -117,7 +127,7 @@ export class UnifiedCacheService {
         });
         
         console.log(`[CACHE] L2 (Redis) hit for key: ${redisKey}`);
-        return parsedData as T;
+        return parsedData;
       }
 
       // L3: Fallback to database cache if enabled

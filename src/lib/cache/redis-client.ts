@@ -197,7 +197,20 @@ export class RedisClient {
     try {
       if (this.connectionType === 'upstash-rest' && this.upstashClient) {
         const result = await this.upstashClient.get(key);
-        return result ? String(result) : null;
+        if (!result) return null;
+        
+        // Upstash REST API auto-parses JSON, so we need to handle both cases:
+        // 1. If it's already a string, return it
+        // 2. If it's an object (auto-parsed), stringify it back
+        if (typeof result === 'string') {
+          return result;
+        } else if (typeof result === 'object') {
+          // It was auto-parsed by Upstash, stringify it back
+          return JSON.stringify(result);
+        } else {
+          // Primitive value, convert to string
+          return String(result);
+        }
       } else if (this.client) {
         return await this.client.get(key);
       }

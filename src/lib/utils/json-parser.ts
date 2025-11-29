@@ -36,9 +36,18 @@ function repairJson(input: string): string {
 
 /**
  * Safely parses JSON with multiple fallback strategies
+ * Handles both string inputs and already-parsed objects (e.g., from Upstash auto-parsing)
  */
-export function safeParseJson<T = any>(input: string): T | null {
-  if (!input || typeof input !== 'string') {
+export function safeParseJson<T = any>(input: string | any): T | null {
+  // If input is already an object/array, return it directly (handles Upstash auto-parsing)
+  if (input !== null && input !== undefined) {
+    if (typeof input === 'object' || Array.isArray(input)) {
+      return input as T;
+    }
+  }
+  
+  // If input is not a string, return null (can't parse non-strings)
+  if (typeof input !== 'string') {
     return null;
   }
 

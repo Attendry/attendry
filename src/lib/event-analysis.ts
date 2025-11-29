@@ -1180,15 +1180,21 @@ Return JSON array with metadata for each chunk:
         return await processMetadataChunksIndividually(chunks, model, aggregatedMetadata, crawlResults, eventTitle, eventDate, country);
       }
 
-      // Parse batch response
+      // Parse batch response using safe JSON parser
       let batchResults: Array<{ chunkIndex: number; metadata: any }> = [];
       try {
-        batchResults = JSON.parse(text);
-        if (!Array.isArray(batchResults)) {
-          throw new Error('Batch response is not an array');
+        // Use safe JSON parser to handle malformed JSON from Gemini
+        const { safeParseJson } = await import('@/lib/utils/json-parser');
+        const parsed = safeParseJson<Array<{ chunkIndex: number; metadata: any }>>(text);
+        
+        if (!parsed || !Array.isArray(parsed)) {
+          throw new Error('Batch response is not an array or failed to parse');
         }
+        
+        batchResults = parsed;
       } catch (jsonError) {
         console.warn('[event-analysis] Failed to parse batch metadata response, falling back to individual processing:', jsonError);
+        console.warn('[event-analysis] Raw response preview:', text.substring(0, 500));
         return await processMetadataChunksIndividually(chunks, model, aggregatedMetadata, crawlResults, eventTitle, eventDate, country);
       }
 
@@ -1943,15 +1949,21 @@ If NO PEOPLE found in a chunk, return empty speakers array: {"chunkIndex": 0, "s
         return await processSpeakerChunksIndividually(chunks, model, speakerMap, upsertSpeaker);
       }
 
-      // Parse batch response
+      // Parse batch response using safe JSON parser
       let batchResults: Array<{ chunkIndex: number; speakers: any[] }> = [];
       try {
-        batchResults = JSON.parse(text);
-        if (!Array.isArray(batchResults)) {
-          throw new Error('Batch response is not an array');
+        // Use safe JSON parser to handle malformed JSON from Gemini
+        const { safeParseJson } = await import('@/lib/utils/json-parser');
+        const parsed = safeParseJson<Array<{ chunkIndex: number; speakers: any[] }>>(text);
+        
+        if (!parsed || !Array.isArray(parsed)) {
+          throw new Error('Batch response is not an array or failed to parse');
         }
+        
+        batchResults = parsed;
       } catch (jsonError) {
         console.warn('[event-analysis] Failed to parse batch speaker response, falling back to individual processing:', jsonError);
+        console.warn('[event-analysis] Raw response preview:', text.substring(0, 500));
         return await processSpeakerChunksIndividually(chunks, model, speakerMap, upsertSpeaker);
       }
 
