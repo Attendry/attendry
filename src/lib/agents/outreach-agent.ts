@@ -65,7 +65,24 @@ export class OutreachAgent extends BaseAgent {
     }
 
     try {
+      // Validate input_data structure
+      if (!task.input_data || typeof task.input_data !== 'object') {
+        return {
+          success: false,
+          error: 'Invalid task input_data: must be an object'
+        };
+      }
+
       const input = task.input_data as DraftOutreachTaskInput;
+      
+      // Validate required fields
+      if (!input.contactId) {
+        return {
+          success: false,
+          error: 'Missing required field: contactId'
+        };
+      }
+
       const draft = await this.draftOutreachMessage(input, task.id);
       
       return {
@@ -79,9 +96,10 @@ export class OutreachAgent extends BaseAgent {
         requiresApproval: !this.config.autoApprove
       };
     } catch (error: any) {
+      console.error('[OutreachAgent] Error processing task:', error);
       return {
         success: false,
-        error: error.message
+        error: error.message || 'Unknown error occurred while processing task'
       };
     }
   }
@@ -93,8 +111,17 @@ export class OutreachAgent extends BaseAgent {
     input: DraftOutreachTaskInput,
     taskId: string
   ): Promise<any> {
+    // Validate input
+    if (!input.contactId) {
+      throw new Error('contactId is required');
+    }
+
     // Gather context
     const contact = await this.getContact(input.contactId);
+    
+    if (!contact) {
+      throw new Error(`Contact ${input.contactId} not found`);
+    }
     const opportunity = input.opportunityId 
       ? await this.getOpportunity(input.opportunityId)
       : null;
@@ -118,7 +145,18 @@ export class OutreachAgent extends BaseAgent {
 
     // Use preferences from contact or input context
     const preferredLanguage = input.context?.preferredLanguage || contact.preferred_language || 'English';
-    const preferredTone = input.context?.preferredTone || contact.preferred_tone || this.config.messageTone;
+    
+    // Map Formal/Informal to professional/friendly/casual for prompt
+    let preferredTone: string;
+    const toneFromInput = input.context?.preferredTone || contact.preferred_tone;
+    if (toneFromInput === 'Formal') {
+      preferredTone = 'professional';
+    } else if (toneFromInput === 'Informal') {
+      preferredTone = 'friendly';
+    } else {
+      preferredTone = this.config.messageTone || 'professional';
+    }
+    
     const preferredChannel = input.channel || (contact.preferred_channel as OutreachChannel) || 'email';
 
     // Build LLM prompt
@@ -383,7 +421,10 @@ If the research data is not relevant for outreach, return "No relevant outreach 
 
     // Requirements
     prompt += `REQUIREMENTS:\n`;
-    prompt += `- Tone: ${tone} (${tone === 'Formal' ? 'use formal language, titles, and professional structure' : 'use friendly, conversational language while remaining professional'})\n`;
+    const toneDescription = tone === 'professional' || tone === 'Formal' 
+      ? 'use formal language, titles, and professional structure'
+      : 'use friendly, conversational language while remaining professional';
+    prompt += `- Tone: ${tone} (${toneDescription})\n`;
     prompt += `- Channel: ${channel}\n`;
     if (channel === 'email') {
       prompt += `- Include a clear, compelling subject line\n`;
