@@ -4,9 +4,10 @@ import { executeOptimizedSearch } from '@/lib/optimized-orchestrator';
 import { deriveLocale, getCountryContext, isValidISO2Country, toISO2Country } from '@/lib/utils/country';
 import { supabaseServer } from '@/lib/supabase-server';
 import { createHash } from 'crypto';
+import { RelevanceService, type UserProfile, type RelevanceScore } from '@/lib/services/relevance-service';
 
 // Helper function to process Optimized Orchestrator results
-async function processOptimizedResults(
+export async function processOptimizedResults(
   optimizedResult: any,
   country: string | null,
   dateFrom: string | null,
@@ -339,6 +340,90 @@ export async function POST(req: NextRequest) {
 
     // Optimized Orchestrator already includes speaker enhancement
     console.log(`[api/events/run] Optimized Orchestrator completed with ${result.events?.length || 0} enhanced events`);
+
+    // Calculate relevance scores if user profile is available (skip for natural language queries)
+    if (result.events && result.events.length > 0 && !useNaturalLanguage) {
+      try {
+        const supabase = await supabaseServer();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const userProfile = await RelevanceService.getUserProfile(user.id);
+          if (userProfile) {
+            // Convert events to EventData format for RelevanceService
+            const eventDataForScoring = result.events.map((event: any) => ({
+              id: event.id || event.source_url,
+              title: event.title || 'Event',
+              starts_at: event.starts_at || undefined,
+              ends_at: event.ends_at || undefined,
+              city: event.city || undefined,
+              country: event.country || undefined,
+              venue: event.venue || undefined,
+              organizer: event.organizer || undefined,
+              description: event.description || undefined,
+              topics: event.topics || undefined,
+              speakers: event.speakers || [],
+              sponsors: event.sponsors || [],
+              participating_organizations: event.participating_organizations || undefined,
+              partners: event.partners || undefined,
+              competitors: event.competitors || undefined,
+              confidence: event.confidence || undefined,
+              data_completeness: undefined,
+            }));
+
+            // Calculate relevance scores
+            const relevanceScores = await RelevanceService.calculateRelevanceScores(
+              eventDataForScoring,
+              userProfile
+            );
+
+            // Create a map of eventId -> relevance score
+            const scoreMap = new Map<string, RelevanceScore>();
+            relevanceScores.forEach(score => {
+              scoreMap.set(score.eventId, score);
+            });
+
+            // Attach relevance scores to events and sort by relevance
+            result.events = result.events
+              .map((event: any) => {
+                const eventId = event.id || event.source_url;
+                const relevanceScore = scoreMap.get(eventId);
+                
+                return {
+                  ...event,
+                  relevance_score: relevanceScore ? Math.round(relevanceScore.score * 100) : null,
+                  relevance_reasons: relevanceScore?.reasons || [],
+                  relevance_matched_terms: relevanceScore?.matchedTerms || {
+                    industry: [],
+                    icp: [],
+                    competitors: [],
+                  },
+                };
+              })
+              .sort((a: any, b: any) => {
+                // Sort by relevance score (highest first), then by confidence, then by date
+                const scoreA = a.relevance_score ?? 0;
+                const scoreB = b.relevance_score ?? 0;
+                if (scoreB !== scoreA) {
+                  return scoreB - scoreA;
+                }
+                const confA = a.confidence ?? 0;
+                const confB = b.confidence ?? 0;
+                if (confB !== confA) {
+                  return confB - confA;
+                }
+                // Sort by date (upcoming first)
+                const dateA = a.starts_at ? new Date(a.starts_at).getTime() : 0;
+                const dateB = b.starts_at ? new Date(b.starts_at).getTime() : 0;
+                return dateA - dateB;
+              });
+
+            console.log(`[api/events/run] Calculated relevance scores for ${result.events.length} events, sorted by relevance`);
+          }
+        }
+      } catch (error) {
+        console.warn('[api/events/run] Failed to calculate relevance scores, continuing without sorting:', error);
+      }
+    }
 
     // Save search results asynchronously
     if (result.events && result.events.length > 0) {

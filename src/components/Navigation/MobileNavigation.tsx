@@ -6,14 +6,15 @@ import Link from 'next/link';
 import { 
   Home, 
   Calendar, 
-  Search, 
-  Brain, 
-  BarChart3, 
   Bell, 
   Settings,
   X,
   Menu,
-  Target
+  Target,
+  Users,
+  LayoutGrid,
+  Activity,
+  TrendingUp
 } from 'lucide-react';
 
 interface NavigationItem {
@@ -31,12 +32,15 @@ interface MobileNavigationProps {
 export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
   const pathname = usePathname();
 
+  // Match sidebar structure - clean, non-duplicative
   const navigationItems: NavigationItem[] = [
-    { href: '/', label: 'Dashboard', icon: Home },
+    { href: '/dashboard', label: 'Home', icon: Home },
     { href: '/opportunities', label: 'Opportunities', icon: Target },
     { href: '/events', label: 'Events', icon: Calendar },
-    { href: '/recommendations', label: 'Intelligence', icon: Brain },
-    { href: '/activity', label: 'Reporting', icon: BarChart3 },
+    { href: '/contacts', label: 'Contacts', icon: Users },
+    { href: '/events-board', label: 'Events Board', icon: LayoutGrid },
+    { href: '/trending', label: 'Insights', icon: TrendingUp },
+    { href: '/activity', label: 'Activity', icon: Activity },
     { href: '/notifications', label: 'Notifications', icon: Bell, badge: 3 },
     { href: '/settings', label: 'Settings', icon: Settings }
   ];

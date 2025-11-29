@@ -269,41 +269,59 @@ export async function getEventSpeakers(eventId: string): Promise<SpeakerHistoryE
 }
 
 /**
- * Find speakers by name (fuzzy matching via speaker_key generation)
- * Note: This is a simple implementation. For true fuzzy matching,
- * use the fuzzy matching logic from extract.ts
+ * Find speakers by name (fuzzy matching via unified search API)
  * 
  * @param name Speaker name
  * @param org Optional organization
  * @returns Array of matching speaker keys
+ * 
+ * @deprecated Use unified search API (/api/speakers/search) for better results
  */
 export async function findSpeakersByName(
   name: string,
   org?: string
 ): Promise<string[]> {
   try {
-    const supabase = supabaseServer();
-    
-    // Generate key for the search term
-    const searchKey = generateSpeakerKey({ name, org });
-    
-    // Find speakers with similar keys (exact match for now)
-    // For true fuzzy matching, we'd need to query all speakers and filter
-    const { data, error } = await supabase
-      .from('speaker_event_history')
-      .select('speaker_key')
-      .eq('speaker_key', searchKey)
-      .limit(1);
-    
-    if (error) {
-      console.error('[speaker-service] Error finding speakers:', error);
-      return [];
+    // Use unified search API for better fuzzy matching
+    const { searchSpeakers } = await import('./speaker-search-service');
+    const result = await searchSpeakers({
+      name,
+      org,
+      limit: 10,
+    });
+
+    // Extract unique speaker keys
+    const speakerKeys = new Set<string>();
+    for (const speaker of result.results) {
+      if (speaker.speaker_key) {
+        speakerKeys.add(speaker.speaker_key);
+      }
     }
-    
-    return data ? Array.from(new Set(data.map(d => d.speaker_key))) : [];
+
+    return Array.from(speakerKeys);
   } catch (error) {
     console.error('[speaker-service] Exception finding speakers:', error);
-    return [];
+    // Fallback to simple key-based search
+    try {
+      const supabase = supabaseServer();
+      const searchKey = generateSpeakerKey({ name, org });
+      
+      const { data, error } = await supabase
+        .from('speaker_event_history')
+        .select('speaker_key')
+        .eq('speaker_key', searchKey)
+        .limit(1);
+      
+      if (error) {
+        console.error('[speaker-service] Error finding speakers (fallback):', error);
+        return [];
+      }
+      
+      return data ? Array.from(new Set(data.map(d => d.speaker_key))) : [];
+    } catch (fallbackError) {
+      console.error('[speaker-service] Fallback search failed:', fallbackError);
+      return [];
+    }
   }
 }
 

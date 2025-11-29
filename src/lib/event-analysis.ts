@@ -1778,7 +1778,7 @@ export async function extractAndEnhanceSpeakers(crawlResults: CrawlResult[]): Pr
       const normalizedSpeaker: SpeakerData = {
         name,
         title: title,
-        company: company,
+        org: company, // Use 'org' to match SpeakerData interface
         bio: speaker.bio?.trim?.() ?? ''
       };
 

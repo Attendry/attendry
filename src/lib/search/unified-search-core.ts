@@ -726,20 +726,33 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
 
     console.log('[unified-cse] Response data keys:', Object.keys(data));
 
-    let items: string[] = (data?.items ?? [])
-      .map((x: any) => x?.link)
-      .filter((u: string) => typeof u === 'string' && u.startsWith('http'));
+    // Extract full CSE items with title, link, and snippet (not just URLs)
+    const rawItems = (data?.items ?? []).filter((x: any) => 
+      x?.link && typeof x.link === 'string' && x.link.startsWith('http')
+    );
 
     // Post-filter results by country to ensure geographic accuracy
-    if (params.country && items.length > 0) {
-      const filteredItems = filterResultsByCountry(items, params.country);
-      if (filteredItems.length < items.length) {
-        console.log(`[unified-cse] Filtered ${items.length - filteredItems.length} non-${params.country.toUpperCase()} results`);
+    let filteredItems = rawItems;
+    if (params.country && rawItems.length > 0) {
+      const countryFiltered = filterResultsByCountry(
+        rawItems.map((x: any) => x.link),
+        params.country
+      );
+      const countryFilteredSet = new Set(countryFiltered);
+      filteredItems = rawItems.filter((x: any) => countryFilteredSet.has(x.link));
+      if (filteredItems.length < rawItems.length) {
+        console.log(`[unified-cse] Filtered ${rawItems.length - filteredItems.length} non-${params.country.toUpperCase()} results`);
       }
-      items = filteredItems;
     }
 
-    console.log('[unified-cse] Extracted URLs:', items.length, items.slice(0, 3));
+    // Return enriched items with title, link, and snippet
+    const items = filteredItems.map((x: any) => ({
+      url: x.link,
+      title: x.title || undefined,
+      description: x.snippet || undefined,
+    }));
+
+    console.log('[unified-cse] Extracted items:', items.length, items.slice(0, 3).map(i => ({ url: i.url, hasTitle: !!i.title })));
 
     const result: UnifiedSearchResult = {
       items,

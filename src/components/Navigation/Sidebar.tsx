@@ -27,7 +27,11 @@ interface NavigationItem {
   label: string;
   icon: typeof Home;
   badge?: number;
-  children?: NavigationItem[];
+}
+
+interface NavigationSection {
+  label?: string;
+  items: NavigationItem[];
 }
 
 interface SidebarProps {
@@ -42,46 +46,36 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const sidebarRef = useRef<HTMLElement>(null);
 
-  const navigationItems: NavigationItem[] = [
-    { 
-      href: '/dashboard', 
-      label: 'Command Centre', 
-      icon: Home,
-      children: [
-        { href: '/watchlist', label: 'Contacts', icon: Users }
-      ]
+  // Clean, non-duplicative navigation organized by priority
+  const navigationSections: NavigationSection[] = [
+    {
+      label: 'Primary',
+      items: [
+        { href: '/dashboard', label: 'Home', icon: Home },
+        { href: '/opportunities', label: 'Opportunities', icon: Target },
+        { href: '/events', label: 'Events', icon: Calendar },
+        { href: '/contacts', label: 'Contacts', icon: Users },
+      ],
     },
-    { 
-      href: '/opportunities', 
-      label: 'Opportunities', 
-      icon: Target,
-      children: [
-        { href: '/opportunities', label: 'My Opportunities', icon: Target }
-      ]
+    {
+      label: 'Secondary',
+      items: [
+        { href: '/events-board', label: 'Events Board', icon: LayoutGrid },
+        { href: '/trending', label: 'Insights', icon: TrendingUp },
+        { href: '/activity', label: 'Activity', icon: Activity },
+      ],
     },
-    { 
-      href: '/events', 
-      label: 'Events', 
-      icon: Calendar,
-      children: [
-        { href: '/events', label: 'Speaker Search', icon: Search },
-        { href: '/recommendations', label: 'Event Recommendations', icon: Brain },
-        { href: '/events-board', label: 'Events Board', icon: LayoutGrid }
-      ]
+    {
+      label: 'System',
+      items: [
+        { href: '/notifications', label: 'Notifications', icon: Bell, badge: 3 },
+        { href: '/settings', label: 'Settings', icon: Settings },
+      ],
     },
-    { 
-      href: '/recommendations', 
-      label: 'Intelligence', 
-      icon: Brain,
-      children: [
-        { href: '/watchlist', label: 'My Watchlist', icon: Bookmark },
-        { href: '/trending', label: 'Trend Insights', icon: TrendingUp }
-      ]
-    },
-    { href: '/activity', label: 'Reporting', icon: BarChart3 },
-    { href: '/notifications', label: 'Notifications', icon: Bell, badge: 3 },
-    { href: '/settings', label: 'Settings', icon: Settings }
   ];
+
+  // Flatten for keyboard navigation
+  const allNavigationItems = navigationSections.flatMap(section => section.items);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape' && onToggle) {
@@ -90,17 +84,13 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
     
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      const items = navigationItems.flatMap(item => 
-        item.children ? [item, ...item.children] : [item]
-      );
-      
       if (e.key === 'ArrowDown') {
-        setFocusedIndex(prev => (prev + 1) % items.length);
+        setFocusedIndex(prev => (prev + 1) % allNavigationItems.length);
       } else {
-        setFocusedIndex(prev => (prev - 1 + items.length) % items.length);
+        setFocusedIndex(prev => (prev - 1 + allNavigationItems.length) % allNavigationItems.length);
       }
     }
-  }, [onToggle, navigationItems]);
+  }, [onToggle, allNavigationItems]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
@@ -170,76 +160,76 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 py-4 overflow-y-auto" role="navigation">
-        <ul className="space-y-1 px-2">
-          {navigationItems.map((item, index) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                className={`
-                  relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
-                  transition-all duration-200 group
-                  ${isActive(item.href)
-                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 border-r-2 border-blue-700 dark:border-blue-400'
-                    : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                  }
-                  ${shouldShowExpanded ? 'justify-start' : 'justify-center'}
-                `}
-                title={!shouldShowExpanded ? item.label : undefined}
-              >
-                <item.icon 
-                  size={20} 
-                  className={`
-                    flex-shrink-0
-                    ${isActive(item.href) 
-                      ? 'text-blue-700 dark:text-blue-400' 
-                      : 'text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300'
-                    }
-                  `}
-                />
-                {shouldShowExpanded ? (
-                  <>
-                    <span className="flex-1 truncate">{item.label}</span>
-                    {item.badge && (
-                      <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full min-w-[20px] text-center">
-                        {item.badge}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  item.badge && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                      {item.badge}
-                    </span>
-                  )
-                )}
-              </Link>
+        <div className="space-y-6 px-2">
+          {navigationSections.map((section, sectionIndex) => (
+            <div key={section.label || sectionIndex}>
+              {/* Section Header (only show when expanded) */}
+              {shouldShowExpanded && section.label && (
+                <div className="mb-2 px-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    {section.label}
+                  </span>
+                </div>
+              )}
               
-              {/* Sub-navigation (only show when expanded) */}
-              {shouldShowExpanded && item.children && (
-                <ul className="ml-6 mt-1 space-y-1">
-                  {item.children.map((child) => (
-                    <li key={child.href}>
+              {/* Section Items */}
+              <ul className="space-y-1">
+                {section.items.map((item, itemIndex) => {
+                  const globalIndex = navigationSections
+                    .slice(0, sectionIndex)
+                    .reduce((sum, s) => sum + s.items.length, 0) + itemIndex;
+                  const isFocused = focusedIndex === globalIndex;
+                  
+                  return (
+                    <li key={item.href}>
                       <Link
-                        href={child.href}
+                        href={item.href}
                         className={`
-                          flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium
-                          transition-colors duration-200
-                          ${isActive(child.href)
-                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                            : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800'
+                          relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
+                          transition-all duration-200 group
+                          ${isActive(item.href)
+                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400 border-r-2 border-blue-700 dark:border-blue-400'
+                            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
                           }
+                          ${shouldShowExpanded ? 'justify-start' : 'justify-center'}
+                          ${isFocused ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
                         `}
+                        title={!shouldShowExpanded ? item.label : undefined}
                       >
-                        <child.icon size={14} />
-                        <span className="truncate">{child.label}</span>
+                        <item.icon 
+                          size={20} 
+                          className={`
+                            flex-shrink-0
+                            ${isActive(item.href) 
+                              ? 'text-blue-700 dark:text-blue-400' 
+                              : 'text-slate-500 group-hover:text-slate-700 dark:text-slate-400 dark:group-hover:text-slate-300'
+                            }
+                          `}
+                        />
+                        {shouldShowExpanded ? (
+                          <>
+                            <span className="flex-1 truncate">{item.label}</span>
+                            {item.badge !== undefined && item.badge > 0 && (
+                              <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full min-w-[20px] text-center">
+                                {item.badge > 99 ? '99+' : item.badge}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          item.badge !== undefined && item.badge > 0 && (
+                            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                              {item.badge > 99 ? '99+' : item.badge}
+                            </span>
+                          )
+                        )}
                       </Link>
                     </li>
-                  ))}
-                </ul>
-              )}
-            </li>
+                  );
+                })}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
       </nav>
 
       {/* Footer */}

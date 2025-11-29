@@ -28,6 +28,7 @@ import { Star, Eye, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useSearchResults } from "@/context/SearchResultsContext";
+import { AutoSaveBadge } from "./events/AutoSaveBadge";
 
 /**
  * Event data structure interface
@@ -56,6 +57,14 @@ interface Event {
   confidence_reason?: string | null; // Confidence reason
   pipeline_metadata?: any | null;   // Pipeline metadata (LLM enhanced, quality scores, etc.)
   dateRangeSource?: 'original' | '2-weeks' | '1-month';  // Date range expansion source
+  // Relevance scoring data (from RelevanceService)
+  relevance_score?: number | null;   // Relevance score (0-100)
+  relevance_reasons?: string[];      // Array of relevance reason strings
+  relevance_matched_terms?: {       // Matched terms breakdown
+    industry?: string[];
+    icp?: string[];
+    competitors?: string[];
+  };
 }
 
 /**
@@ -123,12 +132,36 @@ const EventCard = memo(function EventCard({
   const [loadingSpeakers, setLoadingSpeakers] = useState(false); // Loading state for speaker extraction
   const [speakers, setSpeakers] = useState<SpeakerData[] | null>(null); // Extracted speaker data
   const [followed, setFollowed] = useState<string[]>([]);       // List of followed speakers
+  const [speakerExtractionError, setSpeakerExtractionError] = useState<string | null>(null); // Error state for speaker extraction
+  const [extractionMethod, setExtractionMethod] = useState<string | null>(null); // Method used for extraction
   const [showWatchlistDetails, setShowWatchlistDetails] = useState(false); // Show watchlist match details
+  const [userId, setUserId] = useState<string | null>(null);   // User ID for auto-save badge
 
   useEffect(() => {
     setInBoard(boardStatus?.inBoard ?? false);
     setBoardItemId(boardStatus?.boardItemId ?? null);
   }, [boardStatus?.boardItemId, boardStatus?.inBoard]);
+
+  // Get user ID for auto-save badge
+  useEffect(() => {
+    let cancelled = false;
+    const getUserId = async () => {
+      try {
+        const { supabaseBrowser } = await import('@/lib/supabase-browser');
+        const supabase = supabaseBrowser();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!cancelled && session?.user) {
+          setUserId(session.user.id);
+        }
+      } catch (error) {
+        console.error('Error getting user ID:', error);
+      }
+    };
+    getUserId();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ============================================================================
   // DEBUG: Log event data to understand what we're receiving
@@ -153,7 +186,15 @@ const EventCard = memo(function EventCard({
 
   const matchReasons = useMemo(() => {
     if (!state.searchParams) return [];
-    return extractMatchReasons(ev, state.searchParams);
+    return extractMatchReasons(
+      {
+        ...ev,
+        // Pass relevance data from API if available
+        relevance_reasons: ev.relevance_reasons,
+        relevance_matched_terms: ev.relevance_matched_terms,
+      },
+      state.searchParams
+    );
   }, [ev, state.searchParams]);
 
   const salesHookMessage = useMemo(() => {
@@ -423,8 +464,11 @@ const EventCard = memo(function EventCard({
    * 
    * @param past - Whether to include past speakers in the results
    */
-  const loadSpeakers = useCallback(async (past: boolean) => {
+  const loadSpeakers = useCallback(async (past: boolean, retry = false) => {
     setLoadingSpeakers(true);
+    setSpeakerExtractionError(null);
+    setExtractionMethod(null);
+    
     try {
       const res = await fetch("/api/events/speakers", {
         method: "POST",
@@ -432,15 +476,40 @@ const EventCard = memo(function EventCard({
         body: JSON.stringify({ url: ev.source_url, includePast: past }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "load failed");
+      if (!res.ok) {
+        const errorMessage = j.error || j.message || "Failed to extract speakers";
+        throw new Error(errorMessage);
+      }
+      
+      // Store extraction method if provided
+      if (j.method) {
+        setExtractionMethod(j.method);
+      }
+      
       setSpeakers(j.speakers || []);
       setFollowed(j.followed || []);
+      setSpeakerExtractionError(null);
+      
+      if (retry) {
+        toast.success("Speakers loaded", {
+          description: `Successfully extracted ${j.speakers?.length || 0} speaker(s)`
+        });
+      }
     } catch (e: any) {
-      toast.error("Could not load speakers", {
-        description: e.message || "Unable to fetch speaker information. Please try again."
-      });
+      const errorMessage = e.message || "Unable to fetch speaker information. Please try again.";
+      setSpeakerExtractionError(errorMessage);
       setSpeakers([]);
       setFollowed([]);
+      
+      if (!retry) {
+        toast.error("Could not load speakers", {
+          description: errorMessage,
+          action: {
+            label: "Retry",
+            onClick: () => loadSpeakers(past, true)
+          }
+        });
+      }
     } finally {
       setLoadingSpeakers(false);
     }
@@ -486,8 +555,8 @@ const EventCard = memo(function EventCard({
 
   return (
     <div className={`group bg-white rounded-lg border p-6 shadow-sm hover:shadow-lg transition-all duration-200 ${dateRangeStyles}`}>
-      {/* Date Range Extension Badge & Watchlist Match Badge */}
-      {(dateRangeBadge || watchlistMatch?.hasMatch) && (
+      {/* Date Range Extension Badge & Watchlist Match Badge & Auto-Save Badge */}
+      {(dateRangeBadge || watchlistMatch?.hasMatch || (ev.id && userId)) && (
         <div className="mb-3 flex items-center gap-2 flex-wrap">
           {dateRangeBadge && (
             <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${dateRangeBadge.color}`}>
@@ -511,6 +580,9 @@ const EventCard = memo(function EventCard({
                 <span>{watchlistMatch.totalMatches} match{watchlistMatch.totalMatches !== 1 ? 'es' : ''}</span>
               </button>
             </>
+          )}
+          {ev.id && userId && (
+            <AutoSaveBadge eventId={ev.id} userId={userId} eventTitle={ev.title} />
           )}
         </div>
       )}
@@ -667,7 +739,12 @@ const EventCard = memo(function EventCard({
           <div className="mt-3">
             <RelevanceIndicator
               matchReasons={matchReasons}
-              confidence={ev.confidence || undefined}
+              confidence={
+                // Use relevance_score from API if available (0-100), otherwise use confidence (0-1)
+                (ev as any).relevance_score !== undefined && (ev as any).relevance_score !== null
+                  ? (ev as any).relevance_score / 100
+                  : ev.confidence || undefined
+              }
               searchQuery={state.searchParams.keywords}
               compact={true}
             />
@@ -845,25 +922,85 @@ const EventCard = memo(function EventCard({
           </div>
 
           {loadingSpeakers && (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex flex-col items-center justify-center py-8 space-y-3">
               <div className="flex items-center gap-2 text-slate-600">
-                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <span>Fetching speakers...</span>
+                <span className="font-medium">Extracting speakers...</span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Analyzing event page and extracting speaker information
+              </p>
+            </div>
+          )}
+
+          {speakerExtractionError && !loadingSpeakers && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-semibold text-red-900 mb-1">Failed to extract speakers</h4>
+                  <p className="text-sm text-red-700 mb-3">{speakerExtractionError}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => loadSpeakers(includePast, true)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Retry Extraction
+                    </button>
+                    {ev.source_url && (
+                      <a
+                        href={ev.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 transition-colors"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        View Event Page
+                      </a>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
-          {!loadingSpeakers && speakers && speakers.length === 0 && (
+          {!loadingSpeakers && !speakerExtractionError && speakers && speakers.length === 0 && (
             <div className="text-center py-8">
               <div className="w-12 h-12 bg-slate-200 rounded-full flex items-center justify-center mx-auto mb-3">
                 <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
-              <p className="text-slate-600">No speakers found for this event.</p>
+              <p className="text-slate-600 mb-2">No speakers found for this event.</p>
+              {ev.source_url && (
+                <button
+                  onClick={() => loadSpeakers(includePast, true)}
+                  className="text-xs text-blue-600 hover:text-blue-700 underline"
+                >
+                  Try extracting again
+                </button>
+              )}
+            </div>
+          )}
+
+          {!loadingSpeakers && !speakerExtractionError && speakers && speakers.length > 0 && extractionMethod && (
+            <div className="mb-4 flex items-center gap-2 text-xs text-slate-500">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Extracted using {extractionMethod}</span>
             </div>
           )}
 
@@ -874,6 +1011,8 @@ const EventCard = memo(function EventCard({
               <DynamicSpeakerLayout
                 speakers={speakers}
                 sessionTitle={ev.title || "Event Speakers"}
+                eventId={ev.id}
+                eventTitle={ev.title}
               />
             </div>
           )}

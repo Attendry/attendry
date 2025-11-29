@@ -28,24 +28,79 @@ interface UpdateProfileRequest {
 // POST /api/profiles/saved - Save a profile
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Check rate limit before processing
+    const { checkAutoSaveRateLimitOrThrow, getAutoSaveRateLimiter } = await import('@/lib/services/auto-save-rate-limiter');
     const supabase = await supabaseServer();
     const { data: userRes, error: userErr } = await supabase.auth.getUser();
     
     if (userErr || !userRes?.user) {
       return NextResponse.json({ 
         success: false,
-        error: "Not authenticated" 
+        error: "Unauthorized" 
       }, { status: 401 });
     }
 
+    const userId = userRes.user.id;
+    
+    try {
+      await checkAutoSaveRateLimitOrThrow(userId);
+    } catch (rateLimitError: any) {
+      return NextResponse.json({
+        success: false,
+        error: rateLimitError.message,
+        rateLimitExceeded: true,
+        retryAfter: rateLimitError.retryAfter,
+        circuitBreakerOpen: rateLimitError.circuitBreakerOpen,
+        queueFull: rateLimitError.queueFull,
+      }, { 
+        status: 429,
+        headers: {
+          'Retry-After': rateLimitError.retryAfter?.toString() || '60',
+        }
+      });
+    }
+
     const requestData: SaveProfileRequest = await req.json();
-    const { speaker_data, enhanced_data, notes, tags } = requestData;
+    let { speaker_data, enhanced_data, notes, tags } = requestData;
     
     if (!speaker_data || !enhanced_data) {
       return NextResponse.json({ 
         success: false,
         error: "speaker_data and enhanced_data are required" 
       }, { status: 400 });
+    }
+
+    // Normalize field names - ensure 'org' field exists (check for company, organization, org)
+    if (speaker_data && !speaker_data.org) {
+      speaker_data = {
+        ...speaker_data,
+        org: speaker_data.org || speaker_data.organization || speaker_data.company || '',
+      };
+    }
+
+    // Normalize enhanced_data organization field as well
+    if (enhanced_data && !enhanced_data.organization) {
+      enhanced_data = {
+        ...enhanced_data,
+        organization: enhanced_data.organization || enhanced_data.org || enhanced_data.company || speaker_data.org || '',
+      };
+    }
+
+    // Determine data source (manual save vs auto-save)
+    const dataSource = requestData.metadata?.auto_save ? 'auto_save' : 'manual';
+    
+    // Check if consent is required for auto-save
+    if (dataSource === 'auto_save') {
+      const { getConsentStatus } = await import('@/lib/services/gdpr-service');
+      const consentStatus = await getConsentStatus(userId);
+      
+      if (!consentStatus?.autoSaveConsent) {
+        return NextResponse.json({
+          success: false,
+          error: "Auto-save requires consent. Please enable auto-save consent in privacy settings.",
+          requiresConsent: true,
+        }, { status: 403 });
+      }
     }
 
     const { data, error } = await supabase
@@ -56,7 +111,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         enhanced_data,
         notes: notes || null,
         tags: tags || [],
-        outreach_status: 'not_started'
+        outreach_status: 'not_started',
+        data_source: dataSource,
+        consent_given: dataSource === 'auto_save', // Auto-saved contacts require consent
+        consent_date: dataSource === 'auto_save' ? new Date().toISOString() : null,
       })
       .select()
       .single();
@@ -124,10 +182,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // Record contact creation for rate limiting
+    if (data?.id) {
+      try {
+        const { getAutoSaveRateLimiter } = await import('@/lib/services/auto-save-rate-limiter');
+        const rateLimiter = getAutoSaveRateLimiter();
+        await rateLimiter.recordContactCreation(userId);
+      } catch (rateLimitError) {
+        console.warn('[auto-save] Failed to record contact creation for rate limiting:', rateLimitError);
+        // Don't fail the request if rate limit recording fails
+      }
+    }
+
     // Auto-research: Trigger research in background when contact is added
     if (data?.id && speaker_data?.name) {
       const name = speaker_data.name || 'Unknown';
-      const company = speaker_data.org || speaker_data.organization || 'Unknown';
+      const company = speaker_data.org || speaker_data.organization || speaker_data.company || 'Unknown';
       
       // Use setImmediate or setTimeout to ensure it runs after response is sent
       // In serverless, we need to ensure the function doesn't terminate before research starts

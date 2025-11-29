@@ -10,7 +10,7 @@ import EventCard from "@/components/EventCard";
 import EventsPagination from "@/components/EventsPagination";
 import { deriveLocale, toISO2Country } from "@/lib/utils/country";
 import { Button } from "@/components/ui/button";
-import { Search, Clock, MessageSquare, Keyboard } from "lucide-react";
+import { Search, Clock, MessageSquare, Keyboard, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
 import { SetupStatusIndicator } from "@/components/SetupStatusIndicator";
 import { useRouter } from "next/navigation";
@@ -22,6 +22,7 @@ import ProcessingStatusBar from "@/components/ProcessingStatusBar";
 import NaturalLanguageSearch from "@/components/NaturalLanguageSearch";
 import { SearchIntent } from "@/components/NaturalLanguageSearch";
 import { fetchEvents } from "@/lib/search/client";
+import { fetchEventsProgressive, type ProgressiveSearchUpdate } from "@/lib/search/progressive-client";
 import { toast } from "sonner";
 import { formatErrorForToast, getUserFriendlyMessage, CommonErrors } from "@/lib/errors/user-friendly-messages";
 
@@ -121,15 +122,86 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [lastIntent, setLastIntent] = useState<SearchIntent | null>(null);
   const [searchProgress, setSearchProgress] = useState<{ stage: number; total: number; message?: string } | null>(null);
   const [boardStatusMap, setBoardStatusMap] = useState<Record<string, { inBoard: boolean; boardItemId: string | null }>>({});
+  const [searchAbortController, setSearchAbortController] = useState<AbortController | null>(null);
+  const [progressiveSearchStage, setProgressiveSearchStage] = useState<ProgressiveSearchUpdate['stage'] | null>(null);
+  const [sortBy, setSortBy] = useState<'relevance' | 'date' | 'quality'>('relevance');
   const router = useRouter();
 
   // Get current page events from context
   const currentPageEvents = actions.getCurrentPageEvents();
 
-  // Use current page events from context instead of local state
+  // Sort and filter events based on user selection
   const filteredEvents = useMemo(() => {
-    return currentPageEvents; // Events are already filtered by the API and paginated
-  }, [currentPageEvents]);
+    const events = [...currentPageEvents]; // Create a copy to avoid mutating
+    
+    // Apply sorting
+    events.sort((a, b) => {
+      switch (sortBy) {
+        case 'relevance': {
+          // Sort by relevance_score (0-100, highest first), then confidence, then date
+          const relevanceA = (a as any).relevance_score ?? 0;
+          const relevanceB = (b as any).relevance_score ?? 0;
+          if (relevanceB !== relevanceA) {
+            return relevanceB - relevanceA;
+          }
+          // Fall through to confidence if relevance scores are equal
+          const confA = a.confidence ?? 0;
+          const confB = b.confidence ?? 0;
+          if (confB !== confA) {
+            return confB - confA;
+          }
+          // Fall through to date if confidence is equal
+          const dateA = a.starts_at ? new Date(a.starts_at).getTime() : 0;
+          const dateB = b.starts_at ? new Date(b.starts_at).getTime() : 0;
+          return dateA - dateB;
+        }
+          
+        case 'date': {
+          // Sort by date (upcoming first), then relevance, then confidence
+          // Events without dates go to the end
+          const dateA = a.starts_at ? new Date(a.starts_at).getTime() : Number.MAX_SAFE_INTEGER;
+          const dateB = b.starts_at ? new Date(b.starts_at).getTime() : Number.MAX_SAFE_INTEGER;
+          if (dateA !== dateB) {
+            return dateA - dateB;
+          }
+          // Fall through to relevance if dates are equal
+          const relA = (a as any).relevance_score ?? 0;
+          const relB = (b as any).relevance_score ?? 0;
+          if (relB !== relA) {
+            return relB - relA;
+          }
+          // Fall through to confidence
+          const confA = a.confidence ?? 0;
+          const confB = b.confidence ?? 0;
+          return confB - confA;
+        }
+          
+        case 'quality': {
+          // Sort by confidence (quality), then relevance, then date
+          const qualityA = a.confidence ?? 0;
+          const qualityB = b.confidence ?? 0;
+          if (qualityB !== qualityA) {
+            return qualityB - qualityA;
+          }
+          // Fall through to relevance
+          const relA = (a as any).relevance_score ?? 0;
+          const relB = (b as any).relevance_score ?? 0;
+          if (relB !== relA) {
+            return relB - relA;
+          }
+          // Fall through to date
+          const dateA = a.starts_at ? new Date(a.starts_at).getTime() : 0;
+          const dateB = b.starts_at ? new Date(b.starts_at).getTime() : 0;
+          return dateA - dateB;
+        }
+          
+        default:
+          return 0;
+      }
+    });
+    
+    return events;
+  }, [currentPageEvents, sortBy]);
 
   // Batch fetch board status for visible events
   useEffect(() => {
@@ -571,8 +643,18 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
       setLastIntent(null);
     }
     
+    // Cancel any existing search
+    if (searchAbortController) {
+      searchAbortController.abort();
+    }
+    
+    // Create new abort controller for this search
+    const abortController = new AbortController();
+    setSearchAbortController(abortController);
+    
     actions.setError(null);
     actions.setLoading(true);
+    setProgressiveSearchStage(null);
     
     // Initialize progress tracking
     setSearchProgress({ stage: 0, total: 4, message: 'Initializing search...' });
@@ -580,94 +662,118 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     try {
       const normalizedCountry = toISO2Country(country) ?? 'EU';
       const locale = deriveLocale(normalizedCountry);
+      const q = keywords.trim() || 'conference';
 
-      // Update progress: Discovering events
-      setSearchProgress({ stage: 1, total: 4, message: 'Discovering events...' });
-
-      const res = await fetch(`/api/events/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      // Use progressive search
+      await fetchEventsProgressive(
+        {
           userText: q,
           country: normalizedCountry,
           dateFrom: from,
           dateTo: to,
           locale,
-        }),
-      });
-      
-      // Update progress: Processing results
-      setSearchProgress({ stage: 2, total: 4, message: 'Processing results...' });
-      
-      let data;
-      try {
-        data = await res.json();
-      } catch (jsonError) {
-        // If response is not JSON, it's likely an HTML error page
-        const text = await res.text();
-        throw new Error(`Server returned non-JSON response: ${res.status} ${res.statusText}`);
-      }
-      
-      if (!res.ok) {
-        const errorData = data?.error || res.statusText;
-        throw new Error(errorData);
-      }
-      
-      // Update progress: Finalizing
-      setSearchProgress({ stage: 3, total: 4, message: 'Finalizing results...' });
-      
-      setDebug(data);
-      const events = (data.events || data.items || []).map((e: EventRec) => ({
-        ...e,
-        source_url: e.source_url || e.link
-      }));
-
-      // Check for async enhancement job
-      if (data.async_enhancement?.analysis_job_id) {
-        const newJob = {
-          id: data.async_enhancement.analysis_job_id,
-          type: 'events' as const,
-          status: 'processing' as const,
-          progress: 0,
-          message: 'Enhancing events with speaker data...',
-          startedAt: new Date()
-        };
-        
-        setProcessingJobs(prev => [...prev, newJob]);
-        
-        // Start polling for job status
-        pollJobStatus(data.async_enhancement.analysis_job_id);
-      }
-
-      // Store results in context with user profile data
-      actions.setSearchResults(events, {
-        keywords: q,
-        country: normalizedCountry,
-        from,
-        to,
-        timestamp: Date.now(),
-        userProfile: userProfile ? {
-          industryTerms: userProfile.industry_terms || [],
-          icpTerms: userProfile.icp_terms || [],
-          competitors: userProfile.competitors || [],
-        } : undefined,
-        profileFilters: userProfile ? {
-          includeIndustryMatch: true,
-          includeIcpMatch: true,
-          includeCompetitorMatch: true,
-        } : undefined,
-      }, events.length);
-      
-      // Complete progress
-      setSearchProgress({ stage: 4, total: 4, message: 'Search completed!' });
-      
-      // Show success message
-      if (events.length === 0) {
-        const noResults = CommonErrors.noSearchResults(true);
-        toast.info('No results found', {
-          description: noResults.message
+        },
+        {
+          onUpdate: (update) => {
+            setProgressiveSearchStage(update.stage);
+            
+            // Update progress message based on stage
+            let progressMessage = update.message || 'Searching...';
+            let progressStage = 1;
+            
+            if (update.stage === 'database') {
+              progressStage = 1;
+              progressMessage = update.message || 'Checking database...';
+            } else if (update.stage === 'cse') {
+              progressStage = 2;
+              progressMessage = update.message || 'Searching with Google CSE...';
+            } else if (update.stage === 'firecrawl') {
+              progressStage = 3;
+              progressMessage = update.message || 'Searching with Firecrawl (this may take 30-60 seconds)...';
+            } else if (update.stage === 'complete') {
+              progressStage = 4;
+              progressMessage = update.message || 'Search completed!';
+            }
+            
+            setSearchProgress({ stage: progressStage, total: 4, message: progressMessage });
+            
+            // Update results as they arrive
+            if (update.events.length > 0) {
+              const events = update.events.map((e: EventRec) => ({
+                ...e,
+                source_url: e.source_url || e.link || e.id
+              }));
+              
+              actions.setSearchResults(events, {
+                keywords: q,
+                country: normalizedCountry,
+                from,
+                to,
+                timestamp: Date.now(),
+                userProfile: userProfile ? {
+                  industryTerms: userProfile.industry_terms || [],
+                  icpTerms: userProfile.icp_terms || [],
+                  competitors: userProfile.competitors || [],
+                } : undefined,
+                profileFilters: userProfile ? {
+                  includeIndustryMatch: true,
+                  includeIcpMatch: true,
+                  includeCompetitorMatch: true,
+                } : undefined,
+              }, events.length);
+            }
+          },
+          onComplete: (allEvents) => {
+            const events = allEvents.map((e: EventRec) => ({
+              ...e,
+              source_url: e.source_url || e.link || e.id
+            }));
+            
+            // Final update with all events
+            actions.setSearchResults(events, {
+              keywords: q,
+              country: normalizedCountry,
+              from,
+              to,
+              timestamp: Date.now(),
+              userProfile: userProfile ? {
+                industryTerms: userProfile.industry_terms || [],
+                icpTerms: userProfile.icp_terms || [],
+                competitors: userProfile.competitors || [],
+              } : undefined,
+              profileFilters: userProfile ? {
+                includeIndustryMatch: true,
+                includeIcpMatch: true,
+                includeCompetitorMatch: true,
+              } : undefined,
+            }, events.length);
+            
+            // Complete progress
+            setSearchProgress({ stage: 4, total: 4, message: 'Search completed!' });
+            
+            // Show success message
+            if (events.length === 0) {
+              const noResults = CommonErrors.noSearchResults(true);
+              toast.info('No results found', {
+                description: noResults.message
+              });
+            } else {
+              toast.success('Search completed', {
+                description: `Found ${events.length} event${events.length !== 1 ? 's' : ''}`
+              });
+            }
+          },
+          onError: (error) => {
+            console.error("Progressive search error:", error);
+            const errorInfo = formatErrorForToast(error, { action: 'search for events' });
+            actions.setError(errorInfo.description);
+            toast.error(errorInfo.title, {
+              description: errorInfo.description,
+              action: errorInfo.action
+            });
+          },
+          cancelSignal: abortController.signal,
         });
-      }
       
     } catch (err) {
       console.error("Search error:", err);
@@ -679,8 +785,12 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
       });
     } finally {
       actions.setLoading(false);
+      setSearchAbortController(null);
       // Clear progress after a short delay to show completion
-      setTimeout(() => setSearchProgress(null), 1000);
+      setTimeout(() => {
+        setSearchProgress(null);
+        setProgressiveSearchStage(null);
+      }, 1000);
     }
   }
 
@@ -959,11 +1069,35 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           {/* Search Progress Indicator */}
           {state.isLoading && searchProgress && (
             <div className="mb-6">
-              <SearchProgressIndicator
-                currentStage={searchProgress.stage}
-                totalStages={searchProgress.total}
-                message={searchProgress.message}
-              />
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <SearchProgressIndicator
+                    currentStage={searchProgress.stage}
+                    totalStages={searchProgress.total}
+                    message={searchProgress.message}
+                  />
+                  {progressiveSearchStage && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                      Current stage: {progressiveSearchStage}
+                    </div>
+                  )}
+                </div>
+                {searchAbortController && (
+                  <button
+                    onClick={() => {
+                      searchAbortController?.abort();
+                      setSearchAbortController(null);
+                      actions.setLoading(false);
+                      setSearchProgress(null);
+                      setProgressiveSearchStage(null);
+                      toast.info('Search cancelled');
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors whitespace-nowrap"
+                  >
+                    Cancel Search
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -987,6 +1121,22 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
                   {state.pagination.totalResults} event{state.pagination.totalResults !== 1 ? 's' : ''} found
                 </h2>
+                <div className="flex items-center gap-3">
+                  <label htmlFor="sort-select" className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <ArrowUpDown className="w-4 h-4" />
+                    Sort by:
+                  </label>
+                  <select
+                    id="sort-select"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as 'relevance' | 'date' | 'quality')}
+                    className="px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent cursor-pointer transition-colors hover:border-slate-400 dark:hover:border-slate-500"
+                  >
+                    <option value="relevance">Relevance (Best Match)</option>
+                    <option value="date">Date (Upcoming First)</option>
+                    <option value="quality">Quality (Confidence Score)</option>
+                  </select>
+                </div>
               </div>
               
               <div className="grid gap-4">

@@ -33,6 +33,8 @@ import { useTaskSubscription } from "@/lib/hooks/useTaskSubscription";
 import { AssignTaskModal } from "@/components/agents/AssignTaskModal";
 import { notificationService } from "@/lib/services/notification-service";
 import { AIAgent, OutreachChannel, TaskPriority } from "@/lib/types/agents";
+import { SpeakerHistoryTimeline } from "@/components/speakers/SpeakerHistoryTimeline";
+import { generateSpeakerKey } from "@/lib/services/speaker-service";
 import Link from "next/link";
 
 interface ContactModalProps {
@@ -640,6 +642,19 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Speaker History Section */}
+          <div className="space-y-4">
+            <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
+              <Calendar className="h-5 w-5 text-indigo-500" />
+              Speaking History
+            </h3>
+            <SpeakerHistoryTimeline
+              speakerKey={null} // Will be found by name/org search
+              speakerName={contact.speaker_data?.name || ""}
+              speakerOrg={contact.speaker_data?.org}
+            />
           </div>
 
           {/* Research Section */}

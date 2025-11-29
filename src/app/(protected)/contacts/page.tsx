@@ -10,8 +10,6 @@ import Link from "next/link";
 import { ContactCard } from "@/components/contacts/ContactCard";
 import { ContactModal } from "@/components/contacts/ContactModal";
 
-const MAX_FOCUS_CONTACTS = 4;
-
 type TabType = "focus" | "history";
 
 export default function ContactsPage() {
@@ -22,6 +20,7 @@ export default function ContactsPage() {
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [isAddingContact, setIsAddingContact] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'auto-saved-today'>('all');
   const [contactsWithResearch, setContactsWithResearch] = useState<
     Array<SavedSpeakerProfile & { contact_research?: any }>
   >([]);
@@ -82,10 +81,25 @@ export default function ContactsPage() {
     loadResearch();
   }, [userId, profiles]);
 
-  // Filter contacts by archive status
+  // Filter contacts by archive status and auto-saved filter
   const activeContacts = useMemo(() => {
-    return contactsWithResearch.filter((p) => !p.archived);
-  }, [contactsWithResearch]);
+    let filtered = contactsWithResearch.filter((p) => !p.archived);
+    
+    if (filter === 'auto-saved-today') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      filtered = filtered.filter((p) => {
+        // Check if contact has auto_saved_at field (from database) or metadata
+        const autoSavedAt = (p as any).auto_saved_at;
+        if (!autoSavedAt) return false;
+        const savedDate = new Date(autoSavedAt);
+        savedDate.setHours(0, 0, 0, 0);
+        return savedDate.getTime() === today.getTime() && !(p as any).undo_requested_at;
+      });
+    }
+    
+    return filtered;
+  }, [contactsWithResearch, filter]);
 
   const archivedContacts = useMemo(() => {
     return contactsWithResearch
@@ -128,13 +142,6 @@ export default function ContactsPage() {
     email?: string;
     linkedin?: string;
   }) => {
-    if (activeContacts.length >= MAX_FOCUS_CONTACTS) {
-      toast.error("Focus list is full", {
-        description: `You can only have ${MAX_FOCUS_CONTACTS} active contacts. Archive one first.`,
-      });
-      return;
-    }
-
     setIsAddingContact(true);
     try {
       const response = await fetch("/api/profiles/saved", {
@@ -202,7 +209,7 @@ export default function ContactsPage() {
               updatesFound++;
               
               // If archived contact has new intel, move back to focus
-              if (contact.archived && activeContacts.length < MAX_FOCUS_CONTACTS) {
+              if (contact.archived) {
                 // Update contact to unarchive
                 const supabase = supabaseBrowser();
                 await supabase
@@ -289,7 +296,7 @@ export default function ContactsPage() {
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            Focus ({activeContacts.length}/{MAX_FOCUS_CONTACTS})
+            Focus ({activeContacts.length})
             {activeTab === "focus" && (
               <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-600 rounded-t-full" />
             )}
@@ -316,7 +323,7 @@ export default function ContactsPage() {
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">Active Contacts</h2>
                 <p className="text-sm text-slate-500">
-                  Manage your {MAX_FOCUS_CONTACTS} key contacts for this week.
+                  Manage your key contacts for outreach and relationship building.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -336,11 +343,10 @@ export default function ContactsPage() {
                 )}
                 <button
                   onClick={() => setShowAddContactModal(true)}
-                  disabled={activeContacts.length >= MAX_FOCUS_CONTACTS}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                 >
                   <Plus className="h-4 w-4" />
-                  Add Contact ({activeContacts.length}/{MAX_FOCUS_CONTACTS})
+                  Add Contact ({activeContacts.length})
                 </button>
               </div>
             </div>
@@ -427,12 +433,6 @@ export default function ContactsPage() {
                           contact={contact}
                           onClick={setSelectedContact}
                           onRestore={async (c) => {
-                            if (activeContacts.length >= MAX_FOCUS_CONTACTS) {
-                              toast.error("Focus list is full", {
-                                description: "Archive a contact first to restore this one.",
-                              });
-                              return;
-                            }
                             const supabase = supabaseBrowser();
                             await supabase
                               .from("saved_speaker_profiles")
@@ -481,7 +481,6 @@ export default function ContactsPage() {
             onClose={() => setShowAddContactModal(false)}
             onAdd={handleAddContact}
             isAdding={isAddingContact}
-            maxReached={activeContacts.length >= MAX_FOCUS_CONTACTS}
           />
         )}
       </div>
@@ -500,10 +499,9 @@ interface AddContactModalProps {
     linkedin?: string;
   }) => Promise<void>;
   isAdding: boolean;
-  maxReached: boolean;
 }
 
-function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactModalProps) {
+function AddContactModal({ onClose, onAdd, isAdding }: AddContactModalProps) {
   const [formData, setFormData] = useState({
     name: "",
     company: "",
@@ -536,12 +534,6 @@ function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactMod
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {maxReached && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              Focus list is full. Archive a contact first to add a new one.
-            </div>
-          )}
-
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Name <span className="text-red-500">*</span>
@@ -553,7 +545,7 @@ function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactMod
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               placeholder="John Doe"
-              disabled={isAdding || maxReached}
+              disabled={isAdding}
             />
           </div>
 
@@ -568,7 +560,7 @@ function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactMod
               onChange={(e) => setFormData({ ...formData, company: e.target.value })}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               placeholder="Acme Corp"
-              disabled={isAdding || maxReached}
+              disabled={isAdding}
             />
           </div>
 
@@ -582,7 +574,7 @@ function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactMod
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               placeholder="VP of Sales"
-              disabled={isAdding || maxReached}
+              disabled={isAdding}
             />
           </div>
 
@@ -596,7 +588,7 @@ function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactMod
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               placeholder="john@acme.com"
-              disabled={isAdding || maxReached}
+              disabled={isAdding}
             />
           </div>
 
@@ -610,7 +602,7 @@ function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactMod
               onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
               placeholder="https://linkedin.com/in/johndoe"
-              disabled={isAdding || maxReached}
+              disabled={isAdding}
             />
           </div>
 
@@ -625,7 +617,7 @@ function AddContactModal({ onClose, onAdd, isAdding, maxReached }: AddContactMod
             </button>
             <button
               type="submit"
-              disabled={isAdding || maxReached || !formData.name.trim() || !formData.company.trim()}
+              disabled={isAdding || !formData.name.trim() || !formData.company.trim()}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {isAdding ? (

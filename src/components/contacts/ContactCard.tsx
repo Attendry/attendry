@@ -23,6 +23,7 @@ import {
   Plus,
   Loader2,
   AlertCircle,
+  Undo2,
 } from "lucide-react";
 import { AssignTaskModal } from "@/components/agents/AssignTaskModal";
 import { useAgents } from "@/lib/hooks/useAgents";
@@ -83,6 +84,15 @@ export function ContactCard({
   const hasNewIntel = contact.contact_research?.has_new_intel || false;
   const isArchived = contact.archived || false;
   const status = contact.outreach_status || "not_started";
+  
+  // Check if contact can be undone (auto-saved within 24 hours)
+  const autoSavedAt = (contact as any).auto_saved_at;
+  const canUndoUntil = (contact as any).can_undo_until;
+  const undoRequestedAt = (contact as any).undo_requested_at;
+  const canUndo = autoSavedAt && 
+                  canUndoUntil && 
+                  new Date(canUndoUntil) > new Date() && 
+                  !undoRequestedAt;
 
   // Get user's agents (outreach and followup)
   useEffect(() => {
@@ -326,6 +336,33 @@ export function ContactCard({
               title="Restore to Active"
             >
               <RotateCcw className="w-4 h-4" />
+            </button>
+          )}
+          {canUndo && (
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (confirm("Undo auto-save? This will remove this contact.")) {
+                  try {
+                    const response = await fetch(`/api/contacts/${contact.id}/undo`, {
+                      method: 'POST',
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                      toast.success("Auto-save undone. Contact removed.");
+                      onDelete?.(contact.id);
+                    } else {
+                      toast.error(data.error || "Unable to undo auto-save");
+                    }
+                  } catch (error) {
+                    toast.error("Failed to undo auto-save");
+                  }
+                }
+              }}
+              className="rounded-full p-1 text-slate-400 opacity-0 transition-opacity hover:bg-orange-50 hover:text-orange-500 group-hover:opacity-100"
+              title="Undo auto-save (within 24 hours)"
+            >
+              <Undo2 className="w-4 h-4" />
             </button>
           )}
           {onDelete && (

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { deleteContact, logDataAccess } from "@/lib/services/gdpr-service";
 
 export const runtime = "nodejs";
 
@@ -81,7 +82,7 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/profiles/saved/[id] - Remove a profile
+// DELETE /api/profiles/saved/[id] - Remove a profile (GDPR compliant)
 export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -97,17 +98,26 @@ export async function DELETE(
       }, { status: 401 });
     }
 
-    const { error } = await supabase
-      .from('saved_speaker_profiles')
-      .delete()
-      .eq('id', params.id)
-      .eq('user_id', userRes.user.id);
+    // Get IP address and user agent for audit log
+    const ipAddress = req.headers.get("x-forwarded-for") || 
+                      req.headers.get("x-real-ip") || 
+                      null;
+    const userAgent = req.headers.get("user-agent") || null;
 
-    if (error) {
+    // Use GDPR-compliant soft delete
+    const success = await deleteContact(
+      userRes.user.id,
+      params.id,
+      'user_request',
+      ipAddress || undefined,
+      userAgent || undefined
+    );
+
+    if (!success) {
       return NextResponse.json({ 
         success: false,
-        error: error.message 
-      }, { status: 400 });
+        error: "Failed to delete contact" 
+      }, { status: 500 });
     }
 
     return NextResponse.json({ 

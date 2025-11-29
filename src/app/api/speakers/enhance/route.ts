@@ -10,6 +10,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createHash } from "crypto";
 import { SpeakerData } from "@/lib/types/core";
 import { supabaseServer } from "@/lib/supabase-server";
+import { getCachedEnrichment, setCachedEnrichment, type EnhancedSpeakerData as CachedEnhancedSpeakerData } from "@/lib/services/speaker-enrichment-cache";
 
 const geminiKey = process.env.GEMINI_API_KEY;
 const firecrawlKey = process.env.FIRECRAWL_KEY;
@@ -39,8 +40,15 @@ interface EnhancedSpeakerData extends SpeakerData {
   expertise_areas?: string[];
   speaking_history?: string[];
   achievements?: string[];
-  industry_connections?: string[];
-  recent_news?: string[];
+  industry_connections?: string[] | Array<{name: string, org?: string, url?: string}>;
+  recent_news?: string[] | Array<{title: string, url: string, date?: string}>;
+  recent_projects?: Array<{name: string, description: string, date?: string}>;
+  company_size?: string;
+  team_info?: string;
+  speaking_topics?: string[];
+  media_mentions?: Array<{outlet: string, title: string, url: string, date: string}>;
+  board_positions?: string[];
+  certifications?: string[];
 }
 
 interface SpeakerEnhancementRequest {
@@ -52,6 +60,7 @@ interface SpeakerEnhancementResponse {
   success: boolean;
   stored?: boolean;
   cached?: boolean;
+  cacheSource?: 'global' | 'user' | 'none';
   error?: string;
 }
 
@@ -150,7 +159,7 @@ async function persistEnhancedSpeaker(
 /**
  * Enhance speaker data with real search-based information
  */
-async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpeakerData> {
+async function enhanceSpeakerProfile(speaker: SpeakerData, userId?: string | null): Promise<EnhancedSpeakerData> {
   console.log('enhanceSpeakerProfile called for:', speaker.name);
   console.log('Available services:', {
     gemini: !!geminiKey,
@@ -170,26 +179,48 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
     try {
       console.log('Using Firecrawl for speaker research...');
       
-      const firecrawlResponse = await fetch('https://api.firecrawl.dev/v2/search', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${firecrawlKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          query: searchQuery,
-          limit: 10,
-          searchOptions: {
-            includeHtml: false,
-            onlyMainContent: true
-          }
-        })
-      });
+      // Execute with circuit breaker protection
+      const { executeEnrichmentWithCircuitBreaker } = await import('@/lib/services/enrichment-circuit-breaker');
       
-      if (firecrawlResponse.ok) {
-        const firecrawlData = await firecrawlResponse.json();
-        searchResults = firecrawlData.data || [];
-        console.log('Firecrawl results:', searchResults.length);
+      const firecrawlData = await executeEnrichmentWithCircuitBreaker(
+        'firecrawl',
+        async () => {
+          const firecrawlResponse = await fetch('https://api.firecrawl.dev/v2/search', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              query: searchQuery,
+              limit: 10,
+              searchOptions: {
+                includeHtml: false,
+                onlyMainContent: true
+              }
+            })
+          });
+          
+          if (!firecrawlResponse.ok) {
+            const errorText = await firecrawlResponse.text();
+            throw new Error(`Firecrawl API error: ${firecrawlResponse.status} - ${errorText}`);
+          }
+          
+          return await firecrawlResponse.json();
+        },
+        {
+          userId: userId || undefined,
+          feature: 'speaker_enrichment',
+          trackCost: true,
+          fallback: async () => {
+            console.warn('[speaker-enhancement] Firecrawl failed, continuing without search results');
+            return { data: [] };
+          },
+        }
+      );
+      
+      searchResults = firecrawlData.data || [];
+      console.log('Firecrawl results:', searchResults.length);
         if (searchResults.length > 0) {
           console.log('First Firecrawl result:', { title: searchResults[0]?.title, url: searchResults[0]?.url });
         }
@@ -212,7 +243,6 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
         } else {
           console.log('No Firecrawl results to build context from');
         }
-      }
     } catch (firecrawlError) {
       console.warn('Firecrawl search failed:', firecrawlError);
     }
@@ -223,13 +253,35 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
     try {
       console.log('Using Google CSE for speaker research...');
       
-      const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${googleKey}&cx=${googleCx}&q=${encodeURIComponent(searchQuery)}&num=5`;
-      const searchResponse = await fetch(searchUrl);
+      // Execute with circuit breaker protection
+      const { executeEnrichmentWithCircuitBreaker } = await import('@/lib/services/enrichment-circuit-breaker');
       
-      if (searchResponse.ok) {
-        const searchData = await searchResponse.json();
-        searchResults = searchData.items || [];
-        console.log('CSE results:', searchResults.length);
+      const searchData = await executeEnrichmentWithCircuitBreaker(
+        'google_cse',
+        async () => {
+          const searchUrl = `https://www.googleapis.com/customsearch/v1?key=${googleKey}&cx=${googleCx}&q=${encodeURIComponent(searchQuery)}&num=5`;
+          const searchResponse = await fetch(searchUrl);
+          
+          if (!searchResponse.ok) {
+            const errorText = await searchResponse.text();
+            throw new Error(`Google CSE API error: ${searchResponse.status} - ${errorText}`);
+          }
+          
+          return await searchResponse.json();
+        },
+        {
+          userId: userId || undefined,
+          feature: 'speaker_enrichment',
+          trackCost: true,
+          fallback: async () => {
+            console.warn('[speaker-enhancement] Google CSE failed, continuing without search results');
+            return { items: [] };
+          },
+        }
+      );
+      
+      searchResults = searchData.items || [];
+      console.log('CSE results:', searchResults.length);
         if (searchResults.length > 0) {
           console.log('First CSE result:', { title: searchResults[0]?.title, url: searchResults[0]?.link });
         }
@@ -252,7 +304,6 @@ async function enhanceSpeakerProfile(speaker: SpeakerData): Promise<EnhancedSpea
         } else {
           console.log('No CSE results to build context from');
         }
-      }
     } catch (cseError) {
       console.warn('CSE search failed:', cseError);
     }
@@ -312,20 +363,55 @@ Return ONLY a valid JSON object with these fields and nothing else. Do not inclu
 
 Base the information on the actual search results. If specific information isn't found, make reasonable inferences based on the person's role and organization, but avoid generic statements. Focus on current and recent information (last 12 months) when available.`;
 
+      // Execute Gemini call with circuit breaker protection
+      const { executeEnrichmentWithCircuitBreaker } = await import('@/lib/services/enrichment-circuit-breaker');
+      
       const url = `https://generativelanguage.googleapis.com/${GEMINI_MODEL_PATH}?key=${geminiKey}`;
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2 }
-        })
-      });
-      const raw = await resp.text();
-      if (!resp.ok) {
-        console.warn('[ai] Gemini call failed', { status: resp.status, statusText: resp.statusText, body: raw.slice(0, 500), modelPath: GEMINI_MODEL_PATH });
-        throw new Error(`Gemini call failed: ${resp.status} ${resp.statusText}`);
-      }
+      const startTime = Date.now();
+      
+      // Estimate input tokens for cost tracking
+      const inputTokens = Math.ceil(prompt.length / 4);
+      
+      const raw = await executeEnrichmentWithCircuitBreaker(
+        'gemini',
+        async () => {
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.2 }
+            })
+          });
+          
+          const rawText = await resp.text();
+          if (!resp.ok) {
+            console.warn('[ai] Gemini call failed', { status: resp.status, statusText: resp.statusText, body: rawText.slice(0, 500), modelPath: GEMINI_MODEL_PATH });
+            throw new Error(`Gemini call failed: ${resp.status} ${resp.statusText}`);
+          }
+          
+          return rawText;
+        },
+        {
+          userId: userId || undefined,
+          feature: 'speaker_enrichment',
+          trackCost: true,
+          metadata: {
+            inputTokens,
+            // outputTokens will be calculated after response
+            metadata: {
+              model: GEMINI_MODEL_PATH,
+              speakerName: speaker.name,
+            },
+          },
+          fallback: async () => {
+            console.warn('[speaker-enhancement] Gemini failed, using fallback enhancement');
+            throw new Error('Gemini unavailable, using fallback');
+          },
+        }
+      );
+      
+      // Parse response text
       let text = '';
       try {
         const data = JSON.parse(raw);
@@ -336,6 +422,32 @@ Base the information on the actual search results. If specific information isn't
         text = raw;
       }
       console.log('[ai] Response text length:', text?.length || 0, 'modelPath:', GEMINI_MODEL_PATH);
+      
+      // Update cost tracking with actual output tokens
+      try {
+        const { trackAPICost } = await import('@/lib/services/cost-tracker');
+        const outputTokens = Math.ceil((text.length || 0) / 4);
+        const responseTime = Date.now() - startTime;
+        
+        // Update the cost record with actual tokens (separate call for accuracy)
+        await trackAPICost(
+          userId || undefined,
+          'gemini',
+          'speaker_enrichment',
+          {
+            inputTokens,
+            outputTokens,
+            cacheHit: false,
+            metadata: {
+              model: GEMINI_MODEL_PATH,
+              responseTime,
+              speakerName: speaker.name,
+            },
+          }
+        );
+      } catch (costError) {
+        console.warn('[speaker-enhancement] Failed to update Gemini cost with tokens:', costError);
+      }
       
       // Parse the JSON response
       let enhancedData: any;
@@ -350,6 +462,10 @@ Base the information on the actual search results. If specific information isn't
         console.error('Failed to parse AI response as JSON:', parseError);
         throw parseError;
       }
+      
+      // Note: Cost tracking is handled by the circuit breaker
+      // Additional token tracking can be added here if needed
+      
       // Filter recent_news to last 2 years and ensure provenance
       if (Array.isArray(enhancedData?.recent_news)) {
         const twoYearsAgo = new Date();
@@ -442,28 +558,50 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerEnhanc
     }
     const userId = userRes?.user?.id || null;
 
+    // Step 1: Check global cache first (shared across all users, 30-day TTL)
     let cachedProfile: EnhancedSpeakerData | null = null;
     let cached = false;
-    if (userId) {
+    let cacheSource = 'none';
+    
+    cachedProfile = await getCachedEnrichment(speaker);
+    if (cachedProfile) {
+      cached = true;
+      cacheSource = 'global';
+      console.log('[speaker-enrichment] Using global cache for:', speaker.name);
+    }
+    
+    // Step 2: Fallback to user-specific cache (for backward compatibility)
+    if (!cachedProfile && userId) {
       cachedProfile = await findCachedSpeakerProfile(supabase, userId, speaker);
       if (cachedProfile) {
         cached = true;
+        cacheSource = 'user';
+        console.log('[speaker-enrichment] Using user-specific cache for:', speaker.name);
       }
     }
 
-    const enhanced = cachedProfile || await enhanceSpeakerProfile(speaker);
+    // Step 3: Enhance if not cached
+    const enhanced = cachedProfile || await enhanceSpeakerProfile(speaker, userId);
     if (!cached) {
-      console.log('Enhancement completed, confidence:', enhanced.confidence);
+      console.log('[speaker-enrichment] Enhancement completed, confidence:', enhanced.confidence);
+      
+      // Store in global cache for future use (shared across all users)
+      try {
+        await setCachedEnrichment(speaker, enhanced as CachedEnhancedSpeakerData);
+      } catch (cacheError) {
+        console.warn('[speaker-enrichment] Failed to store in global cache:', cacheError);
+      }
     } else {
-      console.log('Returning cached enhanced speaker profile');
+      console.log('[speaker-enrichment] Returning cached enhanced speaker profile (source:', cacheSource, ')');
     }
 
+    // Step 4: Also store in user-specific cache (for backward compatibility)
     let stored = false;
     if (userId) {
       try {
         stored = await persistEnhancedSpeaker(enhanced, speaker, supabase, userId);
       } catch (persistError) {
-        console.warn('Failed to persist enhanced speaker profile:', persistError);
+        console.warn('[speaker-enrichment] Failed to persist enhanced speaker profile:', persistError);
       }
     }
 
@@ -472,12 +610,14 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerEnhanc
       success: true,
       stored,
       cached,
+      cacheSource: cacheSource as 'global' | 'user' | 'none',
       debug: {
         geminiKeyConfigured: !!process.env.GEMINI_API_KEY,
         firecrawlKeyConfigured: !!process.env.FIRECRAWL_KEY,
         googleCseConfigured: !!(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX),
         confidence: enhanced.confidence,
-        hasEnhancedFields: !!(enhanced.education || enhanced.publications || enhanced.career_history)
+        hasEnhancedFields: !!(enhanced.education || enhanced.publications || enhanced.career_history),
+        cacheSource
       }
     });
 
