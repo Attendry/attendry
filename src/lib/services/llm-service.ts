@@ -50,7 +50,8 @@ export class LLMService {
     }
 
     // Use higher default for outreach messages (subject + body can be long)
-    const maxTokens = options?.maxTokens || 2048;
+    // Increased to 4096 to handle longer messages and prevent MAX_TOKENS errors
+    const maxTokens = options?.maxTokens || 4096;
 
     if (this.provider === 'openai') {
       return await this.callOpenAI(prompt, maxTokens);
@@ -247,16 +248,13 @@ export class LLMService {
     const content = candidate.content?.parts?.[0]?.text || '';
     const finishReason = candidate.finishReason;
 
-    // Handle MAX_TOKENS - return partial content if available
-    if (!content && finishReason === 'MAX_TOKENS') {
-      // Try to get partial content from tokenCount
-      const tokenCount = data.usageMetadata?.candidatesTokenCount || 0;
-      if (tokenCount > 0) {
-        // Content was truncated but we got some tokens
-        // Return empty string and let caller handle truncation
-        console.warn('[LLM Service] Gemini response hit MAX_TOKENS limit, returning empty content');
+    // Handle MAX_TOKENS - try to extract partial content
+    if (finishReason === 'MAX_TOKENS') {
+      if (content && content.length > 0) {
+        // We have partial content, return it with a warning
+        console.warn('[LLM Service] Gemini response hit MAX_TOKENS limit, but returning partial content');
         return {
-          content: '',
+          content,
           usage: data.usageMetadata ? {
             promptTokens: data.usageMetadata.promptTokenCount || 0,
             completionTokens: data.usageMetadata.candidatesTokenCount || 0,
@@ -264,7 +262,9 @@ export class LLMService {
           } : undefined
         };
       }
-      throw new Error('Response hit MAX_TOKENS limit with no content');
+      // No content at all - this is a problem
+      console.error('[LLM Service] Gemini response hit MAX_TOKENS limit with no content. Prompt may be too long or maxTokens too low.');
+      throw new Error('Response hit MAX_TOKENS limit with no content. Try reducing prompt length or increasing maxTokens.');
     }
 
     if (!content) {

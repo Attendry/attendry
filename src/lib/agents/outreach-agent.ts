@@ -172,8 +172,8 @@ export class OutreachAgent extends BaseAgent {
       language: preferredLanguage
     });
 
-    // Call LLM
-    const llmResponse = await this.llmService.generateOutreachMessage(prompt);
+    // Call LLM with increased maxTokens to prevent MAX_TOKENS errors
+    const llmResponse = await this.llmService.generateOutreachMessage(prompt, { maxTokens: 4096 });
     
     // Parse response
     const { subject, messageBody, reasoning } = this.parseLLMResponse(

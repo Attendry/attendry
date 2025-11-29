@@ -162,28 +162,31 @@ export function AssignTaskModal({
       };
     }
 
-    try {
-      const task = await assignTask({
-        taskType: getTaskType(),
-        priority,
-        inputData
+    // Close modal immediately - don't wait for task assignment
+    // This allows user to continue working while task is being assigned
+    onClose();
+    
+    // Assign task in background (non-blocking)
+    assignTask({
+      taskType: getTaskType(),
+      priority,
+      inputData
+    })
+      .then((task) => {
+        if (task) {
+          toast.success('Task assigned successfully! The agent will process it shortly.');
+          // Call onSuccess after a brief delay
+          setTimeout(() => {
+            onSuccess?.();
+          }, 100);
+        } else {
+          toast.error(error || 'Failed to assign task');
+        }
+      })
+      .catch((err: any) => {
+        console.error('Error assigning task:', err);
+        toast.error(err.message || 'Failed to assign task');
       });
-
-      if (task) {
-        toast.success('Task assigned successfully! The agent will process it shortly.');
-        // Close modal immediately - don't wait for task to complete
-        onClose();
-        // Call onSuccess after modal closes (non-blocking)
-        setTimeout(() => {
-          onSuccess?.();
-        }, 100);
-      } else {
-        toast.error(error || 'Failed to assign task');
-      }
-    } catch (err: any) {
-      console.error('Error assigning task:', err);
-      toast.error(err.message || 'Failed to assign task');
-    }
   };
 
   if (!isOpen) return null;
