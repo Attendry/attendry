@@ -316,7 +316,6 @@ async function enhanceSpeakerProfile(speaker: SpeakerData, userId?: string | nul
       console.log('Search context length:', searchContext.length);
 
       const currentDate = new Date().toISOString().split('T')[0];
-      const startTime = Date.now();
       
       const prompt = `You are a professional research assistant with access to current business intelligence. Based on the following information about a speaker and real search results, generate a comprehensive professional profile. Focus on RECENT information (last 12 months) and always include provenance (source URLs) for media and, when available, for connections.
 
