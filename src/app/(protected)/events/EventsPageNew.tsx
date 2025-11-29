@@ -137,7 +137,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     // Apply sorting
     events.sort((a, b) => {
       switch (sortBy) {
-        case 'relevance':
+        case 'relevance': {
           // Sort by relevance_score (0-100, highest first), then confidence, then date
           const relevanceA = (a as any).relevance_score ?? 0;
           const relevanceB = (b as any).relevance_score ?? 0;
@@ -154,8 +154,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           const dateA = a.starts_at ? new Date(a.starts_at).getTime() : 0;
           const dateB = b.starts_at ? new Date(b.starts_at).getTime() : 0;
           return dateA - dateB;
+        }
           
-        case 'date':
+        case 'date': {
           // Sort by date (upcoming first), then relevance, then confidence
           // Events without dates go to the end
           const dateA = a.starts_at ? new Date(a.starts_at).getTime() : Number.MAX_SAFE_INTEGER;
@@ -170,11 +171,12 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             return relB - relA;
           }
           // Fall through to confidence
-          const confA2 = a.confidence ?? 0;
-          const confB2 = b.confidence ?? 0;
-          return confB2 - confA2;
+          const confA = a.confidence ?? 0;
+          const confB = b.confidence ?? 0;
+          return confB - confA;
+        }
           
-        case 'quality':
+        case 'quality': {
           // Sort by confidence (quality), then relevance, then date
           const qualityA = a.confidence ?? 0;
           const qualityB = b.confidence ?? 0;
@@ -182,15 +184,16 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             return qualityB - qualityA;
           }
           // Fall through to relevance
-          const relA2 = (a as any).relevance_score ?? 0;
-          const relB2 = (b as any).relevance_score ?? 0;
-          if (relB2 !== relA2) {
-            return relB2 - relA2;
+          const relA = (a as any).relevance_score ?? 0;
+          const relB = (b as any).relevance_score ?? 0;
+          if (relB !== relA) {
+            return relB - relA;
           }
           // Fall through to date
-          const dateA2 = a.starts_at ? new Date(a.starts_at).getTime() : 0;
-          const dateB2 = b.starts_at ? new Date(b.starts_at).getTime() : 0;
-          return dateA2 - dateB2;
+          const dateA = a.starts_at ? new Date(a.starts_at).getTime() : 0;
+          const dateB = b.starts_at ? new Date(b.starts_at).getTime() : 0;
+          return dateA - dateB;
+        }
           
         default:
           return 0;
