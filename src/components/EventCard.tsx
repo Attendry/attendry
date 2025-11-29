@@ -127,6 +127,7 @@ const EventCard = memo(function EventCard({
   const [speakerExtractionError, setSpeakerExtractionError] = useState<string | null>(null); // Error state for speaker extraction
   const [extractionMethod, setExtractionMethod] = useState<string | null>(null); // Method used for extraction
   const [showWatchlistDetails, setShowWatchlistDetails] = useState(false); // Show watchlist match details
+  const [userId, setUserId] = useState<string | null>(null);   // User ID for auto-save badge
 
   useEffect(() => {
     setInBoard(boardStatus?.inBoard ?? false);
