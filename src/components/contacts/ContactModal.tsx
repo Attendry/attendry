@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import {
   X,
@@ -197,42 +197,49 @@ export function ContactModal({ contact, onClose, onUpdate }: ContactModalProps) 
   }, [contact.id, agents]);
 
   // Real-time task subscription
-  const agentIds = availableAgents.map(a => a.id);
+  // Memoize agentIds to prevent infinite loops
+  const agentIds = useMemo(() => {
+    return availableAgents.map(a => a.id);
+  }, [availableAgents]);
+
+  // Memoize callback to prevent re-subscriptions
+  const handleTaskComplete = useCallback(async (task: any) => {
+    const contactName = contact.speaker_data?.name || 'Contact';
+    // Show notification when task completes
+    await notificationService.notifyTaskComplete({
+      task_type: task.task_type,
+      status: task.status,
+      agent_name: task.agent?.name,
+      contact_name: contactName,
+    });
+    
+    // Refresh drafts when task completes
+    if (task.status === 'completed') {
+      // Reload agent data to refresh drafts
+      const supabase = supabaseBrowser();
+      const currentAgentIds = availableAgents.map(a => a.id);
+      const { data: drafts } = await supabase
+        .from('agent_outreach_drafts')
+        .select(`
+          *,
+          agent:ai_agents(id, name, agent_type)
+        `)
+        .eq('contact_id', contact.id)
+        .in('agent_id', currentAgentIds)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      setAgentDrafts(drafts || []);
+      toast.success('Agent task completed!');
+    } else if (task.status === 'failed') {
+      toast.error('Agent task failed. Please check the task details.');
+    }
+  }, [contact.id, contact.speaker_data?.name, availableAgents]);
+
   const { activeTasks: subscribedTasks } = useTaskSubscription({
     contactId: contact.id,
     agentIds,
     enabled: availableAgents.length > 0,
-    onTaskComplete: async (task) => {
-      const contactName = contact.speaker_data?.name || 'Contact';
-      // Show notification when task completes
-      await notificationService.notifyTaskComplete({
-        task_type: task.task_type,
-        status: task.status,
-        agent_name: task.agent?.name,
-        contact_name: contactName,
-      });
-      
-      // Refresh drafts when task completes
-      if (task.status === 'completed') {
-        // Reload agent data to refresh drafts
-        const supabase = supabaseBrowser();
-        const agentIds = availableAgents.map(a => a.id);
-        const { data: drafts } = await supabase
-          .from('agent_outreach_drafts')
-          .select(`
-            *,
-            agent:ai_agents(id, name, agent_type)
-          `)
-          .eq('contact_id', contact.id)
-          .in('agent_id', agentIds)
-          .order('created_at', { ascending: false })
-          .limit(10);
-        setAgentDrafts(drafts || []);
-        toast.success('Agent task completed!');
-      } else if (task.status === 'failed') {
-        toast.error('Agent task failed. Please check the task details.');
-      }
-    },
+    onTaskComplete: handleTaskComplete,
   });
 
   // Update activeTasks state from subscription

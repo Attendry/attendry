@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { toast } from "sonner";
@@ -138,30 +138,37 @@ export function ContactCard({
   }, [contact.id, outreachAgent]);
 
   // Real-time task subscription (include both outreach and followup agents)
-  const agentIds = [
-    ...(outreachAgent ? [outreachAgent.id] : []),
-    ...(followupAgent ? [followupAgent.id] : []),
-  ];
+  // Memoize agentIds to prevent infinite loops
+  const agentIds = useMemo(() => {
+    return [
+      ...(outreachAgent ? [outreachAgent.id] : []),
+      ...(followupAgent ? [followupAgent.id] : []),
+    ];
+  }, [outreachAgent?.id, followupAgent?.id]);
+
+  // Memoize callback to prevent re-subscriptions
+  const handleTaskComplete = useCallback(async (task: any) => {
+    const contactName = contact.speaker_data?.name || 'Contact';
+    // Show notification when task completes
+    await notificationService.notifyTaskComplete({
+      task_type: task.task_type,
+      status: task.status,
+      agent_name: task.agent?.name,
+      contact_name: contactName,
+    });
+    
+    if (task.status === 'completed') {
+      toast.success('Agent task completed! Draft is ready.');
+    } else if (task.status === 'failed') {
+      toast.error('Agent task failed. Please check the task details.');
+    }
+  }, [contact.speaker_data?.name]);
+
   const { activeTasks } = useTaskSubscription({
     contactId: contact.id,
     agentIds,
     enabled: agentIds.length > 0 && !isArchived,
-    onTaskComplete: async (task) => {
-      const contactName = contact.speaker_data?.name || 'Contact';
-      // Show notification when task completes
-      await notificationService.notifyTaskComplete({
-        task_type: task.task_type,
-        status: task.status,
-        agent_name: task.agent?.name,
-        contact_name: contactName,
-      });
-      
-      if (task.status === 'completed') {
-        toast.success('Agent task completed! Draft is ready.');
-      } else if (task.status === 'failed') {
-        toast.error('Agent task failed. Please check the task details.');
-      }
-    },
+    onTaskComplete: handleTaskComplete,
   });
 
   // Update activeTask state from subscription

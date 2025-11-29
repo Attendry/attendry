@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { supabaseBrowser } from '@/lib/supabase-browser';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -46,15 +46,42 @@ export function useTaskSubscription({
   const [usePolling, setUsePolling] = useState(false);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const loadingRef = useRef(false);
+  const errorCountRef = useRef(0);
+  
+  // Store callbacks in refs to avoid dependency issues
+  const onTaskUpdateRef = useRef(onTaskUpdate);
+  const onTaskCompleteRef = useRef(onTaskComplete);
+  
+  useEffect(() => {
+    onTaskUpdateRef.current = onTaskUpdate;
+    onTaskCompleteRef.current = onTaskComplete;
+  }, [onTaskUpdate, onTaskComplete]);
 
-  // Load initial tasks
-  const loadInitialTasks = async () => {
-    if (!contactId || agentIds.length === 0) {
+  // Memoize agentIds as a sorted string for stable comparison
+  const agentIdsKey = useMemo(() => {
+    return agentIds.length > 0 ? [...agentIds].sort().join(',') : '';
+  }, [agentIds]);
+
+  // Memoize the actual agentIds array for use in queries
+  const stableAgentIds = useMemo(() => {
+    return agentIds.length > 0 ? [...agentIds] : [];
+  }, [agentIdsKey]);
+
+  // Load initial tasks with debouncing and error handling
+  const loadInitialTasks = useCallback(async () => {
+    if (!contactId || stableAgentIds.length === 0) {
       setLoading(false);
       return;
     }
 
+    // Prevent concurrent requests
+    if (loadingRef.current) {
+      return;
+    }
+
     try {
+      loadingRef.current = true;
       setLoading(true);
       const supabase = supabaseBrowser();
 
@@ -71,7 +98,7 @@ export function useTaskSubscription({
           input_data,
           agent:ai_agents(id, name, agent_type)
         `)
-        .in('agent_id', agentIds)
+        .in('agent_id', stableAgentIds)
         .in('status', ['pending', 'in_progress', 'completed', 'failed'])
         .order('assigned_at', { ascending: false })
         .limit(20);
@@ -86,31 +113,50 @@ export function useTaskSubscription({
 
       setActiveTasks(contactTasks);
       setError(null);
+      errorCountRef.current = 0; // Reset error count on success
     } catch (err: any) {
+      errorCountRef.current += 1;
       console.error('Error loading tasks:', err);
       setError(err.message || 'Failed to load tasks');
+      
+      // If too many errors, disable to prevent infinite loops
+      if (errorCountRef.current > 5) {
+        console.error('Too many errors loading tasks, disabling subscription');
+        setUsePolling(false);
+        setLoading(false);
+        return;
+      }
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
-  };
+  }, [contactId, stableAgentIds]);
 
-  // Initial load
+  // Initial load - only when dependencies actually change
   useEffect(() => {
-    if (!enabled || !contactId || agentIds.length === 0) {
+    if (!enabled || !contactId || stableAgentIds.length === 0) {
       setLoading(false);
       return;
     }
 
+    // Reset error count when dependencies change
+    errorCountRef.current = 0;
     loadInitialTasks();
-  }, [contactId, agentIds, enabled]);
+  }, [contactId, agentIdsKey, enabled, loadInitialTasks]);
 
   // Set up real-time subscription
   useEffect(() => {
-    if (!enabled || !contactId || agentIds.length === 0 || usePolling) {
+    if (!enabled || !contactId || stableAgentIds.length === 0 || usePolling) {
       return;
     }
 
     const supabase = supabaseBrowser();
+    
+    // Clean up any existing channel first
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
     
     // Create a channel for this contact's tasks
     const channel = supabase
@@ -121,7 +167,7 @@ export function useTaskSubscription({
           event: '*', // Listen to INSERT, UPDATE, DELETE
           schema: 'public',
           table: 'agent_tasks',
-          filter: `agent_id=in.(${agentIds.join(',')})`,
+          filter: `agent_id=in.(${stableAgentIds.join(',')})`,
         },
         async (payload) => {
           try {
@@ -177,9 +223,9 @@ export function useTaskSubscription({
               }
             });
 
-            // Call callbacks
-            if (onTaskUpdate) {
-              onTaskUpdate(fullTask as TaskUpdate);
+            // Call callbacks using refs
+            if (onTaskUpdateRef.current) {
+              onTaskUpdateRef.current(fullTask as TaskUpdate);
             }
 
             // Check if task just completed
@@ -189,8 +235,8 @@ export function useTaskSubscription({
             ) {
               const oldTask = payload.old as any;
               if (oldTask?.status !== fullTask.status) {
-                if (onTaskComplete) {
-                  onTaskComplete(fullTask as TaskUpdate);
+                if (onTaskCompleteRef.current) {
+                  onTaskCompleteRef.current(fullTask as TaskUpdate);
                 }
               }
             }
@@ -220,11 +266,11 @@ export function useTaskSubscription({
         channelRef.current = null;
       }
     };
-  }, [contactId, agentIds, enabled, usePolling, onTaskUpdate, onTaskComplete]);
+  }, [contactId, agentIdsKey, enabled, usePolling, stableAgentIds]);
 
   // Polling fallback
   useEffect(() => {
-    if (!usePolling || !enabled || !contactId || agentIds.length === 0) {
+    if (!usePolling || !enabled || !contactId || stableAgentIds.length === 0) {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
@@ -243,7 +289,7 @@ export function useTaskSubscription({
         pollingIntervalRef.current = null;
       }
     };
-  }, [usePolling, enabled, contactId, agentIds]);
+  }, [usePolling, enabled, contactId, agentIdsKey, loadInitialTasks, stableAgentIds.length]);
 
   const subscribe = () => {
     // Re-subscription is handled by the useEffect above
