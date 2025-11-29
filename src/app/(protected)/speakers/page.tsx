@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { SpeakerSearchBar } from "@/components/speakers/SpeakerSearchBar";
 import { SpeakerResultCard } from "@/components/speakers/SpeakerResultCard";
 import { SpeakerSearchFilters } from "@/components/speakers/SpeakerSearchFilters";
@@ -8,7 +8,7 @@ import { SpeakerSearchResult, SpeakerSearchOptions } from "@/lib/services/speake
 import { Loader2, Search, Filter, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
-export default function SpeakersPage() {
+function SpeakersPageContent() {
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(searchParams.get("query") || "");
   const [name, setName] = useState(searchParams.get("name") || "");
@@ -223,6 +223,20 @@ export default function SpeakersPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+export default function SpeakersPage() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto px-4 py-8 max-w-7xl">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    }>
+      <SpeakersPageContent />
+    </Suspense>
   );
 }
 
