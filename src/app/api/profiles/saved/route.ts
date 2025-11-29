@@ -28,14 +28,36 @@ interface UpdateProfileRequest {
 // POST /api/profiles/saved - Save a profile
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    // Check rate limit before processing
+    const { checkAutoSaveRateLimitOrThrow, getAutoSaveRateLimiter } = await import('@/lib/services/auto-save-rate-limiter');
     const supabase = await supabaseServer();
     const { data: userRes, error: userErr } = await supabase.auth.getUser();
     
     if (userErr || !userRes?.user) {
       return NextResponse.json({ 
         success: false,
-        error: "Not authenticated" 
+        error: "Unauthorized" 
       }, { status: 401 });
+    }
+
+    const userId = userRes.user.id;
+    
+    try {
+      await checkAutoSaveRateLimitOrThrow(userId);
+    } catch (rateLimitError: any) {
+      return NextResponse.json({
+        success: false,
+        error: rateLimitError.message,
+        rateLimitExceeded: true,
+        retryAfter: rateLimitError.retryAfter,
+        circuitBreakerOpen: rateLimitError.circuitBreakerOpen,
+        queueFull: rateLimitError.queueFull,
+      }, { 
+        status: 429,
+        headers: {
+          'Retry-After': rateLimitError.retryAfter?.toString() || '60',
+        }
+      });
     }
 
     const requestData: SaveProfileRequest = await req.json();
@@ -48,6 +70,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 400 });
     }
 
+    // Determine data source (manual save vs auto-save)
+    const dataSource = requestData.metadata?.auto_save ? 'auto_save' : 'manual';
+    
+    // Check if consent is required for auto-save
+    if (dataSource === 'auto_save') {
+      const { getConsentStatus } = await import('@/lib/services/gdpr-service');
+      const consentStatus = await getConsentStatus(userId);
+      
+      if (!consentStatus?.autoSaveConsent) {
+        return NextResponse.json({
+          success: false,
+          error: "Auto-save requires consent. Please enable auto-save consent in privacy settings.",
+          requiresConsent: true,
+        }, { status: 403 });
+      }
+    }
+
     const { data, error } = await supabase
       .from('saved_speaker_profiles')
       .insert({
@@ -56,7 +95,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         enhanced_data,
         notes: notes || null,
         tags: tags || [],
-        outreach_status: 'not_started'
+        outreach_status: 'not_started',
+        data_source: dataSource,
+        consent_given: dataSource === 'auto_save', // Auto-saved contacts require consent
+        consent_date: dataSource === 'auto_save' ? new Date().toISOString() : null,
       })
       .select()
       .single();
@@ -121,6 +163,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       } catch (historyError) {
         // Don't fail the save if history linking fails
         console.error('[phase2-speaker-history] Failed to link speaker to event:', historyError);
+      }
+    }
+
+    // Record contact creation for rate limiting
+    if (data?.id) {
+      try {
+        const { getAutoSaveRateLimiter } = await import('@/lib/services/auto-save-rate-limiter');
+        const rateLimiter = getAutoSaveRateLimiter();
+        await rateLimiter.recordContactCreation(userId);
+      } catch (rateLimitError) {
+        console.warn('[auto-save] Failed to record contact creation for rate limiting:', rateLimitError);
+        // Don't fail the request if rate limit recording fails
       }
     }
 

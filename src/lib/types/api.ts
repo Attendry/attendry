@@ -70,6 +70,7 @@ export interface SpeakerExtractionResponse {
   followed?: string[];
   sources?: string[];
   processingTime?: number;
+  method?: string; // Extraction method used (e.g., "Firecrawl", "JSON-LD", "AI", etc.)
 }
 
 /**

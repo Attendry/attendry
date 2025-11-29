@@ -16,18 +16,53 @@
  */
 
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import ExpandableSpeakerCard from "./ExpandableSpeakerCard";
 import { SpeakerData } from "@/lib/types/core";
 import { ChevronRight, Users, Linkedin } from "lucide-react";
+import { useBulkSelection } from "@/lib/hooks/useBulkSelection";
+import { BulkSelectionToolbar } from "./speakers/BulkSelectionToolbar";
+import { bulkSaveSpeakers } from "@/lib/services/bulk-save-service";
+import { toast } from "sonner";
+import { supabaseBrowser } from "@/lib/supabase-browser";
 
 interface DynamicSpeakerLayoutProps {
   speakers: SpeakerData[];
   sessionTitle?: string;
+  eventId?: string;
+  eventTitle?: string;
 }
 
-export default function DynamicSpeakerLayout({ speakers, sessionTitle }: DynamicSpeakerLayoutProps) {
+export default function DynamicSpeakerLayout({ 
+  speakers, 
+  sessionTitle,
+  eventId,
+  eventTitle,
+}: DynamicSpeakerLayoutProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ completed: number; total: number; current?: string } | null>(null);
+
+  // Get user ID
+  useEffect(() => {
+    const getUserId = async () => {
+      const supabase = supabaseBrowser();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUserId(session.user.id);
+      }
+    };
+    getUserId();
+  }, []);
+
+  // Bulk selection hook
+  const bulkSelection = useBulkSelection(speakers, {
+    maxSelections: 50, // Respect rate limit
+    onSelectionChange: () => {
+      // Could add analytics here
+    },
+  });
 
   const handleToggleExpansion = (index: number, expanded: boolean) => {
     if (expanded) {
@@ -38,15 +73,105 @@ export default function DynamicSpeakerLayout({ speakers, sessionTitle }: Dynamic
   };
 
   const handleListCardClick = (index: number) => {
-    setExpandedIndex(index);
+    if (bulkSelection.isSelectMode) {
+      bulkSelection.toggleSelection(speakers[index], index);
+    } else {
+      setExpandedIndex(index);
+    }
   };
 
-  const isExpanded = expandedIndex !== null;
+  const handleBulkSave = async () => {
+    if (!userId || bulkSelection.selectedItems.length === 0) return;
+
+    setIsSaving(true);
+    setSaveProgress({ completed: 0, total: bulkSelection.selectedItems.length });
+
+    try {
+      const progress = await bulkSaveSpeakers(
+        bulkSelection.selectedItems,
+        userId,
+        {
+          eventId,
+          eventTitle,
+          onProgress: (p) => {
+            setSaveProgress({
+              completed: p.completed,
+              total: p.total,
+              current: p.current,
+            });
+          },
+        }
+      );
+
+      if (progress.completed > 0) {
+        toast.success(
+          `Saved ${progress.completed} contact${progress.completed !== 1 ? 's' : ''}`,
+          progress.failed > 0
+            ? {
+                description: `${progress.failed} failed. ${progress.errors.length > 0 ? progress.errors[0].error : ''}`,
+              }
+            : undefined
+        );
+      }
+
+      if (progress.failed > 0 && progress.completed === 0) {
+        toast.error(`Failed to save contacts: ${progress.errors[0]?.error || 'Unknown error'}`);
+      }
+
+      // Clear selection and exit select mode
+      bulkSelection.clearSelection();
+      bulkSelection.toggleSelectMode();
+    } catch (error: any) {
+      toast.error(`Bulk save failed: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsSaving(false);
+      setSaveProgress(null);
+    }
+  };
+
+  const isExpanded = expandedIndex !== null && !bulkSelection.isSelectMode;
   const expandedSpeaker = expandedIndex !== null ? speakers[expandedIndex] : null;
   const listSpeakers = speakers.filter((_, index) => index !== expandedIndex);
 
   return (
     <div className="w-full">
+      {/* Bulk Selection Toolbar */}
+      <BulkSelectionToolbar
+        isSelectMode={bulkSelection.isSelectMode}
+        selectionCount={bulkSelection.selectionCount}
+        allSelected={bulkSelection.allSelected}
+        someSelected={bulkSelection.someSelected}
+        onToggleSelectMode={bulkSelection.toggleSelectMode}
+        onSelectAll={bulkSelection.selectAll}
+        onDeselectAll={bulkSelection.deselectAll}
+        onBulkSave={handleBulkSave}
+        isSaving={isSaving}
+        maxSelections={50}
+      />
+
+      {/* Save Progress Indicator */}
+      {saveProgress && saveProgress.total > 0 && (
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-blue-900">
+              Saving contacts... {saveProgress.completed} / {saveProgress.total}
+            </span>
+            <span className="text-sm text-blue-700">
+              {Math.round((saveProgress.completed / saveProgress.total) * 100)}%
+            </span>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${(saveProgress.completed / saveProgress.total) * 100}%` }}
+            />
+          </div>
+          {saveProgress.current && (
+            <p className="text-xs text-blue-700 mt-2">Saving: {saveProgress.current}</p>
+          )}
+        </div>
+      )}
+
       {!isExpanded ? (
         // Initial Grid Layout - All cards in grid
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -57,6 +182,9 @@ export default function DynamicSpeakerLayout({ speakers, sessionTitle }: Dynamic
               sessionTitle={sessionTitle}
               isExpanded={false}
               onToggleExpansion={(expanded) => handleToggleExpansion(index, expanded)}
+              isSelectMode={bulkSelection.isSelectMode}
+              isSelected={bulkSelection.isSelected(speaker, index)}
+              onToggleSelection={() => bulkSelection.toggleSelection(speaker, index)}
             />
           ))}
         </div>
@@ -100,8 +228,17 @@ export default function DynamicSpeakerLayout({ speakers, sessionTitle }: Dynamic
                     <div key={originalIndex} className="p-3 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600 transition-all duration-200 group">
                       <div 
                         onClick={() => handleListCardClick(originalIndex)}
-                        className="flex items-center justify-between cursor-pointer"
+                        className={`flex items-center justify-between ${bulkSelection.isSelectMode ? 'cursor-pointer' : 'cursor-pointer'}`}
                       >
+                        {bulkSelection.isSelectMode && (
+                          <input
+                            type="checkbox"
+                            checked={bulkSelection.isSelected(speaker, originalIndex)}
+                            onChange={() => bulkSelection.toggleSelection(speaker, originalIndex)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="mr-2 h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                          />
+                        )}
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-sm text-slate-900 dark:text-white truncate">
                             {speaker.name}

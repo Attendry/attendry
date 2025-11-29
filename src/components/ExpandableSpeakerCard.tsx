@@ -16,7 +16,7 @@
  */
 
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { SpeakerData } from "@/lib/types/core";
 import { ChevronRight, ChevronDown, Maximize2, Minimize2, Linkedin, ExternalLink } from "lucide-react";
 import { useSpeakerEnhancement } from "@/lib/hooks/useSpeakerEnhancement";
@@ -24,6 +24,7 @@ import SpeakerDataDebugger from "./SpeakerDataDebugger";
 import { normalizeSpeakerData, getDisplayTitle, getDisplayOrganization } from "@/lib/utils/speaker-data-normalizer";
 import "@/lib/utils/speaker-cache-debug"; // Import debug utilities
 import { toast } from "sonner";
+import Link from "next/link";
 
 /**
  * Enhanced speaker data structure interface
@@ -61,6 +62,9 @@ interface ExpandableSpeakerCardProps {
   sessionTitle?: string;
   isExpanded?: boolean;
   onToggleExpansion?: (expanded: boolean) => void;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelection?: () => void;
 }
 
 /**
@@ -70,7 +74,10 @@ export default function ExpandableSpeakerCard({
   speaker, 
   sessionTitle,
   isExpanded = false,
-  onToggleExpansion
+  onToggleExpansion,
+  isSelectMode = false,
+  isSelected = false,
+  onToggleSelection,
 }: ExpandableSpeakerCardProps) {
   // ============================================================================
   // STATE MANAGEMENT
@@ -80,6 +87,8 @@ export default function ExpandableSpeakerCard({
   const [busy, setBusy] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [checkingSaved, setCheckingSaved] = useState(true); // Loading state for checking save status
+  const [savedContactId, setSavedContactId] = useState<string | undefined>(); // ID of saved contact if exists
   
   // Use the custom hook for speaker enhancement
   const {
@@ -90,6 +99,43 @@ export default function ExpandableSpeakerCard({
     enhanceSpeaker,
     hasEnhancedData
   } = useSpeakerEnhancement(speaker);
+
+  // ============================================================================
+  // EFFECTS
+  // ============================================================================
+
+  // Check if speaker is already saved on mount
+  useEffect(() => {
+    async function checkIfSaved() {
+      if (!speaker?.name) {
+        setCheckingSaved(false);
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/speakers/check-saved', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: speaker.name,
+            org: speaker.org
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setProfileSaved(data.isSaved);
+          setSavedContactId(data.contactId);
+        }
+      } catch (error) {
+        console.error('[ExpandableSpeakerCard] Failed to check save status:', error);
+      } finally {
+        setCheckingSaved(false);
+      }
+    }
+
+    void checkIfSaved();
+  }, [speaker?.name, speaker?.org]);
 
   // ============================================================================
   // COMPUTED VALUES
@@ -157,6 +203,7 @@ export default function ExpandableSpeakerCard({
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Save failed");
       setProfileSaved(true);
+      setSavedContactId(j.contact?.id || j.data?.id);
       toast.success("Profile saved", {
         description: "Speaker profile saved for outreach tracking"
       });
@@ -244,11 +291,30 @@ export default function ExpandableSpeakerCard({
         ? 'col-span-2 row-span-2 shadow-lg border-blue-200 dark:border-blue-700' 
         : 'hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600'
       }
+      ${isSelectMode && isSelected ? 'ring-2 ring-blue-500 border-blue-500' : ''}
     `}>
       <SpeakerDataDebugger speaker={speaker} label="ExpandableSpeakerCard Data" />
+      
+      {/* Checkbox for bulk selection */}
+      {isSelectMode && (
+        <div className="absolute top-4 left-4 z-10">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => {
+              e.stopPropagation();
+              onToggleSelection?.();
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="h-5 w-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+          />
+        </div>
+      )}
+      
       {/* Right Earmark - Clickable Expansion Trigger */}
       <button
-        onClick={handleToggleExpansion}
+        onClick={isSelectMode ? undefined : handleToggleExpansion}
+        disabled={isSelectMode}
         className={`
           absolute top-4 right-4 p-2 rounded-full transition-all duration-300 ease-in-out
           ${expanded 
@@ -270,10 +336,35 @@ export default function ExpandableSpeakerCard({
         {/* Header Section */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 pr-12">
-            <div className={`font-semibold text-slate-900 dark:text-white mb-2 transition-all duration-300 ${
-              expanded ? 'text-2xl' : 'text-xl'
-            }`}>
-              {displaySpeaker.name}
+            <div className="flex items-center gap-2 mb-2">
+              <div className={`font-semibold text-slate-900 dark:text-white transition-all duration-300 ${
+                expanded ? 'text-2xl' : 'text-xl'
+              }`}>
+                {displaySpeaker.name}
+              </div>
+              {checkingSaved ? (
+                <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+              ) : profileSaved && (
+                savedContactId ? (
+                  <Link 
+                    href={`/contacts?contactId=${savedContactId}`}
+                    className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-semibold text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                    title="View saved contact"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Already Saved
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs font-semibold text-green-700 dark:text-green-300">
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Already Saved
+                  </span>
+                )
+              )}
             </div>
             
             {/* Original Title and Organization (Always Visible) */}
@@ -464,17 +555,26 @@ export default function ExpandableSpeakerCard({
             {busy ? "Saving…" : "Save to Watchlist"}
           </button>
 
-          <button
-            onClick={saveProfile}
-            disabled={savingProfile || profileSaved}
-            className={`text-xs rounded-full border px-3 py-1 disabled:opacity-50 transition-colors duration-200 ${
-              profileSaved 
-                ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300" 
-                : "border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
-            }`}
-          >
-            {savingProfile ? "Saving…" : profileSaved ? "Saved ✓" : "Save Profile"}
-          </button>
+          {savedContactId ? (
+            <Link
+              href={`/contacts?contactId=${savedContactId}`}
+              className="text-xs rounded-full border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-3 py-1 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors duration-200"
+            >
+              View Contact →
+            </Link>
+          ) : (
+            <button
+              onClick={saveProfile}
+              disabled={savingProfile || profileSaved || checkingSaved}
+              className={`text-xs rounded-full border px-3 py-1 disabled:opacity-50 transition-colors duration-200 ${
+                profileSaved 
+                  ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300" 
+                  : "border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
+              }`}
+            >
+              {checkingSaved ? "Checking…" : savingProfile ? "Saving…" : profileSaved ? "Saved ✓" : "Save Profile"}
+            </button>
+          )}
         </div>
 
         {/* Expanded Content */}

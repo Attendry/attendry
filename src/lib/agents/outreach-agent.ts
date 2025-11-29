@@ -9,6 +9,7 @@ import {
 import { SavedSpeakerProfile } from '@/lib/types/database';
 import { LLMService } from '@/lib/services/llm-service';
 import { supabaseServer } from '@/lib/supabase-server';
+import { searchSpeakers, getSpeakerHistory, SpeakerSearchResult } from '@/lib/services/speaker-search-service';
 
 /**
  * Outreach Agent
@@ -133,6 +134,32 @@ export class OutreachAgent extends BaseAgent {
     // Fetch contact research if available
     const contactResearch = await this.getContactResearch(input.contactId);
 
+    // Fetch speaker history from unified search API
+    let speakerHistory: SpeakerSearchResult['events'] = [];
+    try {
+      // Try to find speaker by name and org
+      // Get user ID from supabase
+      const { data: { user } } = await this.supabase.auth.getUser();
+      const speakerSearch = await searchSpeakers({
+        name: contact.speaker_data.name,
+        org: contact.speaker_data.org,
+        limit: 1,
+        userId: user?.id,
+      });
+
+      if (speakerSearch.results.length > 0) {
+        const speakerResult = speakerSearch.results[0];
+        if (speakerResult.speaker_key) {
+          speakerHistory = await getSpeakerHistory(speakerResult.speaker_key, 10);
+        } else if (speakerResult.events) {
+          speakerHistory = speakerResult.events;
+        }
+      }
+    } catch (error) {
+      console.warn('[OutreachAgent] Failed to fetch speaker history:', error);
+      // Non-critical, continue without speaker history
+    }
+
     // Extract relevant outreach points from research if available
     let relevantResearchPoints: string | null = null;
     if (contactResearch?.background_info) {
@@ -167,6 +194,7 @@ export class OutreachAgent extends BaseAgent {
       historicalOutreach,
       relevantResearchPoints,
       contactResearch,
+      speakerHistory,
       channel: preferredChannel,
       tone: preferredTone,
       language: preferredLanguage
@@ -302,11 +330,12 @@ If the research data is not relevant for outreach, return "No relevant outreach 
     historicalOutreach: any[];
     relevantResearchPoints: string | null;
     contactResearch: any | null;
+    speakerHistory?: SpeakerSearchResult['events'];
     channel: OutreachChannel;
     tone: string;
     language: string;
   }): string {
-    const { contact, opportunity, accountIntel, historicalOutreach, relevantResearchPoints, contactResearch, channel, tone, language } = context;
+    const { contact, opportunity, accountIntel, historicalOutreach, relevantResearchPoints, contactResearch, speakerHistory, channel, tone, language } = context;
     
     let prompt = `Draft a personalized ${channel} outreach message for ${contact.speaker_data.name}.\n\n`;
     
@@ -406,6 +435,21 @@ If the research data is not relevant for outreach, return "No relevant outreach 
       if (accountIntel.recentActivity) {
         prompt += `- Recent activity: ${accountIntel.recentActivity}\n`;
       }
+      prompt += `\n`;
+    }
+
+    // Speaker history (cross-event appearances)
+    if (speakerHistory && speakerHistory.length > 0 && this.config.includeEventContext) {
+      prompt += `SPEAKER HISTORY & PAST ENGAGEMENTS:\n`;
+      prompt += `This speaker has appeared at ${speakerHistory.length} event(s):\n`;
+      speakerHistory.slice(0, 5).forEach((event, idx) => {
+        prompt += `${idx + 1}. ${event.event_title || 'Event'} - ${event.talk_title || 'Speaker'}`;
+        if (event.appeared_at) {
+          const date = new Date(event.appeared_at).toLocaleDateString();
+          prompt += ` (${date})`;
+        }
+        prompt += `\n`;
+      });
       prompt += `\n`;
     }
 

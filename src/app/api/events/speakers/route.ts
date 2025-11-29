@@ -1037,6 +1037,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerExtrac
 
     // 5) Firecrawl extract over the enhanced candidate set
     const { speakers: raw, sources } = await firecrawlExtract(allCandidates);
+    const extractionMethod = raw.length > 0 ? 'Firecrawl' : null;
 
     // 6) Enhanced LLM normalization/merge
     const speakers = await normalizeWithLLM(raw);
@@ -1129,6 +1130,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<SpeakerExtrac
       count: final.length,
       speakers: final,
       qualityStats,
+      method: extractionMethod || 'Multiple methods', // Extraction method used
       version: "speakers_v3"
     } as SpeakerExtractionResponse);
   } catch (e: any) {
