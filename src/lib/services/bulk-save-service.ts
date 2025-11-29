@@ -45,10 +45,10 @@ async function saveSpeakerAsContact(
       }
     }
 
-    // Prepare speaker data
+    // Prepare speaker data - handle all possible field names
     const speakerData = {
       name: speaker.name || '',
-      org: speaker.org || speaker.organization || '',
+      org: speaker.org || speaker.organization || speaker.company || '', // Check all possible field names
       title: speaker.title || '',
       email: speaker.email || '',
       linkedin: speaker.linkedin_url || speaker.linkedin || '',

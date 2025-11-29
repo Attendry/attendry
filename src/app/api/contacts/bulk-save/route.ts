@@ -31,10 +31,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Convert to SpeakerData format
+    // Convert to SpeakerData format - handle all possible field names
     const speakerData: SpeakerData[] = speakers.map((s: any) => ({
       name: s.name || "",
-      org: s.org || s.organization || "",
+      org: s.org || s.organization || s.company || "", // Check all possible field names
       title: s.title || "",
       email: s.email || "",
       linkedin_url: s.linkedin_url || s.linkedin || "",

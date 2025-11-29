@@ -61,13 +61,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const requestData: SaveProfileRequest = await req.json();
-    const { speaker_data, enhanced_data, notes, tags } = requestData;
+    let { speaker_data, enhanced_data, notes, tags } = requestData;
     
     if (!speaker_data || !enhanced_data) {
       return NextResponse.json({ 
         success: false,
         error: "speaker_data and enhanced_data are required" 
       }, { status: 400 });
+    }
+
+    // Normalize field names - ensure 'org' field exists (check for company, organization, org)
+    if (speaker_data && !speaker_data.org) {
+      speaker_data = {
+        ...speaker_data,
+        org: speaker_data.org || speaker_data.organization || speaker_data.company || '',
+      };
+    }
+
+    // Normalize enhanced_data organization field as well
+    if (enhanced_data && !enhanced_data.organization) {
+      enhanced_data = {
+        ...enhanced_data,
+        organization: enhanced_data.organization || enhanced_data.org || enhanced_data.company || speaker_data.org || '',
+      };
     }
 
     // Determine data source (manual save vs auto-save)
@@ -181,7 +197,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // Auto-research: Trigger research in background when contact is added
     if (data?.id && speaker_data?.name) {
       const name = speaker_data.name || 'Unknown';
-      const company = speaker_data.org || speaker_data.organization || 'Unknown';
+      const company = speaker_data.org || speaker_data.organization || speaker_data.company || 'Unknown';
       
       // Use setImmediate or setTimeout to ensure it runs after response is sent
       // In serverless, we need to ensure the function doesn't terminate before research starts
