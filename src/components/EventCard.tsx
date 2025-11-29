@@ -24,7 +24,7 @@ import CompanyCard from "./CompanyCard"; // Company/sponsor card component
 import { EventIntelligenceQuickView } from "./EventIntelligenceQuickView"; // Event intelligence quick view
 import { RelevanceIndicator, extractMatchReasons } from "./RelevanceIndicator";
 import { SpeakerData } from "@/lib/types/core";
-import { Star, Eye } from "lucide-react";
+import { Star, Eye, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useSearchResults } from "@/context/SearchResultsContext";
