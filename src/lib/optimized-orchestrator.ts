@@ -2225,10 +2225,14 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
   if (params.userText && params.userText.trim()) {
     // Extract individual keywords from user search (e.g., "hospitality events" → ["hospitality", "events"])
     const userText = params.userText.trim();
-    const keywords = userText.toLowerCase()
-      .split(/\s+/)
-      .filter(word => word.length > 2) // Filter out short words like "in", "at", "the"
-      .filter(word => !['events', 'event', 'conference', 'conferences', 'summit', 'summits'].includes(word)); // Remove generic event terms
+    const allWords = userText.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+    const genericTerms = ['events', 'event', 'conference', 'conferences', 'summit', 'summits', 'workshop', 'workshops', 'seminar', 'seminars'];
+    
+    // Filter out generic terms, but keep them if they're the ONLY search term
+    // This handles cases where user searches for just "conference" - we should show all events
+    const keywords = allWords.length === 1 && genericTerms.includes(allWords[0])
+      ? allWords // Keep generic term if it's the only search term
+      : allWords.filter(word => !genericTerms.includes(word)); // Otherwise filter out generic terms
     
     // Add individual keywords
     userSearchKeywords.push(...keywords);
@@ -2258,6 +2262,12 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
   if (userSearchKeywords.length > 0) {
     console.log('[optimized-orchestrator] User search keywords provided, prioritizing user search:', userSearchKeywords.slice(0, 5));
     
+    // Check if the search is ONLY generic terms (e.g., just "conference")
+    // In this case, be lenient and show all events that pass basic quality checks
+    const isOnlyGenericTerm = params.userText && 
+      params.userText.trim().toLowerCase().split(/\s+/).length === 1 &&
+      ['events', 'event', 'conference', 'conferences', 'summit', 'summits', 'workshop', 'workshops', 'seminar', 'seminars'].includes(params.userText.trim().toLowerCase());
+    
     return events.filter(event => {
       const eventTitle = event.title || 'Untitled Event';
       const searchText = `${eventTitle} ${event.description || ''}`.toLowerCase();
@@ -2274,6 +2284,13 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
       if (isNonEvent) {
         console.log(`[optimized-orchestrator] ✗ Event filtered out (non-event page): "${eventTitle.substring(0, 80)}"`);
         return false;
+      }
+      
+      // If search is only a generic term, be lenient - show all events that pass basic checks
+      // (they already passed non-event filter above)
+      if (isOnlyGenericTerm) {
+        console.log(`[optimized-orchestrator] ✓ Event passed (generic search term, showing all events): "${eventTitle.substring(0, 80)}"`);
+        return true;
       }
       
       // Check if event matches ANY user search keyword

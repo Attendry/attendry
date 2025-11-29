@@ -235,9 +235,9 @@ export async function POST(req: NextRequest) {
             events: [...allEvents],
             totalSoFar: allEvents.length,
             isComplete: false,
-            message: firecrawlSucceeded 
+              message: firecrawlSucceeded 
               ? 'Searching additional sources...' 
-              : 'Firecrawl unavailable, trying alternative search...',
+              : 'No results from primary search, trying alternative sources...',
           });
 
           try {
