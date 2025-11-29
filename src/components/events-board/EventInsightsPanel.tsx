@@ -14,6 +14,7 @@ import { TrendInsights } from "./TrendInsights";
 import { PositioningInsights } from "./PositioningInsights";
 import { RecommendationsInsights } from "./RecommendationsInsights";
 import { CompetitiveInsights } from "./CompetitiveInsights";
+import { CompetitorDiscovery } from "../competitive-intelligence/CompetitorDiscovery";
 import { EventInsightsResponse } from "@/lib/types/event-board";
 import { Loader2, BarChart3 } from "lucide-react";
 
@@ -131,12 +132,13 @@ export function EventInsightsPanel({
 
         {!loading && !error && insights && (
           <Tabs defaultValue="recommendations" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
               <TabsTrigger value="attendees">Attendees</TabsTrigger>
               <TabsTrigger value="trends">Trends</TabsTrigger>
               <TabsTrigger value="positioning">Positioning</TabsTrigger>
               <TabsTrigger value="competitive">Competitive</TabsTrigger>
+              <TabsTrigger value="discovery">Discovery</TabsTrigger>
             </TabsList>
             
             {/* Score Breakdown - Phase 2B */}
@@ -214,6 +216,10 @@ export function EventInsightsPanel({
                 context={insights.competitiveContext}
                 alerts={insights.competitiveAlerts}
               />
+            </TabsContent>
+            
+            <TabsContent value="discovery" className="mt-4">
+              <CompetitorDiscovery />
             </TabsContent>
           </Tabs>
         )}

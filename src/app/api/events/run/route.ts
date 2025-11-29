@@ -234,6 +234,7 @@ export async function POST(req: NextRequest) {
     const location: string | null = body?.location ?? null;
     const timeframe: string | null = body?.timeframe ?? null;
     const includeDebug = body?.debug === true;
+    const useNaturalLanguage = body?.useNaturalLanguage === true; // Flag to skip profile enrichment for NLP
 
     // Initialize telemetry context
     telemetry.ctx = {
@@ -314,7 +315,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Use Optimized Orchestrator
-    console.log('[api/events/run] Using Optimized Orchestrator');
+    console.log('[api/events/run] Using Optimized Orchestrator', { useNaturalLanguage });
     const res = await executeOptimizedSearch({
       userText,
       country: normalizedCountry,
@@ -322,7 +323,8 @@ export async function POST(req: NextRequest) {
       dateTo: effectiveDateTo || undefined,
       location,
       timeframe,
-      locale
+      locale,
+      useNaturalLanguage
     });
     
     telemetry.query.final = userText; // Optimized orchestrator uses the original query

@@ -12,7 +12,8 @@ import {
   Bell, 
   Settings,
   X,
-  Menu
+  Menu,
+  Target
 } from 'lucide-react';
 
 interface NavigationItem {
@@ -32,10 +33,10 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
 
   const navigationItems: NavigationItem[] = [
     { href: '/', label: 'Dashboard', icon: Home },
+    { href: '/opportunities', label: 'Opportunities', icon: Target },
     { href: '/events', label: 'Events', icon: Calendar },
-    { href: '/search', label: 'Search', icon: Search },
     { href: '/recommendations', label: 'Intelligence', icon: Brain },
-    { href: '/activity', label: 'Insights', icon: BarChart3 },
+    { href: '/activity', label: 'Reporting', icon: BarChart3 },
     { href: '/notifications', label: 'Notifications', icon: Bell, badge: 3 },
     { href: '/settings', label: 'Settings', icon: Settings }
   ];

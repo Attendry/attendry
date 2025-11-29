@@ -5,6 +5,7 @@ import { Edit, Trash2, ExternalLink, MapPin, Calendar, Star, MessageSquare, Spar
 import { SavedSpeakerProfile } from '@/lib/types/database';
 import { useSpeakerEnhancement } from '@/lib/hooks/useSpeakerEnhancement';
 import { SpeakerData } from '@/lib/types/core';
+import { toast } from 'sonner';
 
 interface EnhancedSavedProfileCardProps {
   profile: SavedSpeakerProfile;
@@ -144,12 +145,19 @@ export function EnhancedSavedProfileCard({
                 try {
                   if (speakerName && speakerName !== 'Unknown Speaker') {
                     await enhanceSpeaker();
+                    toast.success("Profile enhanced", {
+                      description: "Speaker profile has been updated with additional information"
+                    });
                   } else {
-                    alert('Cannot enhance: Speaker name is missing');
+                    toast.warning("Cannot enhance", {
+                      description: "Speaker name is required to enhance the profile"
+                    });
                   }
                 } catch (error) {
                   console.error('Error enhancing speaker:', error);
-                  alert('Failed to enhance speaker profile. Please try again.');
+                  toast.error("Enhancement failed", {
+                    description: "Could not enhance speaker profile. Please try again."
+                  });
                 }
               }}
               disabled={enhancing || !speakerName || speakerName === 'Unknown Speaker'}
@@ -223,12 +231,19 @@ export function EnhancedSavedProfileCard({
                   try {
                     if (speakerName && speakerName !== 'Unknown Speaker') {
                       await enhanceSpeaker();
+                      toast.success("Profile enhanced", {
+                        description: "Speaker profile has been updated with additional information"
+                      });
                     } else {
-                      alert('Cannot enhance: Speaker name is missing');
+                      toast.warning("Cannot enhance", {
+                        description: "Speaker name is required to enhance the profile"
+                      });
                     }
                   } catch (error) {
                     console.error('Error enhancing speaker:', error);
-                    alert('Failed to enhance speaker profile. Please try again.');
+                    toast.error("Enhancement failed", {
+                      description: "Could not enhance speaker profile. Please try again."
+                    });
                   }
                 }}
                 disabled={enhancing || !speakerName || speakerName === 'Unknown Speaker'}

@@ -60,7 +60,7 @@ export function EmptyEvents() {
       description="Search events to get started"
       action={{
         label: "Search Events",
-        onClick: () => window.location.href = '/search'
+        onClick: () => window.location.href = '/events'
       }}
     />
   );

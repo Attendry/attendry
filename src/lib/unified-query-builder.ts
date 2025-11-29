@@ -93,6 +93,7 @@ export interface QueryBuilderParams {
   locale?: string;
   language?: string;
   userProfile?: any; // Add user profile support
+  skipProfileEnrichment?: boolean; // If true, skip profile-based query enrichment
 }
 
 export interface QueryBuilderResult {
@@ -122,7 +123,8 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     timeframe,
     locale = 'de',
     language = 'en',
-    userProfile
+    userProfile,
+    skipProfileEnrichment = false
   } = params;
 
   // Load admin configuration
@@ -148,9 +150,9 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
   // Get temporal terms
   const temporalTerms = TEMPORAL_TERMS[termLanguage as keyof typeof TEMPORAL_TERMS] || TEMPORAL_TERMS.en;
   
-  // Build base query with user profile integration
+  // Build base query with user profile integration (skip if flag is set)
   let baseQuery = userText.trim();
-  if (!baseQuery && userProfile) {
+  if (!skipProfileEnrichment && !baseQuery && userProfile) {
     // If no user text provided, build query from user profile
     const industryTerms = userProfile.industry_terms || [];
     const icpTerms = userProfile.icp_terms || [];
@@ -198,7 +200,7 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     temporalTerms
   });
   
-  // Build narrative query for Firecrawl with user profile context
+  // Build narrative query for Firecrawl with user profile context (skip if flag is set)
   const narrativeQuery = buildNarrativeQuery({
     baseQuery,
     eventTypes,
@@ -210,7 +212,7 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     timeframe,
     excludeTerms: config.excludeTerms || '',
     language: termLanguage,
-    userProfile
+    userProfile: skipProfileEnrichment ? undefined : userProfile
   });
   
   // Generate query variations

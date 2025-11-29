@@ -63,7 +63,7 @@ type Tab = 'discussions' | 'sponsors' | 'location' | 'outreach';
 export function EventIntelligencePanel({ eventId, event }: EventIntelligencePanelProps) {
   const [intelligence, setIntelligence] = useState<EventIntelligence | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>('discussions');
+  const [activeTab, setActiveTab] = useState<Tab>('outreach');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {

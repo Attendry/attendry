@@ -5,6 +5,7 @@ import { supabaseBrowser } from "@/lib/supabase-browser";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import { EnhancedSavedProfileCard } from "@/components/EnhancedSavedProfileCard";
 import { useSavedProfiles } from "@/lib/hooks/useSavedProfiles";
+import { toast } from "sonner";
 
 export default function SavedProfilesPage() {
   const [authReady, setAuthReady] = useState(false);
@@ -63,8 +64,13 @@ export default function SavedProfilesPage() {
         outreach_status: editingStatus as SavedSpeakerProfile['outreach_status'],
       });
       setShowModal(false);
+      toast.success("Profile updated", {
+        description: "Changes have been saved"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to update profile");
+      toast.error("Failed to update profile", {
+        description: e.message || "An error occurred. Please try again."
+      });
     }
   }
 
@@ -91,24 +97,39 @@ export default function SavedProfilesPage() {
 
     try {
       await removeProfile(id);
+      toast.success("Profile deleted", {
+        description: "Speaker profile has been removed"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to delete profile");
+      toast.error("Failed to delete profile", {
+        description: e.message || "An error occurred. Please try again."
+      });
     }
   }
 
   async function updateProfileStatus(profileId: string, status: string) {
     try {
       await updateStatus(profileId, status as SavedSpeakerProfile["outreach_status"]);
+      toast.success("Status updated", {
+        description: "Outreach status has been changed"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to update status");
+      toast.error("Failed to update status", {
+        description: e.message || "An error occurred. Please try again."
+      });
     }
   }
 
   async function updateProfileNotes(profileId: string, notes: string) {
     try {
       await updateNotes(profileId, notes);
+      toast.success("Notes updated", {
+        description: "Profile notes have been saved"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to update notes");
+      toast.error("Failed to update notes", {
+        description: e.message || "An error occurred. Please try again."
+      });
     }
   }
 

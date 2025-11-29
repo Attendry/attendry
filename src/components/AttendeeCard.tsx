@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { toast } from "sonner";
 
 export default function AttendeeCard({ person }: { person: any }) {
   const [busy, setBusy] = useState(false);
@@ -19,8 +20,13 @@ export default function AttendeeCard({ person }: { person: any }) {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Save failed");
+      toast.success("Saved to watchlist", {
+        description: `${label} has been added to your watchlist`
+      });
     } catch (e: any) {
-      alert(e.message || "Save failed");
+      toast.error("Save failed", {
+        description: e.message || "Could not save to watchlist. Please try again."
+      });
     } finally {
       setBusy(false);
     }

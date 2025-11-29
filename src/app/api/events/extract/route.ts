@@ -507,7 +507,7 @@ function parseDates(text: string) {
     }
   }
   
-  // Pattern: 25. September (current year)
+  // Pattern: 25. September (current year) - but only if it's in the future
   m = text.match(/\b(\d{1,2})\.\s*([a-zA-ZäöüÄÖÜ]+)\b/i);
   if (m) {
     const day = pad2(m[1]);
@@ -515,7 +515,22 @@ function parseDates(text: string) {
     const month = germanMonths[monthName as keyof typeof germanMonths];
     if (month) {
       const currentYear = new Date().getFullYear();
-      return { starts_at: `${currentYear}-${month}-${day}`, ends_at: null };
+      const currentDate = new Date();
+      const parsedDate = new Date(currentYear, parseInt(month) - 1, parseInt(day));
+      
+      // Only use current year if the date is in the future
+      // If the date is in the past, it's likely from a past event - don't default to current year
+      if (parsedDate >= currentDate) {
+        return { starts_at: `${currentYear}-${month}-${day}`, ends_at: null };
+      }
+      // If date is in the past, try next year (for recurring events)
+      const nextYear = currentYear + 1;
+      const nextYearDate = new Date(nextYear, parseInt(month) - 1, parseInt(day));
+      if (nextYearDate >= currentDate) {
+        return { starts_at: `${nextYear}-${month}-${day}`, ends_at: null };
+      }
+      // Otherwise, don't guess - return null
+      return { starts_at: null, ends_at: null };
     }
   }
   
@@ -630,6 +645,89 @@ function pickData(d: any) {
   if (Array.isArray(d)) return d[0] ?? null;
   if (d?.results?.length) return d.results[0].data ?? d.results[0];
   return d;
+}
+
+/**
+ * FIRECRAWL-V2: Process extraction response to extract images and data attributes
+ * Filters out logos/icons and keeps only relevant event images
+ */
+function processExtractionResponse(extractedData: any, fullResponse: any): any {
+  const processed = { ...extractedData };
+  
+  // Process images from response
+  if (fullResponse?.data?.images || fullResponse?.images) {
+    const images = fullResponse?.data?.images || fullResponse?.images || [];
+    // Filter out logos, icons, and small images, keep only event-relevant images
+    const eventImages = images
+      .filter((img: any) => {
+        const url = img.url || img.src || '';
+        const isLogo = url.toLowerCase().includes('logo') || 
+                      url.toLowerCase().includes('icon') ||
+                      url.toLowerCase().includes('favicon');
+        const isSmall = img.width && img.width < 200 || img.height && img.height < 200;
+        return !isLogo && !isSmall && url.startsWith('http');
+      })
+      .slice(0, 5) // Keep top 5 event images
+      .map((img: any) => ({
+        url: img.url || img.src,
+        alt: img.alt || null,
+        width: img.width || null,
+        height: img.height || null
+      }));
+    
+    if (eventImages.length > 0) {
+      processed.metadata = {
+        ...(processed.metadata || {}),
+        images: eventImages
+      };
+    }
+  }
+  
+  // Process data attributes from response
+  if (fullResponse?.data?.dataAttributes || fullResponse?.dataAttributes) {
+    const dataAttributes = fullResponse?.data?.dataAttributes || fullResponse?.dataAttributes || {};
+    
+    // Extract event-related data attributes
+    const eventDataAttributes: Record<string, any> = {};
+    const eventKeys = ['event-date', 'event-location', 'event-venue', 'event-title', 'event-start', 'event-end'];
+    
+    for (const key of eventKeys) {
+      if (dataAttributes[key]) {
+        eventDataAttributes[key] = dataAttributes[key];
+      }
+    }
+    
+    // Also check for common data attribute patterns
+    Object.keys(dataAttributes).forEach(key => {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey.includes('event') || lowerKey.includes('date') || lowerKey.includes('location')) {
+        eventDataAttributes[key] = dataAttributes[key];
+      }
+    });
+    
+    if (Object.keys(eventDataAttributes).length > 0) {
+      processed.metadata = {
+        ...(processed.metadata || {}),
+        dataAttributes: eventDataAttributes
+      };
+    }
+  }
+  
+  // Process PDF metadata if available
+  if (fullResponse?.data?.pdfMetadata || fullResponse?.pdfMetadata) {
+    const pdfMetadata = fullResponse?.data?.pdfMetadata || fullResponse?.pdfMetadata;
+    if (pdfMetadata?.title && !processed.title) {
+      processed.title = pdfMetadata.title;
+    }
+    if (pdfMetadata?.metadata) {
+      processed.metadata = {
+        ...(processed.metadata || {}),
+        pdfMetadata: pdfMetadata.metadata
+      };
+    }
+  }
+  
+  return processed;
 }
 
 function normalizeUrl(u: string) {
@@ -786,7 +884,7 @@ async function extractBatch(urls: string[], key: string, locale: string, trace: 
     ? ` Focus on ${context.industry} industry events. Key terms: ${context.industryTerms.slice(0, 5).join(', ')}.`
     : '';
   
-  const enhancedPrompt = `You are an expert event data extractor. Extract ONLY information explicitly stated on the page.
+  const enhancedPrompt = `You are an expert event data extractor. Extract ONLY information explicitly stated on the page or in linked PDF documents.
 
 CRITICAL RULES:
 1. If information is NOT found, use null (not empty string, not "Unknown", not guesses)
@@ -794,9 +892,11 @@ CRITICAL RULES:
 3. Normalize dates to YYYY-MM-DD format (handle German: 25.09.2025, European: 25/09/2025, English: September 25, 2025)
 4. Normalize topics to the provided taxonomy (see below)
 5. Extract speakers ONLY if explicitly listed as speakers/presenters/keynote speakers
+   IMPORTANT: Speakers are often listed in PDF documents (programs, brochures, speaker lists) linked from the main page. 
+   Extract ALL speakers from PDFs if available - they typically contain the most complete speaker information.
 6. Extract cities ONLY if they are actual city names (not topics like "Praxisnah" or "Whistleblowing")
 
-Extract event details for each URL provided. Return structured JSON matching the schema exactly. Include evidence array for all extracted fields.
+Extract event details for each URL provided, including content from linked PDF documents. Return structured JSON matching the schema exactly. Include evidence array for all extracted fields.
 
 Locale: ${locale || hostCountry || "DE"}${industryContext}`;
 
@@ -817,7 +917,7 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
         showSources: false,
         scrapeOptions: {
           onlyMainContent: true, 
-          formats: ["markdown", "html"], 
+          formats: ["markdown", "html", "images"], // FIRECRAWL-V2: Added images format for event image extraction
           parsers: ["pdf"], 
           waitFor: 1200,
           location: { 
@@ -826,13 +926,20 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
           },
           blockAds: true,
           removeBase64Images: true,
+          // FIRECRAWL-V2: Extract data attributes for structured data from HTML
+          extractDataAttributes: true,
+          // FIRECRAWL-V2: Enhanced PDF parsing with title and metadata extraction
+          pdfOptions: {
+            extractTitle: true,
+            extractMetadata: true
+          },
           crawlerOptions: {
             maxDepth: Math.min(3, (crawl?.depth ?? 3)),
             maxPagesToCrawl: 12,
             allowSubdomains: true,
-            includePatterns: [
-              "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
-            ]
+            // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
+            // This is language-agnostic and automatically finds relevant pages in any language
+            prompt: "Crawl pages related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. Focus on pages that contain event information, speaker bios, session details, and registration forms."
           }
         },
         ignoreInvalidURLs: true
@@ -852,7 +959,7 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
           showSources: false,
           scrapeOptions: {
             onlyMainContent: true, 
-            formats: ["markdown", "html"], 
+            formats: ["markdown", "html", "images"], // FIRECRAWL-V2: Added images format
             parsers: ["pdf"], 
             waitFor: 1200,
             location: { 
@@ -861,13 +968,20 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
             },
             blockAds: true,
             removeBase64Images: true,
+            // FIRECRAWL-V2: Extract data attributes for structured data from HTML
+            extractDataAttributes: true,
+            // FIRECRAWL-V2: Enhanced PDF parsing with title and metadata extraction
+            pdfOptions: {
+              extractTitle: true,
+              extractMetadata: true
+            },
             crawlerOptions: {
               maxDepth: Math.min(3, (crawl?.depth ?? 3)),
               maxPagesToCrawl: 12,
               allowSubdomains: true,
-              includePatterns: [
-                "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
-              ]
+              // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
+              // This is language-agnostic and automatically finds relevant pages in any language
+              prompt: "Crawl pages and documents related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. CRITICAL: Also discover and crawl PDF documents (programs, brochures, speaker lists, event guides) linked from the page, as they often contain complete speaker information. Look for links to PDF files (.pdf) containing event programs, speaker lists, or detailed event information. Focus on pages and PDFs that contain event information, speaker bios, session details, and registration forms."
             }
           },
           ignoreInvalidURLs: true
@@ -889,12 +1003,16 @@ Locale: ${locale || hostCountry || "DE"}${industryContext}`;
       // Batch format: results array with url and data
       for (const result of data.results) {
         if (result?.url && result?.data) {
-          results.push({ url: result.url, data: result.data });
+          // FIRECRAWL-V2: Process images and data attributes for each result
+          const processedData = processExtractionResponse(result.data, result);
+          results.push({ url: result.url, data: processedData });
         }
       }
     } else if (data?.data) {
       // Single result format (fallback)
-      results.push({ url: urls[0], data: data.data });
+      // FIRECRAWL-V2: Process images and data attributes
+      const processedData = processExtractionResponse(data.data, data);
+      results.push({ url: urls[0], data: processedData });
     }
     
     trace.push({ step: "batch_extract", urls_count: urls.length, results_count: results.length });
@@ -961,7 +1079,7 @@ async function extractOne(url: string, key: string, locale: string, trace: any[]
       ? ` Focus on ${context.industry} industry events. Key terms: ${context.industryTerms.slice(0, 5).join(', ')}.`
       : '';
     // PHASE 1 OPTIMIZATION: Enhanced prompt with evidence tagging requirements
-    const enhancedPrompt = `You are an expert event data extractor. Extract ONLY information explicitly stated on the page.
+    const enhancedPrompt = `You are an expert event data extractor. Extract ONLY information explicitly stated on the page or in linked PDF documents.
 
 CRITICAL RULES:
 1. If information is NOT found, use null (not empty string, not "Unknown", not guesses)
@@ -969,6 +1087,8 @@ CRITICAL RULES:
 3. Normalize dates to YYYY-MM-DD format (handle German: 25.09.2025, European: 25/09/2025, English: September 25, 2025)
 4. Normalize topics to the provided taxonomy (see below)
 5. Extract speakers ONLY if explicitly listed as speakers/presenters/keynote speakers
+   IMPORTANT: Speakers are often listed in PDF documents (programs, brochures, speaker lists) linked from the main page. 
+   Extract ALL speakers from PDFs if available - they typically contain the most complete speaker information.
 6. Extract cities ONLY if they are actual city names (not topics like "Praxisnah" or "Whistleblowing")
 
 FEW-SHOT EXAMPLES:
@@ -1011,6 +1131,24 @@ EXTRACTION GUIDELINES:
    - English formats: "September 25, 2025", "25 September 2025"
    - ISO formats: "2025-09-25"
    - If only year is mentioned, use null.
+   
+   CRITICAL: Extract ONLY the event start/end dates (when the event actually takes place).
+   IGNORE these dates (do NOT extract them):
+   - "Last updated" or "Last modified" dates
+   - "Published" or "Posted" dates  
+   - Archive dates
+   - Registration deadline dates (unless they're the event date)
+   - Copyright dates (e.g., "© 2025")
+   - "As of" dates
+   - Any date in the past that's clearly not the event date
+   - Page metadata dates
+   
+   If you find a date without a year (e.g., "25. Mai"), only use it if:
+   - It's clearly in the future relative to today
+   - It's explicitly stated as the event date
+   - Otherwise, use null
+   
+   Validate dates: If a date is clearly wrong (e.g., past event date, archive date, metadata date), use null instead.
 2. LOCATIONS: Extract ONLY actual city names (Berlin, Munich, Hamburg, etc.). 
    - DO NOT use event themes, topics, or descriptions as city names
    - DO NOT use words like "Praxisnah", "Whistleblowing", "Politik", "Forschung"
@@ -1038,6 +1176,12 @@ EXTRACT THESE ELEMENTS:
 - speech_title: Title of their presentation/speech
 - session: Session name or track
 - bio: Brief professional summary (1-2 sentences)
+
+CRITICAL: Speakers may be listed in PDF documents (programs, brochures, speaker lists) linked from the main page. 
+- If the page links to a PDF (e.g., "program.pdf", "speakers.pdf", "event-brochure.pdf"), extract speakers from that PDF
+- Look for speaker sections in PDFs with headings like "Speakers", "Faculty", "Presenters", "Keynote Speakers"
+- Extract ALL speakers listed, including their full names, titles, organizations, and affiliations
+- PDFs often contain the most complete and accurate speaker information
 
 🏢 ORGANIZATIONS (categorize by role):
 - sponsors: Financial supporters with sponsorship level (Platinum, Gold, Silver, Bronze, etc.)
@@ -1079,7 +1223,7 @@ Return structured JSON matching the schema exactly. Include evidence array for a
         showSources: false,
         scrapeOptions: {
           onlyMainContent: true, 
-          formats: ["markdown", "html"], 
+          formats: ["markdown", "html", "images"], // FIRECRAWL-V2: Added images format for event image extraction
           parsers: ["pdf"], 
           waitFor: 1200,
           location: { 
@@ -1088,19 +1232,27 @@ Return structured JSON matching the schema exactly. Include evidence array for a
           },
           blockAds: true,
           removeBase64Images: true,
+          // FIRECRAWL-V2: Extract data attributes for structured data from HTML
+          extractDataAttributes: true,
+          // FIRECRAWL-V2: Enhanced PDF parsing with title and metadata extraction
+          pdfOptions: {
+            extractTitle: true,
+            extractMetadata: true
+          },
           crawlerOptions: {
             maxDepth: Math.min(3, (crawl?.depth ?? 3)),
             maxPagesToCrawl: 12,
             allowSubdomains: true,
-            includePatterns: [
-              "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
-            ]
+            // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
+            // This is language-agnostic and automatically finds relevant pages in any language
+            // IMPORTANT: Explicitly look for PDF documents (programs, brochures, speaker lists) as they often contain complete speaker information
+            prompt: "Crawl pages and documents related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. CRITICAL: Also discover and crawl PDF documents (programs, brochures, speaker lists, event guides) linked from the page, as they often contain complete speaker information. Look for links to PDF files (.pdf) containing event programs, speaker lists, or detailed event information. Focus on pages and PDFs that contain event information, speaker bios, session details, and registration forms."
           }
         },
           ignoreInvalidURLs: true
         })
       }).then(r => r.json());
-      });
+      }); 
     } catch (rateLimitError) {
       console.warn('[extractOne] Rate limit check failed, continuing without rate limiting:', rateLimitError);
       // Fallback: make call without rate limiting
@@ -1114,7 +1266,7 @@ Return structured JSON matching the schema exactly. Include evidence array for a
           showSources: false,
           scrapeOptions: {
             onlyMainContent: true, 
-            formats: ["markdown", "html"], 
+            formats: ["markdown", "html", "images"], // FIRECRAWL-V2: Added images format
             parsers: ["pdf"], 
             waitFor: 1200,
             location: { 
@@ -1123,13 +1275,20 @@ Return structured JSON matching the schema exactly. Include evidence array for a
             },
             blockAds: true,
             removeBase64Images: true,
+            // FIRECRAWL-V2: Extract data attributes for structured data from HTML
+            extractDataAttributes: true,
+            // FIRECRAWL-V2: Enhanced PDF parsing with title and metadata extraction
+            pdfOptions: {
+              extractTitle: true,
+              extractMetadata: true
+            },
             crawlerOptions: {
               maxDepth: Math.min(3, (crawl?.depth ?? 3)),
               maxPagesToCrawl: 12,
               allowSubdomains: true,
-              includePatterns: [
-                "konferenz","kongress","veranstaltung","fachkonferenz","fachkongress","agenda","programm","referenten","sprecher","vortragende","tickets","anmeldung","teilnahme","termin","schedule","speakers"
-              ]
+              // FIRECRAWL-V2: Natural language crawling - replaces regex patterns with AI-powered page discovery
+              // This is language-agnostic and automatically finds relevant pages in any language
+              prompt: "Crawl pages and documents related to event details, speakers, presenters, agenda, program, schedule, registration, tickets, and venue information. CRITICAL: Also discover and crawl PDF documents (programs, brochures, speaker lists, event guides) linked from the page, as they often contain complete speaker information. Look for links to PDF files (.pdf) containing event programs, speaker lists, or detailed event information. Focus on pages and PDFs that contain event information, speaker bios, session details, and registration forms."
             }
           },
           ignoreInvalidURLs: true
@@ -1141,7 +1300,9 @@ Return structured JSON matching the schema exactly. Include evidence array for a
       const data = await pollExtract(kicked.id, key);
       const picked = pickData(data);
       if (picked) {
-        const ev = shape(url, picked);
+        // FIRECRAWL-V2: Process images and data attributes from extraction response
+        const processedData = processExtractionResponse(picked, data);
+        const ev = shape(url, processedData);
         const rich = ev.starts_at || ev.city || ev.country;
         trace.push({ url, step: "firecrawl", rich: !!rich });
         try {
@@ -1242,11 +1403,15 @@ export async function POST(req: NextRequest): Promise<NextResponse<EventExtracti
 
     const targets = urls.slice(0, 20);
     
-    // PERF-2.2.5: Use batch extraction for 3+ URLs to reduce API overhead
+    // FIRECRAWL-V2: Increased batch size from 3 to 10 for better efficiency
+    // Firecrawl v2 supports larger batches, reducing API overhead
+    const BATCH_SIZE_THRESHOLD = 10;
+    
+    // PERF-2.2.5: Use batch extraction for 10+ URLs to reduce API overhead
     // For smaller batches, use individual extraction for better error handling
     let out: any[] = [];
     
-    if (targets.length >= 3) {
+    if (targets.length >= BATCH_SIZE_THRESHOLD) {
       // Try batch extraction first
       try {
         const batchResults = await extractBatch(

@@ -22,9 +22,12 @@ import AttendeeCard from "./AttendeeCard";
 import DynamicSpeakerLayout from "./DynamicSpeakerLayout"; // Dynamic speaker layout component
 import CompanyCard from "./CompanyCard"; // Company/sponsor card component
 import { EventIntelligenceQuickView } from "./EventIntelligenceQuickView"; // Event intelligence quick view
+import { RelevanceIndicator, extractMatchReasons } from "./RelevanceIndicator";
 import { SpeakerData } from "@/lib/types/core";
 import { Star, Eye } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useSearchResults } from "@/context/SearchResultsContext";
 
 /**
  * Event data structure interface
@@ -81,6 +84,11 @@ interface EventCardProps {
   initiallySaved?: boolean;         // Whether the event is initially saved to watchlist
   onAddToComparison?: (event: Event) => void; // Callback for adding to comparison
   watchlistMatch?: WatchlistMatch;  // Watchlist match data
+  boardStatus?: {
+    inBoard: boolean;
+    boardItemId: string | null;
+  };
+  onBoardStatusChange?: (status: { inBoard: boolean; boardItemId: string | null }) => void;
 }
 
 /**
@@ -90,8 +98,16 @@ interface EventCardProps {
  * @param initiallySaved - Whether the event is initially saved to watchlist
  * @returns JSX element representing the event card
  */
-const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToComparison, watchlistMatch }: EventCardProps) {
+const EventCard = memo(function EventCard({
+  ev,
+  initiallySaved = false,
+  onAddToComparison,
+  watchlistMatch,
+  boardStatus,
+  onBoardStatusChange,
+}: EventCardProps) {
   const router = useRouter();
+  const { state } = useSearchResults();
   
   // ============================================================================
   // STATE MANAGEMENT
@@ -99,8 +115,8 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   
   const [saved, setSaved] = useState(initiallySaved);           // Whether event is saved to watchlist
   const [busy, setBusy] = useState(false);                     // Loading state for save operation
-  const [inBoard, setInBoard] = useState(false);                // Whether event is in board
-  const [boardItemId, setBoardItemId] = useState<string | null>(null); // Board item ID if in board
+  const [inBoard, setInBoard] = useState(boardStatus?.inBoard ?? false);                // Whether event is in board
+  const [boardItemId, setBoardItemId] = useState<string | null>(boardStatus?.boardItemId ?? null); // Board item ID if in board
   const [boardBusy, setBoardBusy] = useState(false);           // Loading state for board operation
   const [open, setOpen] = useState(false);                     // Whether event details are expanded
   const [includePast, setIncludePast] = useState(false);       // Whether to include past speakers
@@ -108,6 +124,11 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
   const [speakers, setSpeakers] = useState<SpeakerData[] | null>(null); // Extracted speaker data
   const [followed, setFollowed] = useState<string[]>([]);       // List of followed speakers
   const [showWatchlistDetails, setShowWatchlistDetails] = useState(false); // Show watchlist match details
+
+  useEffect(() => {
+    setInBoard(boardStatus?.inBoard ?? false);
+    setBoardItemId(boardStatus?.boardItemId ?? null);
+  }, [boardStatus?.boardItemId, boardStatus?.inBoard]);
 
   // ============================================================================
   // DEBUG: Log event data to understand what we're receiving
@@ -130,30 +151,48 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
     }
   }, [ev.speakers, speakers]);
 
-  // ============================================================================
-  // Check if event is in board on mount
-  // ============================================================================
-  React.useEffect(() => {
-    const checkBoardStatus = async () => {
-      if (!ev.source_url) return;
-      
-      try {
-        const response = await fetch(`/api/events/board/check?eventUrl=${encodeURIComponent(ev.source_url)}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.inBoard && data.boardItemId) {
-            setInBoard(true);
-            setBoardItemId(data.boardItemId);
-          }
-        }
-      } catch (error) {
-        // Silently fail - board check is not critical
-        console.warn('Failed to check board status:', error);
-      }
-    };
+  const matchReasons = useMemo(() => {
+    if (!state.searchParams) return [];
+    return extractMatchReasons(ev, state.searchParams);
+  }, [ev, state.searchParams]);
 
-    checkBoardStatus();
-  }, [ev.source_url]);
+  const salesHookMessage = useMemo(() => {
+    const salesReasons = matchReasons
+      .slice(0, 2)
+      .map((reason) => {
+        switch (reason.type) {
+          case 'location':
+            return `Prospects in ${reason.value}`;
+          case 'date':
+            return `Timed for ${reason.value}`;
+          case 'industry':
+            return `Focus: ${reason.value}`;
+          case 'keyword':
+            return `Keyword match: ${reason.value}`;
+          case 'speaker':
+            return `${reason.value} speaking`;
+          case 'organizer':
+            return `Hosted by ${reason.value}`;
+          default:
+            return null;
+        }
+      })
+      .filter((text): text is string => Boolean(text));
+
+    if (watchlistMatch?.hasMatch) {
+      const summary =
+        watchlistMatch.totalMatches === 1
+          ? 'Watchlist signal detected'
+          : `${watchlistMatch.totalMatches} watchlist signals`;
+      salesReasons.push(summary);
+    }
+
+    if (salesReasons.length === 0) {
+      return null;
+    }
+
+    return salesReasons.join(' • ');
+  }, [matchReasons, watchlistMatch]);
 
   // ============================================================================
   // COMPUTED VALUES (Memoized for performance)
@@ -182,34 +221,73 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
    * It includes authentication checks and proper error handling.
    */
   const toggleSave = useCallback(async () => {
-    if (busy) return;
+    if (busy || !ev.source_url) return;
+
+    const nextSaved = !saved;
+    const addBody = JSON.stringify({ kind: "event", label: ev.title, ref_id: ev.source_url });
+    const removeBody = JSON.stringify({ kind: "event", ref_id: ev.source_url });
+
     setBusy(true);
-    const body = JSON.stringify({ kind: "event", label: ev.title, ref_id: ev.source_url });
+    setSaved(nextSaved);
+
     try {
-      if (!saved) {
-        // Add to watchlist
-        const res = await fetch("/api/watchlist/add", { method: "POST", headers: { "Content-Type":"application/json" }, body });
-        const j = await res.json();
+      if (nextSaved) {
+        const res = await fetch("/api/watchlist/add", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: addBody,
+        });
+        let payload: any = {};
+        try {
+          payload = await res.json();
+        } catch {
+          payload = {};
+        }
         if (!res.ok) {
           if (res.status === 401) {
-            alert("Please log in to save items.");
-            if (typeof window !== 'undefined') {
-              window.location.href = "/login";
-            }
+            setSaved(false);
+            toast.error("Authentication required", {
+              description: "Please log in to save items.",
+              action: {
+                label: "Log in",
+                onClick: () => {
+                  if (typeof window !== 'undefined') {
+                    window.location.href = "/login";
+                  }
+                },
+              },
+            });
             return;
           }
-          throw new Error(j.error || "Save failed");
+          throw new Error(payload?.error || "Save failed");
         }
-        setSaved(true);
+        toast.success("Event saved", {
+          description: "Added to your watchlist",
+        });
       } else {
-        // Remove from watchlist
-        const res = await fetch("/api/watchlist/remove", { method: "POST", headers: { "Content-Type":"application/json" }, body: JSON.stringify({ kind:"event", ref_id: ev.source_url }) });
-        const j = await res.json();
-        if (!res.ok) throw new Error(j.error || "Unsave failed");
-        setSaved(false);
+        const res = await fetch("/api/watchlist/remove", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: removeBody,
+        });
+        let payload: any = {};
+        try {
+          payload = await res.json();
+        } catch {
+          payload = {};
+        }
+        if (!res.ok) {
+          throw new Error(payload?.error || "Unsave failed");
+        }
+        toast.success("Event removed", {
+          description: "Removed from your watchlist",
+        });
       }
     } catch (e: any) {
-      alert(e.message || "Action failed");
+      setSaved(!nextSaved);
+      toast.error("Action failed", {
+        description: e?.message || "An error occurred. Please try again.",
+      });
     } finally {
       setBusy(false);
     }
@@ -219,10 +297,20 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
    * Add event to board (also adds to watchlist)
    */
   const addToBoard = useCallback(async () => {
-    if (boardBusy) return;
+    if (boardBusy || inBoard || !ev.source_url) return;
+
+    const previousBoardState = { inBoard, boardItemId };
+    const previousSaved = saved;
+
     setBoardBusy(true);
+    setInBoard(true);
+    onBoardStatusChange?.({ inBoard: true, boardItemId });
+
+    if (!saved) {
+      setSaved(true);
+    }
+
     try {
-      // Add to board
       const boardRes = await fetch("/api/events/board/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -236,40 +324,63 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       const boardData = await boardRes.json();
       if (!boardRes.ok) {
         if (boardRes.status === 401) {
-          alert("Please log in to add events to your board.");
-          if (typeof window !== 'undefined') {
-            window.location.href = "/login";
+          setInBoard(previousBoardState.inBoard);
+          setBoardItemId(previousBoardState.boardItemId);
+          onBoardStatusChange?.(previousBoardState);
+          if (!previousSaved) {
+            setSaved(false);
           }
+          toast.error("Authentication required", {
+            description: "Please log in to add events to your board.",
+            action: {
+              label: "Log in",
+              onClick: () => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = "/login";
+                }
+              }
+            }
+          });
           return;
         }
         throw new Error(boardData.error || "Failed to add to board");
       }
 
-      // Also add to watchlist if not already saved
-      if (!saved) {
-        const watchlistBody = JSON.stringify({ kind: "event", label: ev.title, ref_id: ev.source_url });
-        const watchlistRes = await fetch("/api/watchlist/add", { 
-          method: "POST", 
-          headers: { "Content-Type":"application/json" }, 
-          body: watchlistBody 
-        });
-        if (watchlistRes.ok) {
-          setSaved(true);
+      if (!previousSaved) {
+        try {
+          await fetch("/api/watchlist/add", { 
+            method: "POST", 
+            headers: { "Content-Type":"application/json" }, 
+            body: JSON.stringify({ kind: "event", label: ev.title, ref_id: ev.source_url }) 
+          });
+        } catch {
+          // Ignore watchlist errors
         }
-        // Don't fail if watchlist add fails - board add succeeded
       }
 
-      // Store board item ID from response
       if (boardData.boardItem?.id) {
         setBoardItemId(boardData.boardItem.id);
+        onBoardStatusChange?.({ inBoard: true, boardItemId: boardData.boardItem.id });
+      } else {
+        onBoardStatusChange?.({ inBoard: true, boardItemId: null });
       }
-      setInBoard(true);
+      toast.success("Event added to board", {
+        description: "You can manage it from your Events Board"
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to add to board");
+      setInBoard(previousBoardState.inBoard);
+      setBoardItemId(previousBoardState.boardItemId);
+      onBoardStatusChange?.(previousBoardState);
+      if (!previousSaved) {
+        setSaved(previousSaved);
+      }
+      toast.error("Failed to add to board", {
+        description: e.message || "An error occurred. Please try again."
+      });
     } finally {
       setBoardBusy(false);
     }
-  }, [boardBusy, ev, saved]);
+  }, [boardBusy, inBoard, ev.id, ev.source_url, saved, boardItemId, onBoardStatusChange, ev.title]);
 
   /**
    * Add a company to watchlist
@@ -294,9 +405,13 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       }
       
       // Show success feedback
-      alert(`Added "${companyName}" to your watchlist!`);
+      toast.success("Company added", {
+        description: `"${companyName}" has been added to your watchlist`
+      });
     } catch (e: any) {
-      alert(e.message || "Failed to add company to watchlist");
+      toast.error("Failed to add company", {
+        description: e.message || "Could not add company to watchlist. Please try again."
+      });
     }
   }, []);
 
@@ -321,7 +436,9 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
       setSpeakers(j.speakers || []);
       setFollowed(j.followed || []);
     } catch (e: any) {
-      alert(e.message || "Could not load speakers");
+      toast.error("Could not load speakers", {
+        description: e.message || "Unable to fetch speaker information. Please try again."
+      });
       setSpeakers([]);
       setFollowed([]);
     } finally {
@@ -424,6 +541,16 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
                 ) : null}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {salesHookMessage && (
+        <div className="mb-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <Sparkles className="h-5 w-5 text-amber-500 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold">Sales Hook</p>
+            <p className="text-xs text-amber-800">{salesHookMessage}</p>
           </div>
         </div>
       )}
@@ -532,6 +659,18 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
         {ev.venue && (
           <div className="text-sm text-slate-600">
             <span className="font-medium text-slate-700">Venue:</span> {ev.venue}
+          </div>
+        )}
+        
+        {/* Relevance Indicator */}
+        {state.searchParams && (
+          <div className="mt-3">
+            <RelevanceIndicator
+              matchReasons={matchReasons}
+              confidence={ev.confidence || undefined}
+              searchQuery={state.searchParams.keywords}
+              compact={true}
+            />
           </div>
         )}
 
@@ -670,11 +809,15 @@ const EventCard = memo(function EventCard({ ev, initiallySaved = false, onAddToC
               router.push(targetPath);
             } else {
               console.error('[EventCard] No event ID available for navigation');
-              alert('Unable to view full intelligence: event ID not available');
+              toast.error("Unable to view intelligence", {
+                description: "Event ID not available. Please add this event to your board first."
+              });
             }
           } catch (error) {
             console.error('[EventCard] Error navigating to full intelligence:', error);
-            alert('Failed to navigate to full intelligence view');
+            toast.error("Navigation failed", {
+              description: "Unable to navigate to full intelligence view. Please try again."
+            });
           }
         }}
       />

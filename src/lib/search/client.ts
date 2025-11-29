@@ -11,6 +11,7 @@ export const eventsSearchRequestSchema = z.object({
   location: z.string().trim().optional().nullable(),
   timeframe: z.string().trim().optional().nullable(),
   includeDebug: z.boolean().optional(),
+  useNaturalLanguage: z.boolean().optional(), // Flag to skip profile enrichment for NLP
 });
 
 export type EventsSearchRequest = z.infer<typeof eventsSearchRequestSchema>;

@@ -167,12 +167,15 @@ export interface UnifiedSearchParams {
   country?: string;
   limit?: number;
   scrapeContent?: boolean;
+  // FIRECRAWL-V2: Unified search + extract options
+  extractSchema?: any; // Schema for structured extraction during search
+  extractPrompt?: string; // Prompt for extraction during search
   useCache?: boolean;
   userProfile?: any; // Add user profile support
 }
 
 export interface UnifiedSearchResult {
-  items: string[];
+  items: string[] | Array<{ url: string; title?: string; description?: string; markdown?: string; extracted?: any }>; // FIRECRAWL-V2: Support enriched items with extracted data
   provider: 'firecrawl' | 'cse' | 'database';
   debug: {
     rawCount: number;
@@ -189,7 +192,7 @@ export interface UnifiedSearchResult {
 }
 
 export interface UnifiedSearchResponse {
-  items: string[];
+  items: string[] | Array<{ url: string; title?: string; description?: string; markdown?: string; extracted?: any }>; // FIRECRAWL-V2: Support enriched items
   providers: string[];
   totalItems: number;
   debug: {
@@ -356,13 +359,21 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
       timeout: 45000  // Reduced from 60000 to prevent long waits
     };
 
-    // Add content scraping if requested
+    // FIRECRAWL-V2: Enhanced scraping with extraction support
+    // NOTE: The search endpoint does NOT support extract in scrapeOptions
+    // Extract must be done separately using the /v2/extract endpoint
     if (params.scrapeContent) {
       body.scrapeOptions = {
-        formats: ['markdown'],
-        onlyMainContent: true
+        formats: ['markdown', 'html'], // Get both formats for better extraction
+        onlyMainContent: true,
+        blockAds: true,
+        removeBase64Images: true
       };
     }
+    
+    // FIRECRAWL-V2: Note - unified search+extract is not supported in search endpoint
+    // The extract parameter would need to be at top level, but search API doesn't support it
+    // We'll need to do search and extract separately
 
     // Add location-based search for better regional results
     if (params.country) {
@@ -416,12 +427,28 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
         console.log('[unified-firecrawl] Response received, items:', data?.data?.web?.length || 0);
 
-        // Parse Firecrawl v2 API response structure: data.data.web[]
+        // FIRECRAWL-V2: Parse response with scraped content support
         const webResults = data?.data?.web || [];
-        const items: string[] = Array.isArray(webResults) 
+        const items: Array<string | { url: string; title?: string; description?: string; markdown?: string }> = Array.isArray(webResults) 
           ? webResults
-              .map((item: any) => item?.url)
-              .filter((url: string) => typeof url === 'string' && url.startsWith('http'))
+              .map((item: any) => {
+                const url = item?.url;
+                if (!url || !url.startsWith('http')) return null;
+                
+                // Return enriched item if scraped content available
+                if (params.scrapeContent && (item.markdown || item.title || item.description)) {
+                  return {
+                    url,
+                    title: item.title,
+                    description: item.description,
+                    markdown: item.markdown
+                  };
+                }
+                
+                // Fallback to URL string for backward compatibility
+                return url;
+              })
+              .filter((item: any) => item !== null)
           : [];
 
         const result: UnifiedSearchResult = {
@@ -490,6 +517,111 @@ export function getFirecrawlMetrics() {
 }
 
 /**
+ * Simplify query for CSE - extract core terms to improve geographic filtering
+ * Complex queries with many OR/AND clauses can confuse CSE's geographic filters
+ */
+function simplifyQueryForCSE(query: string): string {
+  // If query is already short (< 200 chars), use as-is
+  if (query.length < 200) {
+    return query;
+  }
+  
+  // Extract key terms: remove complex boolean logic, keep main keywords
+  // Remove excessive parentheses and boolean operators
+  let simplified = query
+    .replace(/\s*\(+\s*/g, ' ')  // Remove opening parentheses
+    .replace(/\s*\)+\s*/g, ' ')  // Remove closing parentheses
+    .replace(/\s+OR\s+/gi, ' ')   // Replace OR with space
+    .replace(/\s+AND\s+/gi, ' ')  // Replace AND with space
+    .replace(/\s+/g, ' ')         // Normalize whitespace
+    .trim();
+  
+  // Extract quoted phrases and key terms
+  const quotedPhrases = simplified.match(/"([^"]+)"/g) || [];
+  const words = simplified
+    .replace(/"([^"]+)"/g, '')  // Remove quoted phrases temporarily
+    .split(/\s+/)
+    .filter(w => w.length > 3)  // Keep words longer than 3 chars
+    .slice(0, 10);  // Limit to 10 key words
+  
+  // Reconstruct: quoted phrases first, then key words
+  const result = [...quotedPhrases, ...words].join(' ').trim();
+  
+  // Limit to 256 characters (CSE max)
+  return result.slice(0, 256);
+}
+
+/**
+ * Filter CSE results by country to ensure geographic accuracy
+ * Removes URLs that clearly don't match the target country
+ */
+function filterResultsByCountry(urls: string[], targetCountry: string): string[] {
+  const countryUpper = targetCountry.toUpperCase();
+  
+  // Country domain patterns
+  const countryDomains: Record<string, string[]> = {
+    'DE': ['.de', '.com/de', 'germany', 'deutschland', 'berlin', 'munich', 'frankfurt', 'hamburg'],
+    'FR': ['.fr', '.com/fr', 'france', 'paris', 'lyon', 'marseille'],
+    'GB': ['.uk', '.co.uk', 'united kingdom', 'london', 'manchester', 'birmingham'],
+    'UK': ['.uk', '.co.uk', 'united kingdom', 'london', 'manchester', 'birmingham'],
+    'US': ['.us', '.com', 'united states', 'usa', 'new york', 'california'],
+    'AT': ['.at', 'austria', 'vienna', 'wien'],
+    'CH': ['.ch', 'switzerland', 'zurich', 'geneva'],
+    'IT': ['.it', 'italy', 'rome', 'milan'],
+    'ES': ['.es', 'spain', 'madrid', 'barcelona'],
+    'NL': ['.nl', 'netherlands', 'amsterdam'],
+    'BE': ['.be', 'belgium', 'brussels'],
+    'PL': ['.pl', 'poland', 'warsaw'],
+    'SE': ['.se', 'sweden', 'stockholm'],
+    'NO': ['.no', 'norway', 'oslo'],
+    'DK': ['.dk', 'denmark', 'copenhagen']
+  };
+  
+  const patterns = countryDomains[countryUpper] || [];
+  if (patterns.length === 0) {
+    // If country not in list, return all (can't filter)
+    return urls;
+  }
+  
+  // URLs to exclude (non-target country indicators)
+  const excludePatterns: Record<string, string[]> = {
+    'DE': ['.gov/', '.edu/', 'texas', 'california', 'new york', 'hhs.gov', 'tdi.texas', 'microsoft.com/en-us'],
+    'FR': ['.gov/', '.edu/', 'texas', 'california', 'microsoft.com/en-us'],
+    'GB': ['.gov/', '.edu/', 'texas', 'california', 'microsoft.com/en-us'],
+    'US': []  // US searches can include .gov and .edu
+  };
+  
+  const exclude = excludePatterns[countryUpper] || [];
+  
+  return urls.filter(url => {
+    const urlLower = url.toLowerCase();
+    
+    // Exclude if matches exclude patterns
+    if (exclude.some(pattern => urlLower.includes(pattern))) {
+      return false;
+    }
+    
+    // Include if matches country patterns
+    if (patterns.some(pattern => urlLower.includes(pattern.toLowerCase()))) {
+      return true;
+    }
+    
+    // For DE/FR/GB: exclude obvious US government/education sites
+    if (['DE', 'FR', 'GB'].includes(countryUpper)) {
+      if (urlLower.includes('.gov/') || urlLower.includes('.edu/')) {
+        // Only exclude if it's clearly US (not country-specific)
+        if (urlLower.includes('.gov/') && !urlLower.includes('.de') && !urlLower.includes('.fr') && !urlLower.includes('.uk')) {
+          return false;
+        }
+      }
+    }
+    
+    // If no clear match, include it (let other filters handle it)
+    return true;
+  });
+}
+
+/**
  * Unified CSE search implementation
  */
 async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSearchResult> {
@@ -528,11 +660,54 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
 
   try {
     const url = new URL('https://www.googleapis.com/customsearch/v1');
-    url.searchParams.set('q', params.q);
+    
+    // Simplify query for CSE - extract core terms to avoid confusion
+    // CSE works better with simpler queries, complex queries can confuse geographic filters
+    const simplifiedQuery = simplifyQueryForCSE(params.q);
+    url.searchParams.set('q', simplifiedQuery);
     url.searchParams.set('key', googleCseKey);
     url.searchParams.set('cx', googleCseCx);
     url.searchParams.set('num', '10');
     url.searchParams.set('safe', 'off');
+    url.searchParams.set('hl', 'en'); // Interface language
+
+    // Add geographic filtering parameters
+    if (params.country) {
+      const countryUpper = params.country.toUpperCase();
+      // Map country codes to Google's gl parameter
+      const glMap: Record<string, string> = {
+        'DE': 'de',
+        'FR': 'fr',
+        'GB': 'gb',
+        'UK': 'gb',
+        'US': 'us',
+        'AT': 'at',
+        'CH': 'ch',
+        'IT': 'it',
+        'ES': 'es',
+        'NL': 'nl',
+        'BE': 'be',
+        'PL': 'pl',
+        'SE': 'se',
+        'NO': 'no',
+        'DK': 'dk'
+      };
+      
+      const gl = glMap[countryUpper] || countryUpper.toLowerCase();
+      url.searchParams.set('gl', gl);
+      
+      // Add country restriction (cr parameter)
+      // Note: cr parameter can sometimes cause 400 errors, so we'll use it carefully
+      // Only add if gl parameter is set successfully
+      if (gl) {
+        try {
+          url.searchParams.set('cr', `country${countryUpper}`);
+        } catch (e) {
+          // If cr causes issues, skip it - gl should be sufficient
+          console.warn('[unified-cse] Could not set cr parameter, using gl only');
+        }
+      }
+    }
 
     console.log('[unified-cse] Making request to:', url.toString().replace(/key=[^&]+/, 'key=***'));
 
@@ -551,9 +726,18 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
 
     console.log('[unified-cse] Response data keys:', Object.keys(data));
 
-    const items: string[] = (data?.items ?? [])
+    let items: string[] = (data?.items ?? [])
       .map((x: any) => x?.link)
       .filter((u: string) => typeof u === 'string' && u.startsWith('http'));
+
+    // Post-filter results by country to ensure geographic accuracy
+    if (params.country && items.length > 0) {
+      const filteredItems = filterResultsByCountry(items, params.country);
+      if (filteredItems.length < items.length) {
+        console.log(`[unified-cse] Filtered ${items.length - filteredItems.length} non-${params.country.toUpperCase()} results`);
+      }
+      items = filteredItems;
+    }
 
     console.log('[unified-cse] Extracted URLs:', items.length, items.slice(0, 3));
 
@@ -662,18 +846,67 @@ function withTimeout<T>(
 }
 
 /**
+ * Normalize query for cache key generation
+ * This increases cache hit rate by treating semantically similar queries as the same
+ */
+function normalizeQueryForCache(query: string): string {
+  if (!query) return '';
+  
+  // Normalize whitespace
+  let normalized = query
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+  
+  // Remove common query variations that don't affect meaning
+  // Remove trailing event type terms (they're often added as variations)
+  const eventTypeSuffixes = [
+    ' conference', ' event', ' summit', ' workshop', ' seminar',
+    ' forum', ' symposium', ' trade show', ' expo', ' konferenz',
+    ' veranstaltung', ' arbeitskreis'
+  ];
+  
+  for (const suffix of eventTypeSuffixes) {
+    if (normalized.endsWith(suffix)) {
+      normalized = normalized.slice(0, -suffix.length).trim();
+      break; // Only remove one suffix
+    }
+  }
+  
+  // Normalize boolean operators (treat OR/AND variations as same)
+  normalized = normalized
+    .replace(/\s+or\s+/g, ' ')
+    .replace(/\s+and\s+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  // Extract core terms: keep quoted phrases and important keywords
+  // Remove excessive parentheses
+  normalized = normalized
+    .replace(/\s*\(+\s*/g, ' ')
+    .replace(/\s*\)+\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  
+  return normalized;
+}
+
+/**
  * Generate unified cache key (provider-agnostic)
  * This allows us to check cache once before trying any provider
- * Uses same format as generateSearchCacheKey but without provider
+ * Uses normalized queries to increase cache hit rate
  */
 function generateUnifiedCacheKey(params: UnifiedSearchParams): string {
+  // Normalize query to increase cache hits for similar queries
+  const normalizedQuery = normalizeQueryForCache(params.q);
+  
   const keyData = {
-    q: params.q,
-    country: params.country,
-    dateFrom: params.dateFrom,
-    dateTo: params.dateTo,
-    limit: params.limit,
-    scrapeContent: params.scrapeContent,
+    q: normalizedQuery,  // Use normalized query instead of raw
+    country: params.country?.toUpperCase() || '',  // Normalize country code
+    dateFrom: params.dateFrom || '',
+    dateTo: params.dateTo || '',
+    limit: params.limit || 20,  // Default limit for consistency
+    scrapeContent: params.scrapeContent || false,
     // Note: provider is NOT included - we want provider-agnostic cache
   };
   // Use same format as generateSearchCacheKey for consistency
@@ -686,13 +919,13 @@ function generateUnifiedCacheKey(params: UnifiedSearchParams): string {
  * Optimized flow:
  * 1. Check unified cache first (provider-agnostic)
  * 2. If cache miss, try all providers in parallel with smart timeouts:
- *    - Firecrawl: 8s timeout (fast fail)
+ *    - Firecrawl: 40s timeout (allows for 28-30s API response time)
  *    - CSE: 5s timeout
  *    - Database: 2s timeout
  * 3. Cache result for future requests
  * 
  * Returns results from cache or first successful provider
- * Total max wait time: 8s instead of 60s (sequential)
+ * Total max wait time: 40s (Firecrawl can take 28-30s)
  */
 export async function unifiedSearch(params: UnifiedSearchParams): Promise<UnifiedSearchResponse> {
   const startTime = Date.now();
@@ -726,7 +959,7 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
   console.log('[unified-search] Trying all providers in parallel with timeouts...');
   
   const [firecrawlResult, cseResult, databaseResult] = await Promise.allSettled([
-    withTimeout(unifiedFirecrawlSearch(params), 8000, 'Firecrawl').catch(err => {
+    withTimeout(unifiedFirecrawlSearch(params), 40000, 'Firecrawl').catch(err => {
       console.warn('[unified-search] Firecrawl failed:', err instanceof Error ? err.message : String(err));
       return {
         items: [],

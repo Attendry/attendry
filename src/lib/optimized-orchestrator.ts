@@ -430,6 +430,7 @@ export interface OptimizedSearchParams {
   location?: string | null;
   timeframe?: string | null;
   locale?: string;
+  useNaturalLanguage?: boolean; // If true, skip profile enrichment and use userText directly
 }
 
 export interface EventCandidate {
@@ -618,20 +619,22 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   });
   
   try {
-    // Step 1: Load user profile for personalized search
+    // Step 1: Load user profile for personalized search (skip for natural language queries)
     const userProfileStart = Date.now();
-    const userProfile = await getUserProfile();
+    const userProfile = params.useNaturalLanguage ? null : await getUserProfile();
     const userProfileTime = Date.now() - userProfileStart;
     
-    if (userProfile) {
+    if (userProfile && !params.useNaturalLanguage) {
       console.log('[optimized-orchestrator] User profile loaded:', {
         industryTerms: userProfile.industry_terms?.length || 0,
         icpTerms: userProfile.icp_terms?.length || 0,
         competitors: userProfile.competitors?.length || 0
       });
+    } else if (params.useNaturalLanguage) {
+      console.log('[optimized-orchestrator] Skipping profile enrichment for natural language query');
     }
     
-    // Step 2: Build optimized query with user profile
+    // Step 2: Build optimized query with user profile (or without if natural language)
     const queryBuildStart = Date.now();
     const queryResult = await buildOptimizedQuery(params, userProfile);
     const query = typeof queryResult === 'string' ? queryResult : queryResult.query;
@@ -856,6 +859,17 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       // Add dateWindowStatus to event metadata for UI coloring (always include, even for passing events)
       event.metadata = event.metadata || {};
       event.metadata.dateWindowStatus = qualityResult.dateWindowStatus || 'no-date';
+      
+      // DATE FIX: Clear invalid dates when marked as extraction-error
+      // This prevents "invalid date" display in UI and ensures we don't trust unreliable dates
+      if (qualityResult.dateWindowStatus === 'extraction-error') {
+        // Clear the invalid date - it's unreliable and shouldn't be displayed
+        event.date = null;
+        event.starts_at = null;
+        event.ends_at = null;
+        event.metadata.dateCleared = true;
+        console.log(`[quality-gate] Cleared invalid date ${meta.dateISO} from event "${event.title?.substring(0, 50) || 'Untitled'}" - marked as extraction error`);
+      }
       
       // Log why events fail quality check
       if (!qualityResult.ok) {
@@ -1194,6 +1208,29 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
  * Build optimized search query using weighted templates with user profile integration
  */
 async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: any): Promise<{ query: string; narrativeQuery?: string }> {
+  // For natural language queries, use the query directly without profile enrichment
+  if (params.useNaturalLanguage) {
+    console.log('[optimized-orchestrator] Using natural language query directly:', params.userText);
+    const { buildUnifiedQuery } = await import('@/lib/unified-query-builder');
+    
+    const result = await buildUnifiedQuery({
+      userText: params.userText,
+      country: params.country,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      location: params.location,
+      timeframe: params.timeframe,
+      locale: params.locale,
+      language: 'en',
+      skipProfileEnrichment: true // Skip profile enrichment for NLP
+    });
+    
+    return {
+      query: result.query,
+      narrativeQuery: result.narrativeQuery
+    };
+  }
+  
   // Get search configuration to determine industry
   const searchConfig = await getSearchConfig();
   const industry = searchConfig?.industry || 'legal-compliance';
@@ -1207,7 +1244,9 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
       template,
       userProfile,
       params.country || 'DE',
-      params.userText
+      params.userText,
+      params.dateFrom,
+      params.dateTo
     );
     
     console.log('[optimized-orchestrator] Built weighted query:', {
@@ -1328,13 +1367,16 @@ async function discoverEventCandidates(
           dateTo: params.dateTo,
           country: params.country || undefined,
           limit: Math.ceil(ORCHESTRATOR_CONFIG.limits.maxCandidates / queryVariations.length),
+          scrapeContent: true, // Enable content scraping for better prioritization
+          // NOTE: Firecrawl v2 search API does NOT support extract in scrapeOptions
+          // Extraction must be done separately using /v2/extract endpoint
           useCache: true,
           userProfile: userProfile // Pass user profile to unified search
         });
         console.log('[optimized-orchestrator] Discovery result:', { 
           query: task.data.substring(0, 50) + '...', 
           itemsFound: result.items?.length || 0,
-          userProfileUsed: !!userProfile 
+          userProfileUsed: !!userProfile
         });
         return result;
       }, 'firecrawl');
@@ -1348,17 +1390,30 @@ async function discoverEventCandidates(
   );
 
   // Combine results from all query variations
+  // Handle both string URLs and enriched items (with scraped content)
   const allUrls: string[] = [];
+  
   discoveryResults.forEach(result => {
     if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
-      const searchResult = result.result as { items: string[] };
-      allUrls.push(...searchResult.items);
+      const searchResult = result.result as { items: Array<string | { url: string }> };
+      searchResult.items.forEach((item: any) => {
+        // Handle enriched items (objects with url and scraped content)
+        if (typeof item === 'object' && item !== null && item.url) {
+          const url = item.url;
+          if (url && url.startsWith('http')) {
+            allUrls.push(url);
+          }
+        } 
+        // Handle string URLs (backward compatibility)
+        else if (typeof item === 'string' && item.startsWith('http')) {
+          allUrls.push(item);
+        }
+      });
     }
   });
 
   // Filter and deduplicate URLs
   const urls = allUrls
-    .filter(url => typeof url === 'string' && url.startsWith('http'))
     .filter((url, index, array) => array.indexOf(url) === index) // Remove duplicates
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxCandidates);
 
@@ -1969,8 +2024,15 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
         
         const cachedResult = await cacheService.get<ExtractionPayload>(cacheKey, CACHE_CONFIGS.EXTRACTED_EVENTS);
         if (cachedResult) {
-          console.log(`[optimized-orchestrator] Using cached extraction result for URL: ${url.substring(0, 50)}...`);
-          return cachedResult;
+          // CACHE FIX: If cached result has no speakers, re-extract to get speakers from PDFs
+          // This ensures we get complete speaker data even if cache is stale
+          if (!cachedResult.speakers || cachedResult.speakers.length === 0) {
+            console.log(`[optimized-orchestrator] Cache has no speakers, re-extracting to discover PDFs: ${url.substring(0, 50)}...`);
+            // Continue with extraction instead of using cache
+          } else {
+            console.log(`[optimized-orchestrator] Using cached extraction result for URL: ${url.substring(0, 50)}... (${cachedResult.speakers.length} speakers)`);
+            return cachedResult;
+          }
         }
 
         // Add timeout for individual deep crawl (30 seconds max)
@@ -2132,6 +2194,9 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
   console.log('[optimized-orchestrator] Extraction summary (before filtering):', {
     requested: prioritized.length,
     produced: events.length,
+    eventsWithSpeakers: events.filter(e => e.speakers && e.speakers.length > 0).length,
+    eventsWithDates: events.filter(e => e.date && e.date.trim().length > 0).length,
+    eventsWithLocations: events.filter(e => e.location && e.location.trim().length > 0).length,
     durationMs: Date.now() - startTime
   });
   
@@ -2153,6 +2218,98 @@ async function extractEventDetails(prioritized: Array<{url: string, score: numbe
 async function filterByContentRelevance(events: EventCandidate[], params: OptimizedSearchParams): Promise<EventCandidate[]> {
   if (events.length === 0) return [];
   
+  // USER SEARCH PRIORITY: Extract user search keywords (from search bar or buttons)
+  // User's explicit search selection takes priority over profile filters
+  const userSearchKeywords: string[] = [];
+  
+  if (params.userText && params.userText.trim()) {
+    // Extract individual keywords from user search (e.g., "hospitality events" → ["hospitality", "events"])
+    const userText = params.userText.trim();
+    const keywords = userText.toLowerCase()
+      .split(/\s+/)
+      .filter(word => word.length > 2) // Filter out short words like "in", "at", "the"
+      .filter(word => !['events', 'event', 'conference', 'conferences', 'summit', 'summits'].includes(word)); // Remove generic event terms
+    
+    // Add individual keywords
+    userSearchKeywords.push(...keywords);
+    
+    // Always add the full phrase (for both single-word and multi-word searches)
+    // This ensures "Kartellrecht" or "hospitality" work even as single words
+    userSearchKeywords.push(userText.toLowerCase());
+    
+    // Add keyword translations/context if available (e.g., "Kartellrecht" → "antitrust law")
+    try {
+      const { getKeywordContext } = await import('./services/weighted-query-builder');
+      keywords.forEach(keyword => {
+        const keywordContext = getKeywordContext(keyword);
+        if (keywordContext) {
+          // Split "antitrust law, competition law, cartel law" into individual terms
+          const contextTerms = keywordContext.split(',').map(t => t.trim().toLowerCase());
+          userSearchKeywords.push(...contextTerms);
+        }
+      });
+    } catch (error) {
+      // getKeywordContext might not be exported, continue without it
+      console.warn('[optimized-orchestrator] Could not get keyword context:', error);
+    }
+  }
+  
+  // If user provided search keywords, prioritize them - skip profile filtering
+  if (userSearchKeywords.length > 0) {
+    console.log('[optimized-orchestrator] User search keywords provided, prioritizing user search:', userSearchKeywords.slice(0, 5));
+    
+    return events.filter(event => {
+      const eventTitle = event.title || 'Untitled Event';
+      const searchText = `${eventTitle} ${event.description || ''}`.toLowerCase();
+      const titleLower = eventTitle.toLowerCase();
+      
+      // Exclude non-event pages
+      const NON_EVENT_KEYWORDS = [
+        'allgemeine geschäftsbedingungen', 'agb', 'general terms and conditions',
+        'terms of service', 'terms and conditions', 'privacy policy',
+        'datenschutzerklärung', 'cookie policy', 'impressum', 'legal notice', 'disclaimer'
+      ];
+      
+      const isNonEvent = NON_EVENT_KEYWORDS.some(keyword => titleLower.includes(keyword));
+      if (isNonEvent) {
+        console.log(`[optimized-orchestrator] ✗ Event filtered out (non-event page): "${eventTitle.substring(0, 80)}"`);
+        return false;
+      }
+      
+      // Check if event matches ANY user search keyword
+      // Use flexible matching: exact word boundary match first, then partial match for compound words
+      const hasUserKeywordMatch = userSearchKeywords.some(keyword => {
+        // First try exact word boundary match (most precise)
+        const exactRegex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+        if (exactRegex.test(searchText)) {
+          return true;
+        }
+        
+        // For longer keywords (>5 chars), also allow partial matches
+        // This handles German compound words and hyphenated terms
+        // e.g., "Kartellrecht" matches "Kartellrecht-November" or "Internationale Kartellkonferenz"
+        if (keyword.length > 5) {
+          const partialRegex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+          if (partialRegex.test(searchText)) {
+            return true;
+          }
+        }
+        
+        return false;
+      });
+      
+      if (hasUserKeywordMatch) {
+        console.log(`[optimized-orchestrator] ✓ Event matches user search: "${eventTitle.substring(0, 80)}"`);
+        return true;
+      }
+      
+      // If no user keyword match, filter out (user search takes priority)
+      console.log(`[optimized-orchestrator] ✗ Event filtered out (no user keyword match): "${eventTitle.substring(0, 80)}"`);
+      return false;
+    });
+  }
+  
+  // FALLBACK: If no user search keywords, use profile-based filtering
   const userProfile = await getUserProfile();
   if (!userProfile || !userProfile.industry_terms || userProfile.industry_terms.length === 0) {
     console.log('[optimized-orchestrator] No user profile or industry terms, skipping content filtering');
@@ -2162,21 +2319,13 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
   const industryTerms = (userProfile.industry_terms as string[]).map(term => term.toLowerCase());
   const icpTerms = (userProfile.icp_terms as string[] || []).map(term => term.toLowerCase());
   
-  console.log('[optimized-orchestrator] Filtering with industry terms:', industryTerms.slice(0, 5), 'and ICP terms:', icpTerms.slice(0, 3));
+  console.log('[optimized-orchestrator] No user search keywords, using profile-based filtering with industry terms:', industryTerms.slice(0, 5), 'and ICP terms:', icpTerms.slice(0, 3));
   
-  // Non-event keywords that should immediately disqualify a result
+  // Profile-based filtering (fallback when no user search keywords)
   const NON_EVENT_KEYWORDS = [
-    'allgemeine geschäftsbedingungen',
-    'agb',
-    'general terms and conditions',
-    'terms of service',
-    'terms and conditions',
-    'privacy policy',
-    'datenschutzerklärung',
-    'cookie policy',
-    'impressum',
-    'legal notice',
-    'disclaimer'
+    'allgemeine geschäftsbedingungen', 'agb', 'general terms and conditions',
+    'terms of service', 'terms and conditions', 'privacy policy',
+    'datenschutzerklärung', 'cookie policy', 'impressum', 'legal notice', 'disclaimer'
   ];
   
   return events.filter(event => {
@@ -2193,7 +2342,6 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
     
     // Check if event content contains ANY industry term
     const hasIndustryMatch = industryTerms.some(term => {
-      // Check for word boundary matches to avoid partial matches
       const regex = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
       return regex.test(searchText);
     });

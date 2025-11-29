@@ -412,7 +412,47 @@ export async function POST(
       actualEventId = event.id;
     }
 
-    // PERF-2.3.4: Queue intelligence generation in background instead of blocking
+    // For user-initiated requests (priority 8), generate intelligence synchronously
+    // For background requests, queue for async processing
+    const priority = 8; // User-initiated request
+    const isUserInitiated = priority >= 8;
+    
+    if (isUserInitiated) {
+      // Generate intelligence immediately for user requests
+      console.log('[EventIntelligence] Generating intelligence synchronously for user request...');
+      console.log('[EventIntelligence] Event data:', {
+        title: event.title,
+        source_url: event.source_url,
+        hasDescription: !!event.description,
+        hasTopics: !!(event.topics && event.topics.length > 0),
+        hasSpeakers: !!(event.speakers && event.speakers.length > 0),
+        hasSponsors: !!(event.sponsors && event.sponsors.length > 0)
+      });
+      
+      try {
+        // Generate intelligence synchronously
+        const intelligence = await generateEventIntelligence(event, userProfile);
+        
+        // Cache the intelligence
+        await cacheEventIntelligence(actualEventId, intelligence, userProfile?.id);
+        
+        console.log('[EventIntelligence] Intelligence generated successfully');
+        
+        return NextResponse.json({
+          eventId: cacheKey,
+          status: 'completed',
+          intelligence,
+          cached: false,
+          queued: false
+        });
+      } catch (genError) {
+        console.error('[EventIntelligence] Failed to generate intelligence synchronously:', genError);
+        // Fall back to queuing if synchronous generation fails
+        console.log('[EventIntelligence] Falling back to async queue...');
+      }
+    }
+    
+    // PERF-2.3.4: Queue intelligence generation in background for non-user requests or if sync fails
     // This allows the API to return immediately while intelligence is generated asynchronously
     console.log('[EventIntelligence] Queueing intelligence generation in background...');
     console.log('[EventIntelligence] Event data:', {
@@ -427,7 +467,7 @@ export async function POST(
     // Queue intelligence generation (non-blocking)
     // Priority 8 = high priority for user-initiated requests
     try {
-      await queueIntelligenceGeneration(actualEventId, 8);
+      await queueIntelligenceGeneration(actualEventId, priority);
       console.log('[EventIntelligence] Intelligence generation queued successfully');
     } catch (queueError) {
       console.warn('[EventIntelligence] Failed to queue intelligence generation:', queueError);

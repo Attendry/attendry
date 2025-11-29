@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { usePathname } from "next/navigation";
+import { AgentNotifications } from "@/components/agents/AgentNotifications";
 
 type UserLite = { id: string; email?: string | null };
 
@@ -22,12 +23,11 @@ export function TopBar({ onMenuClick, mobileMenuButton }: TopBarProps) {
   const pageTitle = useMemo(() => {
     const mapping = [
       { path: "/dashboard", label: "Command Centre" },
-      { path: "/recommendations", label: "Market Intelligence" },
-      { path: "/events", label: "Event Hub" },
+      { path: "/recommendations", label: "Intelligence" },
+      { path: "/events", label: "Speaker Search" },
       { path: "/events-board", label: "Events Board" },
-      { path: "/watchlist", label: "Watchlist" },
-      { path: "/search", label: "Smart Search" },
-      { path: "/activity", label: "Activity Insights" },
+      { path: "/watchlist", label: "Contacts" },
+      { path: "/activity", label: "Reporting" },
       { path: "/notifications", label: "Alerts" },
       { path: "/admin", label: "Admin" },
     ];
@@ -117,6 +117,8 @@ export function TopBar({ onMenuClick, mobileMenuButton }: TopBarProps) {
         <div className="flex items-center gap-4">
           {authReady && user && (
             <>
+              {/* Agent Notifications */}
+              <AgentNotifications />
               {/* Profile button */}
               <div className="relative" ref={userMenuRef}>
                 <button

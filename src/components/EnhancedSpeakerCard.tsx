@@ -24,6 +24,7 @@ import { useSpeakerEnhancement } from "@/lib/hooks/useSpeakerEnhancement";
 import SpeakerDataDebugger from "./SpeakerDataDebugger";
 import { normalizeSpeakerData, getDisplayTitle, getDisplayOrganization } from "@/lib/utils/speaker-data-normalizer";
 import "@/lib/utils/speaker-cache-debug"; // Import debug utilities
+import { toast } from "sonner";
 
 /**
  * Enhanced speaker data structure interface
@@ -124,8 +125,13 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Save failed");
+      toast.success("Saved to watchlist", {
+        description: `${speaker.name} has been added to your watchlist`
+      });
     } catch (e: unknown) {
-      alert((e as Error)?.message || "Save failed");
+      toast.error("Save failed", {
+        description: (e as Error)?.message || "Could not save to watchlist. Please try again."
+      });
     } finally {
       setBusy(false);
     }
@@ -148,8 +154,13 @@ export default function EnhancedSpeakerCard({ speaker, sessionTitle }: EnhancedS
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "Save failed");
       setProfileSaved(true);
+      toast.success("Profile saved", {
+        description: "Speaker profile saved for outreach tracking"
+      });
     } catch (e: unknown) {
-      alert((e as Error)?.message || "Save failed");
+      toast.error("Save failed", {
+        description: (e as Error)?.message || "Could not save profile. Please try again."
+      });
     } finally {
       setSavingProfile(false);
     }

@@ -188,6 +188,8 @@ export class EventDiscoverer {
         country: country || undefined,
         limit: 15, // Reduced limit since we're scraping content
         scrapeContent: true, // Enable content scraping for better prioritization
+        // NOTE: Firecrawl v2 search API does NOT support extract in scrapeOptions
+        // Extraction must be done separately using /v2/extract endpoint
         useCache: true
       });
       
@@ -202,29 +204,34 @@ export class EventDiscoverer {
       });
       
       const candidates = items
-        .map((item: any, index: number) => ({
-          id: `firecrawl_${Date.now()}_${index}`,
-          url: typeof item === 'string' ? item : item.url,
-          source: 'firecrawl' as const,
-          discoveredAt: new Date(),
-          relatedUrls: [],
-          status: 'discovered' as const,
-          metadata: {
-            originalQuery: query,
-            country,
-            processingTime: Date.now() - startTime,
-            stageTimings: {
-              discovery: Date.now() - startTime
-            },
-            // Include scraped content if available
-            ...(typeof item === 'object' && {
-              title: item.title,
-              description: item.description,
-              scrapedContent: item.content,
-              scrapedLinks: item.links
-            })
-          }
-        }));
+        .map((item: any, index: number) => {
+          const url = typeof item === 'string' ? item : item.url;
+          const isEnriched = typeof item === 'object' && item !== null;
+          
+          return {
+            id: `firecrawl_${Date.now()}_${index}`,
+            url,
+            source: 'firecrawl' as const,
+            discoveredAt: new Date(),
+            relatedUrls: [],
+            status: 'discovered' as const,
+            metadata: {
+              originalQuery: query,
+              country,
+              processingTime: Date.now() - startTime,
+              stageTimings: {
+                discovery: Date.now() - startTime
+              },
+              // Include scraped content if available
+              ...(isEnriched && {
+                title: item.title,
+                description: item.description,
+                scrapedContent: item.markdown || item.content,
+                scrapedLinks: item.links
+              })
+            }
+          };
+        });
       
       logger.info({ message: '[discover:firecrawl] Firecrawl discovery completed',
         candidatesFound: candidates.length,

@@ -12,13 +12,13 @@ interface FilterChipProps {
 
 export function FilterChip({ label, value, onRemove, className = '' }: FilterChipProps) {
   return (
-    <div className={`inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium ${className}`}>
+    <div className={`inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-full text-xs font-medium ${className}`}>
       <span className="font-medium">{label}:</span>
       <span>{value}</span>
       {onRemove && (
         <button
           onClick={onRemove}
-          className="ml-1 hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+          className="ml-1 hover:bg-blue-200 dark:hover:bg-blue-900/50 rounded-full p-0.5 transition-colors"
           aria-label={`Remove ${label} filter`}
         >
           <X className="w-3 h-3" />

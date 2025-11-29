@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 import { SavedSpeakerProfile } from "@/lib/types/database";
 import { linkSpeakerToEvent } from "@/lib/services/speaker-service";
+import { researchContact, saveContactResearch } from "@/lib/services/contact-research-service";
 
 export const runtime = "nodejs";
 
@@ -120,6 +121,39 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       } catch (historyError) {
         // Don't fail the save if history linking fails
         console.error('[phase2-speaker-history] Failed to link speaker to event:', historyError);
+      }
+    }
+
+    // Auto-research: Trigger research in background when contact is added
+    if (data?.id && speaker_data?.name) {
+      const name = speaker_data.name || 'Unknown';
+      const company = speaker_data.org || speaker_data.organization || 'Unknown';
+      
+      // Use setImmediate or setTimeout to ensure it runs after response is sent
+      // In serverless, we need to ensure the function doesn't terminate before research starts
+      if (typeof setImmediate !== 'undefined') {
+        setImmediate(async () => {
+          try {
+            console.log(`[auto-research] Starting research for contact ${data.id}: ${name} at ${company}`);
+            const researchResult = await researchContact(name, company);
+            await saveContactResearch(userRes.user.id, data.id, researchResult);
+            console.log(`[auto-research] Research completed for contact: ${data.id}`);
+          } catch (error: any) {
+            console.error(`[auto-research] Failed to research contact ${data.id}:`, error?.message || error);
+          }
+        });
+      } else {
+        // Fallback for environments without setImmediate
+        setTimeout(async () => {
+          try {
+            console.log(`[auto-research] Starting research for contact ${data.id}: ${name} at ${company}`);
+            const researchResult = await researchContact(name, company);
+            await saveContactResearch(userRes.user.id, data.id, researchResult);
+            console.log(`[auto-research] Research completed for contact: ${data.id}`);
+          } catch (error: any) {
+            console.error(`[auto-research] Failed to research contact ${data.id}:`, error?.message || error);
+          }
+        }, 100);
       }
     }
 
