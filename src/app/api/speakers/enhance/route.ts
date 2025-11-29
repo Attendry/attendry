@@ -243,7 +243,6 @@ async function enhanceSpeakerProfile(speaker: SpeakerData, userId?: string | nul
         } else {
           console.log('No Firecrawl results to build context from');
         }
-      }
     } catch (firecrawlError) {
       console.warn('Firecrawl search failed:', firecrawlError);
     }
@@ -305,7 +304,6 @@ async function enhanceSpeakerProfile(speaker: SpeakerData, userId?: string | nul
         } else {
           console.log('No CSE results to build context from');
         }
-      }
     } catch (cseError) {
       console.warn('CSE search failed:', cseError);
     }
