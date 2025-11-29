@@ -116,6 +116,29 @@ async function saveSpeakerAsContact(
       }
     }
 
+    // Auto-research: Trigger research in background when contact is added
+    if (data?.id && speakerData.name) {
+      const name = speakerData.name || 'Unknown';
+      const company = speakerData.org || 'Unknown';
+      
+      // Trigger research asynchronously (don't block the save)
+      // Use a fire-and-forget approach that works in serverless
+      Promise.resolve().then(async () => {
+        try {
+          console.log(`[bulk-save-auto-research] Starting research for contact ${data.id}: ${name} at ${company}`);
+          const { researchContact, saveContactResearch } = await import('@/lib/services/contact-research-service');
+          const researchResult = await researchContact(name, company);
+          await saveContactResearch(userId, data.id, researchResult);
+          console.log(`[bulk-save-auto-research] Research completed for contact: ${data.id}`);
+        } catch (error: any) {
+          console.error(`[bulk-save-auto-research] Failed to research contact ${data.id}:`, error?.message || error);
+          // Don't throw - research failure shouldn't fail the save
+        }
+      }).catch(() => {
+        // Silently handle any promise rejection
+      });
+    }
+
     return {
       success: true,
       contactId: data.id,
