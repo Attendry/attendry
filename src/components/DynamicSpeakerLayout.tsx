@@ -22,7 +22,6 @@ import { SpeakerData } from "@/lib/types/core";
 import { ChevronRight, Users, Linkedin } from "lucide-react";
 import { useBulkSelection } from "@/lib/hooks/useBulkSelection";
 import { BulkSelectionToolbar } from "./speakers/BulkSelectionToolbar";
-import { bulkSaveSpeakers } from "@/lib/services/bulk-save-service";
 import { toast } from "sonner";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
