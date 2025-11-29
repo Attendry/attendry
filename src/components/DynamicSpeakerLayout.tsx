@@ -86,21 +86,37 @@ export default function DynamicSpeakerLayout({
     setSaveProgress({ completed: 0, total: bulkSelection.selectedItems.length });
 
     try {
-      const progress = await bulkSaveSpeakers(
-        bulkSelection.selectedItems,
-        userId,
-        {
+      const selectedSpeakers = bulkSelection.selectedItems;
+      
+      // Call API route instead of direct service call
+      const response = await fetch("/api/contacts/bulk-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          speakers: selectedSpeakers,
           eventId,
           eventTitle,
-          onProgress: (p) => {
-            setSaveProgress({
-              completed: p.completed,
-              total: p.total,
-              current: p.current,
-            });
-          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save contacts");
+      }
+
+      const data = await response.json();
+      const progress = data.progress;
+
+      // Update progress during save (simulate progress updates)
+      if (progress.total > 0) {
+        for (let i = 0; i <= progress.completed; i++) {
+          setSaveProgress({
+            completed: i,
+            total: progress.total,
+          });
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
-      );
+      }
 
       if (progress.completed > 0) {
         toast.success(
