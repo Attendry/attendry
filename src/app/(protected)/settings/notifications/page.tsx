@@ -1,7 +1,7 @@
 "use client";
 
 import { PageHeader } from '@/components/Layout/PageHeader';
-import { NotificationSettings } from '@/components/NotificationSettings';
+import NotificationSettings from '@/components/NotificationSettings';
 
 export default function NotificationSettingsPage() {
   return (
