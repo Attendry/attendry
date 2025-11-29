@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   User, 
@@ -62,7 +62,7 @@ const settingsTabs: SettingsTabConfig[] = [
   },
 ];
 
-export default function SettingsPage() {
+function SettingsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
@@ -152,5 +152,26 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+        <div className="mx-auto max-w-7xl px-4 py-8">
+          <PageHeader
+            title="Settings"
+            subtitle="Manage your account, preferences, and automation settings"
+            breadcrumbs={[{ label: 'Settings' }]}
+          />
+          <div className="mt-8 flex items-center justify-center py-12">
+            <p className="text-slate-600 dark:text-slate-400">Loading settings...</p>
+          </div>
+        </div>
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   );
 }
