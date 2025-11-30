@@ -388,19 +388,29 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
 
         // Convert FirecrawlSearchResult to UnifiedSearchResult format
         const items: Array<string | { url: string; title?: string; description?: string; markdown?: string; extracted?: any }> = 
-          firecrawlResult.items.map((item) => {
-            // If we have extracted data, return enriched item
-            if (params.scrapeContent || params.extractSchema) {
-              return {
+          firecrawlResult.items
+            .filter((item) => {
+              // Filter out invalid URLs
+              if (!item.link || !item.link.startsWith('http')) {
+                console.log('[unified-firecrawl] Filtered out invalid URL:', item.link);
+                return false;
+              }
+              return true;
+            })
+            .map((item) => {
+              // Always return enriched item format for better processing downstream
+              // This ensures optimized orchestrator can properly handle the results
+              const enrichedItem = {
                 url: item.link,
-                title: item.title,
-                description: item.snippet,
-                extracted: item.extractedData
+                title: item.title || undefined,
+                description: item.snippet || undefined,
+                extracted: item.extractedData || undefined
               };
-            }
-            // Fallback to URL string for backward compatibility
-            return item.link;
-          });
+              console.log('[unified-firecrawl] Converted item:', { url: enrichedItem.url, hasTitle: !!enrichedItem.title, hasDescription: !!enrichedItem.description });
+              return enrichedItem;
+            });
+        
+        console.log('[unified-firecrawl] Final items count after conversion:', items.length);
 
         const result: UnifiedSearchResult = {
           items,

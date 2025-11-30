@@ -1396,18 +1396,34 @@ async function discoverEventCandidates(
   discoveryResults.forEach(result => {
     if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
       const searchResult = result.result as { items: Array<string | { url: string }> };
+      console.log('[optimized-orchestrator] Processing discovery result:', { 
+        itemsCount: searchResult.items.length,
+        firstItemType: typeof searchResult.items[0],
+        firstItemSample: searchResult.items[0] ? (typeof searchResult.items[0] === 'string' ? searchResult.items[0].substring(0, 50) : JSON.stringify(searchResult.items[0]).substring(0, 100)) : 'null'
+      });
       searchResult.items.forEach((item: any) => {
         // Handle enriched items (objects with url and scraped content)
         if (typeof item === 'object' && item !== null && item.url) {
           const url = item.url;
           if (url && url.startsWith('http')) {
             allUrls.push(url);
+          } else {
+            console.log('[optimized-orchestrator] Skipped item with invalid URL:', item.url);
           }
         } 
         // Handle string URLs (backward compatibility)
         else if (typeof item === 'string' && item.startsWith('http')) {
           allUrls.push(item);
+        } else {
+          console.log('[optimized-orchestrator] Skipped item - invalid format:', typeof item, item);
         }
+      });
+    } else {
+      console.log('[optimized-orchestrator] Discovery result not processed:', { 
+        success: result.success, 
+        hasResult: !!result.result,
+        resultType: typeof result.result,
+        hasItems: result.result && typeof result.result === 'object' && 'items' in result.result
       });
     }
   });
