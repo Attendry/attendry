@@ -380,7 +380,9 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
           // PHASE 1: Enable unified search+extract
           extractSchema: params.extractSchema,
           extractPrompt: params.extractPrompt,
-          categories: params.categories || ['research'], // Focus on research/event sites for better targeting
+          // REMOVED: categories: ['research'] - This was causing Firecrawl to return academic papers
+          // Only use categories if explicitly provided (and not 'research' for event searches)
+          categories: params.categories && !params.categories.includes('research') ? params.categories : undefined,
           scrapeContent: params.scrapeContent || !!params.extractSchema,
         });
 
