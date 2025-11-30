@@ -1375,6 +1375,7 @@ async function discoverEventCandidates(
     )
   );
   
+  console.log('[optimized-orchestrator] Starting parallel discovery with', queryVariations.length, 'query variations');
   const discoveryResults = await parallelProcessor.processParallel(
     discoveryTasks,
     async (task) => {
@@ -1396,7 +1397,11 @@ async function discoverEventCandidates(
         console.log('[optimized-orchestrator] Discovery result:', { 
           query: task.data.substring(0, 50) + '...', 
           itemsFound: result.items?.length || 0,
-          userProfileUsed: !!userProfile
+          providers: result.providers || [],
+          userProfileUsed: !!userProfile,
+          resultType: typeof result,
+          hasItems: 'items' in result,
+          itemsType: Array.isArray(result.items) ? 'array' : typeof result.items
         });
         return result;
       }, 'firecrawl');
@@ -1408,12 +1413,28 @@ async function discoverEventCandidates(
       minResults: 1
     }
   );
+  
+  console.log('[optimized-orchestrator] Parallel discovery completed:', {
+    totalResults: discoveryResults.length,
+    successfulResults: discoveryResults.filter(r => r.success).length,
+    failedResults: discoveryResults.filter(r => !r.success).length
+  });
 
   // Combine results from all query variations
   // Handle both string URLs and enriched items (with scraped content)
   const allUrls: string[] = [];
   
+  console.log('[optimized-orchestrator] Processing', discoveryResults.length, 'discovery results...');
   discoveryResults.forEach((result, index) => {
+    console.log('[optimized-orchestrator] Processing result', index, ':', {
+      success: result.success,
+      hasResult: !!result.result,
+      resultType: typeof result.result,
+      isObject: result.result && typeof result.result === 'object',
+      hasItems: result.result && typeof result.result === 'object' && 'items' in result.result,
+      error: result.error ? result.error.message : null
+    });
+    
     if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
       const searchResult = result.result as { items: Array<string | { url: string }>; providers?: string[] };
       console.log('[optimized-orchestrator] Processing discovery result:', { 
@@ -1423,32 +1444,51 @@ async function discoverEventCandidates(
         firstItemType: typeof searchResult.items[0],
         firstItemSample: searchResult.items[0] ? (typeof searchResult.items[0] === 'string' ? searchResult.items[0].substring(0, 50) : JSON.stringify(searchResult.items[0]).substring(0, 100)) : 'null'
       });
-      searchResult.items.forEach((item: any) => {
+      
+      let itemsProcessed = 0;
+      let itemsSkipped = 0;
+      
+      searchResult.items.forEach((item: any, itemIndex: number) => {
         // Handle enriched items (objects with url and scraped content)
         if (typeof item === 'object' && item !== null && item.url) {
           const url = item.url;
           if (url && url.startsWith('http')) {
             allUrls.push(url);
+            itemsProcessed++;
           } else {
-            console.log('[optimized-orchestrator] Skipped item with invalid URL:', item.url);
+            console.log('[optimized-orchestrator] Skipped item', itemIndex, 'with invalid URL:', item.url);
+            itemsSkipped++;
           }
         } 
         // Handle string URLs (backward compatibility)
         else if (typeof item === 'string' && item.startsWith('http')) {
           allUrls.push(item);
+          itemsProcessed++;
         } else {
-          console.log('[optimized-orchestrator] Skipped item - invalid format:', typeof item, item);
+          console.log('[optimized-orchestrator] Skipped item', itemIndex, '- invalid format:', typeof item, item ? JSON.stringify(item).substring(0, 100) : 'null');
+          itemsSkipped++;
         }
+      });
+      
+      console.log('[optimized-orchestrator] Result', index, 'summary:', {
+        totalItems: searchResult.items.length,
+        processed: itemsProcessed,
+        skipped: itemsSkipped
       });
     } else {
       console.log('[optimized-orchestrator] Discovery result not processed:', { 
+        index,
         success: result.success, 
         hasResult: !!result.result,
         resultType: typeof result.result,
-        hasItems: result.result && typeof result.result === 'object' && 'items' in result.result
+        hasItems: result.result && typeof result.result === 'object' && 'items' in result.result,
+        error: result.error ? result.error.message : null,
+        resultKeys: result.result && typeof result.result === 'object' ? Object.keys(result.result) : []
       });
     }
   });
+  
+  console.log('[optimized-orchestrator] Total URLs collected before deduplication:', allUrls.length);
 
   // Filter and deduplicate URLs
   const urls = allUrls
