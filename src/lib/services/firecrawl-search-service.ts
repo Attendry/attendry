@@ -542,16 +542,10 @@ export class FirecrawlSearchService {
         }
       }
 
-        if (items.length) {
-      return {
-        provider: "firecrawl",
-        items: items.slice(0, maxResults),
-        cached: false,
-        searchMetadata: {
-          totalResults: items.length,
-              query: ship.query
-            }
-          };
+        // FUTURE DATES FIX: Accumulate items from all ships instead of returning early
+        if (items.length > 0) {
+          totalItems.push(...items);
+          hasResults = true;
         }
 
         lastError = new Error('firecrawl_empty_results');
@@ -562,6 +556,25 @@ export class FirecrawlSearchService {
           console.info(JSON.stringify({ at: 'firecrawl_call_retry', next: ships[ships.indexOf(ship) + 1]?.label }));
         }
       }
+    }
+
+    // FUTURE DATES FIX: Return accumulated results if we found any
+    if (hasResults && totalItems.length > 0) {
+      // Deduplicate items by URL
+      const uniqueItems = totalItems.filter((item, index, self) => 
+        index === self.findIndex(i => i.link === item.link)
+      );
+      
+      return {
+        provider: "firecrawl",
+        items: uniqueItems.slice(0, maxResults),
+        cached: false,
+        searchMetadata: {
+          totalResults: uniqueItems.length,
+          query: primaryQuery,
+          usedFallback: !baseParams.tbs && from && to
+        }
+      };
     }
 
     if (!lastError) {
