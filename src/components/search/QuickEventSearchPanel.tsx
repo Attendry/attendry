@@ -62,8 +62,10 @@ const SUGGESTED_KEYWORDS = [
 
 const QUICK_SEARCH_DEFAULTS = {
   country: 'EU' as typeof QUICK_SEARCH_LOCATIONS[number]['code'],
-  range: 'next' as 'next' | 'past',
+  range: 'next' as 'next' | 'past' | 'custom',
   days: 14 as (typeof QUICK_SEARCH_DAY_OPTIONS)[number],
+  customFrom: null as string | null,
+  customTo: null as string | null,
   keywords: '',
   selectedKeywordTags: [] as string[],
 };
@@ -440,6 +442,12 @@ export function QuickEventSearchPanel({
 
   const dateRangeSummary = useMemo(() => {
     const now = new Date();
+    if (config.range === 'custom' && config.customFrom && config.customTo) {
+      return {
+        from: config.customFrom,
+        to: config.customTo,
+      };
+    }
     if (config.range === 'next') {
       return {
         from: toDateOnlyString(now),
@@ -450,7 +458,7 @@ export function QuickEventSearchPanel({
       from: toDateOnlyString(shiftDate(now, -config.days)),
       to: toDateOnlyString(now),
     };
-  }, [config.range, config.days]);
+  }, [config.range, config.days, config.customFrom, config.customTo]);
 
   const updateConfig = (partial: Partial<typeof config>) => {
     setConfig((prev) => ({ ...prev, ...partial }));
@@ -472,14 +480,19 @@ export function QuickEventSearchPanel({
 
   const runSearch = useCallback(async () => {
     const now = new Date();
-    const from =
-      config.range === 'next'
-        ? toDateOnlyString(now)
-        : toDateOnlyString(shiftDate(now, -config.days));
-    const to =
-      config.range === 'next'
-        ? toDateOnlyString(shiftDate(now, config.days))
-        : toDateOnlyString(now);
+    let from: string;
+    let to: string;
+    
+    if (config.range === 'custom' && config.customFrom && config.customTo) {
+      from = config.customFrom;
+      to = config.customTo;
+    } else if (config.range === 'next') {
+      from = toDateOnlyString(now);
+      to = toDateOnlyString(shiftDate(now, config.days));
+    } else {
+      from = toDateOnlyString(shiftDate(now, -config.days));
+      to = toDateOnlyString(now);
+    }
 
     // Cancel any existing search
     if (searchAbortController) {
@@ -949,7 +962,11 @@ export function QuickEventSearchPanel({
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 font-medium text-emerald-700">
               <CalendarRange className="h-3.5 w-3.5" />
-              {config.range === 'next' ? `Next ${config.days} days` : `Past ${config.days} days`}
+              {config.range === 'custom' 
+                ? 'Custom range' 
+                : config.range === 'next' 
+                  ? `Next ${config.days} days` 
+                  : `Past ${config.days} days`}
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-600">
               {dateRangeSummary.from} → {dateRangeSummary.to}
@@ -979,48 +996,92 @@ export function QuickEventSearchPanel({
               </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">Time frame</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['next', 'past'] as const).map((rangeOption) => {
+                <div className="grid grid-cols-3 gap-2">
+                  {(['next', 'past', 'custom'] as const).map((rangeOption) => {
                     const isActive = config.range === rangeOption;
                     return (
                       <button
                         key={rangeOption}
                         type="button"
-                        onClick={() => updateConfig({ range: rangeOption })}
+                        onClick={() => {
+                          if (rangeOption === 'custom') {
+                            // Initialize custom dates if not set
+                            const now = new Date();
+                            const defaultFrom = toDateOnlyString(now);
+                            const defaultTo = toDateOnlyString(shiftDate(now, 30));
+                            updateConfig({ 
+                              range: 'custom',
+                              customFrom: config.customFrom || defaultFrom,
+                              customTo: config.customTo || defaultTo,
+                            });
+                          } else {
+                            updateConfig({ range: rangeOption });
+                          }
+                        }}
                         className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
                           isActive
                             ? 'border-blue-200 bg-blue-50 text-blue-700'
                             : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        {rangeOption === 'next' ? 'Upcoming' : 'Look back'}
+                        {rangeOption === 'next' ? 'Upcoming' : rangeOption === 'past' ? 'Look back' : 'Custom'}
                       </button>
                     );
                   })}
                 </div>
               </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Days</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {QUICK_SEARCH_DAY_OPTIONS.map((option) => {
-                    const isActive = config.days === option;
-                    return (
-                      <button
-                        key={option}
-                        type="button"
-                        onClick={() => updateConfig({ days: option })}
-                        className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                          isActive
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        {option}
-                      </button>
-                    );
-                  })}
+              {config.range === 'custom' ? (
+                <div className="col-span-2">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Date range</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-600">From</label>
+                      <input
+                        type="date"
+                        value={config.customFrom || ''}
+                        onChange={(e) => updateConfig({ customFrom: e.target.value })}
+                        min={toDateOnlyString(new Date(2020, 0, 1))}
+                        max={toDateOnlyString(new Date(2030, 11, 31))}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-slate-600">To</label>
+                      <input
+                        type="date"
+                        value={config.customTo || ''}
+                        onChange={(e) => updateConfig({ customTo: e.target.value })}
+                        min={config.customFrom || toDateOnlyString(new Date(2020, 0, 1))}
+                        max={toDateOnlyString(new Date(2030, 11, 31))}
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Days</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {QUICK_SEARCH_DAY_OPTIONS.map((option) => {
+                      const isActive = config.days === option;
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => updateConfig({ days: option })}
+                          className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                            isActive
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
