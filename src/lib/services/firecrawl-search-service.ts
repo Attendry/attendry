@@ -223,8 +223,27 @@ export class FirecrawlSearchService {
 
     const ships: Array<{ query: string; params: Record<string, unknown>; label: string }> = [];
 
-    const primaryQuery = this.buildShardQuery(positiveTokens, locationTokenSet, timeframeTokens, country, from, to);
-    const fallbackQuery = await this.buildSearchQueryInternal(query, industry, country, from, to);
+    // PHASE 1 FIX: If query is already a simplified narrative query (short and focused), use it directly
+    // This prevents rebuilding queries that are already optimized (e.g., "conference" or "legal compliance conference")
+    const isSimplifiedQuery = query.length < 100 && 
+                              query.split(/\s+/).length <= 5 && 
+                              !query.includes(' OR ') && 
+                              !query.includes(' AND ') &&
+                              !query.includes('(');
+    
+    let primaryQuery: string;
+    let fallbackQuery: string;
+    
+    if (isSimplifiedQuery) {
+      // Use the narrative query directly - it's already optimized
+      primaryQuery = query;
+      fallbackQuery = query; // Same query for both
+      console.log('[firecrawl-search-service] Using simplified narrative query directly:', query);
+    } else {
+      // Build queries from tokens (original logic for complex queries)
+      primaryQuery = this.buildShardQuery(positiveTokens, locationTokenSet, timeframeTokens, country, from, to);
+      fallbackQuery = await this.buildSearchQueryInternal(query, industry, country, from, to);
+    }
 
     const baseParams: any = {
       limit: Math.min(maxResults, 20),
@@ -352,12 +371,17 @@ export class FirecrawlSearchService {
             const withinRange = this.isWithinRange(parsedDate.startISO, from, to);
             const timeframeHint = this.matchesTimeframeHint(content, timeframeTokens);
 
+            // PHASE 1 FIX: Relaxed date filtering - don't require dates if no date range specified
+            // This allows more results through when searching without specific dates
             if (from || to) {
+              // If date range specified, filter by date if available
               if (parsedDate.startISO && !withinRange) {
                 continue;
               }
-            } else if (!hasSomeDate && !timeframeHint) {
-              continue;
+              // If no date found but range specified, still allow through (date might be in future or not extracted)
+            } else {
+              // No date range specified - don't require dates, just prefer them
+              // This allows results without explicit dates to pass through
             }
 
             const extractedLocation = this.extractLocationFromContent(result.markdown);

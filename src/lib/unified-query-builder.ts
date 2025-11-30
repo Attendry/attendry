@@ -343,29 +343,38 @@ function buildNarrativeQuery(params: {
     baseQuery.length < 100 &&
     baseQuery.trim().split(/\s+/).length <= 10;
   
-  const userSearchTerm = hasUserSearchTerm ? baseQuery.trim() : '';
+  const userSearchTerm = hasUserSearchTerm ? baseQuery.trim().toLowerCase() : '';
   
   // Get primary industry terms (limit to 2-3 for brevity)
   const industryTerms = userProfile?.industry_terms || [];
-  const primaryIndustry = industryTerms.slice(0, 2).join(' ');
+  const primaryIndustry = industryTerms.slice(0, 2).join(' ').toLowerCase();
   
   // Get primary event type (just one, not a list)
   const primaryEventType = eventTypes[0] || 'conference';
+  const eventTypeLower = primaryEventType.toLowerCase();
   
   // PHASE 1: Build concise query (80-120 characters target)
   // Location and dates are handled by API parameters, not query text
+  // FIX: Don't append event type if it's already in the search term
   
   if (language === 'de') {
     if (userSearchTerm) {
-      // User search term is primary: "legal compliance conferences"
+      // Check if event type is already in the search term
+      const eventTypeInTerm = eventTypes.some(et => userSearchTerm.includes(et.toLowerCase()));
+      if (eventTypeInTerm) {
+        return userSearchTerm; // Don't duplicate
+      }
       return `${userSearchTerm} ${primaryEventType}`;
     } else if (primaryIndustry) {
-      // Industry terms: "legal compliance conferences"
       return `${primaryIndustry} ${primaryEventType}`;
     }
     return `business ${primaryEventType}`;
   } else if (language === 'fr') {
     if (userSearchTerm) {
+      const eventTypeInTerm = eventTypes.some(et => userSearchTerm.includes(et.toLowerCase()));
+      if (eventTypeInTerm) {
+        return userSearchTerm;
+      }
       return `${userSearchTerm} ${primaryEventType}`;
     } else if (primaryIndustry) {
       return `${primaryIndustry} ${primaryEventType}`;
@@ -374,6 +383,12 @@ function buildNarrativeQuery(params: {
   } else {
     // English (default)
     if (userSearchTerm) {
+      // FIX: Check if event type is already in the search term to avoid "conference conference"
+      const eventTypeInTerm = eventTypes.some(et => userSearchTerm.includes(et.toLowerCase()));
+      if (eventTypeInTerm) {
+        // Event type already in term, return as-is
+        return userSearchTerm;
+      }
       // User search term is primary: "legal compliance conferences"
       // Target: 30-50 characters
       return `${userSearchTerm} ${primaryEventType}`;
