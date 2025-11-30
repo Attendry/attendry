@@ -45,6 +45,34 @@ export const SOCIAL_DOMAINS: string[] = [
   'www.reddit.com'
 ];
 
+// Academic paper and research domains - these are NOT event pages
+export const ACADEMIC_DOMAINS: string[] = [
+  'ieeexplore.ieee.org',
+  'www.ieeexplore.ieee.org',
+  'pubmed.ncbi.nlm.nih.gov',
+  'www.pubmed.ncbi.nlm.nih.gov',
+  'ncbi.nlm.nih.gov',
+  'www.ncbi.nlm.nih.gov',
+  'researchgate.net',
+  'www.researchgate.net',
+  'sciencedirect.com',
+  'www.sciencedirect.com',
+  'arxiv.org',
+  'www.arxiv.org',
+  'acm.org',
+  'www.acm.org',
+  'dl.acm.org',
+  'www.dl.acm.org',
+  'springer.com',
+  'www.springer.com',
+  'link.springer.com',
+  'www.link.springer.com',
+  'nature.com',
+  'www.nature.com',
+  'science.org',
+  'www.science.org'
+];
+
 export const DEFAULT_SHARD_KEYWORDS: string[] = [
   'conference',
   'summit',

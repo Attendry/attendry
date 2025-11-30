@@ -1319,6 +1319,13 @@ async function discoverEventCandidates(
   narrativeQuery?: string
 ): Promise<string[]> {
   const startTime = Date.now();
+  console.log('[optimized-orchestrator] discoverEventCandidates called:', { 
+    query: query.substring(0, 50), 
+    hasNarrativeQuery: !!narrativeQuery,
+    country: params.country,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo
+  });
   
   // Create multiple query variations for parallel discovery
   // PHASE 1 OPTIMIZATION: Expanded from 3 to 15+ event type variations for +40% recall

@@ -3,7 +3,7 @@ import { buildSearchQuery } from '@/search/query';
 import { buildUnifiedQuery } from '@/lib/unified-query-builder';
 import { getCountryContext, type CountryContext } from '@/lib/utils/country';
 import { parseEventDate } from '@/search/date';
-import { EVENT_KEYWORDS, SOCIAL_DOMAINS, DEFAULT_SHARD_KEYWORDS, detectCountryFromText, detectCityFromText } from '@/config/search-dictionaries';
+import { EVENT_KEYWORDS, SOCIAL_DOMAINS, ACADEMIC_DOMAINS, DEFAULT_SHARD_KEYWORDS, detectCountryFromText, detectCityFromText } from '@/config/search-dictionaries';
 import { withRateLimit } from './rate-limit-service';
 
 /**
@@ -326,6 +326,11 @@ export class FirecrawlSearchService {
           const url = result.url || "";
           const hostname = new URL(url).hostname.toLowerCase();
           if (SOCIAL_DOMAINS.includes(hostname)) {
+              continue;
+          }
+          // Filter out academic paper domains - these are NOT event pages
+          if (ACADEMIC_DOMAINS.includes(hostname)) {
+              console.log(`[firecrawl-search-service] Filtered out academic paper domain: ${hostname}`);
               continue;
           }
           
