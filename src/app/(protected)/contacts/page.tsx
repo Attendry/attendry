@@ -9,6 +9,7 @@ import { Loader2, Archive, History, Plus, Zap, RefreshCw, X } from "lucide-react
 import Link from "next/link";
 import { ContactCard } from "@/components/contacts/ContactCard";
 import { ContactModal } from "@/components/contacts/ContactModal";
+import { EmptyState } from "@/components/States/EmptyState";
 
 type TabType = "focus" | "history";
 
@@ -280,11 +281,39 @@ export default function ContactsPage() {
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <header className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">Contacts</h1>
-          <p className="mt-2 text-slate-600">
-            Manage your outreach contacts with AI-powered research and monitoring.
-          </p>
-        </header>
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">Contacts</h1>
+              <p className="mt-2 text-slate-600">
+                Manage your outreach contacts with AI-powered research and monitoring.
+              </p>
+            </div>
+            {/* Daily Briefing - Prominent */}
+            {activeTab === "focus" && (
+              <div className="flex flex-col items-end gap-2">
+                <button
+                  onClick={handleRunDailyBriefing}
+                  disabled={isBriefingLoading}
+                  className="inline-flex items-center gap-2 rounded-lg border-2 border-blue-600 bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 shadow-md hover:shadow-lg transition-all"
+                >
+                  {isBriefingLoading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Scanning...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4" />
+                      Daily Briefing
+                    </>
+                  )}
+                </button>
+                <p className="text-xs text-slate-500 text-right max-w-[140px]">
+                  Check for new updates on monitored contacts
+                </p>
+              </div>
+            )}
+          </div>
 
         {/* Tab Navigation */}
         <div className="mb-6 flex gap-6 border-b border-slate-200">
@@ -326,29 +355,13 @@ export default function ContactsPage() {
                   Manage your key contacts for outreach and relationship building.
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                {totalMonitoringCount > 0 && (
-                  <button
-                    onClick={handleRunDailyBriefing}
-                    disabled={isBriefingLoading}
-                    className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50"
-                  >
-                    {isBriefingLoading ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Zap className="h-4 w-4" />
-                    )}
-                    {isBriefingLoading ? "Scanning..." : "Daily Briefing"}
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowAddContactModal(true)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Contact ({activeContacts.length})
-                </button>
-              </div>
+              <button
+                onClick={() => setShowAddContactModal(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4" />
+                Add Contact ({activeContacts.length})
+              </button>
             </div>
 
             {profilesLoading ? (
@@ -357,20 +370,15 @@ export default function ContactsPage() {
               </div>
             ) : activeContacts.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
-                <Archive className="mx-auto h-12 w-12 text-slate-400" />
-                <h3 className="mt-4 text-lg font-semibold text-slate-900">
-                  Focus list is empty
-                </h3>
-                <p className="mt-2 text-sm text-slate-600">
-                  Add contacts from saved profiles to start researching and drafting.
-                </p>
-                <button
-                  onClick={() => setShowAddContactModal(true)}
-                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Contact
-                </button>
+                <EmptyState
+                  icon={<Archive className="h-12 w-12" />}
+                  title="Focus list is empty"
+                  description="Add contacts from saved profiles to start researching and drafting."
+                  action={{
+                    label: "Add Contact",
+                    onClick: () => setShowAddContactModal(true)
+                  }}
+                />
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2">

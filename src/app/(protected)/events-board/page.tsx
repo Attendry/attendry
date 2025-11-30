@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Plus, Save, BookOpen, Trash2, List } from "lucide-react";
+import { EmptyState } from "@/components/States/EmptyState";
 import { toast } from "sonner";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { CollectedEvent } from "@/lib/types/database";
@@ -424,18 +425,16 @@ function EventsBoardPageContent() {
 
       {/* Board Content */}
       {items.length === 0 ? (
-        <div className="text-center py-12 bg-surface-alt rounded-lg">
-          <List className="h-16 w-16 mx-auto mb-4 text-text-muted" />
-          <h3 className="text-xl font-semibold text-text-primary mb-2">
-            Your board is empty
-          </h3>
-          <p className="text-text-secondary mb-4">
-            Add events from search results to get started
-          </p>
-          <Button onClick={() => (window.location.href = "/events")}>
-            <Plus className="h-4 w-4 mr-2" />
-            Browse Events
-          </Button>
+        <div className="bg-surface-alt rounded-lg">
+          <EmptyState
+            icon={<List className="h-12 w-12" />}
+            title="Your board is empty"
+            description="Add events from search results to get started"
+            action={{
+              label: "Browse Events",
+              onClick: () => (window.location.href = "/events")
+            }}
+          />
         </div>
       ) : (
         <EventBoardList

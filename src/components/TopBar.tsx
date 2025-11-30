@@ -22,12 +22,12 @@ export function TopBar({ onMenuClick, mobileMenuButton }: TopBarProps) {
 
   const pageTitle = useMemo(() => {
     const mapping = [
-      { path: "/dashboard", label: "Command Centre" },
-      { path: "/recommendations", label: "Intelligence" },
+      { path: "/dashboard", label: "Home" },
+      { path: "/recommendations", label: "Insights" },
       { path: "/events", label: "Speaker Search" },
       { path: "/events-board", label: "Events Board" },
       { path: "/watchlist", label: "Contacts" },
-      { path: "/activity", label: "Reporting" },
+      { path: "/activity", label: "Activity" },
       { path: "/notifications", label: "Alerts" },
       { path: "/admin", label: "Admin" },
     ];

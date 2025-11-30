@@ -93,7 +93,10 @@ export function DashboardHeader({
       <div className="mb-4">
         <h1 className="text-3xl font-bold text-slate-900">Home</h1>
         <p className="mt-2 text-slate-600">
-          Your command center for event intelligence and outreach
+          Your command center for event-based sales prospecting
+        </p>
+        <p className="mt-1 text-sm text-slate-500">
+          Find events → See attendees → Warm outreach → Generate opportunities
         </p>
       </div>
       

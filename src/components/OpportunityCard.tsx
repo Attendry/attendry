@@ -413,6 +413,12 @@ export default function OpportunityCard({
                 <span className="font-semibold text-blue-900">
                   {signals.target_accounts_attending} Target Account{signals.target_accounts_attending !== 1 ? 's' : ''} Attending
                 </span>
+                <span 
+                  className="text-xs text-blue-600 cursor-help" 
+                  title="Companies from your target account list that are attending this event as speakers, sponsors, or participants"
+                >
+                  ℹ️
+                </span>
               </div>
               {outreachAgent && signals.account_connections.length > 0 && (
                 <button
@@ -443,10 +449,36 @@ export default function OpportunityCard({
           </div>
         )}
 
+        {/* Action Guidance */}
+        {signals.target_accounts_attending > 0 && action_timing && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3">
+            <div className="flex items-start gap-2">
+              <span className="text-amber-600 font-bold">💡</span>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-900 mb-1">
+                  Recommended Action:
+                </p>
+                <p className="text-sm text-amber-800">
+                  Contact {Math.min(3, signals.target_accounts_attending)} speaker{Math.min(3, signals.target_accounts_attending) !== 1 ? 's' : ''} before the event for warm outreach. 
+                  {action_timing.optimal_outreach_date && (
+                    <span> Best time: {new Date(action_timing.optimal_outreach_date).toLocaleDateString()}</span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ICP Matches */}
         {signals.icp_matches > 0 && (
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <Users className="w-4 h-4 text-green-600" />
+            <span 
+              className="text-xs text-green-600 cursor-help" 
+              title="Speakers or attendees that match your Ideal Customer Profile based on job title, company size, industry, or other criteria"
+            >
+              ℹ️
+            </span>
             <span>
               <strong>{signals.icp_matches}</strong> ICP match{signals.icp_matches !== 1 ? 'es' : ''}
             </span>

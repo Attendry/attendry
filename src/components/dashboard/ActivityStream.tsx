@@ -71,7 +71,7 @@ function ActivityItemComponent({ activity }: { activity: ActivityItem }) {
     ? new Date(activity.timestamp) 
     : activity.timestamp;
   
-  const timeAgo = formatDistanceToNow(timestamp, { addSuffix: true });
+  const timeAgo = formatDistanceToNow(timestamp);
 
   const content = (
     <div className="group flex items-start gap-4 rounded-lg border border-slate-200 bg-white p-4 transition hover:border-blue-300 hover:bg-blue-50/50">

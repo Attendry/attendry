@@ -25,6 +25,8 @@ import { fetchEvents } from "@/lib/search/client";
 import { fetchEventsProgressive, type ProgressiveSearchUpdate } from "@/lib/search/progressive-client";
 import { toast } from "sonner";
 import { formatErrorForToast, getUserFriendlyMessage, CommonErrors } from "@/lib/errors/user-friendly-messages";
+import { SearchHistoryDropdown } from "@/components/search/SearchHistoryDropdown";
+import { addToSearchHistory, SearchHistoryItem, clearSearchHistory } from "@/lib/search/search-history";
 
 // EventRec type is now imported from SearchResultsContext
 
@@ -125,6 +127,7 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
   const [searchAbortController, setSearchAbortController] = useState<AbortController | null>(null);
   const [progressiveSearchStage, setProgressiveSearchStage] = useState<ProgressiveSearchUpdate['stage'] | null>(null);
   const [sortBy, setSortBy] = useState<'relevance' | 'date' | 'quality'>('relevance');
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
   const router = useRouter();
 
   // Get current page events from context
@@ -599,6 +602,20 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
         } : undefined,
       }, events.length);
 
+      // Save search history
+      if (query.trim()) {
+        addToSearchHistory({
+          query: query,
+          filters: {
+            country: searchCountry,
+            dateFrom: dateRange.from,
+            dateTo: dateRange.to,
+            keywords: query,
+          },
+          resultCount: events.length,
+        });
+      }
+
       // Complete progress
       setSearchProgress({ stage: 4, total: 4, message: 'Search completed!' });
 
@@ -677,22 +694,39 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
           onUpdate: (update) => {
             setProgressiveSearchStage(update.stage);
             
-            // Update progress message based on stage
+            // Update progress message based on stage with partial results count
             let progressMessage = update.message || 'Searching...';
             let progressStage = 1;
+            const resultsCount = update.totalSoFar || update.events.length;
             
             if (update.stage === 'database') {
               progressStage = 1;
-              progressMessage = update.message || 'Checking database...';
+              if (resultsCount > 0) {
+                progressMessage = `Found ${resultsCount} event${resultsCount !== 1 ? 's' : ''} in database, searching more sources...`;
+              } else {
+                progressMessage = update.message || 'Checking database for events...';
+              }
             } else if (update.stage === 'cse') {
               progressStage = 2;
-              progressMessage = update.message || 'Searching with Google CSE...';
+              if (resultsCount > 0) {
+                progressMessage = `Found ${resultsCount} event${resultsCount !== 1 ? 's' : ''} so far, searching with Google...`;
+              } else {
+                progressMessage = update.message || 'Searching with Google CSE...';
+              }
             } else if (update.stage === 'firecrawl') {
               progressStage = 3;
-              progressMessage = update.message || 'Searching with Firecrawl (this may take 30-60 seconds)...';
+              if (resultsCount > 0) {
+                progressMessage = `Found ${resultsCount} event${resultsCount !== 1 ? 's' : ''} so far, analyzing websites (this may take 30-60 seconds)...`;
+              } else {
+                progressMessage = update.message || 'Searching with Firecrawl (this may take 30-60 seconds)...';
+              }
             } else if (update.stage === 'complete') {
               progressStage = 4;
-              progressMessage = update.message || 'Search completed!';
+              if (resultsCount > 0) {
+                progressMessage = `Search completed! Found ${resultsCount} event${resultsCount !== 1 ? 's' : ''}`;
+              } else {
+                progressMessage = update.message || 'Search completed!';
+              }
             }
             
             setSearchProgress({ stage: progressStage, total: 4, message: progressMessage });
@@ -747,6 +781,20 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                 includeCompetitorMatch: true,
               } : undefined,
             }, events.length);
+            
+            // Save search history
+            if (q.trim()) {
+              addToSearchHistory({
+                query: q,
+                filters: {
+                  country: country,
+                  dateFrom: from,
+                  dateTo: to,
+                  keywords: q,
+                },
+                resultCount: events.length,
+              });
+            }
             
             // Complete progress
             setSearchProgress({ stage: 4, total: 4, message: 'Search completed!' });
@@ -871,7 +919,50 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                   placeholder="Search events..."
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
+                  onFocus={() => setShowSearchHistory(true)}
+                  onBlur={(e) => {
+                    // Delay closing to allow dropdown clicks
+                    setTimeout(() => setShowSearchHistory(false), 200);
+                  }}
                   className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <SearchHistoryDropdown
+                  isOpen={showSearchHistory}
+                  onClose={() => setShowSearchHistory(false)}
+                  onSelect={(item) => {
+                    setKeywords(item.query || '');
+                    if (item.filters?.country) {
+                      setCountry(item.filters.country);
+                    }
+                    if (item.filters?.dateFrom) {
+                      setFrom(item.filters.dateFrom);
+                    }
+                    if (item.filters?.dateTo) {
+                      setTo(item.filters.dateTo);
+                    }
+                    setShowSearchHistory(false);
+                    // Trigger search after a brief delay to allow state updates
+                    setTimeout(() => {
+                      const form = document.querySelector('form');
+                      if (form) {
+                        const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                        form.dispatchEvent(submitEvent);
+                      }
+                    }, 100);
+                  }}
+                  onClear={() => {
+                    clearSearchHistory();
+                    setShowSearchHistory(false);
+                  }}
+                  currentSearch={{
+                    query: keywords,
+                    filters: {
+                      country,
+                      dateFrom: from,
+                      dateTo: to,
+                      keywords,
+                    },
+                  }}
                 />
               </div>
             </div>
@@ -1076,9 +1167,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
                     totalStages={searchProgress.total}
                     message={searchProgress.message}
                   />
-                  {progressiveSearchStage && (
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                      Current stage: {progressiveSearchStage}
+                  {progressiveSearchStage && currentPageEvents.length > 0 && (
+                    <div className="text-sm text-slate-600 dark:text-slate-400 mt-3 font-medium">
+                      {currentPageEvents.length} result{currentPageEvents.length !== 1 ? 's' : ''} found so far, loading more...
                     </div>
                   )}
                 </div>
@@ -1119,7 +1210,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
-                  {state.pagination.totalResults} event{state.pagination.totalResults !== 1 ? 's' : ''} found
+                  {state.isLoading && currentPageEvents.length > 0
+                    ? `${currentPageEvents.length} result${currentPageEvents.length !== 1 ? 's' : ''} found so far, loading more...`
+                    : `${state.pagination.totalResults} event${state.pagination.totalResults !== 1 ? 's' : ''} found`}
                 </h2>
                 <div className="flex items-center gap-3">
                   <label htmlFor="sort-select" className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">

@@ -152,7 +152,7 @@ export default function CreateAgentPage() {
             className="mb-4 inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Command Centre
+            Back to Home
           </Link>
           <div className="flex items-center gap-3">
             <div className="rounded-full bg-blue-100 p-3">

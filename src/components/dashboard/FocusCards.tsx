@@ -177,9 +177,9 @@ export function FocusCards({ urgent, today, week, loading }: FocusCardsProps) {
   ].filter(item => item.count > 0) : [];
 
   const weekMetrics = week ? [
-    { label: 'Events', value: week.events, trend: week.trends?.up ? `+${week.trends.up}` : undefined },
-    { label: 'Contacts', value: week.contacts, trend: week.trends?.up ? `+${week.trends.up}` : undefined },
-    { label: 'Meetings', value: week.meetings, trend: undefined },
+    { label: 'Events this week', value: week.events, trend: week.trends?.up ? `+${week.trends.up}` : undefined },
+    { label: 'Contacts added', value: week.contacts, trend: week.trends?.up ? `+${week.trends.up}` : undefined },
+    { label: 'Meetings scheduled', value: week.meetings, trend: undefined },
   ] : undefined;
 
   return (

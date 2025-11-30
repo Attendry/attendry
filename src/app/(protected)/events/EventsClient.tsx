@@ -8,6 +8,7 @@ import SearchHistory from "@/components/SearchHistory";
 import { deriveLocale, toISO2Country } from "@/lib/utils/country";
 import { useSearchResults, EventRec } from "@/context/SearchResultsContext";
 import { ActiveFilters } from "@/components/ActiveFilters";
+import { EmptyState } from "@/components/States/EmptyState";
 
 // EventRec type is now imported from SearchResultsContext
 
@@ -510,21 +511,22 @@ const EventsClient = memo(function EventsClient({ initialSavedSet }: { initialSa
         <div className="max-w-6xl mx-auto">
           {/* Empty State */}
           {!state.isLoading && currentPageEvents.length === 0 && !debug && (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            <EmptyState
+              icon={
+                <svg className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-              </div>
-              <h3 className="text-lg font-medium text-slate-900 mb-2">Ready to discover events?</h3>
-              <p className="text-slate-600 mb-6">Use the search controls above to find conferences, meetups, and networking opportunities.</p>
-              <div className="flex flex-wrap gap-2 justify-center">
+              }
+              title="Ready to discover events?"
+              description="Use the search controls above to find conferences, meetups, and networking opportunities."
+            >
+              <div className="flex flex-wrap gap-2 justify-center mt-4">
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">Select a location</span>
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">Choose time range</span>
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">Add keywords (optional)</span>
                 <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">Click Search</span>
               </div>
-            </div>
+            </EmptyState>
           )}
 
           {/* Loading State */}

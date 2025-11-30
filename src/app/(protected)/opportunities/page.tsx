@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { Settings } from 'lucide-react';
 import OpportunityCard from '@/components/OpportunityCard';
 import DiscoveryProfileWizard from '@/components/DiscoveryProfileWizard';
+import { EmptyState } from '@/components/States/EmptyState';
 
 interface Opportunity {
   id: string;
@@ -285,8 +286,11 @@ export default function OpportunitiesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold mb-2">Opportunities</h1>
-            <p className="text-gray-600">
-              Discovered events with your target accounts and ICP matches
+            <p className="text-gray-600 mb-2">
+              Events where your target accounts are attending - your warmest sales prospects
+            </p>
+            <p className="text-sm text-gray-500">
+              Each opportunity shows events with speakers, sponsors, or attendees that match your ideal customer profile. Reach out before the event for maximum impact.
             </p>
           </div>
           {hasProfile && (

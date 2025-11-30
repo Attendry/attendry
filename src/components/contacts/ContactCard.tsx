@@ -293,6 +293,16 @@ export function ContactCard({
         }`}
       />
 
+      {/* Primary Information - Name and Company */}
+      <div className="mb-3">
+        <h3 className="text-lg font-semibold text-slate-900 mb-1">{name}</h3>
+        <p className="text-sm text-slate-600 flex items-center gap-1">
+          <Building2 className="w-4 h-4" />
+          {company}
+        </p>
+      </div>
+
+      {/* Status and Actions */}
       <div className="mb-3 flex items-start justify-between">
         <span
           className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_COLORS[status] || STATUS_COLORS.not_started}`}
@@ -394,14 +404,6 @@ export function ContactCard({
             </button>
           )}
         </div>
-      </div>
-
-      <h3 className="mb-1 flex items-center gap-2 text-lg font-semibold text-slate-900">
-        {name}
-      </h3>
-      <div className="mb-4 flex items-center gap-2 text-sm text-slate-500">
-        <Building2 className="w-4 h-4" />
-        {company}
       </div>
 
       {/* Reminder / Monitoring Badges */}
