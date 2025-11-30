@@ -1456,7 +1456,9 @@ async function discoverEventCandidates(
           dateFrom: params.dateFrom,
           dateTo: params.dateTo,
           country: params.country || undefined,
-          limit: Math.ceil(ORCHESTRATOR_CONFIG.limits.maxCandidates / queryVariations.length),
+          // INCREASED: Ensure each query variation gets at least 5 results for better coverage
+          // This is especially important for future dates where results might be sparse
+          limit: Math.max(5, Math.ceil(ORCHESTRATOR_CONFIG.limits.maxCandidates / queryVariations.length)),
           scrapeContent: true, // Enable content scraping for better prioritization
           // NOTE: Firecrawl v2 search API does NOT support extract in scrapeOptions
           // Extraction must be done separately using /v2/extract endpoint

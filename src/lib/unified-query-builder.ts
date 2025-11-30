@@ -351,7 +351,24 @@ function buildNarrativeQuery(params: {
   language: string;
   userProfile?: any;
 }): string {
-  const { baseQuery, eventTypes, language, userProfile } = params;
+  const { baseQuery, eventTypes, language, userProfile, dateFrom, dateTo } = params;
+  
+  // Extract year from date range for future dates (helps Firecrawl find events)
+  let yearToInclude: string | null = null;
+  if (dateFrom || dateTo) {
+    const sourceDate = dateFrom || dateTo;
+    if (sourceDate) {
+      const parsedDate = new Date(sourceDate);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        const year = parsedDate.getFullYear();
+        const currentYear = new Date().getFullYear();
+        // Include year if it's in the future or different from current year
+        if (year > currentYear || year < currentYear) {
+          yearToInclude = year.toString();
+        }
+      }
+    }
+  }
   
   // PRIORITY: User's search term is PRIMARY
   const hasUserSearchTerm = baseQuery && baseQuery.trim() && 
@@ -375,6 +392,14 @@ function buildNarrativeQuery(params: {
   // Location and dates are handled by API parameters, not query text
   // ENHANCEMENT: Always include profile terms if available, even with user search term
   
+  // Helper function to build query with optional year
+  const buildQueryWithYear = (query: string): string => {
+    if (yearToInclude && !query.includes(yearToInclude)) {
+      return `${query} ${yearToInclude}`;
+    }
+    return query;
+  };
+  
   if (language === 'de') {
     if (userSearchTerm) {
       // Check if event type is already in the search term
@@ -382,36 +407,36 @@ function buildNarrativeQuery(params: {
       if (eventTypeInTerm) {
         // Event type already in term - add industry terms if available
         if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-          return `${userSearchTerm} ${primaryIndustry}`;
+          return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry}`);
         }
-        return userSearchTerm; // Don't duplicate
+        return buildQueryWithYear(userSearchTerm); // Don't duplicate
       }
       // Add industry terms if available
       if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-        return `${userSearchTerm} ${primaryIndustry} ${primaryEventType}`;
+        return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${primaryEventType}`);
       }
-      return `${userSearchTerm} ${primaryEventType}`;
+      return buildQueryWithYear(`${userSearchTerm} ${primaryEventType}`);
     } else if (primaryIndustry) {
-      return `${primaryIndustry} ${primaryEventType}`;
+      return buildQueryWithYear(`${primaryIndustry} ${primaryEventType}`);
     }
-    return `business ${primaryEventType}`;
+    return buildQueryWithYear(`business ${primaryEventType}`);
   } else if (language === 'fr') {
     if (userSearchTerm) {
       const eventTypeInTerm = eventTypes.some(et => userSearchTerm.includes(et.toLowerCase()));
       if (eventTypeInTerm) {
         if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-          return `${userSearchTerm} ${primaryIndustry}`;
+          return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry}`);
         }
-        return userSearchTerm;
+        return buildQueryWithYear(userSearchTerm);
       }
       if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-        return `${userSearchTerm} ${primaryIndustry} ${primaryEventType}`;
+        return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${primaryEventType}`);
       }
-      return `${userSearchTerm} ${primaryEventType}`;
+      return buildQueryWithYear(`${userSearchTerm} ${primaryEventType}`);
     } else if (primaryIndustry) {
-      return `${primaryIndustry} ${primaryEventType}`;
+      return buildQueryWithYear(`${primaryIndustry} ${primaryEventType}`);
     }
-    return `événements professionnels ${primaryEventType}`;
+    return buildQueryWithYear(`événements professionnels ${primaryEventType}`);
   } else {
     // English (default)
     if (userSearchTerm) {
@@ -420,25 +445,25 @@ function buildNarrativeQuery(params: {
       if (eventTypeInTerm) {
         // Event type already in term - add industry terms if available
         if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-          return `${userSearchTerm} ${primaryIndustry}`;
+          return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry}`);
         }
-        return userSearchTerm;
+        return buildQueryWithYear(userSearchTerm);
       }
       // User search term is primary: "legal compliance conferences"
       // Add industry terms if available and not already included
       if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-        return `${userSearchTerm} ${primaryIndustry} ${primaryEventType}`;
+        return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${primaryEventType}`);
       }
       // Target: 30-50 characters
-      return `${userSearchTerm} ${primaryEventType}`;
+      return buildQueryWithYear(`${userSearchTerm} ${primaryEventType}`);
     } else if (primaryIndustry) {
       // Industry terms: "legal compliance conferences"
       // Target: 30-50 characters
-      return `${primaryIndustry} ${primaryEventType}`;
+      return buildQueryWithYear(`${primaryIndustry} ${primaryEventType}`);
     }
     // Fallback: "business conference"
     // Target: ~20 characters
-    return `business ${primaryEventType}`;
+    return buildQueryWithYear(`business ${primaryEventType}`);
   }
 }
 
