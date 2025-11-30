@@ -666,13 +666,57 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     });
     
     const discoveryStart = Date.now();
-    const rawCandidates = await discoverEventCandidates(query, params, userProfile, narrativeQuery);
-    const discoveryTime = Date.now() - discoveryStart;
+    let rawCandidates: string[] = [];
+    let discoveryTime = 0;
     
-    console.log('[optimized-orchestrator] Discovery phase completed:', {
-      candidatesFound: rawCandidates.length,
-      duration: discoveryTime
-    });
+    try {
+      rawCandidates = await discoverEventCandidates(query, params, userProfile, narrativeQuery);
+      discoveryTime = Date.now() - discoveryStart;
+      
+      console.log('[optimized-orchestrator] Discovery phase completed:', {
+        candidatesFound: rawCandidates.length,
+        duration: discoveryTime
+      });
+    } catch (discoveryError) {
+      discoveryTime = Date.now() - discoveryStart;
+      console.error('[optimized-orchestrator] Discovery phase failed:', {
+        error: discoveryError instanceof Error ? discoveryError.message : String(discoveryError),
+        stack: discoveryError instanceof Error ? discoveryError.stack : undefined,
+        duration: discoveryTime
+      });
+      
+      // Try fallback to direct unifiedSearch
+      console.log('[optimized-orchestrator] Attempting fallback to direct unifiedSearch...');
+      try {
+        const { unifiedSearch } = await import('@/lib/search/unified-search-core');
+        const fallbackResult = await unifiedSearch({
+          q: query,
+          narrativeQuery: narrativeQuery,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          country: params.country || undefined,
+          limit: ORCHESTRATOR_CONFIG.limits.maxCandidates,
+          scrapeContent: true,
+          useCache: true,
+          userProfile: userProfile
+        });
+        
+        rawCandidates = [];
+        if (fallbackResult.items && Array.isArray(fallbackResult.items)) {
+          fallbackResult.items.forEach((item: any) => {
+            const url = typeof item === 'string' ? item : (item?.url || '');
+            if (url && url.startsWith('http')) {
+              rawCandidates.push(url);
+            }
+          });
+        }
+        
+        console.log('[optimized-orchestrator] Fallback search found', rawCandidates.length, 'candidates');
+      } catch (fallbackError) {
+        console.error('[optimized-orchestrator] Fallback search also failed:', fallbackError);
+        rawCandidates = [];
+      }
+    }
     
     // BACKPRESSURE QUEUE: Limit discovery results to prevent memory bloat
     // Drop oldest URLs if we exceed the limit (max 50 URLs)
@@ -1165,6 +1209,19 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
   } catch (error) {
     const errorDuration = Date.now() - startTime;
     
+    // Log full error details for debugging
+    console.error('[optimized-orchestrator] executeOptimizedSearch error:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      duration: errorDuration,
+      params: {
+        userText: params.userText?.substring(0, 50),
+        country: params.country,
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo
+      }
+    });
+    
     // Record error performance
     recordApiPerformance('optimized_search_error', errorDuration, false, {
       error: error instanceof Error ? error.message : String(error),
@@ -1175,7 +1232,10 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       stage: 'error',
       message: 'Search failed',
       timestamp: new Date().toISOString(),
-      data: { error: error instanceof Error ? error.message : String(error) }
+      data: { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }
     });
 
     return {
