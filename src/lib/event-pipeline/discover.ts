@@ -216,10 +216,19 @@ export class EventDiscoverer {
         scrapeContent: true, // Enable content scraping
         // PHASE 1: Enable unified search+extract (single API call instead of 2)
         extractSchema: EVENT_SCHEMA,
-        extractPrompt: "Extract event details from this page including title, dates, location, and speakers. " +
-          "PRIORITY: Focus on extracting speaker information (names, titles, organizations, bios) as this is critical for sales outreach. " +
-          "Look for speaker sections, speaker lists, agenda pages, and program pages. " +
-          "If speakers are mentioned in linked PDFs or sub-pages, note their locations.",
+        extractPrompt: "Extract event details from this page. CRITICAL: The title field is REQUIRED and must be extracted.\n\n" +
+          "**TITLE EXTRACTION (REQUIRED):**\n" +
+          "- Look for the main event title in: page title (<title> tag), H1 headings, hero sections, event headers\n" +
+          "- Common patterns: 'Event Name 2026', 'Conference Name', 'Summit Name'\n" +
+          "- Extract the FULL event name, not just 'Conference' or 'Event'\n" +
+          "- If multiple titles found, use the most prominent one (usually in H1 or page title)\n" +
+          "- DO NOT return 'Unknown Event' or 'Event' - always extract the actual event name\n\n" +
+          "**OTHER FIELDS:**\n" +
+          "- Dates: Extract event dates (when the event takes place, not publication dates)\n" +
+          "- Location: Extract city and venue information\n" +
+          "- Speakers: PRIORITY - Focus on extracting speaker information (names, titles, organizations, bios) as this is critical for sales outreach\n" +
+          "- Look for speaker sections, speaker lists, agenda pages, and program pages\n" +
+          "- If speakers are mentioned in linked PDFs or sub-pages, note their locations",
         // REMOVED: categories: ['research'] - This was causing Firecrawl to return academic papers instead of event pages
         // Let Firecrawl search all categories to find actual event pages
         useCache: true
