@@ -990,15 +990,22 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
   // Use first successful result (prefer Firecrawl > CSE > Database)
   let selectedResult: UnifiedSearchResult | null = null;
   
+  // Log provider results for debugging
+  console.log('[unified-search] Provider results summary:', {
+    firecrawl: firecrawl ? { items: firecrawl.items.length, provider: firecrawl.provider } : null,
+    cse: cse ? { items: cse.items.length, provider: cse.provider } : null,
+    database: database ? { items: database.items.length, provider: database.provider } : null
+  });
+  
   if (firecrawl && firecrawl.items.length > 0) {
     selectedResult = firecrawl;
     console.log('[unified-search] Using Firecrawl result:', firecrawl.items.length, 'items');
   } else if (cse && cse.items.length > 0) {
     selectedResult = cse;
-    console.log('[unified-search] Using CSE result:', cse.items.length, 'items');
+    console.log('[unified-search] Using CSE result (Firecrawl had', firecrawl?.items.length || 0, 'items):', cse.items.length, 'items');
   } else if (database && database.items.length > 0) {
     selectedResult = database;
-    console.log('[unified-search] Using Database result:', database.items.length, 'items');
+    console.log('[unified-search] Using Database result (Firecrawl had', firecrawl?.items.length || 0, 'items, CSE had', cse?.items.length || 0, 'items):', database.items.length, 'items');
   }
 
   // If no results, return empty with all attempted providers

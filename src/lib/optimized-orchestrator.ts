@@ -1413,11 +1413,13 @@ async function discoverEventCandidates(
   // Handle both string URLs and enriched items (with scraped content)
   const allUrls: string[] = [];
   
-  discoveryResults.forEach(result => {
+  discoveryResults.forEach((result, index) => {
     if (result.success && result.result && typeof result.result === 'object' && 'items' in result.result) {
-      const searchResult = result.result as { items: Array<string | { url: string }> };
+      const searchResult = result.result as { items: Array<string | { url: string }>; providers?: string[] };
       console.log('[optimized-orchestrator] Processing discovery result:', { 
+        variationIndex: index,
         itemsCount: searchResult.items.length,
+        providers: searchResult.providers || [],
         firstItemType: typeof searchResult.items[0],
         firstItemSample: searchResult.items[0] ? (typeof searchResult.items[0] === 'string' ? searchResult.items[0].substring(0, 50) : JSON.stringify(searchResult.items[0]).substring(0, 100)) : 'null'
       });
