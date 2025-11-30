@@ -95,6 +95,7 @@ export interface QueryBuilderParams {
   language?: string;
   userProfile?: any; // Add user profile support
   skipProfileEnrichment?: boolean; // If true, skip profile-based query enrichment
+  salesOutreach?: boolean; // PHASE 2: If true, prioritize speaker-rich events (default: true for sales outreach use case)
 }
 
 export interface QueryBuilderResult {
@@ -125,7 +126,8 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     locale = 'de',
     language = 'en',
     userProfile,
-    skipProfileEnrichment = false
+    skipProfileEnrichment = false,
+    salesOutreach = true // PHASE 2: Default to true for sales outreach use case
   } = params;
 
   // Load admin configuration
@@ -231,7 +233,8 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     timeframe,
     excludeTerms: config.excludeTerms || '',
     language: termLanguage,
-    userProfile: skipProfileEnrichment ? undefined : userProfile
+    userProfile: skipProfileEnrichment ? undefined : userProfile,
+    salesOutreach // PHASE 2: Pass salesOutreach flag
   });
   
   // Generate query variations
@@ -241,7 +244,8 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     locationTerms,
     temporalTerms,
     country,
-    language: termLanguage
+    language: termLanguage,
+    salesOutreach // PHASE 2: Pass salesOutreach flag to prioritize speaker variations
   });
   
   return {
@@ -351,8 +355,9 @@ function buildNarrativeQuery(params: {
   excludeTerms: string;
   language: string;
   userProfile?: any;
+  salesOutreach?: boolean; // PHASE 2: If true, include speaker terms for sales outreach
 }): string {
-  const { baseQuery, eventTypes, language, userProfile, dateFrom, dateTo } = params;
+  const { baseQuery, eventTypes, language, userProfile, dateFrom, dateTo, salesOutreach = true } = params;
   
   // Extract year from date range for future dates (helps Firecrawl find events)
   let yearToInclude: string | null = null;
@@ -401,14 +406,23 @@ function buildNarrativeQuery(params: {
     return query;
   };
   
-  // PHASE 1: Get speaker terms for the target language (for sales outreach)
+  // PHASE 2: Get speaker terms conditionally based on salesOutreach flag
   // This helps Firecrawl prioritize events with published speaker information
-  const getSpeakerTerm = (lang: string): string => {
+  const getSpeakerTerm = (lang: string): string | null => {
+    if (!salesOutreach) return null; // Don't include speaker terms if not sales outreach
     const terms = SPEAKER_TERMS[lang] || SPEAKER_TERMS['en'];
     return terms[0]; // Use primary term: "speakers", "referenten", "conférenciers"
   };
   
   const speakerTerm = getSpeakerTerm(language);
+  
+  // Helper function to add speaker term if salesOutreach is enabled
+  const addSpeakerTerm = (query: string): string => {
+    if (speakerTerm && !query.includes(speakerTerm)) {
+      return `${query} ${speakerTerm}`;
+    }
+    return query;
+  };
   
   if (language === 'de') {
     if (userSearchTerm) {
@@ -417,36 +431,36 @@ function buildNarrativeQuery(params: {
       if (eventTypeInTerm) {
         // Event type already in term - add industry terms and speaker term if available
         if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-          return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${speakerTerm}`);
+          return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryIndustry}`));
         }
-        return buildQueryWithYear(`${userSearchTerm} ${speakerTerm}`); // Add speaker term for sales outreach
+        return buildQueryWithYear(addSpeakerTerm(userSearchTerm)); // Add speaker term for sales outreach
       }
       // Add industry terms and speaker term if available
       if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-        return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${primaryEventType} ${speakerTerm}`);
+        return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryIndustry} ${primaryEventType}`));
       }
-      return buildQueryWithYear(`${userSearchTerm} ${primaryEventType} ${speakerTerm}`);
+      return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryEventType}`));
     } else if (primaryIndustry) {
-      return buildQueryWithYear(`${primaryIndustry} ${primaryEventType} ${speakerTerm}`);
+      return buildQueryWithYear(addSpeakerTerm(`${primaryIndustry} ${primaryEventType}`));
     }
-    return buildQueryWithYear(`business ${primaryEventType} ${speakerTerm}`);
+    return buildQueryWithYear(addSpeakerTerm(`business ${primaryEventType}`));
   } else if (language === 'fr') {
     if (userSearchTerm) {
       const eventTypeInTerm = eventTypes.some(et => userSearchTerm.includes(et.toLowerCase()));
       if (eventTypeInTerm) {
         if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-          return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${speakerTerm}`);
+          return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryIndustry}`));
         }
-        return buildQueryWithYear(`${userSearchTerm} ${speakerTerm}`);
+        return buildQueryWithYear(addSpeakerTerm(userSearchTerm));
       }
       if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-        return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${primaryEventType} ${speakerTerm}`);
+        return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryIndustry} ${primaryEventType}`));
       }
-      return buildQueryWithYear(`${userSearchTerm} ${primaryEventType} ${speakerTerm}`);
+      return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryEventType}`));
     } else if (primaryIndustry) {
-      return buildQueryWithYear(`${primaryIndustry} ${primaryEventType} ${speakerTerm}`);
+      return buildQueryWithYear(addSpeakerTerm(`${primaryIndustry} ${primaryEventType}`));
     }
-    return buildQueryWithYear(`événements professionnels ${primaryEventType} ${speakerTerm}`);
+    return buildQueryWithYear(addSpeakerTerm(`événements professionnels ${primaryEventType}`));
   } else {
     // English (default)
     if (userSearchTerm) {
@@ -455,25 +469,25 @@ function buildNarrativeQuery(params: {
       if (eventTypeInTerm) {
         // Event type already in term - add industry terms and speaker term if available
         if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-          return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${speakerTerm}`);
+          return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryIndustry}`));
         }
-        return buildQueryWithYear(`${userSearchTerm} ${speakerTerm}`);
+        return buildQueryWithYear(addSpeakerTerm(userSearchTerm));
       }
       // User search term is primary: "legal compliance conferences"
       // Add industry terms if available and not already included, plus speaker term
       if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
-        return buildQueryWithYear(`${userSearchTerm} ${primaryIndustry} ${primaryEventType} ${speakerTerm}`);
+        return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryIndustry} ${primaryEventType}`));
       }
       // Target: 30-50 characters (now includes speaker term for sales outreach)
-      return buildQueryWithYear(`${userSearchTerm} ${primaryEventType} ${speakerTerm}`);
+      return buildQueryWithYear(addSpeakerTerm(`${userSearchTerm} ${primaryEventType}`));
     } else if (primaryIndustry) {
       // Industry terms: "legal compliance conferences"
       // Target: 30-50 characters (now includes speaker term)
-      return buildQueryWithYear(`${primaryIndustry} ${primaryEventType} ${speakerTerm}`);
+      return buildQueryWithYear(addSpeakerTerm(`${primaryIndustry} ${primaryEventType}`));
     }
     // Fallback: "business conference"
     // Target: ~20 characters (now includes speaker term)
-    return buildQueryWithYear(`business ${primaryEventType} ${speakerTerm}`);
+    return buildQueryWithYear(addSpeakerTerm(`business ${primaryEventType}`));
   }
 }
 
@@ -487,45 +501,69 @@ function generateQueryVariations(params: {
   temporalTerms: string[];
   country: string | null;
   language: string;
+  salesOutreach?: boolean; // PHASE 2: If true, prioritize speaker-focused variations
 }): string[] {
-  const { baseQuery, eventTypes, locationTerms, temporalTerms, country, language } = params;
+  const { baseQuery, eventTypes, locationTerms, temporalTerms, country, language, salesOutreach = true } = params;
   const variations: string[] = [];
-  
-  // Variation 1: Focus on specific event types
-  const specificEventTypes = ['conference', 'summit', 'workshop'];
-  const specificEventQuery = `(${specificEventTypes.join(' OR ')})`;
   const firstLocation = locationTerms && locationTerms.length > 0 ? locationTerms[0] : '';
   const firstTemporal = temporalTerms && temporalTerms.length > 0 ? temporalTerms[0] : '';
+  const firstEventType = eventTypes && eventTypes.length > 0 ? eventTypes[0] : 'conference';
+  
+  // PHASE 2: Prioritize speaker-focused variations when salesOutreach is true
+  if (salesOutreach) {
+    const speakerTerms = SPEAKER_TERMS[language] || SPEAKER_TERMS['en'];
+    const agendaTerms = AGENDA_TERMS[language] || AGENDA_TERMS['en'];
+    
+    // Variation 1: Speaker-focused query (HIGHEST PRIORITY for sales outreach)
+    if (firstTemporal) {
+      const speakerQuery = `${baseQuery} ${firstEventType} ${speakerTerms[0]} ${firstTemporal}`;
+      variations.push(speakerQuery);
+    }
+    
+    // Variation 2: Agenda/program-focused query (HIGH PRIORITY for sales outreach)
+    if (firstTemporal) {
+      const agendaQuery = `${baseQuery} ${firstEventType} ${agendaTerms[0]} ${firstTemporal}`;
+      variations.push(agendaQuery);
+    }
+    
+    // Variation 3: Speaker + agenda combined query
+    if (firstTemporal) {
+      const combinedQuery = `${baseQuery} ${firstEventType} ${speakerTerms[0]} ${agendaTerms[0]} ${firstTemporal}`;
+      variations.push(combinedQuery);
+    }
+  }
+  
+  // Standard variations (lower priority when salesOutreach is true)
+  // Variation 4: Focus on specific event types
+  const specificEventTypes = ['conference', 'summit', 'workshop'];
+  const specificEventQuery = `(${specificEventTypes.join(' OR ')})`;
   if (firstLocation && firstTemporal) {
     variations.push(`${baseQuery} ${specificEventQuery} ${firstLocation} ${firstTemporal}`);
   }
   
-  // Variation 2: Focus on location
+  // Variation 5: Focus on location
   if (locationTerms && locationTerms.length > 1) {
     const locationQuery = `(${locationTerms.slice(0, 3).join(' OR ')})`;
-    const firstEventType = eventTypes && eventTypes.length > 0 ? eventTypes[0] : 'conference';
     if (firstTemporal) {
       variations.push(`${baseQuery} ${firstEventType} ${locationQuery} ${firstTemporal}`);
     }
   }
   
-  // Variation 3: Focus on temporal terms
+  // Variation 6: Focus on temporal terms
   if (temporalTerms && temporalTerms.length > 1) {
     const temporalQuery = `(${temporalTerms.slice(0, 3).join(' OR ')})`;
-    const firstEventType = eventTypes && eventTypes.length > 0 ? eventTypes[0] : 'conference';
     if (firstLocation) {
       variations.push(`${baseQuery} ${firstEventType} ${firstLocation} ${temporalQuery}`);
     }
   }
   
-  // Variation 4: Natural language query
-  const firstEventType = eventTypes && eventTypes.length > 0 ? eventTypes[0] : 'conference';
+  // Variation 7: Natural language query
   if (firstLocation && firstTemporal) {
     const naturalLanguage = `${baseQuery} ${firstEventType} in ${firstLocation} ${firstTemporal}`;
     variations.push(naturalLanguage);
   }
   
-  // Variation 5: Multi-language if not English
+  // Variation 8: Multi-language if not English
   if (language !== 'en') {
     const englishEventTypes = EVENT_TYPES.en.slice(0, 5);
     const englishLocationTerms = LOCATION_TERMS[country as keyof typeof LOCATION_TERMS]?.en || LOCATION_TERMS.DE.en;
@@ -535,25 +573,10 @@ function generateQueryVariations(params: {
     variations.push(englishQuery);
   }
   
-  // PHASE 1: Add speaker-focused variations for sales outreach
-  // These help discover events with published speaker information
-  const speakerTerms = SPEAKER_TERMS[language] || SPEAKER_TERMS['en'];
-  const agendaTerms = AGENDA_TERMS[language] || AGENDA_TERMS['en'];
-  const firstEventType = eventTypes && eventTypes.length > 0 ? eventTypes[0] : 'conference';
-  
-  // Variation 6: Speaker-focused query
-  if (firstTemporal) {
-    const speakerQuery = `${baseQuery} ${firstEventType} ${speakerTerms[0]} ${firstTemporal}`;
-    variations.push(speakerQuery);
-  }
-  
-  // Variation 7: Agenda/program-focused query
-  if (firstTemporal) {
-    const agendaQuery = `${baseQuery} ${firstEventType} ${agendaTerms[0]} ${firstTemporal}`;
-    variations.push(agendaQuery);
-  }
-  
-  return variations.slice(0, 7); // Increased limit to include speaker variations
+  // PHASE 2: Limit variations based on salesOutreach flag
+  // When salesOutreach is true, prioritize speaker variations (already at the top)
+  // When false, use standard variations only
+  return salesOutreach ? variations.slice(0, 8) : variations.slice(3, 8); // Skip speaker variations if not sales outreach
 }
 
 /**

@@ -1304,7 +1304,8 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
       timeframe: params.timeframe,
       locale: params.locale,
       language: 'en',
-      skipProfileEnrichment: true // Skip profile enrichment for NLP
+      skipProfileEnrichment: true, // Skip profile enrichment for NLP
+      salesOutreach: params.salesOutreach ?? true // PHASE 2: Default to true for sales outreach
     });
     
     return {
@@ -1328,7 +1329,8 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
       params.country || 'DE',
       params.userText,
       params.dateFrom,
-      params.dateTo
+      params.dateTo,
+      params.salesOutreach ?? true // PHASE 2: Default to true for sales outreach
     );
     
     console.log('[optimized-orchestrator] Built weighted query:', {
@@ -1381,7 +1383,8 @@ async function buildOptimizedQuery(params: OptimizedSearchParams, userProfile?: 
       location: params.location,
       timeframe: params.timeframe,
       locale: params.locale,
-      language: 'en' // Default to English for optimized orchestrator
+      language: 'en', // Default to English for optimized orchestrator
+      salesOutreach: params.salesOutreach ?? true // PHASE 2: Default to true for sales outreach
     });
     
     return {

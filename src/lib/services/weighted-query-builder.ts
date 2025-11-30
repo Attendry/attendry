@@ -35,7 +35,8 @@ export function buildWeightedQuery(
   country: string,
   userText?: string,
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  salesOutreach?: boolean // PHASE 2: If true, prioritize speaker-rich events (default: true)
 ): WeightedQueryResult {
   let query = template.baseQuery;
   const negativeFilters: string[] = [];
@@ -151,7 +152,7 @@ export function buildWeightedQuery(
   }
   
   // Build narrative query for Firecrawl
-  const narrativeQuery = buildNarrativeQuery(template, userProfile, country, userText, dateFrom, dateTo);
+  const narrativeQuery = buildNarrativeQuery(template, userProfile, country, userText, dateFrom, dateTo, salesOutreach);
   
   // Apply quality requirements based on weight
   const qualityWeight = template.precision.qualityRequirements.weight;
@@ -192,7 +193,8 @@ function buildNarrativeQuery(
   country: string,
   userText?: string,
   dateFrom?: string,
-  dateTo?: string
+  dateTo?: string,
+  salesOutreach: boolean = true // PHASE 2: Default to true for sales outreach use case
 ): string {
   // PHASE 1: Simplified query building - focus on core terms only
   // Location and dates are handled by API parameters, not query text
@@ -222,7 +224,7 @@ function buildNarrativeQuery(
     return query;
   };
   
-  // PHASE 1: Get speaker term for sales outreach (default to English if country not specified)
+  // PHASE 2: Get speaker term conditionally based on salesOutreach flag
   // This helps Firecrawl prioritize events with published speaker information
   const getLanguageFromCountry = (countryCode: string): string => {
     const countryLanguageMap: Record<string, string> = {
@@ -239,13 +241,21 @@ function buildNarrativeQuery(
   };
   
   const language = getLanguageFromCountry(country);
-  const speakerTerms = SPEAKER_TERMS[language] || SPEAKER_TERMS['en'];
-  const speakerTerm = speakerTerms[0]; // Use primary term: "speakers", "referenten", "conférenciers"
+  const speakerTerms = salesOutreach ? (SPEAKER_TERMS[language] || SPEAKER_TERMS['en']) : null;
+  const speakerTerm = speakerTerms ? speakerTerms[0] : null; // Use primary term: "speakers", "referenten", "conférenciers"
+  
+  // Helper function to add speaker term if salesOutreach is enabled
+  const addSpeakerTerm = (query: string): string => {
+    if (speakerTerm && !query.includes(speakerTerm)) {
+      return `${query} ${speakerTerm}`;
+    }
+    return query;
+  };
   
   // Prioritize user search term if provided
   if (userText && userText.trim() && userText.length < 100) {
     const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
-    return addYear(`${userText.trim()} ${primaryEventType} ${speakerTerm}`);
+    return addYear(addSpeakerTerm(`${userText.trim()} ${primaryEventType}`));
   }
   
   // Use industry terms if available
@@ -253,11 +263,11 @@ function buildNarrativeQuery(
   const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
   
   if (industryTerms) {
-    return addYear(`${industryTerms} ${primaryEventType} ${speakerTerm}`);
+    return addYear(addSpeakerTerm(`${industryTerms} ${primaryEventType}`));
   }
   
   // Fallback
-  return addYear(`business ${primaryEventType} ${speakerTerm}`);
+  return addYear(addSpeakerTerm(`business ${primaryEventType}`));
 }
 
 /**
