@@ -26,6 +26,8 @@ import { useSpeakerEnhancement } from '@/lib/hooks/useSpeakerEnhancement';
 import { SpeakerData } from '@/lib/types/core';
 import { EventIntelligenceQuickView } from '@/components/EventIntelligenceQuickView';
 import { toast } from 'sonner';
+import { fetchEventsProgressive, type ProgressiveSearchUpdate } from '@/lib/search/progressive-client';
+import { SearchProgressIndicator } from '@/components/SearchProgressIndicator';
 
 const QUICK_SEARCH_LOCATIONS = [
   { code: 'EU', name: 'All Europe' },
@@ -352,7 +354,9 @@ export function QuickEventSearchPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRunAt, setLastRunAt] = useState<number | null>(null);
-  const [searchProgress, setSearchProgress] = useState<{ stage: number; message: string } | null>(null);
+  const [searchProgress, setSearchProgress] = useState<{ stage: number; total: number; message?: string } | null>(null);
+  const [progressiveSearchStage, setProgressiveSearchStage] = useState<ProgressiveSearchUpdate['stage'] | null>(null);
+  const [searchAbortController, setSearchAbortController] = useState<AbortController | null>(null);
   const [savingSpeakerId, setSavingSpeakerId] = useState<string | null>(null);
   const [speakerStatus, setSpeakerStatus] = useState<Record<string, 'saved' | 'error'>>({});
   const [savedSignatures, setSavedSignatures] = useState<Record<string, 'saved'>>({});
@@ -477,15 +481,22 @@ export function QuickEventSearchPanel({
         ? toDateOnlyString(shiftDate(now, config.days))
         : toDateOnlyString(now);
 
+    // Cancel any existing search
+    if (searchAbortController) {
+      searchAbortController.abort();
+    }
+
+    // Create new abort controller for this search
+    const abortController = new AbortController();
+    setSearchAbortController(abortController);
+
     setLoading(true);
     setError(null);
     setSpeakerStatus({});
-    setSearchProgress({ stage: 0, message: 'Preparing search...' });
+    setProgressiveSearchStage(null);
+    setSearchProgress({ stage: 0, total: 4, message: 'Initializing search...' });
     
     try {
-      // Update progress: Discovering events
-      setSearchProgress({ stage: 1, message: 'Discovering events...' });
-      
       // Smart combination of free-text keywords and selected tags with deduplication
       const freeTextKeywords = config.keywords.trim();
       const selectedTags = config.selectedKeywordTags || [];
@@ -509,81 +520,154 @@ export function QuickEventSearchPanel({
       const normalizedCountry = toISO2Country(config.country) ?? 'EU';
       const locale = deriveLocale(normalizedCountry);
       
-      // Update progress: Processing results
-      setSearchProgress({ stage: 2, message: 'Processing results...' });
-      
-      const response = await fetch('/api/events/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userText: combinedKeywords,
+      // Use progressive search for detailed progress updates
+      await fetchEventsProgressive(
+        {
+          userText: combinedKeywords || 'conference',
           country: normalizedCountry,
           dateFrom: from,
           dateTo: to,
           locale,
-        }),
-      });
+        },
+        {
+          onUpdate: (update) => {
+            setProgressiveSearchStage(update.stage);
+            
+            // Update progress message based on stage with partial results count
+            let progressMessage = update.message || 'Searching...';
+            let progressStage = 1;
+            const resultsCount = update.totalSoFar || update.events.length;
+            
+            if (update.stage === 'database') {
+              progressStage = 1;
+              if (resultsCount > 0) {
+                progressMessage = `Found ${resultsCount} event${resultsCount !== 1 ? 's' : ''} in database, searching more sources...`;
+              } else {
+                progressMessage = update.message || 'Checking database for events...';
+              }
+            } else if (update.stage === 'cse') {
+              progressStage = 2;
+              if (resultsCount > 0) {
+                progressMessage = `Found ${resultsCount} event${resultsCount !== 1 ? 's' : ''} so far, searching with Google...`;
+              } else {
+                progressMessage = update.message || 'Searching with Google CSE...';
+              }
+            } else if (update.stage === 'firecrawl') {
+              progressStage = 3;
+              if (resultsCount > 0) {
+                progressMessage = `Found ${resultsCount} event${resultsCount !== 1 ? 's' : ''} so far, analyzing websites (this may take 30-60 seconds)...`;
+              } else {
+                progressMessage = update.message || 'Searching with Firecrawl (this may take 30-60 seconds)...';
+              }
+            } else if (update.stage === 'complete') {
+              progressStage = 4;
+              if (resultsCount > 0) {
+                progressMessage = `Search completed! Found ${resultsCount} event${resultsCount !== 1 ? 's' : ''}`;
+              } else {
+                progressMessage = update.message || 'Search completed!';
+              }
+            }
+            
+            setSearchProgress({ stage: progressStage, total: 4, message: progressMessage });
+            
+            // Update results as they arrive (if not hiding results)
+            if (!hideResults && update.events.length > 0) {
+              const normalizedEvents = update.events
+                .map((event) => ({
+                  source_url: event.source_url || event.link || '',
+                  title: event.title || event.source_url || 'Untitled Event',
+                  starts_at: event.starts_at ?? null,
+                  ends_at: event.ends_at ?? null,
+                  city: event.city ?? null,
+                  country: event.country ?? null,
+                  organizer: event.organizer ?? null,
+                  speakers: Array.isArray(event.speakers) ? event.speakers : [],
+                  description: event.description ?? null,
+                  venue: event.venue ?? null,
+                  location: event.location ?? null,
+                  confidence: event.confidence ?? null,
+                  confidence_reason: event.confidence_reason ?? null,
+                  pipeline_metadata: event.pipeline_metadata ?? null,
+                  id: event.id,
+                }))
+                .filter((event) => !!event.source_url);
+              
+              setResults(normalizedEvents);
+            }
+          },
+          onComplete: (allEvents) => {
+            const normalizedEvents = allEvents
+              .map((event) => ({
+                source_url: event.source_url || event.link || '',
+                title: event.title || event.source_url || 'Untitled Event',
+                starts_at: event.starts_at ?? null,
+                ends_at: event.ends_at ?? null,
+                city: event.city ?? null,
+                country: event.country ?? null,
+                organizer: event.organizer ?? null,
+                speakers: Array.isArray(event.speakers) ? event.speakers : [],
+                description: event.description ?? null,
+                venue: event.venue ?? null,
+                location: event.location ?? null,
+                confidence: event.confidence ?? null,
+                confidence_reason: event.confidence_reason ?? null,
+                pipeline_metadata: event.pipeline_metadata ?? null,
+                id: event.id,
+              }))
+              .filter((event) => !!event.source_url);
 
-      let payload: any;
-      try {
-        payload = await response.json();
-      } catch {
-        const text = await response.text();
-        throw new Error(text || 'Search service returned an unreadable response');
-      }
-
-      if (!response.ok) {
-        throw new Error(payload?.error || 'Search failed');
-      }
-
-      const rawEvents: EventRec[] = (payload.events || payload.items || []) as EventRec[];
-      const normalizedEvents = rawEvents
-        .map((event) => ({
-          source_url: event.source_url || event.link || '',
-          title: event.title || event.source_url || 'Untitled Event',
-          starts_at: event.starts_at ?? null,
-          ends_at: event.ends_at ?? null,
-          city: event.city ?? null,
-          country: event.country ?? null,
-          organizer: event.organizer ?? null,
-          speakers: Array.isArray(event.speakers) ? event.speakers : [],
-          description: event.description ?? null,
-          venue: event.venue ?? null,
-          location: event.location ?? null,
-          confidence: event.confidence ?? null,
-          confidence_reason: event.confidence_reason ?? null,
-          pipeline_metadata: event.pipeline_metadata ?? null,
-          id: event.id,
-        }))
-        .filter((event) => !!event.source_url);
-
-      // Update progress: Finalizing
-      setSearchProgress({ stage: 3, message: 'Finalizing...' });
-
-      setResults(normalizedEvents);
-      setLastRunAt(Date.now());
-      
-      // Call onSearchComplete callback if provided (for integration with SearchResultsContext)
-      if (onSearchComplete) {
-        onSearchComplete(normalizedEvents, {
-          keywords: combinedKeywords,
-          country: normalizedCountry,
-          from,
-          to,
-        });
-      }
-      
-      // Complete progress
-      setSearchProgress({ stage: 4, message: 'Complete' });
-      setTimeout(() => setSearchProgress(null), 500);
+            setResults(normalizedEvents);
+            setLastRunAt(Date.now());
+            
+            // Call onSearchComplete callback if provided (for integration with SearchResultsContext)
+            if (onSearchComplete) {
+              onSearchComplete(normalizedEvents, {
+                keywords: combinedKeywords,
+                country: normalizedCountry,
+                from,
+                to,
+              });
+            }
+            
+            // Complete progress
+            setSearchProgress({ stage: 4, total: 4, message: `Search completed! Found ${normalizedEvents.length} event${normalizedEvents.length !== 1 ? 's' : ''}` });
+            setTimeout(() => setSearchProgress(null), 2000);
+            
+            // Show success/error message
+            if (normalizedEvents.length === 0) {
+              toast.info('No results found', {
+                description: 'Try adjusting your search criteria or date range'
+              });
+            } else {
+              toast.success('Search completed', {
+                description: `Found ${normalizedEvents.length} event${normalizedEvents.length !== 1 ? 's' : ''}`
+              });
+            }
+          },
+          onError: (error) => {
+            console.error("Progressive search error:", error);
+            setResults([]);
+            setError(error.message || 'Search failed');
+            setSearchProgress(null);
+            toast.error('Search failed', {
+              description: error.message || 'An error occurred while searching for events'
+            });
+          },
+          cancelSignal: abortController.signal,
+        }
+      );
     } catch (err) {
       setResults([]);
       setError(err instanceof Error ? err.message : 'Search failed');
       setSearchProgress(null);
+      toast.error('Search failed', {
+        description: err instanceof Error ? err.message : 'An error occurred while searching for events'
+      });
     } finally {
       setLoading(false);
+      setSearchAbortController(null);
     }
-  }, [config]);
+  }, [config, onSearchComplete, hideResults, searchAbortController]);
 
   const buildSpeakerKey = useCallback((event: EventRec, speaker: EventSpeaker, index: number) => {
     const eventKey = event.id || event.source_url;
@@ -1020,23 +1104,19 @@ export function QuickEventSearchPanel({
             </div>
           )}
 
-          {/* Minimalist Status Bar */}
+          {/* Detailed Search Progress Indicator */}
           {loading && searchProgress && (
-            <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800 px-4 py-2.5">
-              <div className="flex items-center gap-3">
-                <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-blue-900 dark:text-blue-200 truncate">
-                    {searchProgress.message}
-                  </p>
-                  <div className="mt-1.5 w-full bg-blue-200 dark:bg-blue-800 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full bg-blue-600 dark:bg-blue-400 transition-all duration-300 ease-out rounded-full"
-                      style={{ width: `${(searchProgress.stage / 4) * 100}%` }}
-                    />
-                  </div>
+            <div className="mb-4">
+              <SearchProgressIndicator
+                currentStage={searchProgress.stage}
+                totalStages={searchProgress.total}
+                message={searchProgress.message}
+              />
+              {progressiveSearchStage && results.length > 0 && (
+                <div className="text-sm text-slate-600 dark:text-slate-400 mt-3 font-medium">
+                  {results.length} result{results.length !== 1 ? 's' : ''} found so far, loading more...
                 </div>
-              </div>
+              )}
             </div>
           )}
 
