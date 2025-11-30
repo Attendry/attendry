@@ -152,26 +152,44 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
   
   // Build base query with user profile integration (skip if flag is set)
   let baseQuery = userText.trim();
-  if (!skipProfileEnrichment && !baseQuery && userProfile) {
-    // If no user text provided, build query from user profile
+  
+  // ALWAYS enrich with profile terms if available (even when user provides text)
+  // This ensures profile terms are used in every search, not just when userText is empty
+  if (!skipProfileEnrichment && userProfile) {
     const industryTerms = userProfile.industry_terms || [];
     const icpTerms = userProfile.icp_terms || [];
-    const competitors = userProfile.competitors || [];
     
     if (industryTerms.length > 0 || icpTerms.length > 0) {
-      const userContext = [];
+      const profileTerms = [];
       if (industryTerms.length > 0) {
-        userContext.push(industryTerms.slice(0, 3).join(', '));
+        // Use top 2-3 industry terms
+        profileTerms.push(...industryTerms.slice(0, 3));
       }
       if (icpTerms.length > 0) {
-        userContext.push(`targeting ${icpTerms.slice(0, 2).join(', ')}`);
-      }
-      if (competitors.length > 0) {
-        userContext.push(`competitors: ${competitors.slice(0, 2).join(', ')}`);
+        // Use top 1-2 ICP terms
+        profileTerms.push(...icpTerms.slice(0, 2));
       }
       
-      baseQuery = userContext.join(' ');
-      console.log('[unified-query-builder] Built user-specific query from profile:', baseQuery);
+      if (baseQuery) {
+        // Combine user text with profile terms
+        // Remove duplicates (case-insensitive)
+        const userTerms = baseQuery.toLowerCase().split(/\s+/).filter(Boolean);
+        const profileTermsLower = profileTerms.map(t => t.toLowerCase());
+        const uniqueProfileTerms = profileTerms.filter(t => !userTerms.includes(t.toLowerCase()));
+        
+        if (uniqueProfileTerms.length > 0) {
+          baseQuery = `${baseQuery} ${uniqueProfileTerms.join(' ')}`;
+          console.log('[unified-query-builder] Enriched query with profile terms:', {
+            original: userText,
+            enriched: baseQuery,
+            profileTerms: uniqueProfileTerms
+          });
+        }
+      } else {
+        // No user text - build from profile
+        baseQuery = profileTerms.join(' ');
+        console.log('[unified-query-builder] Built query from profile:', baseQuery);
+      }
     }
   }
   
@@ -355,14 +373,22 @@ function buildNarrativeQuery(params: {
   
   // PHASE 1: Build concise query (80-120 characters target)
   // Location and dates are handled by API parameters, not query text
-  // FIX: Don't append event type if it's already in the search term
+  // ENHANCEMENT: Always include profile terms if available, even with user search term
   
   if (language === 'de') {
     if (userSearchTerm) {
       // Check if event type is already in the search term
       const eventTypeInTerm = eventTypes.some(et => userSearchTerm.includes(et.toLowerCase()));
       if (eventTypeInTerm) {
+        // Event type already in term - add industry terms if available
+        if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
+          return `${userSearchTerm} ${primaryIndustry}`;
+        }
         return userSearchTerm; // Don't duplicate
+      }
+      // Add industry terms if available
+      if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
+        return `${userSearchTerm} ${primaryIndustry} ${primaryEventType}`;
       }
       return `${userSearchTerm} ${primaryEventType}`;
     } else if (primaryIndustry) {
@@ -373,7 +399,13 @@ function buildNarrativeQuery(params: {
     if (userSearchTerm) {
       const eventTypeInTerm = eventTypes.some(et => userSearchTerm.includes(et.toLowerCase()));
       if (eventTypeInTerm) {
+        if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
+          return `${userSearchTerm} ${primaryIndustry}`;
+        }
         return userSearchTerm;
+      }
+      if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
+        return `${userSearchTerm} ${primaryIndustry} ${primaryEventType}`;
       }
       return `${userSearchTerm} ${primaryEventType}`;
     } else if (primaryIndustry) {
@@ -386,10 +418,17 @@ function buildNarrativeQuery(params: {
       // FIX: Check if event type is already in the search term to avoid "conference conference"
       const eventTypeInTerm = eventTypes.some(et => userSearchTerm.includes(et.toLowerCase()));
       if (eventTypeInTerm) {
-        // Event type already in term, return as-is
+        // Event type already in term - add industry terms if available
+        if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
+          return `${userSearchTerm} ${primaryIndustry}`;
+        }
         return userSearchTerm;
       }
       // User search term is primary: "legal compliance conferences"
+      // Add industry terms if available and not already included
+      if (primaryIndustry && !userSearchTerm.includes(primaryIndustry)) {
+        return `${userSearchTerm} ${primaryIndustry} ${primaryEventType}`;
+      }
       // Target: 30-50 characters
       return `${userSearchTerm} ${primaryEventType}`;
     } else if (primaryIndustry) {

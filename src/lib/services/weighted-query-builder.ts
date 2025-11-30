@@ -53,31 +53,46 @@ export function buildWeightedQuery(
     query = '(conference OR event OR summit OR workshop OR seminar)';
   }
   
-  // Add user-specific terms if available
+  // ALWAYS add user-specific terms if available (even when userText is provided)
+  // This ensures profile terms are used in every search
   if (userProfile) {
     const userIndustryTerms = userProfile.industry_terms || [];
     const userIcpTerms = userProfile.icp_terms || [];
     const userCompetitors = userProfile.competitors || [];
     
     if (userIndustryTerms.length > 0 || userIcpTerms.length > 0) {
-      const userContext = [];
+      const profileTerms = [];
       if (userIndustryTerms.length > 0) {
-        userContext.push(userIndustryTerms.slice(0, 3).join(', '));
+        profileTerms.push(...userIndustryTerms.slice(0, 3));
       }
       if (userIcpTerms.length > 0) {
-        userContext.push(`targeting ${userIcpTerms.slice(0, 2).join(', ')}`);
-      }
-      if (userCompetitors.length > 0) {
-        userContext.push(`competitors: ${userCompetitors.slice(0, 2).join(', ')}`);
+        profileTerms.push(...userIcpTerms.slice(0, 2));
       }
       
-      const userQuery = userContext.join(' ');
-      query = `(${query}) AND (${userQuery})`;
+      // Remove duplicates from userText if provided
+      if (userText && userText.trim()) {
+        const userTerms = userText.toLowerCase().split(/\s+/).filter(Boolean);
+        const uniqueProfileTerms = profileTerms.filter(t => !userTerms.includes(t.toLowerCase()));
+        if (uniqueProfileTerms.length > 0) {
+          query = `(${query}) AND (${userText.trim()} ${uniqueProfileTerms.join(' ')})`;
+        } else {
+          query = `(${query}) AND (${userText.trim()})`;
+        }
+      } else {
+        // No user text - use profile terms
+        const userContext = profileTerms.join(' ');
+        query = `(${query}) AND (${userContext})`;
+      }
+      
+      if (userCompetitors.length > 0) {
+        query = `${query} -(${userCompetitors.slice(0, 2).join(' OR ')})`;
+      }
+    } else if (userText && userText.trim()) {
+      // No profile terms, but user provided text
+      query = `(${query}) AND (${userText.trim()})`;
     }
-  }
-  
-  // Add user text if provided
-  if (userText && userText.trim()) {
+  } else if (userText && userText.trim()) {
+    // No profile, but user provided text
     query = `(${query}) AND (${userText.trim()})`;
   }
   
