@@ -142,13 +142,13 @@ export async function buildUnifiedQuery(params: QueryBuilderParams): Promise<Que
     ? config.eventTerms
     : EVENT_TYPES[termLanguage as keyof typeof EVENT_TYPES] || EVENT_TYPES.en;
   
-  // Get location terms
+  // Get location terms (ensure we always have an array)
   const countryLocationTerms = LOCATION_TERMS[targetCountry as keyof typeof LOCATION_TERMS];
-  const locationTerms = countryLocationTerms?.[termLanguage as keyof typeof countryLocationTerms] || 
-                       LOCATION_TERMS.DE.en;
+  const locationTerms = (countryLocationTerms?.[termLanguage as keyof typeof countryLocationTerms] || 
+                       LOCATION_TERMS.DE.en) || [];
   
-  // Get temporal terms
-  const temporalTerms = TEMPORAL_TERMS[termLanguage as keyof typeof TEMPORAL_TERMS] || TEMPORAL_TERMS.en;
+  // Get temporal terms (ensure we always have an array)
+  const temporalTerms = (TEMPORAL_TERMS[termLanguage as keyof typeof TEMPORAL_TERMS] || TEMPORAL_TERMS.en) || [];
   
   // Build base query with user profile integration (skip if flag is set)
   let baseQuery = userText.trim();
@@ -322,9 +322,9 @@ function buildSimpleQuery(params: {
   // Simple concatenation approach
   const terms = [
     baseQuery,
-    eventTypes[0], // First event type
-    locationTerms[0], // First location term
-    temporalTerms[0] // First temporal term
+    eventTypes?.[0], // First event type (safe access)
+    locationTerms?.[0], // First location term (safe access)
+    temporalTerms?.[0] // First temporal term (safe access)
   ].filter(Boolean);
   
   return terms.join(' ');
@@ -368,7 +368,7 @@ function buildNarrativeQuery(params: {
   const primaryIndustry = industryTerms.slice(0, 2).join(' ').toLowerCase();
   
   // Get primary event type (just one, not a list)
-  const primaryEventType = eventTypes[0] || 'conference';
+  const primaryEventType = (eventTypes && eventTypes.length > 0) ? eventTypes[0] : 'conference';
   const eventTypeLower = primaryEventType.toLowerCase();
   
   // PHASE 1: Build concise query (80-120 characters target)
@@ -459,23 +459,36 @@ function generateQueryVariations(params: {
   // Variation 1: Focus on specific event types
   const specificEventTypes = ['conference', 'summit', 'workshop'];
   const specificEventQuery = `(${specificEventTypes.join(' OR ')})`;
-  variations.push(`${baseQuery} ${specificEventQuery} ${locationTerms[0]} ${temporalTerms[0]}`);
+  const firstLocation = locationTerms && locationTerms.length > 0 ? locationTerms[0] : '';
+  const firstTemporal = temporalTerms && temporalTerms.length > 0 ? temporalTerms[0] : '';
+  if (firstLocation && firstTemporal) {
+    variations.push(`${baseQuery} ${specificEventQuery} ${firstLocation} ${firstTemporal}`);
+  }
   
   // Variation 2: Focus on location
-  if (locationTerms.length > 1) {
+  if (locationTerms && locationTerms.length > 1) {
     const locationQuery = `(${locationTerms.slice(0, 3).join(' OR ')})`;
-    variations.push(`${baseQuery} ${eventTypes[0]} ${locationQuery} ${temporalTerms[0]}`);
+    const firstEventType = eventTypes && eventTypes.length > 0 ? eventTypes[0] : 'conference';
+    if (firstTemporal) {
+      variations.push(`${baseQuery} ${firstEventType} ${locationQuery} ${firstTemporal}`);
+    }
   }
   
   // Variation 3: Focus on temporal terms
-  if (temporalTerms.length > 1) {
+  if (temporalTerms && temporalTerms.length > 1) {
     const temporalQuery = `(${temporalTerms.slice(0, 3).join(' OR ')})`;
-    variations.push(`${baseQuery} ${eventTypes[0]} ${locationTerms[0]} ${temporalQuery}`);
+    const firstEventType = eventTypes && eventTypes.length > 0 ? eventTypes[0] : 'conference';
+    if (firstLocation) {
+      variations.push(`${baseQuery} ${firstEventType} ${firstLocation} ${temporalQuery}`);
+    }
   }
   
   // Variation 4: Natural language query
-  const naturalLanguage = `${baseQuery} ${eventTypes[0]} in ${locationTerms[0]} ${temporalTerms[0]}`;
-  variations.push(naturalLanguage);
+  const firstEventType = eventTypes && eventTypes.length > 0 ? eventTypes[0] : 'conference';
+  if (firstLocation && firstTemporal) {
+    const naturalLanguage = `${baseQuery} ${firstEventType} in ${firstLocation} ${firstTemporal}`;
+    variations.push(naturalLanguage);
+  }
   
   // Variation 5: Multi-language if not English
   if (language !== 'en') {
