@@ -352,10 +352,10 @@ export function buildWeightedGeminiContext(
   country: string
 ): string {
   const countryName = getCountryName(country);
-  const industryFocus = template.industryTerms[0] || template.name;
+  const industryFocus = (template.industryTerms && template.industryTerms.length > 0) ? template.industryTerms[0] : template.name;
   const targetRole =
     (userProfile?.icp_terms as string[] | undefined)?.[0] ||
-    template.icpTerms[0];
+    (template.icpTerms && template.icpTerms.length > 0 ? template.icpTerms[0] : '');
   const highlightCity = template.geographicCoverage.cities
     .filter(c => c.weight >= 6)
     .map(c => c.city)
