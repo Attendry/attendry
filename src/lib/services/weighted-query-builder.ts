@@ -196,10 +196,35 @@ function buildNarrativeQuery(
   // PHASE 1: Simplified query building - focus on core terms only
   // Location and dates are handled by API parameters, not query text
   
+  // Extract year from date range for future dates (helps Firecrawl find events)
+  let yearToInclude: string | null = null;
+  if (dateFrom || dateTo) {
+    const sourceDate = dateFrom || dateTo;
+    if (sourceDate) {
+      const parsedDate = new Date(sourceDate);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        const year = parsedDate.getFullYear();
+        const currentYear = new Date().getFullYear();
+        // Include year if it's in the future or different from current year
+        if (year > currentYear || year < currentYear) {
+          yearToInclude = year.toString();
+        }
+      }
+    }
+  }
+  
+  // Helper function to add year if needed
+  const addYear = (query: string): string => {
+    if (yearToInclude && !query.includes(yearToInclude)) {
+      return `${query} ${yearToInclude}`;
+    }
+    return query;
+  };
+  
   // Prioritize user search term if provided
   if (userText && userText.trim() && userText.length < 100) {
     const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
-    return `${userText.trim()} ${primaryEventType}`;
+    return addYear(`${userText.trim()} ${primaryEventType}`);
   }
   
   // Use industry terms if available
@@ -207,14 +232,11 @@ function buildNarrativeQuery(
   const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
   
   if (industryTerms) {
-    return `${industryTerms} ${primaryEventType}`;
+    return addYear(`${industryTerms} ${primaryEventType}`);
   }
   
   // Fallback
-  return `business ${primaryEventType}`;
-  // If user provides a specific keyword (e.g., "Kartellrecht"), make it the primary focus
-  if (userText && userText.trim()) {
-    const userKeyword = userText.trim();
+  return addYear(`business ${primaryEventType}`);
     // Get keyword context/translations for better matching
     const keywordContext = getKeywordContext(userKeyword);
     
