@@ -798,17 +798,23 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       // Exclude legal/static pages
       if (urlLower.includes('/privacy') || urlLower.includes('/terms') || urlLower.includes('/impressum') || urlLower.includes('/agb')) return false;
       
-      // Exclude generic event listing pages (aggregator-like) - only if URL ends with /events/ or /events
-      // Allow specific event URLs like /events/event-name-2025
+      // RELAXED: Only exclude generic event listing pages if we have many candidates
+      // When we have few results (e.g., from database fallback), be more lenient
+      // This allows event listing pages through when they're the only results available
       const endsWithEvents = urlLower.endsWith('/events/') || urlLower.endsWith('/events');
-      if (endsWithEvents) {
-        console.log(`[url-filter] Excluding generic events listing: ${url}`);
+      const endsWithVeranstaltungen = urlLower.endsWith('/veranstaltungen/') || urlLower.endsWith('/veranstaltungen');
+      
+      // Only filter out generic listings if we have many candidates (>5)
+      // This prevents filtering out valid fallback URLs when Firecrawl/CSE return 0 results
+      if ((endsWithEvents || endsWithVeranstaltungen) && candidates.length > 5) {
+        console.log(`[url-filter] Excluding generic events listing (have ${candidates.length} candidates): ${url}`);
         return false;
       }
       
       // PHASE 1 OPTIMIZATION: Enhanced global roundup page filtering (FILTER EARLIER)
       // Filters event calendar/archive/list pages that are not specific events
       // This prevents wasting extraction time (25-45s) on non-event pages
+      // BUT: Be lenient when we have few candidates (allow through if < 5 candidates)
       const globalListPatterns = [
         '/running-list',
         '/all-events',
@@ -826,12 +832,15 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       // Check if URL matches any global list pattern
       const isGlobalList = globalListPatterns.some(pattern => urlLower.includes(pattern)) ||
         // Also match /events or /events/ at end of URL (but not /events/event-name)
-        /\/events?\/?$/.test(urlLower) ||
-        /\/conferences?\/?$/.test(urlLower) ||
-        /\/veranstaltungen?\/?$/.test(urlLower);
+        // BUT: Only if we have many candidates
+        (candidates.length > 5 && (
+          /\/events?\/?$/.test(urlLower) ||
+          /\/conferences?\/?$/.test(urlLower) ||
+          /\/veranstaltungen?\/?$/.test(urlLower)
+        ));
       
       if (isGlobalList) {
-        console.log(`[url-filter] Excluding global roundup page (filtered early): ${url}`);
+        console.log(`[url-filter] Excluding global roundup page (filtered early, have ${candidates.length} candidates): ${url}`);
         return false;
       }
       
@@ -2519,7 +2528,23 @@ async function filterByContentRelevance(events: EventCandidate[], params: Optimi
         return true;
       }
       
-      // If no user keyword match, filter out (user search takes priority)
+      // RELAXED: If extraction failed (title is "Unknown Event" or "Untitled Event"), 
+      // be lenient and allow through if we have few results
+      // This prevents filtering out valid events when extraction didn't work properly
+      const isExtractionFailed = eventTitle === 'Unknown Event' || eventTitle === 'Untitled Event' || !eventTitle || eventTitle.trim().length === 0;
+      if (isExtractionFailed && events.length <= 3) {
+        console.log(`[optimized-orchestrator] ✓ Event allowed through (extraction failed, only ${events.length} events): "${eventTitle.substring(0, 80)}"`);
+        return true;
+      }
+      
+      // RELAXED: If we have very few results (≤2), be lenient and allow through
+      // This ensures we show something even if keyword matching is strict
+      if (events.length <= 2) {
+        console.log(`[optimized-orchestrator] ✓ Event allowed through (only ${events.length} events, being lenient): "${eventTitle.substring(0, 80)}"`);
+        return true;
+      }
+      
+      // If no user keyword match and we have enough results, filter out (user search takes priority)
       console.log(`[optimized-orchestrator] ✗ Event filtered out (no user keyword match): "${eventTitle.substring(0, 80)}"`);
       return false;
     });
