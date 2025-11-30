@@ -725,6 +725,7 @@ export class FirecrawlSearchService {
 
   /**
    * Build time-based search parameter
+   * Always respects user-provided date ranges, even for future dates
    */
   private static buildTimeBasedSearch(from?: string, to?: string): string {
     if (from && to) {
@@ -732,14 +733,13 @@ export class FirecrawlSearchService {
       const fromDate = new Date(from);
       const toDate = new Date(to);
       
-      // Allow future dates (e.g., 2025) for "next 30 days" type searches
-      // Don't force dates to current year - let the user's date range stand
-      
+      // Always use the user-provided date range - searches are always for future dates
+      // Firecrawl should respect the date filter as specified by the user
       const fromStr = `${(fromDate.getMonth() + 1).toString().padStart(2, '0')}/${fromDate.getDate().toString().padStart(2, '0')}/${fromDate.getFullYear()}`;
       const toStr = `${(toDate.getMonth() + 1).toString().padStart(2, '0')}/${toDate.getDate().toString().padStart(2, '0')}/${toDate.getFullYear()}`;
       return `cdr:1,cd_min:${fromStr},cd_max:${toStr}`;
     }
-    return "qdr:y"; // Past year
+    return "qdr:y"; // Past year (fallback)
   }
 
   /**

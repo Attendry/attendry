@@ -489,8 +489,20 @@ export async function deepCrawlEvent(eventUrl: string): Promise<CrawlResult[]> {
     results.push(...subPageResults.filter(result => result !== null));
 
     const combinedContent = results.map(result => result.content).join('\n\n');
+    
+    // CRITICAL FIX: Be more lenient with directory listing detection when we have few results
+    // If this is a database fallback URL (likely when Firecrawl returns 0), allow it through
+    // The extraction process will still filter out truly irrelevant pages
+    // Only filter if we're very confident it's a directory listing (higher threshold)
     if (isLikelyDirectoryListing(eventUrl, combinedContent)) {
-      return [];
+      // Check if content is very short (likely a true directory listing)
+      // If content is substantial (>1000 chars), it might be a valid event listing page
+      if (combinedContent.length < 1000) {
+        console.log('[event-analysis] Filtered directory listing (low content):', eventUrl);
+        return [];
+      }
+      // For longer content, allow it through - let extraction determine if it's useful
+      console.log('[event-analysis] Allowing potential directory listing through (substantial content):', eventUrl);
     }
     
   } catch (error) {
