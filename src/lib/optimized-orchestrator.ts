@@ -1491,11 +1491,57 @@ async function discoverEventCandidates(
   console.log('[optimized-orchestrator] Total URLs collected before deduplication:', allUrls.length);
 
   // Filter and deduplicate URLs
-  const urls = allUrls
+  let urls = allUrls
     .filter((url, index, array) => array.indexOf(url) === index) // Remove duplicates
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxCandidates);
 
   console.log(`[optimized-orchestrator] Discovered ${urls.length} unique URLs from ${queryVariations.length} query variations in ${Date.now() - startTime}ms`);
+  
+  // CRITICAL FIX: If parallel discovery returns 0 results, fall back to direct unifiedSearch
+  // This ensures we get results when Firecrawl finds items but parallel processing fails
+  if (urls.length === 0) {
+    console.log('[optimized-orchestrator] Parallel discovery returned 0 URLs, falling back to direct unifiedSearch...');
+    try {
+      const directResult = await unifiedSearch({
+        q: query,
+        narrativeQuery: narrativeQuery, // Use narrative query for better results
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+        country: params.country || undefined,
+        limit: ORCHESTRATOR_CONFIG.limits.maxCandidates,
+        scrapeContent: true,
+        useCache: true,
+        userProfile: userProfile
+      });
+      
+      console.log('[optimized-orchestrator] Direct unifiedSearch result:', {
+        itemsFound: directResult.items?.length || 0,
+        provider: directResult.provider,
+        hasItems: Array.isArray(directResult.items)
+      });
+      
+      // Process direct result
+      const directUrls: string[] = [];
+      if (directResult.items && Array.isArray(directResult.items)) {
+        directResult.items.forEach((item: any) => {
+          const url = typeof item === 'string' ? item : (item?.url || '');
+          if (url && url.startsWith('http')) {
+            directUrls.push(url);
+          }
+        });
+      }
+      
+      // Deduplicate and limit
+      urls = directUrls
+        .filter((url, index, array) => array.indexOf(url) === index)
+        .slice(0, ORCHESTRATOR_CONFIG.limits.maxCandidates);
+      
+      console.log(`[optimized-orchestrator] Direct search fallback found ${urls.length} URLs`);
+    } catch (error) {
+      console.error('[optimized-orchestrator] Direct search fallback failed:', error);
+      // Return empty array - better than crashing
+    }
+  }
   
   // Log parallel processing metrics
   const metrics = parallelProcessor.getMetrics();
