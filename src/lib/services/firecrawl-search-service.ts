@@ -371,17 +371,24 @@ export class FirecrawlSearchService {
             const withinRange = this.isWithinRange(parsedDate.startISO, from, to);
             const timeframeHint = this.matchesTimeframeHint(content, timeframeTokens);
 
-            // PHASE 1 FIX: Relaxed date filtering - don't require dates if no date range specified
-            // This allows more results through when searching without specific dates
+            // PRIMARY DATE FILTERING: When dates are provided, filter strictly by date range
+            // This is the primary filtering mechanism and must be preserved
             if (from || to) {
-              // If date range specified, filter by date if available
-              if (parsedDate.startISO && !withinRange) {
-                continue;
+              // Date range specified - PRIMARY FILTERING: Filter by date if available
+              if (parsedDate.startISO) {
+                // If we have a parsed date, it MUST be within range
+                if (!withinRange) {
+                  continue; // Filter out - date is outside specified range
+                }
+              } else {
+                // If no date found but range specified, allow through
+                // (date might be in future, not yet published, or not extracted)
+                // This is a lenient approach to avoid filtering out valid events
               }
-              // If no date found but range specified, still allow through (date might be in future or not extracted)
             } else {
-              // No date range specified - don't require dates, just prefer them
+              // No date range specified - don't require dates
               // This allows results without explicit dates to pass through
+              // This is the relaxed filtering for general searches
             }
 
             const extractedLocation = this.extractLocationFromContent(result.markdown);
