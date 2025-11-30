@@ -657,9 +657,22 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     // Clear aggregator tracking for this search run (idempotent filtering)
     seenAggregators.clear();
     
+    console.log('[optimized-orchestrator] Starting discovery phase:', {
+      query: query.substring(0, 50),
+      hasNarrativeQuery: !!narrativeQuery,
+      country: params.country,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo
+    });
+    
     const discoveryStart = Date.now();
     const rawCandidates = await discoverEventCandidates(query, params, userProfile, narrativeQuery);
     const discoveryTime = Date.now() - discoveryStart;
+    
+    console.log('[optimized-orchestrator] Discovery phase completed:', {
+      candidatesFound: rawCandidates.length,
+      duration: discoveryTime
+    });
     
     // BACKPRESSURE QUEUE: Limit discovery results to prevent memory bloat
     // Drop oldest URLs if we exceed the limit (max 50 URLs)

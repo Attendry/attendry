@@ -184,6 +184,7 @@ export async function POST(req: NextRequest) {
 
         let firecrawlSucceeded = false;
         try {
+          console.log('[progressive-search] Calling executeOptimizedSearch...');
           // Use optimized orchestrator for full search with Firecrawl (primary provider)
           const optimizedResult = await executeOptimizedSearch({
             userText,
@@ -196,6 +197,11 @@ export async function POST(req: NextRequest) {
             useNaturalLanguage,
           });
 
+          console.log('[progressive-search] executeOptimizedSearch completed:', {
+            eventsCount: optimizedResult.events?.length || 0,
+            totalCandidates: optimizedResult.metadata?.totalCandidates || 0
+          });
+
           const processedResult = await processOptimizedResults(
             optimizedResult,
             normalizedCountry,
@@ -203,6 +209,10 @@ export async function POST(req: NextRequest) {
             effectiveDateTo,
             false
           );
+
+          console.log('[progressive-search] processOptimizedResults completed:', {
+            eventsCount: processedResult.events?.length || 0
+          });
 
           if (processedResult.events && processedResult.events.length > 0) {
             firecrawlSucceeded = true;
@@ -223,9 +233,12 @@ export async function POST(req: NextRequest) {
               message: `Found ${processedResult.events.length} events from Firecrawl`,
               provider: 'firecrawl',
             });
+          } else {
+            console.log('[progressive-search] No events from optimized orchestrator, will try CSE fallback');
           }
         } catch (error) {
           console.error('[progressive-search] Firecrawl search failed:', error);
+          console.error('[progressive-search] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
         }
 
         // Stage 3: Try CSE as fallback (only if Firecrawl failed or returned insufficient results)
