@@ -1641,10 +1641,25 @@ async function prioritizeCandidates(urls: string[], params: OptimizedSearchParam
     // Re-sort by adjusted score
     withBonuses.sort((a, b) => b.score - a.score);
     
-    const filtered = withBonuses.filter(item => item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization);
+    // Filter by score threshold, but be lenient with aggregators if they're the only results
+    const nonAggregators = withBonuses.filter(item => {
+      const isAggregator = checkAndLogAggregator(item.url);
+      return !isAggregator && item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization;
+    });
+    
+    const aggregators = withBonuses.filter(item => {
+      const isAggregator = checkAndLogAggregator(item.url);
+      return isAggregator && item.score >= ORCHESTRATOR_CONFIG.thresholds.prioritization;
+    });
+    
+    // If we have non-aggregators, use them. Otherwise, allow aggregators if they're the only results
+    const filtered = nonAggregators.length > 0 
+      ? nonAggregators 
+      : (aggregators.length > 0 ? aggregators : withBonuses.slice(0, Math.min(3, withBonuses.length))); // Fallback: take top 3 if all are aggregators
     
     const bonusCount = withBonuses.filter(item => item.score > item.originalScore).length;
-    console.log(`[optimized-orchestrator] Prioritized ${filtered.length}/${urls.length} candidates (${bonusCount} with domain bonuses) in ${Date.now() - startTime}ms`);
+    const aggregatorCount = filtered.filter(item => checkAndLogAggregator(item.url)).length;
+    console.log(`[optimized-orchestrator] Prioritized ${filtered.length}/${urls.length} candidates (${bonusCount} with domain bonuses, ${aggregatorCount} aggregators) in ${Date.now() - startTime}ms`);
     
     return filtered;
   } catch (error) {
