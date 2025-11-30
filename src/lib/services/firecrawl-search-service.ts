@@ -358,12 +358,53 @@ export class FirecrawlSearchService {
             // Use extracted data directly - skip filtering since extraction already validated relevance
             const extractedEvent = Array.isArray(extractedData.events) ? extractedData.events[0] : extractedData;
             
+            // PHASE 3 FIX: Better title extraction with multiple fallbacks
+            // Try extracted title first, then page title, then description snippet, then URL-based title
+            let extractedTitle = extractedEvent?.title;
+            
+            // If extracted title is missing or generic, try to extract from page title
+            if (!extractedTitle || extractedTitle.toLowerCase() === 'event' || extractedTitle.toLowerCase() === 'unknown event') {
+              // Try to extract from page title (often contains event name)
+              const pageTitle = result.title || '';
+              if (pageTitle && pageTitle.length > 5 && !pageTitle.toLowerCase().includes('home') && !pageTitle.toLowerCase().includes('index')) {
+                extractedTitle = pageTitle;
+              }
+            }
+            
+            // If still missing, try to extract from description or markdown
+            if (!extractedTitle || extractedTitle.toLowerCase() === 'event' || extractedTitle.toLowerCase() === 'unknown event') {
+              const description = result.description || result.markdown?.substring(0, 300) || '';
+              // Look for event name patterns in description (e.g., "Conference Name 2026", "Summit Name")
+              const titleMatch = description.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:Conference|Summit|Event|Workshop|Forum|Symposium)\s+\d{4})/);
+              if (titleMatch) {
+                extractedTitle = titleMatch[1];
+              }
+            }
+            
+            // Final fallback: use URL-based title if available
+            if (!extractedTitle || extractedTitle.toLowerCase() === 'event' || extractedTitle.toLowerCase() === 'unknown event') {
+              try {
+                const urlPath = new URL(result.url || '').pathname;
+                const pathParts = urlPath.split('/').filter(p => p && p.length > 3);
+                if (pathParts.length > 0) {
+                  // Use last meaningful path segment as title hint
+                  const lastPart = pathParts[pathParts.length - 1];
+                  extractedTitle = lastPart.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                }
+              } catch {
+                // URL parsing failed, keep existing title
+              }
+            }
+            
+            // Final fallback to "Event" only if all else fails
+            const finalTitle = extractedTitle || result.title || "Event";
+            
             items.push({
-              title: extractedEvent?.title || result.title || "Event",
+              title: finalTitle,
               link: result.url || "",
               snippet: extractedEvent?.snippet || result.description || result.markdown?.substring(0, 200) || "",
               extractedData: {
-                eventTitle: extractedEvent?.title || result.title,
+                eventTitle: finalTitle,
                 eventDate: extractedEvent?.eventDate || extractedEvent?.date,
                 location: extractedEvent?.location,
                 organizer: extractedEvent?.organizer,
