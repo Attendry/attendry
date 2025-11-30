@@ -198,13 +198,13 @@ function buildNarrativeQuery(
   
   // Prioritize user search term if provided
   if (userText && userText.trim() && userText.length < 100) {
-    const primaryEventType = template.eventTypes[0] || 'conference';
+    const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
     return `${userText.trim()} ${primaryEventType}`;
   }
   
   // Use industry terms if available
-  const industryTerms = template.industryTerms.slice(0, 2).join(' ');
-  const primaryEventType = template.eventTypes[0] || 'conference';
+  const industryTerms = (template.industryTerms && template.industryTerms.length > 0) ? template.industryTerms.slice(0, 2).join(' ') : '';
+  const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
   
   if (industryTerms) {
     return `${industryTerms} ${primaryEventType}`;
