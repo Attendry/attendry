@@ -799,15 +799,16 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       // Exclude legal/static pages
       if (urlLower.includes('/privacy') || urlLower.includes('/terms') || urlLower.includes('/impressum') || urlLower.includes('/agb')) return false;
       
-      // RELAXED: Only exclude generic event listing pages if we have many candidates
+      // RELAXED: Only exclude generic event listing pages if we have MANY candidates
       // When we have few results (e.g., from database fallback), be more lenient
       // This allows event listing pages through when they're the only results available
+      // PHASE 3 FIX: Increased threshold from >5 to >15 to allow more database fallback URLs through
       const endsWithEvents = urlLower.endsWith('/events/') || urlLower.endsWith('/events');
       const endsWithVeranstaltungen = urlLower.endsWith('/veranstaltungen/') || urlLower.endsWith('/veranstaltungen');
       
-      // Only filter out generic listings if we have many candidates (>5)
+      // Only filter out generic listings if we have MANY candidates (>15)
       // This prevents filtering out valid fallback URLs when Firecrawl/CSE return 0 results
-      if ((endsWithEvents || endsWithVeranstaltungen) && candidates.length > 5) {
+      if ((endsWithEvents || endsWithVeranstaltungen) && candidates.length > 15) {
         console.log(`[url-filter] Excluding generic events listing (have ${candidates.length} candidates): ${url}`);
         return false;
       }
@@ -833,8 +834,8 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
       // Check if URL matches any global list pattern
       const isGlobalList = globalListPatterns.some(pattern => urlLower.includes(pattern)) ||
         // Also match /events or /events/ at end of URL (but not /events/event-name)
-        // BUT: Only if we have many candidates
-        (candidates.length > 5 && (
+        // PHASE 3 FIX: Increased threshold from >5 to >15 to allow more database fallback URLs through
+        (candidates.length > 15 && (
           /\/events?\/?$/.test(urlLower) ||
           /\/conferences?\/?$/.test(urlLower) ||
           /\/veranstaltungen?\/?$/.test(urlLower)

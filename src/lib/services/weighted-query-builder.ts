@@ -224,31 +224,14 @@ function buildNarrativeQuery(
     return query;
   };
   
-  // PHASE 2: Get speaker term conditionally based on salesOutreach flag
-  // This helps Firecrawl prioritize events with published speaker information
-  const getLanguageFromCountry = (countryCode: string): string => {
-    const countryLanguageMap: Record<string, string> = {
-      'DE': 'de',
-      'AT': 'de',
-      'CH': 'de',
-      'FR': 'fr',
-      'BE': 'fr',
-      'GB': 'en',
-      'US': 'en',
-      'CA': 'en'
-    };
-    return countryLanguageMap[countryCode.toUpperCase()] || 'en';
-  };
+  // PHASE 3 FIX: Don't add speaker terms to primary narrative query - it makes queries too specific
+  // Instead, use speaker terms only in query variations (which are already prioritized)
+  // This ensures Firecrawl gets a broader query first, while variations can be more specific
   
-  const language = getLanguageFromCountry(country);
-  const speakerTerms = salesOutreach ? (SPEAKER_TERMS[language] || SPEAKER_TERMS['en']) : null;
-  const speakerTerm = speakerTerms ? speakerTerms[0] : null; // Use primary term: "speakers", "referenten", "conférenciers"
-  
-  // Helper function to add speaker term if salesOutreach is enabled
+  // Helper function - NO speaker terms in primary narrative query
   const addSpeakerTerm = (query: string): string => {
-    if (speakerTerm && !query.includes(speakerTerm)) {
-      return `${query} ${speakerTerm}`;
-    }
+    // Don't add speaker terms to primary narrative query - too restrictive
+    // Speaker terms are used in query variations instead
     return query;
   };
   
