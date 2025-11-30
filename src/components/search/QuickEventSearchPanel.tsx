@@ -122,6 +122,13 @@ export interface QuickEventSearchPanelProps {
   defaultCollapsed?: boolean;
   showPinning?: boolean;
   className?: string;
+  onSearchComplete?: (events: EventRec[], searchParams: {
+    keywords: string;
+    country: string;
+    from: string;
+    to: string;
+  }) => void;
+  hideResults?: boolean; // If true, don't show results in the panel (for use with external result display)
 }
 
 type EventSpeaker = {
@@ -333,7 +340,9 @@ export function QuickEventSearchPanel({
   onSpeakerSaved,
   defaultCollapsed = true,
   showPinning = true,
-  className = ''
+  className = '',
+  onSearchComplete,
+  hideResults = false
 }: QuickEventSearchPanelProps) {
   const [config, setConfig] = useState(QUICK_SEARCH_DEFAULTS);
   const [isPinned, setIsPinned] = useState(false);
@@ -553,6 +562,16 @@ export function QuickEventSearchPanel({
 
       setResults(normalizedEvents);
       setLastRunAt(Date.now());
+      
+      // Call onSearchComplete callback if provided (for integration with SearchResultsContext)
+      if (onSearchComplete) {
+        onSearchComplete(normalizedEvents, {
+          keywords: combinedKeywords,
+          country: normalizedCountry,
+          from,
+          to,
+        });
+      }
       
       // Complete progress
       setSearchProgress({ stage: 4, message: 'Complete' });
@@ -1040,7 +1059,7 @@ export function QuickEventSearchPanel({
             </div>
           )}
 
-          {!loading && resultsToShow.length > 0 && (
+          {!hideResults && !loading && resultsToShow.length > 0 && (
             <div className="space-y-4">
               {resultsToShow.map((event) => {
                 const eventKey = event.id || event.source_url;

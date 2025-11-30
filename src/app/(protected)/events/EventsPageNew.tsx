@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { formatErrorForToast, getUserFriendlyMessage, CommonErrors } from "@/lib/errors/user-friendly-messages";
 import { SearchHistoryDropdown } from "@/components/search/SearchHistoryDropdown";
 import { addToSearchHistory, SearchHistoryItem, clearSearchHistory } from "@/lib/search/search-history";
+import { QuickEventSearchPanel } from "@/components/search/QuickEventSearchPanel";
 
 // EventRec type is now imported from SearchResultsContext
 
@@ -908,6 +909,50 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
             />
           </div>
         ) : (
+          <QuickEventSearchPanel
+            defaultCollapsed={false}
+            showPinning={false}
+            hideResults={true}
+            onSearchComplete={(events, searchParams) => {
+              // Update SearchResultsContext with the results
+              const normalizedCountry = toISO2Country(searchParams.country) ?? 'EU';
+              actions.setSearchResults(events, {
+                keywords: searchParams.keywords,
+                country: normalizedCountry,
+                from: searchParams.from,
+                to: searchParams.to,
+                timestamp: Date.now(),
+                userProfile: userProfile ? {
+                  industryTerms: userProfile.industry_terms || [],
+                  icpTerms: userProfile.icp_terms || [],
+                  competitors: userProfile.competitors || [],
+                } : undefined,
+                profileFilters: userProfile ? {
+                  includeIndustryMatch: true,
+                  includeIcpMatch: true,
+                  includeCompetitorMatch: true,
+                } : undefined,
+              }, events.length);
+              
+              // Save to search history
+              if (searchParams.keywords.trim()) {
+                addToSearchHistory({
+                  query: searchParams.keywords,
+                  filters: {
+                    country: searchParams.country,
+                    dateFrom: searchParams.from,
+                    dateTo: searchParams.to,
+                    keywords: searchParams.keywords,
+                  },
+                  resultCount: events.length,
+                });
+              }
+            }}
+          />
+        )}
+        
+        {/* Legacy form removed - replaced with QuickEventSearchPanel above */}
+        {false && (
           <form onSubmit={run} className="space-y-4">
             {/* Search Input */}
             <div className="flex flex-col sm:flex-row gap-4">
