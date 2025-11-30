@@ -24,6 +24,11 @@ export interface FirecrawlSearchParams {
   countryContext?: CountryContext;
   locale?: string;
   location?: string;
+  // PHASE 1: Unified search+extract support
+  extractSchema?: any;  // Schema for structured extraction during search
+  extractPrompt?: string;  // Prompt for extraction
+  categories?: string[];  // Search categories (e.g., ["research"])
+  scrapeContent?: boolean;  // Whether to scrape content during search
 }
 
 export interface FirecrawlSearchResult {
@@ -182,9 +187,25 @@ export class FirecrawlSearchService {
 
   /**
    * Execute a web search using Firecrawl Search API v2
+   * 
+   * PHASE 1 OPTIMIZATION: Now supports unified search+extract and search categories
    */
   static async searchEvents(params: FirecrawlSearchParams): Promise<FirecrawlSearchResult> {
-    const { query, country = "", from, to, industry = "legal-compliance", maxResults = this.MAX_RESULTS, countryContext, locale, location } = params;
+    const { 
+      query, 
+      country = "", 
+      from, 
+      to, 
+      industry = "legal-compliance", 
+      maxResults = this.MAX_RESULTS, 
+      countryContext, 
+      locale, 
+      location,
+      extractSchema,
+      extractPrompt,
+      categories,
+      scrapeContent
+    } = params;
     
     const firecrawlKey = process.env.FIRECRAWL_KEY;
     if (!firecrawlKey) {
@@ -205,7 +226,7 @@ export class FirecrawlSearchService {
     const primaryQuery = this.buildShardQuery(positiveTokens, locationTokenSet, timeframeTokens, country, from, to);
     const fallbackQuery = await this.buildSearchQueryInternal(query, industry, country, from, to);
 
-    const baseParams = {
+    const baseParams: any = {
       limit: Math.min(maxResults, 20),
       sources: ["web"],
       location: location || resolvedCountryContext?.countryNames?.[0] || this.mapCountryToLocation(country),
@@ -213,6 +234,31 @@ export class FirecrawlSearchService {
       tbs: this.buildTimeBasedSearch(from, to),
       ignoreInvalidURLs: true,
     };
+
+    // PHASE 1: Add search categories for better targeting
+    if (categories && categories.length > 0) {
+      baseParams.categories = categories;
+    }
+
+    // PHASE 1: Add unified search+extract support
+    if (scrapeContent || extractSchema) {
+      baseParams.scrapeOptions = {
+        formats: ['markdown', 'html'], // Get both formats for better extraction
+        onlyMainContent: true,
+        blockAds: true,
+        removeBase64Images: true,
+        waitFor: 2000, // Wait for dynamic content
+      };
+
+      // Add extraction if schema provided (unified search+extract)
+      if (extractSchema) {
+        baseParams.scrapeOptions.extract = {
+          schema: extractSchema,
+          prompt: extractPrompt || "Extract event details from this page including title, dates, location, and speakers"
+        };
+        console.log('[firecrawl-search-service] Using unified search+extract');
+      }
+    }
 
     ships.push({ query: primaryQuery, params: baseParams, label: 'shard' });
     if (fallbackQuery !== primaryQuery) {
@@ -264,6 +310,30 @@ export class FirecrawlSearchService {
               continue;
           }
           
+          // PHASE 1: If unified search+extract was used, check for extracted data first
+          const extractedData = result.extracted || result.data?.extracted;
+          
+          // If we have extracted data from unified search+extract, use it
+          if (extractedData && extractSchema) {
+            // Use extracted data directly - skip filtering since extraction already validated relevance
+            const extractedEvent = Array.isArray(extractedData.events) ? extractedData.events[0] : extractedData;
+            
+            items.push({
+              title: extractedEvent?.title || result.title || "Event",
+              link: result.url || "",
+              snippet: extractedEvent?.snippet || result.description || result.markdown?.substring(0, 200) || "",
+              extractedData: {
+                eventTitle: extractedEvent?.title || result.title,
+                eventDate: extractedEvent?.eventDate || extractedEvent?.date,
+                location: extractedEvent?.location,
+                organizer: extractedEvent?.organizer,
+                confidence: extractedEvent?.confidence || 0.8,
+              }
+            });
+            continue; // Skip to next result
+          }
+          
+          // Fallback to original filtering logic if no extracted data
           const content = (result.title + " " + result.description + " " + (result.markdown || "")).toLowerCase();
           const isEventRelated = this.isEventRelated(content);
             if (!isEventRelated) continue;

@@ -167,9 +167,10 @@ export interface UnifiedSearchParams {
   country?: string;
   limit?: number;
   scrapeContent?: boolean;
-  // FIRECRAWL-V2: Unified search + extract options
+  // PHASE 1: Unified search + extract options
   extractSchema?: any; // Schema for structured extraction during search
   extractPrompt?: string; // Prompt for extraction during search
+  categories?: string[]; // Search categories (e.g., ["research"]) for better targeting
   useCache?: boolean;
   userProfile?: any; // Add user profile support
 }
@@ -359,102 +360,52 @@ async function unifiedFirecrawlSearch(params: UnifiedSearchParams): Promise<Unif
       timeout: 45000  // Reduced from 60000 to prevent long waits
     };
 
-    // FIRECRAWL-V2: Enhanced scraping with extraction support
-    // NOTE: The search endpoint does NOT support extract in scrapeOptions
-    // Extract must be done separately using the /v2/extract endpoint
-    if (params.scrapeContent) {
-      body.scrapeOptions = {
-        formats: ['markdown', 'html'], // Get both formats for better extraction
-        onlyMainContent: true,
-        blockAds: true,
-        removeBase64Images: true
-      };
-    }
-    
-    // FIRECRAWL-V2: Note - unified search+extract is not supported in search endpoint
-    // The extract parameter would need to be at top level, but search API doesn't support it
-    // We'll need to do search and extract separately
-
-    // Add location-based search for better regional results
-    if (params.country) {
-      const countryMap: Record<string, string> = {
-        'DE': 'Germany',
-        'FR': 'France', 
-        'IT': 'Italy',
-        'ES': 'Spain',
-        'NL': 'Netherlands',
-        'GB': 'United Kingdom',
-        'US': 'United States'
-      };
-      
-      const location = countryMap[params.country] || params.country;
-      // Firecrawl v2 API expects location as a string, not an object
-      body.location = location;
-    }
-
-    console.log('[unified-firecrawl] Making request with body:', JSON.stringify(body, null, 2));
-
-    // Create the actual API call promise and store it for deduplication
+    // PHASE 1: Use FirecrawlSearchService for unified search+extract support
+    // This consolidates implementation and enables unified search+extract and search categories
     const apiCallPromise = (async (): Promise<UnifiedSearchResult> => {
       try {
-        // PHASE 1 OPTIMIZATION: Use adaptive retry with exponential backoff and jitter
-        // Timeouts: 8s → 12s → 18s with 0-20% jitter to reduce timeout failures by 30%
-        const data = await executeWithAdvancedCircuitBreaker(async () => {
-          const adaptiveTimeout = FirecrawlSearchService.getAdaptiveTimeout(0);
-          const response = await FirecrawlSearchService.fetchWithAdaptiveRetry(
-            "firecrawl",
-            "search",
-            'https://api.firecrawl.dev/v2/search',
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${firecrawlKey}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(body)
-            },
-            adaptiveTimeout
-          );
+        // Get country context for better location handling
+        const { getCountryContext } = await import('@/lib/utils/country');
+        const countryContext = params.country ? getCountryContext(params.country) : undefined;
 
-          if (!response.ok) {
-            const errorText = await response.text().catch(() => 'Unknown error');
-            console.warn(`[unified-firecrawl] API error ${response.status}:`, errorText);
-            throw new Error(`Firecrawl error: ${response.status}`);
-          }
+        // PHASE 1: Use FirecrawlSearchService with unified search+extract support
+        const firecrawlResult = await FirecrawlSearchService.searchEvents({
+          query: firecrawlQuery,
+          country: params.country || '',
+          from: params.dateFrom,
+          to: params.dateTo,
+          maxResults: params.limit || 20,
+          countryContext,
+          locale: countryContext?.locale,
+          // PHASE 1: Enable unified search+extract
+          extractSchema: params.extractSchema,
+          extractPrompt: params.extractPrompt,
+          categories: params.categories || ['research'], // Focus on research/event sites for better targeting
+          scrapeContent: params.scrapeContent || !!params.extractSchema,
+        });
 
-          return await response.json();
-        }, 'firecrawl');
+        console.log('[unified-firecrawl] Response received, items:', firecrawlResult.items.length);
 
-        console.log('[unified-firecrawl] Response received, items:', data?.data?.web?.length || 0);
-
-        // FIRECRAWL-V2: Parse response with scraped content support
-        const webResults = data?.data?.web || [];
-        const items: Array<string | { url: string; title?: string; description?: string; markdown?: string }> = Array.isArray(webResults) 
-          ? webResults
-              .map((item: any) => {
-                const url = item?.url;
-                if (!url || !url.startsWith('http')) return null;
-                
-                // Return enriched item if scraped content available
-                if (params.scrapeContent && (item.markdown || item.title || item.description)) {
-                  return {
-                    url,
-                    title: item.title,
-                    description: item.description,
-                    markdown: item.markdown
-                  };
-                }
-                
-                // Fallback to URL string for backward compatibility
-                return url;
-              })
-              .filter((item: any) => item !== null)
-          : [];
+        // Convert FirecrawlSearchResult to UnifiedSearchResult format
+        const items: Array<string | { url: string; title?: string; description?: string; markdown?: string; extracted?: any }> = 
+          firecrawlResult.items.map((item) => {
+            // If we have extracted data, return enriched item
+            if (params.scrapeContent || params.extractSchema) {
+              return {
+                url: item.link,
+                title: item.title,
+                description: item.snippet,
+                extracted: item.extractedData
+              };
+            }
+            // Fallback to URL string for backward compatibility
+            return item.link;
+          });
 
         const result: UnifiedSearchResult = {
           items,
           provider: 'firecrawl',
-          debug: { rawCount: items.length, responseKeys: Object.keys(data) },
+          debug: { rawCount: items.length },
           metrics: { responseTime: Date.now() - startTime, cacheHit: false, rateLimitHit: false }
         };
 

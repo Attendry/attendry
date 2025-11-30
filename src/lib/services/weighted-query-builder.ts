@@ -164,6 +164,11 @@ export function buildWeightedQuery(
 
 /**
  * Build narrative query for Firecrawl with template context
+ * 
+ * PHASE 1 OPTIMIZATION: Simplified to 80-120 characters
+ * - Removed location details (use API location parameter instead)
+ * - Removed temporal details (use API date parameters instead)
+ * - Focus on core search terms only
  */
 function buildNarrativeQuery(
   template: WeightedTemplate,
@@ -173,50 +178,25 @@ function buildNarrativeQuery(
   dateFrom?: string,
   dateTo?: string
 ): string {
-  const countryName = getCountryName(country);
-  const industryTerms = template.industryTerms.slice(0, 4);
-  const icpTerms = template.icpTerms.slice(0, 3);
-
-  const highlightedCities = template.geographicCoverage.cities
-    .filter(c => c.weight >= 6)
-    .map(c => c.city)
-    .slice(0, 3);
-
-  const locationPhrase = highlightedCities.length > 0
-    ? `${countryName} (including ${highlightedCities.join(', ')})`
-    : countryName;
-
-  const narrativeParts: string[] = [];
-
-  // Build temporal description from actual date range
-  let temporalDescription = 'scheduled through the upcoming 12 months'; // Default fallback
+  // PHASE 1: Simplified query building - focus on core terms only
+  // Location and dates are handled by API parameters, not query text
   
-  const formatDate = (value: string): string => {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return value;
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric'
-    }).format(d);
-  };
-  
-  if (dateFrom && dateTo) {
-    const fromDate = formatDate(dateFrom);
-    const toDate = formatDate(dateTo);
-    
-    if (dateFrom === dateTo) {
-      temporalDescription = `scheduled for ${fromDate}`;
-    } else {
-      temporalDescription = `scheduled between ${fromDate} and ${toDate}`;
-    }
-  } else if (dateFrom) {
-    temporalDescription = `scheduled on or after ${formatDate(dateFrom)}`;
-  } else if (dateTo) {
-    temporalDescription = `scheduled on or before ${formatDate(dateTo)}`;
+  // Prioritize user search term if provided
+  if (userText && userText.trim() && userText.length < 100) {
+    const primaryEventType = template.eventTypes[0] || 'conference';
+    return `${userText.trim()} ${primaryEventType}`;
   }
-
-  // SEARCH RELEVANCE FIX: Prioritize user keyword when provided
+  
+  // Use industry terms if available
+  const industryTerms = template.industryTerms.slice(0, 2).join(' ');
+  const primaryEventType = template.eventTypes[0] || 'conference';
+  
+  if (industryTerms) {
+    return `${industryTerms} ${primaryEventType}`;
+  }
+  
+  // Fallback
+  return `business ${primaryEventType}`;
   // If user provides a specific keyword (e.g., "Kartellrecht"), make it the primary focus
   if (userText && userText.trim()) {
     const userKeyword = userText.trim();

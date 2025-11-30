@@ -181,15 +181,43 @@ export class EventDiscoverer {
       // Use Unified Search Core for better performance and reliability
       const { unifiedSearch } = await import('@/lib/search/unified-search-core');
       
+      // PHASE 1: Use unified search+extract for better efficiency
+      // Import EVENT_SCHEMA for structured extraction during search
+      const EVENT_SCHEMA = {
+        type: "object",
+        properties: {
+          events: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                url: { type: "string" },
+                snippet: { type: "string" },
+                eventDate: { type: "string" },
+                location: { type: "string" },
+                organizer: { type: "string" },
+                eventType: { type: "string" },
+                confidence: { type: "number" }
+              },
+              required: ["title", "url", "snippet"]
+            }
+          }
+        },
+        required: ["events"]
+      };
+
       const unifiedResult = await unifiedSearch({
         q: query,
         dateFrom: context?.dateFrom || undefined,
         dateTo: context?.dateTo || undefined,
         country: country || undefined,
-        limit: 15, // Reduced limit since we're scraping content
-        scrapeContent: true, // Enable content scraping for better prioritization
-        // NOTE: Firecrawl v2 search API does NOT support extract in scrapeOptions
-        // Extraction must be done separately using /v2/extract endpoint
+        limit: 15,
+        scrapeContent: true, // Enable content scraping
+        // PHASE 1: Enable unified search+extract (single API call instead of 2)
+        extractSchema: EVENT_SCHEMA,
+        extractPrompt: "Extract event details from this page including title, dates, location, and speakers",
+        categories: ['research'], // Focus on research/event sites for better targeting
         useCache: true
       });
       
@@ -207,6 +235,9 @@ export class EventDiscoverer {
         .map((item: any, index: number) => {
           const url = typeof item === 'string' ? item : item.url;
           const isEnriched = typeof item === 'object' && item !== null;
+          
+          // PHASE 1: If unified search+extract was used, extract data is already available
+          const extractedData = item.extracted;
           
           return {
             id: `firecrawl_${Date.now()}_${index}`,
@@ -228,6 +259,13 @@ export class EventDiscoverer {
                 description: item.description,
                 scrapedContent: item.markdown || item.content,
                 scrapedLinks: item.links
+              }),
+              // PHASE 1: Include extracted data if unified search+extract was used
+              ...(extractedData && {
+                extracted: extractedData,
+                // If extraction was done during search, some candidates may already have full data
+                // Skip separate extraction phase for these
+                skipExtraction: true
               })
             }
           };

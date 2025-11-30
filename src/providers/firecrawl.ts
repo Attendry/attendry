@@ -1,3 +1,8 @@
+/**
+ * @deprecated This provider is deprecated. Use FirecrawlSearchService from @/lib/services/firecrawl-search-service instead.
+ * This provider will be removed in a future version.
+ */
+
 import type { SearchParams } from './types';
 
 export async function search(params: { 

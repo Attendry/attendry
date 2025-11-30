@@ -1,6 +1,9 @@
 /**
  * Firecrawl Search Service
  * 
+ * @deprecated This service is deprecated. Use FirecrawlSearchService from @/lib/services/firecrawl-search-service instead.
+ * This wrapper will be removed in a future version.
+ * 
  * Removes hard-coded "Germany" override and uses explicit query builder
  */
 

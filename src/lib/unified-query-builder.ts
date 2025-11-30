@@ -314,6 +314,11 @@ function buildSimpleQuery(params: {
 
 /**
  * Build narrative query for Firecrawl (natural language)
+ * 
+ * PHASE 1 OPTIMIZATION: Simplified to 80-120 characters
+ * - Removed location details (use API location parameter instead)
+ * - Removed temporal details (use API date parameters instead)
+ * - Focus on core search terms only
  */
 function buildNarrativeQuery(params: {
   baseQuery: string;
@@ -328,117 +333,58 @@ function buildNarrativeQuery(params: {
   language: string;
   userProfile?: any;
 }): string {
-  const { baseQuery, eventTypes, locationTerms, temporalTerms, country, dateFrom, dateTo, timeframe, language, userProfile } = params;
+  const { baseQuery, eventTypes, language, userProfile } = params;
   
-  // Get country name
-  const countryMap: Record<string, string> = {
-    'DE': 'Germany', 'FR': 'France', 'IT': 'Italy', 'ES': 'Spain', 'NL': 'Netherlands',
-    'GB': 'United Kingdom', 'US': 'United States', 'AT': 'Austria', 'CH': 'Switzerland'
-  };
-  const countryName = country ? countryMap[country] || country : 'Europe';
-  
-  // Build event type description
-  const eventTypeDescription = eventTypes.slice(0, 6).join(', ');
-  
-  // Build location description (country first, then key cities)
-  const highlightedCities = locationTerms
-    .filter(term => term && term.toLowerCase() !== countryName.toLowerCase())
-    .slice(0, 3);
-  const locationDescription = highlightedCities.length > 0
-    ? `${countryName} (including ${highlightedCities.join(', ')})`
-    : countryName;
-  
-  // Build temporal description
-  let temporalDescription = '';
-  if (dateFrom && dateTo) {
-    const fromYear = new Date(dateFrom).getFullYear();
-    const toYear = new Date(dateTo).getFullYear();
-    const formatDate = (value: string) => {
-      const d = new Date(value);
-      if (Number.isNaN(d.getTime())) return value;
-      return new Intl.DateTimeFormat(language === 'de' ? 'de-DE' : 'en-US', {
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric'
-      }).format(d);
-    };
-
-    if (dateFrom === dateTo) {
-      temporalDescription = `scheduled for ${formatDate(dateFrom)}`;
-    } else if (fromYear === toYear) {
-      temporalDescription = `taking place between ${formatDate(dateFrom)} and ${formatDate(dateTo)}`;
-    } else {
-      temporalDescription = `taking place between ${formatDate(dateFrom)} and ${formatDate(dateTo)}`;
-    }
-  } else if (timeframe) {
-    temporalDescription = `for ${timeframe}`;
-  } else {
-    temporalDescription = 'scheduled through the upcoming 12 months';
-  }
-  
-  // PRIORITY FIX: User's search term is PRIMARY, not secondary
-  // If user provided a search term, it should be the main focus of the query
+  // PRIORITY: User's search term is PRIMARY
   const hasUserSearchTerm = baseQuery && baseQuery.trim() && 
     !baseQuery.includes(' OR ') && 
     !baseQuery.includes(' AND ') &&
     !baseQuery.includes('(') &&
     baseQuery.length < 100 &&
-    baseQuery.trim().split(/\s+/).length <= 10; // Increased limit for better coverage
+    baseQuery.trim().split(/\s+/).length <= 10;
   
   const userSearchTerm = hasUserSearchTerm ? baseQuery.trim() : '';
   
-  // Build user-specific context for narrative query (secondary to user search term)
-  let userContext = '';
-  if (userProfile && !hasUserSearchTerm) {
-    // Only use profile context if user didn't provide search term
-    const industryTerms = userProfile.industry_terms || [];
-    const icpTerms = userProfile.icp_terms || [];
-    
-    const userContextParts = [];
-    if (industryTerms.length > 0) {
-      userContextParts.push(`focusing on ${industryTerms.slice(0, 2).join(', ')}`);
-    }
-    if (icpTerms.length > 0) {
-      userContextParts.push(`targeting ${icpTerms.slice(0, 2).join(', ')}`);
-    }
-    
-    if (userContextParts.length > 0) {
-      userContext = `, ${userContextParts.join(', ')}`;
-    }
-  }
-
-  // Build narrative query based on language
-  // PRIORITY: User search term comes FIRST
+  // Get primary industry terms (limit to 2-3 for brevity)
   const industryTerms = userProfile?.industry_terms || [];
-  const hasSpecificIndustry = industryTerms.length > 0;
+  const primaryIndustry = industryTerms.slice(0, 2).join(' ');
+  
+  // Get primary event type (just one, not a list)
+  const primaryEventType = eventTypes[0] || 'conference';
+  
+  // PHASE 1: Build concise query (80-120 characters target)
+  // Location and dates are handled by API parameters, not query text
   
   if (language === 'de') {
     if (userSearchTerm) {
-      // User provided search term - make it primary
-      return `Finde Events und Konferenzen über "${userSearchTerm}" in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}.`;
-    } else if (hasSpecificIndustry) {
-      const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Finde ${primaryIndustry} Events und Konferenzen in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}${userContext}.`;
+      // User search term is primary: "legal compliance conferences"
+      return `${userSearchTerm} ${primaryEventType}`;
+    } else if (primaryIndustry) {
+      // Industry terms: "legal compliance conferences"
+      return `${primaryIndustry} ${primaryEventType}`;
     }
-    return `Finde Geschäftsveranstaltungen und professionelle Events in ${locationDescription}, ${temporalDescription}, einschließlich ${eventTypeDescription}. Fokus auf Business und professionelle Entwicklung${userContext}.`;
+    return `business ${primaryEventType}`;
   } else if (language === 'fr') {
     if (userSearchTerm) {
-      return `Trouvez des événements et conférences sur "${userSearchTerm}" en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}.`;
-    } else if (hasSpecificIndustry) {
-      const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Trouvez des événements et conférences ${primaryIndustry} en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}${userContext}.`;
+      return `${userSearchTerm} ${primaryEventType}`;
+    } else if (primaryIndustry) {
+      return `${primaryIndustry} ${primaryEventType}`;
     }
-    return `Trouvez des événements d'affaires et professionnels en ${locationDescription}, ${temporalDescription}, y compris ${eventTypeDescription}. Focus sur les affaires et le développement professionnel${userContext}.`;
+    return `événements professionnels ${primaryEventType}`;
   } else {
+    // English (default)
     if (userSearchTerm) {
-      // User provided search term - make it PRIMARY focus
-      return `Find events and conferences about "${userSearchTerm}" in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}.`;
-    } else if (hasSpecificIndustry) {
-      // No user term - use industry terms
-      const primaryIndustry = industryTerms.slice(0, 3).join(', ');
-      return `Find ${primaryIndustry} events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}${userContext}.`;
+      // User search term is primary: "legal compliance conferences"
+      // Target: 30-50 characters
+      return `${userSearchTerm} ${primaryEventType}`;
+    } else if (primaryIndustry) {
+      // Industry terms: "legal compliance conferences"
+      // Target: 30-50 characters
+      return `${primaryIndustry} ${primaryEventType}`;
     }
-    return `Find business events and professional conferences in ${locationDescription}, ${temporalDescription}, including ${eventTypeDescription}. Focus on business and professional development${userContext}.`;
+    // Fallback: "business conference"
+    // Target: ~20 characters
+    return `business ${primaryEventType}`;
   }
 }
 
