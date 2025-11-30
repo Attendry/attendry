@@ -85,6 +85,26 @@ export const DEFAULT_SHARD_KEYWORDS: string[] = [
   'exhibition'
 ];
 
+/**
+ * Speaker-related terms for multi-language support
+ * Used to enhance queries for sales outreach (finding events with speakers)
+ */
+export const SPEAKER_TERMS: Record<string, string[]> = {
+  'en': ['speakers', 'presenters', 'panelists', 'keynotes', 'agenda', 'program', 'lineup'],
+  'de': ['referenten', 'vortragende', 'sprecher', 'agenda', 'programm', 'fachprogramm', 'referentenliste'],
+  'fr': ['conférenciers', 'intervenants', 'orateurs', 'agenda', 'programme', 'liste des conférenciers']
+};
+
+/**
+ * Agenda/program-related terms for multi-language support
+ * Used to find events with published agendas and programs
+ */
+export const AGENDA_TERMS: Record<string, string[]> = {
+  'en': ['agenda', 'program', 'schedule', 'lineup', 'speakers list', 'programme'],
+  'de': ['agenda', 'programm', 'fachprogramm', 'zeitplan', 'referentenliste', 'ablauf'],
+  'fr': ['agenda', 'programme', 'horaire', 'liste des conférenciers', 'planning']
+};
+
 export function getCountryLocations(iso2?: string | null): {
   countryNames: string[];
   cities: string[];

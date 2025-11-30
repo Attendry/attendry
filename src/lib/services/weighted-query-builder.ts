@@ -4,6 +4,7 @@
  */
 
 import { WeightedTemplate } from '../types/weighted-templates';
+import { SPEAKER_TERMS, AGENDA_TERMS } from '@/config/search-dictionaries';
 
 export interface WeightedQueryResult {
   query: string;
@@ -221,10 +222,30 @@ function buildNarrativeQuery(
     return query;
   };
   
+  // PHASE 1: Get speaker term for sales outreach (default to English if country not specified)
+  // This helps Firecrawl prioritize events with published speaker information
+  const getLanguageFromCountry = (countryCode: string): string => {
+    const countryLanguageMap: Record<string, string> = {
+      'DE': 'de',
+      'AT': 'de',
+      'CH': 'de',
+      'FR': 'fr',
+      'BE': 'fr',
+      'GB': 'en',
+      'US': 'en',
+      'CA': 'en'
+    };
+    return countryLanguageMap[countryCode.toUpperCase()] || 'en';
+  };
+  
+  const language = getLanguageFromCountry(country);
+  const speakerTerms = SPEAKER_TERMS[language] || SPEAKER_TERMS['en'];
+  const speakerTerm = speakerTerms[0]; // Use primary term: "speakers", "referenten", "conférenciers"
+  
   // Prioritize user search term if provided
   if (userText && userText.trim() && userText.length < 100) {
     const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
-    return addYear(`${userText.trim()} ${primaryEventType}`);
+    return addYear(`${userText.trim()} ${primaryEventType} ${speakerTerm}`);
   }
   
   // Use industry terms if available
@@ -232,59 +253,11 @@ function buildNarrativeQuery(
   const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
   
   if (industryTerms) {
-    return addYear(`${industryTerms} ${primaryEventType}`);
+    return addYear(`${industryTerms} ${primaryEventType} ${speakerTerm}`);
   }
   
   // Fallback
-  return addYear(`business ${primaryEventType}`);
-    // Get keyword context/translations for better matching
-    const keywordContext = getKeywordContext(userKeyword);
-    
-    // Make user keyword the primary focus
-    narrativeParts.push(
-      `Find ${userKeyword}${keywordContext ? ` (${keywordContext})` : ''} business events and professional conferences in ${locationPhrase}`,
-      temporalDescription
-    );
-    
-    // Include industry terms as secondary context (helps with relevance)
-    if (industryTerms.length > 0) {
-      narrativeParts.push(`covering ${industryTerms.join(', ')}`);
-    }
-  } else {
-    // Fallback to template-based query when no user keyword
-    narrativeParts.push(
-      `Find ${template.name.toLowerCase()} business events and professional conferences in ${locationPhrase}`,
-      temporalDescription
-    );
-
-    if (industryTerms.length > 0) {
-      narrativeParts.push(`covering ${industryTerms.join(', ')}`);
-    }
-  }
-
-  if (icpTerms.length > 0) {
-    narrativeParts.push(`for leaders such as ${icpTerms.join(', ')}`);
-  }
-
-  if (userProfile) {
-    const userIndustryTerms = (userProfile.industry_terms || []).slice(0, 3);
-    const userIcpTerms = (userProfile.icp_terms || []).slice(0, 2);
-
-    if (userIndustryTerms.length > 0) {
-      narrativeParts.push(`with emphasis on ${userIndustryTerms.join(', ')}`);
-    }
-    if (userIcpTerms.length > 0) {
-      narrativeParts.push(`serving audiences like ${userIcpTerms.join(', ')}`);
-    }
-  }
-
-  if (template.precision.qualityRequirements.weight >= 6) {
-    narrativeParts.push('prioritise events that publish agendas, speakers, and venues');
-  } else {
-    narrativeParts.push('prioritise events with clear dates and locations');
-  }
-
-  return narrativeParts.join(', ') + '.';
+  return addYear(`business ${primaryEventType} ${speakerTerm}`);
 }
 
 /**
