@@ -301,6 +301,9 @@ export class FirecrawlSearchService {
     }
 
     let lastError: unknown;
+    let totalItems: SearchItem[] = [];
+    let hasResults = false;
+    
     for (const ship of ships) {
       try {
         const payload = { ...ship.params, query: ship.query };
@@ -334,7 +337,73 @@ export class FirecrawlSearchService {
       }
 
       const data = await response.json();
-        console.log(JSON.stringify({ at: 'firecrawl_call_result', label: ship.label, status: response.status, success: data.success, webResults: data.data?.web?.length || 0 }));
+        const webResultsCount = data.data?.web?.length || 0;
+        console.log(JSON.stringify({ at: 'firecrawl_call_result', label: ship.label, status: response.status, success: data.success, webResults: webResultsCount }));
+        
+        // FUTURE DATES FIX: If we got 0 results with date filter, try without date filter
+        // This handles cases where search engines don't index future events well
+        if (webResultsCount === 0 && baseParams.tbs && from && to) {
+          console.log('[firecrawl-search-service] 0 results with date filter, attempting fallback without date filter (year is already in query)');
+          
+          // Check if year is in query (if so, we can rely on query + post-filtering)
+          const queryYear = new Date(from).getFullYear();
+          const hasYearInQuery = ship.query.includes(queryYear.toString());
+          
+          if (hasYearInQuery) {
+            // Retry without date filter - year is already in query
+            const fallbackPayload = { ...ship.params, query: ship.query };
+            delete fallbackPayload.tbs; // Remove date filter
+            
+            console.log(JSON.stringify({ 
+              at: 'firecrawl_call_fallback', 
+              label: `${ship.label}_no_date_filter`, 
+              query: ship.query, 
+              reason: '0_results_with_date_filter',
+              params: fallbackPayload 
+            }));
+            
+            try {
+              const fallbackResponse = await withRateLimit('firecrawl', async () => {
+                const adaptiveTimeout = this.getAdaptiveTimeout(0);
+                return await this.fetchWithAdaptiveRetry(
+                  "firecrawl",
+                  "search",
+                  this.FIRECRAWL_SEARCH_URL,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Authorization": `Bearer ${firecrawlKey}`,
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(fallbackPayload)
+                  },
+                  adaptiveTimeout
+                );
+              });
+              
+              if (fallbackResponse.ok) {
+                const fallbackData = await fallbackResponse.json();
+                const fallbackResultsCount = fallbackData.data?.web?.length || 0;
+                console.log(JSON.stringify({ 
+                  at: 'firecrawl_call_result_fallback', 
+                  label: `${ship.label}_no_date_filter`, 
+                  status: fallbackResponse.status, 
+                  success: fallbackData.success, 
+                  webResults: fallbackResultsCount 
+                }));
+                
+                if (fallbackResultsCount > 0) {
+                  // Use fallback results - we'll filter by date range later
+                  data.data = fallbackData.data;
+                  console.log('[firecrawl-search-service] Fallback search (no date filter) returned results, will post-filter by date range');
+                }
+              }
+            } catch (fallbackError) {
+              console.warn('[firecrawl-search-service] Fallback search failed:', fallbackError);
+              // Continue with original 0 results
+            }
+          }
+        }
 
       const items: SearchItem[] = [];
       if (data.success && data.data?.web) {
