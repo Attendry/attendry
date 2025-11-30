@@ -216,7 +216,10 @@ export class EventDiscoverer {
         scrapeContent: true, // Enable content scraping
         // PHASE 1: Enable unified search+extract (single API call instead of 2)
         extractSchema: EVENT_SCHEMA,
-        extractPrompt: "Extract event details from this page including title, dates, location, and speakers",
+        extractPrompt: "Extract event details from this page including title, dates, location, and speakers. " +
+          "PRIORITY: Focus on extracting speaker information (names, titles, organizations, bios) as this is critical for sales outreach. " +
+          "Look for speaker sections, speaker lists, agenda pages, and program pages. " +
+          "If speakers are mentioned in linked PDFs or sub-pages, note their locations.",
         // REMOVED: categories: ['research'] - This was causing Firecrawl to return academic papers instead of event pages
         // Let Firecrawl search all categories to find actual event pages
         useCache: true

@@ -271,11 +271,18 @@ export class FirecrawlSearchService {
 
       // Add extraction if schema provided (unified search+extract)
       if (extractSchema) {
+        // PHASE 3: Enhanced extraction prompt with speaker context for sales outreach
+        const defaultPrompt = extractPrompt || 
+          "Extract event details from this page including title, dates, location, and speakers. " +
+          "PRIORITY: Focus on extracting speaker information (names, titles, organizations, bios) as this is critical for sales outreach. " +
+          "Look for speaker sections, speaker lists, agenda pages, and program pages. " +
+          "If speakers are mentioned in linked PDFs or sub-pages, note their locations.";
+        
         baseParams.scrapeOptions.extract = {
           schema: extractSchema,
-          prompt: extractPrompt || "Extract event details from this page including title, dates, location, and speakers"
+          prompt: defaultPrompt
         };
-        console.log('[firecrawl-search-service] Using unified search+extract');
+        console.log('[firecrawl-search-service] Using unified search+extract with speaker-focused prompt');
       }
     }
 

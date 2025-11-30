@@ -504,10 +504,20 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
   const urls: string[] = [];
   const baseDomain = new URL(baseUrl).origin;
   
-  // Look for speaker, agenda, about, team related URLs (including German terms)
+  // PHASE 3: Enhanced speaker keywords for better sub-page discovery (English, German, French)
   const speakerKeywords = [
-    'speaker', 'agenda', 'about', 'team', 'organizer', 'presenter', 'faculty',
-    'referenten', 'programm', 'teilnehmer', 'sprecher', 'moderatoren'
+    // English
+    'speaker', 'speakers', 'presenter', 'presenters', 'panelist', 'panelists',
+    'faculty', 'agenda', 'program', 'schedule', 'keynote', 'keynotes',
+    'lineup', 'line-up', 'roster', 'bio', 'bios', 'biography', 'biographies',
+    'profile', 'profiles', 'session', 'sessions', 'workshop', 'workshops',
+    // German
+    'referenten', 'referent', 'referent:innen', 'sprecher', 'vortragende',
+    'programm', 'fachprogramm', 'agenda', 'zeitplan', 'ablauf',
+    // French
+    'conférenciers', 'intervenants', 'orateurs', 'programme', 'agenda',
+    // Common
+    'about', 'team', 'organizer', 'teilnehmer', 'moderatoren'
   ];
   
   // Enhanced regex to find URLs in content (including relative URLs)
@@ -568,16 +578,21 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
     }
   }
   
+  // PHASE 3: Enhanced common speaker page patterns (multi-language)
   // Also add common speaker page patterns if not found (only if we haven't found any URLs yet)
   // This prevents adding non-existent paths that will fail
   if (urls.length === 0) {
     const commonSpeakerPaths = [
-      '/referenten/',
-      '/speakers/',
-      '/agenda/',
-      '/programm/',
-      '/presenters/',
-      '/faculty/'
+      // English
+      '/speakers/', '/speaker/', '/presenters/', '/presenter/',
+      '/agenda/', '/program/', '/schedule/', '/keynotes/', '/keynote/',
+      '/faculty/', '/lineup/', '/line-up/', '/bios/', '/profiles/',
+      // German
+      '/referenten/', '/referent/', '/referent:innen/', '/sprecher/',
+      '/programm/', '/fachprogramm/', '/agenda/', '/zeitplan/',
+      // French
+      '/conférenciers/', '/intervenants/', '/orateurs/', '/programme/',
+      '/agenda/'
     ];
     
     for (const path of commonSpeakerPaths) {
@@ -601,6 +616,7 @@ function extractSubPageUrls(baseUrl: string, content: string): string[] {
 
 /**
  * Prioritize sub-pages that are most likely to contain speaker information
+ * PHASE 3: Enhanced prioritization for sales outreach - speaker pages get highest priority
  */
 function prioritizeSubPagesForSpeakers(urls: string[]): string[] {
   // SUB-PAGE URL NORMALIZATION: Filter out empty/invalid URLs and normalize
@@ -639,37 +655,69 @@ function prioritizeSubPagesForSpeakers(urls: string[]): string[] {
     const pathAndQuery = urlLower.split('//')[1] || urlLower; // Get path after domain
     let score = 0;
     
-    // High priority: speaker/presenter pages
-    if (pathAndQuery.includes('speaker')) score += 100;
-    if (pathAndQuery.includes('referent')) score += 100; // German
-    if (pathAndQuery.includes('presenters')) score += 95;
-    if (pathAndQuery.includes('faculty')) score += 90;
+    // PHASE 3: Enhanced prioritization for sales outreach - speaker pages get highest priority
     
-    // Medium-high priority: agenda/program pages (often include speakers)
-    if (pathAndQuery.includes('agenda')) score += 80;
-    if (pathAndQuery.includes('programm')) score += 80; // German
-    if (pathAndQuery.includes('program')) score += 75;
-    if (pathAndQuery.includes('schedule')) score += 70;
+    // Highest priority: speaker/presenter pages (English, German, French)
+    if (pathAndQuery.includes('speaker')) score += 120; // Increased from 100
+    if (pathAndQuery.includes('speakers')) score += 120;
+    if (pathAndQuery.includes('referent')) score += 120; // German
+    if (pathAndQuery.includes('referenten')) score += 120; // German plural
+    if (pathAndQuery.includes('referent:innen')) score += 120; // German inclusive
+    if (pathAndQuery.includes('conférenciers')) score += 120; // French
+    if (pathAndQuery.includes('intervenants')) score += 115; // French
+    if (pathAndQuery.includes('orateurs')) score += 115; // French
+    if (pathAndQuery.includes('presenters')) score += 115; // Increased from 95
+    if (pathAndQuery.includes('presenter')) score += 115;
+    if (pathAndQuery.includes('panelists')) score += 110;
+    if (pathAndQuery.includes('panelist')) score += 110;
+    if (pathAndQuery.includes('faculty')) score += 105; // Increased from 90
+    if (pathAndQuery.includes('lineup')) score += 100; // New: speaker lineup
+    if (pathAndQuery.includes('line-up')) score += 100;
+    if (pathAndQuery.includes('roster')) score += 95; // New: speaker roster
     
-    // Medium priority: session/keynote pages
-    if (pathAndQuery.includes('session')) score += 60;
-    if (pathAndQuery.includes('keynote')) score += 65;
-    if (pathAndQuery.includes('workshop')) score += 55;
+    // High priority: agenda/program pages (often include speakers)
+    if (pathAndQuery.includes('agenda')) score += 90; // Increased from 80
+    if (pathAndQuery.includes('programm')) score += 90; // German - increased from 80
+    if (pathAndQuery.includes('fachprogramm')) score += 90; // German detailed program
+    if (pathAndQuery.includes('program')) score += 85; // Increased from 75
+    if (pathAndQuery.includes('programme')) score += 85; // French/UK spelling
+    if (pathAndQuery.includes('schedule')) score += 80; // Increased from 70
+    if (pathAndQuery.includes('timetable')) score += 80;
+    if (pathAndQuery.includes('zeitplan')) score += 80; // German
+    
+    // Medium-high priority: session/keynote pages (may include speaker info)
+    if (pathAndQuery.includes('keynote')) score += 75; // Increased from 65
+    if (pathAndQuery.includes('keynotes')) score += 75;
+    if (pathAndQuery.includes('session')) score += 70; // Increased from 60
+    if (pathAndQuery.includes('sessions')) score += 70;
+    if (pathAndQuery.includes('workshop')) score += 65; // Increased from 55
+    if (pathAndQuery.includes('workshops')) score += 65;
+    if (pathAndQuery.includes('track')) score += 60; // New: conference tracks
+    if (pathAndQuery.includes('tracks')) score += 60;
+    
+    // Medium priority: bio/profile pages (may contain speaker information)
+    if (pathAndQuery.includes('bio')) score += 50; // New
+    if (pathAndQuery.includes('bios')) score += 50;
+    if (pathAndQuery.includes('biography')) score += 50;
+    if (pathAndQuery.includes('biographies')) score += 50;
+    if (pathAndQuery.includes('profile')) score += 45; // New
+    if (pathAndQuery.includes('profiles')) score += 45;
     
     // Low priority: general info
     if (pathAndQuery.includes('about')) score += 30;
     if (pathAndQuery.includes('info')) score += 25;
     
-    // Negative priority: non-speaker pages
-    if (pathAndQuery.includes('register') || pathAndQuery.includes('registration')) score -= 50;
-    if (pathAndQuery.includes('ticket') || pathAndQuery.includes('tickets')) score -= 50;
-    if (pathAndQuery.includes('sponsor') || pathAndQuery.includes('sponsors')) score -= 40;
-    if (pathAndQuery.includes('partner') || pathAndQuery.includes('partners')) score -= 40;
-    if (pathAndQuery.includes('venue') || pathAndQuery.includes('location')) score -= 30;
-    if (pathAndQuery.includes('hotel') || pathAndQuery.includes('travel')) score -= 35;
+    // Negative priority: non-speaker pages (penalize more heavily)
+    if (pathAndQuery.includes('register') || pathAndQuery.includes('registration')) score -= 60; // Increased penalty
+    if (pathAndQuery.includes('anmeldung')) score -= 60; // German registration
+    if (pathAndQuery.includes('ticket') || pathAndQuery.includes('tickets')) score -= 60; // Increased penalty
+    if (pathAndQuery.includes('sponsor') || pathAndQuery.includes('sponsors')) score -= 50; // Increased penalty
+    if (pathAndQuery.includes('partner') || pathAndQuery.includes('partners')) score -= 50; // Increased penalty
+    if (pathAndQuery.includes('venue') || pathAndQuery.includes('location')) score -= 40; // Increased penalty
+    if (pathAndQuery.includes('hotel') || pathAndQuery.includes('travel')) score -= 45; // Increased penalty
     if (pathAndQuery.includes('privacy') || pathAndQuery.includes('terms')) score -= 100;
     if (pathAndQuery.includes('cookie') || pathAndQuery.includes('legal')) score -= 100;
-    if (pathAndQuery.includes('contact') || pathAndQuery.includes('impressum')) score -= 60;
+    if (pathAndQuery.includes('contact') || pathAndQuery.includes('impressum')) score -= 70; // Increased penalty
     
     return { url, score };
   });
