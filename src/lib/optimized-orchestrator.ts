@@ -431,6 +431,7 @@ export interface OptimizedSearchParams {
   timeframe?: string | null;
   locale?: string;
   useNaturalLanguage?: boolean; // If true, skip profile enrichment and use userText directly
+  salesOutreach?: boolean; // PHASE 2: If true, prioritize speaker-rich events (default: true for sales outreach use case)
 }
 
 export interface EventCandidate {
