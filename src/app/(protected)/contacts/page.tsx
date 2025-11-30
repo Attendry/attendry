@@ -314,6 +314,7 @@ export default function ContactsPage() {
               </div>
             )}
           </div>
+        </header>
 
         {/* Tab Navigation */}
         <div className="mb-6 flex gap-6 border-b border-slate-200">

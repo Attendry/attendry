@@ -251,6 +251,8 @@ function SettingsContent() {
               </Link>
             );
           })}
+            </div>
+          )}
         </div>
 
         {/* Quick Links Section */}

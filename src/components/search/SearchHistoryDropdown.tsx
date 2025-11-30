@@ -331,6 +331,8 @@ export function SearchHistoryDropdown({
             </button>
           ))}
         </div>
+          </>
+        )}
       </div>
 
       {/* Save Search Dialog */}
