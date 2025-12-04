@@ -162,14 +162,9 @@ export async function researchContact(
     if (extractedContent.length > 0) {
       // Use Gemini 2.5 for rich, contextual synthesis
       const genAI = new GoogleGenerativeAI(apiKey);
-      // Try gemini-2.5-flash first, fallback to gemini-2.0-flash-exp if not available
-      let model;
-      try {
-        model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
-      } catch (e) {
-        // Fallback if model name needs adjustment
-        model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      }
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-2.0-flash-exp', // Update to 'gemini-2.5-flash' when available in API
+      });
 
       // Build rich context from extracted content
       const richContext = extractedContent
@@ -257,7 +252,7 @@ export async function checkForUpdates(
 
     // Use Gemini 2.5 to compare and find significant new information
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // Using 2.0 until 2.5 confirmed
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // Update to 'gemini-2.5-flash' when available
 
     const comparePrompt = `
 I have this existing information about a contact:
@@ -423,7 +418,7 @@ export async function generateLinkedInBio(
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // Update to 'gemini-2.5-flash' when available
 
     const prompt = `
     Role: Expert Professional Biographer and Profiler.
@@ -479,7 +474,7 @@ export async function generateEmailDraft(
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // Update to 'gemini-2.5-flash' when available
 
     let typeInstruction = "";
     let structureInstruction = "";
@@ -558,7 +553,7 @@ export async function optimizeDraft(
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // Update to 'gemini-2.5-flash' when available
 
     const prompt = `
     Role: World-class Copywriter and Sales Expert.
