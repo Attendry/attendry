@@ -1,3 +1,5 @@
+'use server';
+
 import { GoogleGenAI } from "@google/genai";
 import { SearchResult } from "../components/outreach/types";
 
@@ -20,8 +22,6 @@ import { SearchResult } from "../components/outreach/types";
 // To make it secure in Next.js, these should be Server Actions.
 //
 // PLAN: I will convert these to Server Actions to be safe and "enhanced".
-
-'use server';
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -274,4 +274,3 @@ export const checkForUpdates = async (name: string, company: string, existingInf
     return null;
   }
 }
-
