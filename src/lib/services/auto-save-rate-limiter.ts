@@ -224,10 +224,9 @@ export class AutoSaveRateLimiter {
         status: 'pending' as const,
       };
 
-      const redis = await this.redis;
-      if (redis) {
-        await redis.lpush(queueKey, JSON.stringify(queueItem));
-        await redis.expire(queueKey, 86400); // 24 hour TTL for queue items
+      if (this.redis) {
+        await this.redis.lpush(queueKey, JSON.stringify(queueItem));
+        await this.redis.expire(queueKey, 86400); // 24 hour TTL for queue items
 
         const queueSize = await this.getQueueSize(userId);
         return { queued: true, queueSize };
@@ -248,9 +247,9 @@ export class AutoSaveRateLimiter {
   async getQueueSize(userId: string): Promise<number> {
     try {
       const queueKey = `auto_save:queue:${userId}`;
-      const redis = await this.redis;
-      if (redis) {
-        return await redis.llen(queueKey);
+      // this.redis is already a RedisClient instance, not a Promise
+      if (this.redis) {
+        return await this.redis.llen(queueKey);
       }
       return 0;
     } catch (error) {
@@ -294,9 +293,8 @@ export class AutoSaveRateLimiter {
   private async isCircuitBreakerOpen(userId: string): Promise<boolean> {
     try {
       const circuitBreakerKey = `auto_save:circuit_breaker:${userId}`;
-      const redis = await this.redis;
-      if (redis) {
-        const ttl = await redis.ttl(circuitBreakerKey);
+      if (this.redis) {
+        const ttl = await this.redis.ttl(circuitBreakerKey);
         return ttl > 0; // Circuit breaker is open if key exists
       }
       return false;
@@ -312,9 +310,8 @@ export class AutoSaveRateLimiter {
   private async getCircuitBreakerCooldownEnd(userId: string): Promise<number> {
     try {
       const circuitBreakerKey = `auto_save:circuit_breaker:${userId}`;
-      const redis = await this.redis;
-      if (redis) {
-        const ttl = await redis.ttl(circuitBreakerKey);
+      if (this.redis) {
+        const ttl = await this.redis.ttl(circuitBreakerKey);
         if (ttl > 0) {
           return Date.now() + ttl * 1000;
         }
@@ -332,10 +329,9 @@ export class AutoSaveRateLimiter {
   private async openCircuitBreaker(userId: string): Promise<void> {
     try {
       const circuitBreakerKey = `auto_save:circuit_breaker:${userId}`;
-      const redis = await this.redis;
-      if (redis) {
+      if (this.redis) {
         const cooldownSeconds = Math.ceil(this.config.circuitBreakerCooldown / 1000);
-        await redis.setex(circuitBreakerKey, cooldownSeconds, '1');
+        await this.redis.setex(circuitBreakerKey, cooldownSeconds, '1');
       }
     } catch (error) {
       console.error('[auto-save-rate-limiter] Error opening circuit breaker:', error);
@@ -348,9 +344,8 @@ export class AutoSaveRateLimiter {
   async closeCircuitBreaker(userId: string): Promise<void> {
     try {
       const circuitBreakerKey = `auto_save:circuit_breaker:${userId}`;
-      const redis = await this.redis;
-      if (redis) {
-        await redis.del(circuitBreakerKey);
+      if (this.redis) {
+        await this.redis.del(circuitBreakerKey);
       }
     } catch (error) {
       console.error('[auto-save-rate-limiter] Error closing circuit breaker:', error);
@@ -362,9 +357,8 @@ export class AutoSaveRateLimiter {
    */
   private async getRequestCount(key: string): Promise<number> {
     try {
-      const redis = await this.redis;
-      if (redis) {
-        const count = await redis.get(key);
+      if (this.redis) {
+        const count = await this.redis.get(key);
         return count ? parseInt(count, 10) : 0;
       }
       return 0;
@@ -379,10 +373,9 @@ export class AutoSaveRateLimiter {
    */
   private async incrementRequestCount(key: string, ttl: number): Promise<void> {
     try {
-      const redis = await this.redis;
-      if (redis) {
-        await redis.incr(key);
-        await redis.expire(key, ttl);
+      if (this.redis) {
+        await this.redis.incr(key);
+        await this.redis.expire(key, ttl);
       }
     } catch (error) {
       console.warn(`[auto-save-rate-limiter] Redis not available for incrementing ${key}`);
@@ -394,12 +387,14 @@ export class AutoSaveRateLimiter {
    */
   async resetRateLimit(userId: string): Promise<void> {
     try {
-      const redis = await this.redis;
-      if (redis) {
+      if (this.redis) {
         const pattern = `auto_save:rate_limit:${userId}:*`;
-        const keys = await redis.keys(pattern);
+        const keys = await this.redis.keys(pattern);
         if (keys.length > 0) {
-          await redis.del(...keys);
+          // Delete keys one by one (del with multiple keys might not work with Upstash REST)
+          for (const key of keys) {
+            await this.redis.del(key);
+          }
         }
       }
     } catch (error) {
@@ -424,19 +419,32 @@ export function getAutoSaveRateLimiter(): AutoSaveRateLimiter {
 
 /**
  * Check rate limit and throw if exceeded
+ * Returns gracefully if Redis/rate limiter is unavailable (fail-open)
  */
 export async function checkAutoSaveRateLimitOrThrow(userId: string): Promise<void> {
-  const rateLimiter = getAutoSaveRateLimiter();
-  const result = await rateLimiter.checkRateLimit(userId);
-  
-  if (!result.allowed) {
-    const error = new Error(
-      `Auto-save rate limit exceeded for user ${userId}. ${result.circuitBreakerOpen ? 'Circuit breaker open.' : result.queueFull ? 'Queue full.' : `Retry after ${result.retryAfter}s`}`
-    );
-    (error as any).retryAfter = result.retryAfter;
-    (error as any).circuitBreakerOpen = result.circuitBreakerOpen;
-    (error as any).queueFull = result.queueFull;
-    throw error;
+  try {
+    const rateLimiter = getAutoSaveRateLimiter();
+    const result = await rateLimiter.checkRateLimit(userId);
+    
+    if (!result.allowed) {
+      const error = new Error(
+        `Auto-save rate limit exceeded for user ${userId}. ${result.circuitBreakerOpen ? 'Circuit breaker open.' : result.queueFull ? 'Queue full.' : `Retry after ${result.retryAfter}s`}`
+      );
+      (error as any).retryAfter = result.retryAfter;
+      (error as any).circuitBreakerOpen = result.circuitBreakerOpen;
+      (error as any).queueFull = result.queueFull;
+      throw error;
+    }
+  } catch (error: any) {
+    // If rate limiter itself fails (e.g., Redis unavailable), log but don't block
+    // This is a "fail-open" approach - allow the operation if rate limiting can't be checked
+    if (error.message?.includes('rate limit exceeded') || error.circuitBreakerOpen || error.queueFull) {
+      // This is a legitimate rate limit error, re-throw it
+      throw error;
+    }
+    // Otherwise, it's a rate limiter infrastructure error - log and allow
+    console.warn('[auto-save-rate-limiter] Rate limiter unavailable, allowing operation:', error.message || error);
+    return; // Fail-open: allow the operation
   }
 }
 

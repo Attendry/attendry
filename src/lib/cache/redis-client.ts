@@ -448,6 +448,31 @@ export class RedisClient {
   }
 
   /**
+   * Set key with value and expiration (atomic operation)
+   */
+  async setex(key: string, seconds: number, value: string): Promise<boolean> {
+    await this.ensureConnected();
+    
+    if (!this.isAvailable()) {
+      return false;
+    }
+
+    try {
+      if (this.connectionType === 'upstash-rest' && this.upstashClient) {
+        await this.upstashClient.set(key, value, { ex: seconds });
+        return true;
+      } else if (this.client) {
+        await this.client.setEx(key, seconds, value);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[Redis] SETEX error:', error);
+      return false;
+    }
+  }
+
+  /**
    * Set expiration for key
    */
   async expire(key: string, seconds: number): Promise<boolean> {
