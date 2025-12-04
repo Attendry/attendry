@@ -1,5 +1,5 @@
 import { SavedSpeakerProfile } from '@/lib/types/database';
-import { Contact, OutreachStatus } from '../components/outreach/types';
+import { Contact, OutreachStatus } from '@/components/outreach/types';
 
 /**
  * Maps Outreach Orbit status to saved_speaker_profiles outreach_status

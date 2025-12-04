@@ -92,19 +92,19 @@ Limit the response to 3 concise paragraphs.`;
       })
       .filter((c: any) => c !== null && c.url);
 
-    const result = { text, chunks };
+    const researchResult = { text, chunks };
 
     // Auto-save to database if requested
     if (options?.autoSave && options.userId && options.contactId) {
       try {
-        await saveContactResearch(options.userId, options.contactId, result);
+        await saveContactResearch(options.userId, options.contactId, researchResult);
       } catch (saveError: any) {
         // Log but don't fail the research call if save fails
         console.error('Failed to auto-save research:', saveError);
       }
     }
 
-    return result;
+    return researchResult;
   } catch (error: any) {
     console.error('Error researching contact:', error);
     throw new Error(`Failed to research contact: ${error.message}`);
