@@ -183,16 +183,41 @@ export const OutreachManager = () => {
     let researchError: Error | null = null;
 
     if (hasProfileUpdates) {
-        const { error } = await supabase
-          .from('saved_speaker_profiles')
-          .update(profileUpdates)
-          .eq('id', id)
-          .eq('user_id', userId); // Ensure user can only update their own profiles
-        if (error) {
-          console.error('Error updating profile:', error);
-          profileError = new Error(error.message);
-        } else {
-          console.log('[updateProfileInDb] Successfully updated profile:', Object.keys(profileUpdates));
+        // Filter out any fields that might not exist in the database
+        // Only include fields that are known to exist based on migrations
+        const allowedFields = [
+          'outreach_status', 'archived', 'monitor_updates', 'reminder_date',
+          'last_contacted_date', 'last_completed_date', 'preferred_language',
+          'preferred_tone', 'preferred_channel', 'notes', 'outreach_step',
+          'email_draft', 'linkedin_bio', 'specific_goal'
+        ];
+        
+        const filteredUpdates: Record<string, any> = {};
+        for (const key of Object.keys(profileUpdates)) {
+          if (allowedFields.includes(key)) {
+            filteredUpdates[key] = profileUpdates[key];
+          } else {
+            console.warn(`[updateProfileInDb] Skipping unknown field: ${key}`);
+          }
+        }
+        
+        if (Object.keys(filteredUpdates).length > 0) {
+          const { error } = await supabase
+            .from('saved_speaker_profiles')
+            .update(filteredUpdates)
+            .eq('id', id)
+            .eq('user_id', userId); // Ensure user can only update their own profiles
+          if (error) {
+            console.error('Error updating profile:', error);
+            // Check if it's a column doesn't exist error
+            if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+              profileError = new Error(`Database column missing. Please run migrations: ${error.message}`);
+            } else {
+              profileError = new Error(error.message);
+            }
+          } else {
+            console.log('[updateProfileInDb] Successfully updated profile:', Object.keys(filteredUpdates));
+          }
         }
     }
 
