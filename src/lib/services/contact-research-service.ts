@@ -34,10 +34,19 @@ export interface ContactResearch {
 
 /**
  * Research a contact using Gemini with Google Search grounding
+ * 
+ * @param name - Contact's name
+ * @param company - Contact's company
+ * @param options - Optional parameters for auto-saving research
  */
 export async function researchContact(
   name: string,
-  company: string
+  company: string,
+  options?: {
+    userId?: string;
+    contactId?: string;
+    autoSave?: boolean;
+  }
 ): Promise<ContactResearchResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   
@@ -83,7 +92,19 @@ Limit the response to 3 concise paragraphs.`;
       })
       .filter((c: any) => c !== null && c.url);
 
-    return { text, chunks };
+    const result = { text, chunks };
+
+    // Auto-save to database if requested
+    if (options?.autoSave && options.userId && options.contactId) {
+      try {
+        await saveContactResearch(options.userId, options.contactId, result);
+      } catch (saveError: any) {
+        // Log but don't fail the research call if save fails
+        console.error('Failed to auto-save research:', saveError);
+      }
+    }
+
+    return result;
   } catch (error: any) {
     console.error('Error researching contact:', error);
     throw new Error(`Failed to research contact: ${error.message}`);
@@ -257,6 +278,196 @@ export async function clearNewIntelFlag(
 
   if (error) {
     throw new Error(`Failed to clear intel flag: ${error.message}`);
+  }
+}
+
+/**
+ * Generates a professional bio for the contact.
+ */
+export async function generateLinkedInBio(
+  name: string,
+  company: string,
+  backgroundInfo: string,
+  language: string = "English"
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+    const prompt = `
+    Role: Expert Professional Biographer and Profiler.
+    Objective: Write a comprehensive professional bio for ${name} who works at ${company}.
+
+    Intel/Research:
+    ${backgroundInfo}
+
+    Configuration:
+    - Language: ${language}
+    - Style: Third-person, executive summary style. Suitable for an intro or speaker bio.
+
+    CRITICAL RULES:
+    1. EXTREME BREVITY: Keep it under 200 words.
+    2. NO BUZZWORDS: Avoid "visionary", "guru", "ninja", etc. Use grounded professional language.
+    3. STRUCTURE: Start with name and current role. Summarize key background, achievements, and expertise.
+    4. TONE: Professional, objective, impressive.
+
+    Draft the bio now.
+    `;
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    });
+
+    const response = await result.response;
+    return response.text() || "Could not generate bio.";
+  } catch (error: any) {
+    console.error('Error generating bio:', error);
+    return "";
+  }
+}
+
+/**
+ * Generates an email draft based on background info with language and tone options.
+ */
+export async function generateEmailDraft(
+  name: string, 
+  company: string, 
+  backgroundInfo: string, 
+  userNotes?: string,
+  language: string = "English",
+  tone: string = "Formal",
+  type: string = "Email",
+  myCompanyUrl?: string,
+  specificGoal?: string
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+    let typeInstruction = "";
+    let structureInstruction = "";
+
+    if (type === 'LinkedIn') {
+      typeInstruction = "Format: LinkedIn Message. Style: Casual, direct, very concise (under 100 words). No Subject Line needed.";
+      structureInstruction = "Structure:\n[The LinkedIn Message Body - No Subject Line]\n\n[Internal Context Section (If applicable)]";
+    } else if (type === 'Follow-up') {
+      typeInstruction = "Format: Follow-up Email. Context: I am following up on a previous attempt or circling back. Keep it short and polite.";
+      structureInstruction = "Structure:\nSubject Line Options:\n1. [Option 1]\n2. [Option 2]\n3. [Option 3]\n\nEmail Body:\n[The Draft]\n\n[Internal Context Section (If applicable)]";
+    } else {
+      typeInstruction = "Format: Standard Outreach Email. Structure: Subject Line (keep it short/lowercase), Body, Sign-off.";
+      structureInstruction = "Structure:\nSubject Line Options:\n1. [Option 1]\n2. [Option 2]\n3. [Option 3]\n\nEmail Body:\n[The Draft]\n\n[Internal Context Section (If applicable)]";
+    }
+
+    const prompt = `
+    Role: Elite Sales Development Representative (SDR).
+    Objective: Write a concise outreach message to ${name} at ${company}.
+
+    Intel/Research:
+    ${backgroundInfo}
+
+    My Context:
+    ${myCompanyUrl ? `My Company Website: ${myCompanyUrl} (Use this to subtly align value if relevant, but do not be salesy)` : ""}
+    ${specificGoal ? `Specific Outreach Goal: ${specificGoal}` : ""}
+    Additional Notes/Role Context: ${userNotes || "Connect regarding potential collaboration."}
+
+    Configuration:
+    - Language: ${language}
+    - Tone: ${tone} (If German: Formal="Sie", Informal="Du")
+    - Format: ${type} (${typeInstruction})
+
+    CRITICAL RULES TO AVOID "AI SMELL":
+    1. EXTREME BREVITY: Keep it under 100 words if possible. No fluff.
+    2. NO AI BUZZWORDS: Do not use words like "Unlock", "Unleash", "Elevate", "Transform", "Synergy", "Game-changer", "Revolutionize", "Delve", "Foster".
+    3. NO GENERIC OPENERS: Never say "I hope this finds you well" or "I am writing to you because". Start directly with the research hook.
+    4. LOWERCASE SUBJECT LINES: If generating subject lines, provide 3 variations. Make them look like a human wrote them to a colleague.
+    5. SOFT CTA: Do not ask for 15 minutes or a meeting time. Ask for *interest* (e.g., "Worth a chat?", "Open to ideas?", "Is this relevant to you?").
+    6. CONTEXT SUMMARY: If you refer to a specific event (podcast, article, post), you MUST append a section at the very bottom labeled '--- INTERNAL CONTEXT (DELETE BEFORE SENDING) ---'. This must be a DETAILED EXECUTIVE SUMMARY of that specific content. Do not just write one paragraph. Provide a structured summary (approx. 200 words) covering:
+       - The Core Thesis/Topic
+       - Key Arguments or Points made by the contact
+       - Why this is relevant right now
+       This enables the user to have a conversation about this topic without reading the source.
+
+    ${structureInstruction}
+
+    Draft the message now.
+    `;
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    });
+
+    const response = await result.response;
+    return response.text() || "Could not generate draft.";
+  } catch (error: any) {
+    console.error('Error generating draft:', error);
+    throw error;
+  }
+}
+
+/**
+ * Optimizes an existing draft for higher response rates.
+ */
+export async function optimizeDraft(
+  draft: string,
+  backgroundInfo: string,
+  myCompanyUrl?: string,
+  specificGoal?: string
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+    const prompt = `
+    Role: World-class Copywriter and Sales Expert.
+    Task: Polish and optimize this outreach draft to maximize the probability of a reply.
+    
+    Current Draft:
+    ${draft}
+    
+    Background Info on Contact:
+    ${backgroundInfo}
+    
+    My Context:
+    ${myCompanyUrl ? `My Company: ${myCompanyUrl}` : ""}
+    ${specificGoal ? `Goal: ${specificGoal}` : ""}
+    
+    Optimization Rules:
+    1. CUT THE FLUFF: If it doesn't add value, delete it.
+    2. HUMAN TONE: Make it sound like a busy human wrote it to another busy human. Remove "marketing speak".
+    3. SHARPEN THE HOOK: Ensure the first sentence grabs attention based on the background info.
+    4. SOFT CTA: Ensure the ask is low friction (e.g., "Worth a chat?" instead of "Can we meet at 2pm?").
+    5. KEEP STRUCTURE: If there are subject line options, keep them. If there is a context summary at the bottom, keep it.
+    
+    Return ONLY the improved text.
+    `;
+    
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    });
+
+    const response = await result.response;
+    return response.text() || draft;
+  } catch (error: any) {
+    console.error('Error optimizing draft:', error);
+    throw error;
   }
 }
 

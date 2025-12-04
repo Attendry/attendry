@@ -4,11 +4,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Contact, OutreachStatus, OutreachType } from './types';
 import { ContactCard } from './ContactCard';
 import { ContactModal } from './ContactModal';
-import { Plus, Rocket, LayoutGrid, Info, Check, RefreshCw, Zap, Archive, History, Settings, Globe, Search, Filter, Calendar, List, MoreHorizontal, ArrowRight, Target, X, Copy } from 'lucide-react';
-import { researchContact, generateEmailDraft, generateLinkedInBio, checkForUpdates } from '@/lib/outreach-gemini';
-
-// Simple UUID generator
-const generateId = () => Math.random().toString(36).substr(2, 9);
+import { Plus, Rocket, LayoutGrid, Check, RefreshCw, Zap, History, Settings, Globe, Search, Filter, Calendar, List, Target, X, Copy, Loader2 } from 'lucide-react';
+import { 
+  researchContact, 
+  generateEmailDraft, 
+  generateLinkedInBio, 
+  checkForUpdates 
+} from '@/lib/services/contact-research-service';
+import { supabaseBrowser } from '@/lib/supabase-browser';
+import { toast } from 'sonner';
+import { savedProfileToContact, contactToUpdatePayload, mapOutreachStatusToDb } from '@/lib/adapters/outreach-adapter';
 
 // Helper to get ISO week number for goal tracking
 const getWeekNumber = (d: Date) => {
@@ -21,6 +26,7 @@ const getWeekNumber = (d: Date) => {
 export const OutreachManager = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   
   const [activeTab, setActiveTab] = useState<'focus' | 'history'>('focus');
   const [isAdding, setIsAdding] = useState(false);
@@ -48,65 +54,162 @@ export const OutreachManager = () => {
   const [copySuccessId, setCopySuccessId] = useState<string | null>(null);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const supabase = supabaseBrowser();
 
-  // Load from localStorage on mount
+  // Initialize Auth & Load Data
   useEffect(() => {
-    const savedContacts = localStorage.getItem('outreach-contacts');
-    const savedUrl = localStorage.getItem('outreach-my-url');
-    const savedGoal = localStorage.getItem('outreach-weekly-goal');
-
-    if (savedContacts) {
-        try {
-            const parsed = JSON.parse(savedContacts);
-            // Ensure legacy data has required fields
-            const migrated = parsed.map((c: any) => ({
-                ...c,
-                createdAt: c.createdAt || new Date().toISOString(),
-                archived: c.archived || false,
-                outreachStep: c.outreachStep || 0
-            }));
-            setContacts(migrated);
-        } catch (e) {
-            console.error("Failed to parse contacts", e);
-        }
-    }
-    if (savedUrl) setMyCompanyUrl(savedUrl);
-    if (savedGoal) setWeeklyGoalTarget(parseInt(savedGoal));
-    
-    setIsLoaded(true);
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUserId(session.user.id);
+        await loadContacts(session.user.id);
+        loadSettings();
+      }
+      setIsLoaded(true);
+    };
+    init();
   }, []);
 
-  // Persistence
+  const loadSettings = () => {
+    const savedUrl = localStorage.getItem('outreach-my-url');
+    const savedGoal = localStorage.getItem('outreach-weekly-goal');
+    if (savedUrl) setMyCompanyUrl(savedUrl);
+    if (savedGoal) setWeeklyGoalTarget(parseInt(savedGoal));
+  };
+
+  // Persistence for Settings only (Contacts are DB now)
   useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem('outreach-contacts', JSON.stringify(contacts));
-  }, [contacts, isLoaded]);
-  
-  useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem('outreach-my-url', myCompanyUrl);
+    if (isLoaded) localStorage.setItem('outreach-my-url', myCompanyUrl);
   }, [myCompanyUrl, isLoaded]);
 
   useEffect(() => {
-    if (!isLoaded) return;
-    localStorage.setItem('outreach-weekly-goal', weeklyGoalTarget.toString());
+    if (isLoaded) localStorage.setItem('outreach-weekly-goal', weeklyGoalTarget.toString());
   }, [weeklyGoalTarget, isLoaded]);
 
-  // RESURFACING LOGIC: Check for due items on mount and move them to Active
-  useEffect(() => {
-    if (!isLoaded) return;
-    const today = new Date().toISOString().split('T')[0];
-    let resurrectedCount = 0;
+  const loadContacts = async (uid: string) => {
+    // Fetch profiles from saved_speaker_profiles
+    const { data: profiles, error: profilesError } = await supabase
+      .from('saved_speaker_profiles')
+      .select('*, contact_research(*)')
+      .eq('user_id', uid);
 
-    setContacts(prev => prev.map(c => {
-      // If archived (waiting) AND has a reminder date that is today or past
-      if (c.archived && c.reminderDate && c.reminderDate <= today) {
-        resurrectedCount++;
-        return { ...c, archived: false }; // Move back to active
-      }
-      return c;
+    if (profilesError) {
+      console.error('Error loading profiles:', profilesError);
+      toast.error('Failed to load contacts');
+      return;
+    }
+
+    const mapped: Contact[] = profiles.map(row => savedProfileToContact({
+      ...row,
+      contact_research: Array.isArray(row.contact_research) ? row.contact_research[0] : row.contact_research
     }));
-  }, [isLoaded]);
+
+    // Resurfacing Logic
+    const today = new Date().toISOString().split('T')[0];
+    const updates: Promise<void>[] = [];
+    
+    const processed = mapped.map(c => {
+        if (c.archived && c.reminderDate) {
+            // Normalize reminderDate to ISO date string (YYYY-MM-DD)
+            const reminderDateStr = c.reminderDate.includes('T') 
+              ? c.reminderDate.split('T')[0] 
+              : c.reminderDate;
+            
+            if (reminderDateStr <= today) {
+                // Auto-restore (fire and forget - errors logged but don't block)
+                updates.push(
+                  updateProfileInDb(c.id, { archived: false })
+                    .catch(err => console.error('Failed to resurface contact:', err))
+                );
+                return { ...c, archived: false };
+            }
+        }
+        return c;
+    });
+
+    if (updates.length > 0) {
+        await Promise.all(updates);
+        toast.success(`Resurfaced ${updates.length} due contacts`);
+    }
+
+    setContacts(processed);
+  };
+
+  const updateProfileInDb = async (id: string, updates: Partial<Contact>): Promise<{ success: boolean; error?: string }> => {
+    if (!userId) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
+    // Split updates between saved_speaker_profiles and contact_research
+    const profileUpdates: Record<string, any> = {};
+    const researchUpdates: Record<string, any> = {};
+    let hasProfileUpdates = false;
+    let hasResearchUpdates = false;
+
+    // Map to saved_speaker_profiles
+    if (updates.status !== undefined) { 
+      profileUpdates.outreach_status = mapOutreachStatusToDb(updates.status); 
+      hasProfileUpdates = true; 
+    }
+    if (updates.archived !== undefined) { profileUpdates.archived = updates.archived; hasProfileUpdates = true; }
+    if (updates.monitorUpdates !== undefined) { profileUpdates.monitor_updates = updates.monitorUpdates; hasProfileUpdates = true; }
+    if (updates.reminderDate !== undefined) { 
+      profileUpdates.reminder_date = updates.reminderDate ? new Date(updates.reminderDate).toISOString() : null; 
+      hasProfileUpdates = true; 
+    }
+    if (updates.lastContactedDate !== undefined) { profileUpdates.last_contacted_date = updates.lastContactedDate; hasProfileUpdates = true; }
+    if (updates.lastCompletedDate !== undefined) { profileUpdates.last_completed_date = updates.lastCompletedDate; hasProfileUpdates = true; }
+    if (updates.preferredLanguage !== undefined) { profileUpdates.preferred_language = updates.preferredLanguage; hasProfileUpdates = true; }
+    if (updates.preferredTone !== undefined) { profileUpdates.preferred_tone = updates.preferredTone; hasProfileUpdates = true; }
+    if (updates.preferredType !== undefined) { 
+        profileUpdates.preferred_channel = updates.preferredType === 'LinkedIn' ? 'linkedin' : 
+                                           updates.preferredType === 'Follow-up' ? 'other' : 'email';
+        hasProfileUpdates = true; 
+    }
+    if (updates.notes !== undefined) { profileUpdates.notes = updates.notes; hasProfileUpdates = true; }
+    if (updates.outreachStep !== undefined) { profileUpdates.outreach_step = updates.outreachStep; hasProfileUpdates = true; }
+    if (updates.emailDraft !== undefined) { profileUpdates.email_draft = updates.emailDraft; hasProfileUpdates = true; }
+    if (updates.linkedInBio !== undefined) { profileUpdates.linkedin_bio = updates.linkedInBio; hasProfileUpdates = true; }
+    if (updates.specificGoal !== undefined) { profileUpdates.specific_goal = updates.specificGoal; hasProfileUpdates = true; }
+
+    // Map to contact_research
+    if (updates.backgroundInfo !== undefined) { researchUpdates.background_info = updates.backgroundInfo; hasResearchUpdates = true; }
+    if (updates.groundingLinks !== undefined) { researchUpdates.grounding_links = updates.groundingLinks; hasResearchUpdates = true; }
+    if (updates.lastResearchDate !== undefined) { researchUpdates.last_research_date = updates.lastResearchDate; hasResearchUpdates = true; }
+    if (updates.hasNewIntel !== undefined) { researchUpdates.has_new_intel = updates.hasNewIntel; hasResearchUpdates = true; }
+    if (updates.newIntelSummary !== undefined) { researchUpdates.new_intel_summary = updates.newIntelSummary; hasResearchUpdates = true; }
+
+    let profileError: Error | null = null;
+    let researchError: Error | null = null;
+
+    if (hasProfileUpdates) {
+        const { error } = await supabase.from('saved_speaker_profiles').update(profileUpdates).eq('id', id);
+        if (error) {
+          console.error('Error updating profile:', error);
+          profileError = new Error(error.message);
+        }
+    }
+
+    if (hasResearchUpdates) {
+        // Upsert research record
+        const { error } = await supabase.from('contact_research').upsert({
+            contact_id: id,
+            user_id: userId,
+            ...researchUpdates
+        }, { onConflict: 'contact_id' });
+        if (error) {
+          console.error('Error updating research:', error);
+          researchError = new Error(error.message);
+        }
+    }
+
+    if (profileError || researchError) {
+      const errorMsg = [profileError?.message, researchError?.message].filter(Boolean).join('; ');
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true };
+  };
 
   // Focus name input when add mode is toggled
   useEffect(() => {
@@ -116,38 +219,53 @@ export const OutreachManager = () => {
   }, [isAdding]);
 
   const processNewContact = async (contact: Contact) => {
-    setContacts(prev => prev.map(c => 
-      c.id === contact.id ? { ...c, status: OutreachStatus.RESEARCHING } : c
-    ));
+    // 1. Set to Researching
+    const c1 = { ...contact, status: OutreachStatus.RESEARCHING };
+    setContacts(prev => prev.map(c => c.id === contact.id ? c1 : c));
+    const statusResult = await updateProfileInDb(contact.id, { status: OutreachStatus.RESEARCHING });
+    if (!statusResult.success) {
+      console.error('Failed to update status:', statusResult.error);
+    }
 
     try {
-      const researchResult = await researchContact(contact.name, contact.company);
-      
-      setContacts(prev => prev.map(c => {
-        if (c.id === contact.id) {
-          return {
-            ...c,
-            backgroundInfo: researchResult.text,
-            groundingLinks: researchResult.chunks,
-            lastResearchDate: new Date().toISOString(),
-            status: OutreachStatus.DRAFTING
-          };
+      const researchResult = await researchContact(
+        contact.name, 
+        contact.company,
+        {
+          userId: userId!,
+          contactId: contact.id,
+          autoSave: true  // Automatically save to contact_research table
         }
-        return c;
-      }));
+      );
+      
+      // 2. Save Research
+      const c2 = {
+        ...c1,
+        backgroundInfo: researchResult.text,
+        groundingLinks: researchResult.chunks,
+        lastResearchDate: new Date().toISOString(),
+        status: OutreachStatus.DRAFTING
+      };
+      setContacts(prev => prev.map(c => c.id === contact.id ? c2 : c));
+      const researchResult_db = await updateProfileInDb(contact.id, {
+        backgroundInfo: researchResult.text,
+        groundingLinks: researchResult.chunks,
+        lastResearchDate: new Date().toISOString(),
+        status: OutreachStatus.DRAFTING
+      });
+      if (!researchResult_db.success) {
+        console.error('Failed to save research:', researchResult_db.error);
+      }
 
-      // Generate Bio immediately after research
+      // 3. Generate Bio
       const lang = contact.preferredLanguage || "English";
       const bio = await generateLinkedInBio(contact.name, contact.company, researchResult.text, lang);
 
-      // Store bio
-      setContacts(prev => prev.map(c => {
-        if (c.id === contact.id) {
-          return { ...c, linkedInBio: bio };
-        }
-        return c;
-      }));
+      const c3 = { ...c2, linkedInBio: bio };
+      setContacts(prev => prev.map(c => c.id === contact.id ? c3 : c));
+      await updateProfileInDb(contact.id, { linkedInBio: bio });
 
+      // 4. Generate Draft
       const contextNotes = contact.role ? `Role: ${contact.role}` : undefined;
       const tone = contact.preferredTone || "Formal";
       const type = contact.preferredType || "Email";
@@ -164,22 +282,31 @@ export const OutreachManager = () => {
         undefined
       );
 
-      setContacts(prev => prev.map(c => {
-        if (c.id === contact.id) {
-          return {
-            ...c,
-            emailDraft: draft,
-            status: OutreachStatus.READY_TO_SEND
-          };
-        }
-        return c;
-      }));
+      const c4 = {
+        ...c3,
+        emailDraft: draft,
+        status: OutreachStatus.READY_TO_SEND
+      };
+      setContacts(prev => prev.map(c => c.id === contact.id ? c4 : c));
+      const draftResult = await updateProfileInDb(contact.id, {
+        status: OutreachStatus.READY_TO_SEND,
+        emailDraft: draft
+      });
+      if (!draftResult.success) {
+        console.error('Failed to save draft:', draftResult.error);
+        toast.error('Draft generated but failed to save. Please copy it now.');
+      }
 
     } catch (error) {
       console.error("Automated workflow failed:", error);
       setContacts(prev => prev.map(c => 
         c.id === contact.id ? { ...c, status: OutreachStatus.NOT_STARTED } : c
       ));
+      const errorResult = await updateProfileInDb(contact.id, { status: OutreachStatus.NOT_STARTED });
+      if (!errorResult.success) {
+        console.error('Failed to reset status:', errorResult.error);
+      }
+      toast.error("Automated research failed. Please try manually.");
     }
   };
 
@@ -195,12 +322,20 @@ export const OutreachManager = () => {
           if (newIntel) {
             updatesFound++;
             if (contact.archived) movedToFocus++;
-            return {
-              ...contact,
+            
+            const updates: Partial<Contact> = {
               hasNewIntel: true,
               newIntelSummary: newIntel,
               archived: false // Automatically move to Focus
             };
+            
+            const updateResult = await updateProfileInDb(contact.id, updates);
+            if (!updateResult.success) {
+              console.error(`Failed to update contact ${contact.id}:`, updateResult.error);
+              return contact; // Return unchanged on error
+            }
+            
+            return { ...contact, ...updates };
           }
         } catch (e) {
           console.error(`Failed to check updates for ${contact.name}`, e);
@@ -214,43 +349,94 @@ export const OutreachManager = () => {
     
     if (updatesFound > 0) {
       const moveMsg = movedToFocus > 0 ? ` and moved ${movedToFocus} back to Focus` : '';
-      alert(`Daily Briefing Complete: Found new updates for ${updatesFound} contact(s)${moveMsg}!`);
+      toast.success(`Daily Briefing: Found new updates for ${updatesFound} contact(s)${moveMsg}!`);
     } else {
-      setTimeout(() => alert("Daily Briefing Complete: No significant new updates found."), 100);
+      toast.info("Daily Briefing: No significant new updates found.");
     }
   };
 
-  const handleAddContact = () => {
-    if (!newContactName.trim() || !newContactCompany.trim()) return;
+  const handleAddContact = async () => {
+    if (!newContactName.trim() || !newContactCompany.trim() || !userId) return;
 
-    const newContact: Contact = {
-      id: generateId(),
-      name: newContactName,
-      company: newContactCompany,
-      role: newContactRole,
-      status: OutreachStatus.NOT_STARTED,
-      monitorUpdates: true,
-      createdAt: new Date().toISOString(),
-      archived: false,
-      preferredLanguage: newContactLang,
-      preferredTone: newContactTone,
-      preferredType: 'Email',
-      outreachStep: 0,
-    };
-
-    setContacts(prev => [...prev, newContact]);
-    processNewContact(newContact);
-
-    setNewContactName('');
-    setNewContactCompany('');
-    setNewContactRole('');
+    // Use the existing API for consistency
+    try {
+        const response = await fetch("/api/profiles/saved", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              speaker_data: {
+                name: newContactName,
+                org: newContactCompany,
+                organization: newContactCompany,
+                title: newContactRole || null,
+              },
+              enhanced_data: {
+                name: newContactName,
+                organization: newContactCompany,
+                title: newContactRole || null,
+              },
+            }),
+        });
     
-    if (nameInputRef.current) {
-        nameInputRef.current.focus();
+        const data = await response.json();
+    
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || "Failed to add contact");
+        }
+
+        // The API creates the profile. Now we update it with outreach specific fields.
+        const newId = data.data?.id || data.profile?.id;
+        if (!newId) {
+          throw new Error("Failed to get new contact ID");
+        }
+        
+        // Update with outreach-specific fields in one call
+        await updateProfileInDb(newId, {
+            status: OutreachStatus.NOT_STARTED,
+            monitorUpdates: true,
+            preferredLanguage: newContactLang,
+            preferredTone: newContactTone,
+            preferredType: 'Email' as OutreachType,
+            outreachStep: 0
+        });
+
+        // Fetch the newly created contact once
+        const { data: newProfile, error: fetchError } = await supabase
+          .from('saved_speaker_profiles')
+          .select('*, contact_research(*)')
+          .eq('id', newId)
+          .single();
+        
+        if (fetchError || !newProfile) {
+          throw new Error(fetchError?.message || "Failed to fetch new contact");
+        }
+
+        const newContact = savedProfileToContact({
+          ...newProfile,
+          contact_research: Array.isArray(newProfile.contact_research) 
+            ? newProfile.contact_research[0] 
+            : newProfile.contact_research
+        });
+        
+        // Add to local state immediately for better UX
+        setContacts(prev => [...prev, newContact]);
+        
+        // Start async research process (doesn't block UI)
+        processNewContact(newContact);
+
+        // Reset Form
+        setNewContactName('');
+        setNewContactCompany('');
+        setNewContactRole('');
+        if (nameInputRef.current) nameInputRef.current.focus();
+
+    } catch (error) {
+        console.error("Failed to add contact", error);
+        toast.error("Failed to add contact");
     }
   };
 
-  const handleCompleteOutreach = (contact: Contact) => {
+  const handleCompleteOutreach = async (contact: Contact) => {
     // 3-7-30 CADENCE LOGIC
     let nextDays = 3;
     if (contact.outreachStep === 1) nextDays = 7;
@@ -260,21 +446,26 @@ export const OutreachManager = () => {
     nextDate.setDate(nextDate.getDate() + nextDays);
     const reminderDate = nextDate.toISOString().split('T')[0];
 
-    const updated: Contact = {
-      ...contact,
+    const updates: Partial<Contact> = {
       status: OutreachStatus.SENT,
       archived: true, // Move to history/waiting
       lastContactedDate: new Date().toISOString(),
       lastCompletedDate: new Date().toISOString(),
       outreachStep: contact.outreachStep + 1,
-      reminderDate: reminderDate
+      reminderDate: reminderDate,
+      // Update preferences for next time based on step
+      preferredType: contact.outreachStep === 1 ? 'Follow-up' : (contact.outreachStep === 2 ? 'Email' : contact.preferredType)
     };
 
-    // Update preferences for next time based on step
-    if (updated.outreachStep === 1) updated.preferredType = 'Follow-up'; // Bump
-    if (updated.outreachStep === 2) updated.preferredType = 'Email'; // Value Add
-
-    setContacts(contacts.map(c => c.id === contact.id ? updated : c));
+    setContacts(contacts.map(c => c.id === contact.id ? { ...c, ...updates } : c));
+    const result = await updateProfileInDb(contact.id, updates);
+    if (result.success) {
+      toast.success("Outreach marked complete. Contact snoozed.");
+    } else {
+      toast.error(result.error || "Failed to update contact");
+      // Reload to get correct state
+      if (userId) await loadContacts(userId);
+    }
   };
   
   const handleCopyDraft = (e: React.MouseEvent, text: string, id: string) => {
@@ -282,28 +473,45 @@ export const OutreachManager = () => {
     navigator.clipboard.writeText(text);
     setCopySuccessId(id);
     setTimeout(() => setCopySuccessId(null), 2000);
+    toast.success("Draft copied to clipboard");
   };
 
-  const handleUpdateContact = (updated: Contact) => {
+  const handleUpdateContact = async (updated: Contact) => {
+    // Optimistic update
     setContacts(contacts.map(c => c.id === updated.id ? updated : c));
     if (selectedContact?.id === updated.id) {
         setSelectedContact(updated);
     }
-  };
-
-  const handleDeleteContact = (id: string) => {
-    if (window.confirm("Delete this contact permanently?")) {
-      setContacts(contacts.filter(c => c.id !== id));
-      if (selectedContact?.id === id) setSelectedContact(null);
+    
+    // Persist to DB
+    const result = await updateProfileInDb(updated.id, updated);
+    if (!result.success) {
+      // Rollback on error - reload from DB
+      if (userId) {
+        await loadContacts(userId);
+      }
+      toast.error(result.error || 'Failed to update contact');
     }
   };
 
-  const handleArchiveContact = (contact: Contact) => {
-    handleUpdateContact({ ...contact, archived: true, monitorUpdates: false });
+  const handleDeleteContact = async (id: string) => {
+    if (window.confirm("Delete this contact permanently?")) {
+      setContacts(contacts.filter(c => c.id !== id));
+      if (selectedContact?.id === id) setSelectedContact(null);
+      
+      await supabase.from('saved_speaker_profiles').delete().eq('id', id);
+      toast.success("Contact deleted");
+    }
   };
 
-  const handleRestoreContact = (contact: Contact) => {
-    handleUpdateContact({ ...contact, archived: false, monitorUpdates: true });
+  const handleArchiveContact = async (contact: Contact) => {
+    const updates = { archived: true, monitorUpdates: false };
+    handleUpdateContact({ ...contact, ...updates });
+  };
+
+  const handleRestoreContact = async (contact: Contact) => {
+    const updates = { archived: false, monitorUpdates: true };
+    handleUpdateContact({ ...contact, ...updates });
   };
 
   // FILTERING & SORTING
@@ -317,7 +525,14 @@ export const OutreachManager = () => {
       if (!matchesSearch) return false;
 
       if (filterDue) {
-        return (c.reminderDate && new Date(c.reminderDate) <= new Date()) || c.hasNewIntel;
+        const today = new Date().toISOString().split('T')[0];
+        if (c.reminderDate) {
+          const reminderDateStr = c.reminderDate.includes('T') 
+            ? c.reminderDate.split('T')[0] 
+            : c.reminderDate;
+          return reminderDateStr <= today || c.hasNewIntel;
+        }
+        return c.hasNewIntel;
       }
       return true;
     });
@@ -326,8 +541,12 @@ export const OutreachManager = () => {
   
   // Sorting: Due items first, then by creation
   activeContacts.sort((a, b) => {
-    const isADue = (a.reminderDate && new Date(a.reminderDate) <= new Date()) || a.hasNewIntel;
-    const isBDue = (b.reminderDate && new Date(b.reminderDate) <= new Date()) || b.hasNewIntel;
+    const dateA = a.reminderDate ? a.reminderDate : '9999-12-31';
+    const dateB = b.reminderDate ? b.reminderDate : '9999-12-31';
+    
+    const isADue = (dateA <= new Date().toISOString().split('T')[0]) || a.hasNewIntel;
+    const isBDue = (dateB <= new Date().toISOString().split('T')[0]) || b.hasNewIntel;
+    
     if (isADue && !isBDue) return -1;
     if (!isADue && isBDue) return 1;
     return 0; // Keep add order otherwise
@@ -366,7 +585,11 @@ export const OutreachManager = () => {
     }
   };
 
-  if (!isLoaded) return null;
+  if (!isLoaded) return (
+    <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+    </div>
+  );
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mt-8">
@@ -541,7 +764,8 @@ export const OutreachManager = () => {
                       </tr>
                     ) : (
                       activeContacts.map(contact => {
-                         const isDue = (contact.reminderDate && new Date(contact.reminderDate) <= new Date()) || contact.hasNewIntel;
+                         // @ts-ignore
+                         const isDue = (contact.reminderDate && contact.reminderDate.split('T')[0] <= new Date().toISOString().split('T')[0]) || contact.hasNewIntel;
                          
                          return (
                           <tr key={contact.id} onClick={() => setSelectedContact(contact)} className="hover:bg-slate-50 transition-colors cursor-pointer group">
@@ -722,4 +946,3 @@ export const OutreachManager = () => {
     </div>
   );
 };
-

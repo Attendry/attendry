@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Contact, OutreachStatus, OutreachType } from './types';
-import { researchContact, generateEmailDraft, generateLinkedInBio, checkForUpdates, optimizeDraft } from '@/lib/outreach-gemini';
+import { 
+  researchContact, 
+  generateEmailDraft, 
+  generateLinkedInBio, 
+  checkForUpdates, 
+  optimizeDraft 
+} from '@/lib/services/contact-research-service';
 import { 
   X, ExternalLink, Sparkles, Send, Copy, Check, 
   Calendar, RotateCw, AlertCircle, Globe, MessageSquare, Bell, Eye, Loader2, Cloud, Share2, Target, Wand2, UserCheck
@@ -87,6 +93,8 @@ export const ContactModal: React.FC<ContactModalProps> = ({ contact, onClose, on
     setIsLoading(true);
     setLoadingMessage("Analyzing web for background intel...");
     try {
+      // Note: ContactModal doesn't have userId/contactId context easily accessible
+      // So we'll save manually via updateProfileInDb after research
       const result = await researchContact(localContact.name, localContact.company);
       const updated = {
         ...localContact,
