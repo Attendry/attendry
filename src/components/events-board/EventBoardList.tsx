@@ -641,56 +641,55 @@ export function EventBoardList({
             </div>
           </PopoverContent>
         </Popover>
-      </div>
 
-          {/* Sort Controls */}
-          <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 border-l border-slate-200 dark:border-slate-700 pl-3">
-            <Filter className="h-4 w-4" />
-            <span>Sort:</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleSort('date')}
-              className={cn(
-                "h-7",
-                sortField === 'date' && "bg-slate-100 dark:bg-slate-700"
-              )}
-            >
-              Date
-              {sortField === 'date' && (
-                <ArrowUpDown className="h-3 w-3 ml-1" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleSort('title')}
-              className={cn(
-                "h-7",
-                sortField === 'title' && "bg-slate-100 dark:bg-slate-700"
-              )}
-            >
-              Title
-              {sortField === 'title' && (
-                <ArrowUpDown className="h-3 w-3 ml-1" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => handleSort('added')}
-              className={cn(
-                "h-7",
-                sortField === 'added' && "bg-slate-100 dark:bg-slate-700"
-              )}
-            >
-              Added
-              {sortField === 'added' && (
-                <ArrowUpDown className="h-3 w-3 ml-1" />
-              )}
-            </Button>
-          </div>
+        {/* Sort Controls */}
+        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 border-l border-slate-200 dark:border-slate-700 pl-3">
+          <Filter className="h-4 w-4" />
+          <span>Sort:</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleSort('date')}
+            className={cn(
+              "h-7",
+              sortField === 'date' && "bg-slate-100 dark:bg-slate-700"
+            )}
+          >
+            Date
+            {sortField === 'date' && (
+              <ArrowUpDown className="h-3 w-3 ml-1" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleSort('title')}
+            className={cn(
+              "h-7",
+              sortField === 'title' && "bg-slate-100 dark:bg-slate-700"
+            )}
+          >
+            Title
+            {sortField === 'title' && (
+              <ArrowUpDown className="h-3 w-3 ml-1" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleSort('added')}
+            className={cn(
+              "h-7",
+              sortField === 'added' && "bg-slate-100 dark:bg-slate-700"
+            )}
+          >
+            Added
+            {sortField === 'added' && (
+              <ArrowUpDown className="h-3 w-3 ml-1" />
+            )}
+          </Button>
         </div>
+      </div>
 
         {/* Active Filters and Results Count */}
         <div className="flex items-center justify-between gap-4 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
@@ -1029,7 +1028,6 @@ export function EventBoardList({
                     </div>
                   )}
                   </div>
-                </div>
                 </div>
 
                 {/* Expanded Content */}
