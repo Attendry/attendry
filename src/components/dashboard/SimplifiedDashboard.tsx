@@ -5,6 +5,7 @@ import { supabaseBrowser } from '@/lib/supabase-browser';
 import { DashboardHeader } from './DashboardHeader';
 import { FocusCards } from './FocusCards';
 import { ActivityStream, ActivityItem } from './ActivityStream';
+import { OutreachManager } from '../outreach/OutreachManager';
 import { Loader2 } from 'lucide-react';
 
 interface DashboardSummary {
@@ -156,6 +157,8 @@ export function SimplifiedDashboard() {
         loading={loading}
         maxItems={10}
       />
+
+      <OutreachManager />
     </div>
   );
 }
