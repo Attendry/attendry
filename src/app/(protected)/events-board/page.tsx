@@ -4,10 +4,10 @@ import React, { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { EventBoardList } from "@/components/events-board/EventBoardList";
 import { EventInsightsPanel } from "@/components/events-board/EventInsightsPanel";
+import { EventBoardEditor } from "@/components/events-board/EventBoardEditor";
 import { BoardItemWithEvent, ColumnStatus } from "@/lib/types/event-board";
 import { SavedView } from "@/lib/types/saved-views";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -26,11 +26,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Save, BookOpen, Trash2, List } from "lucide-react";
+import { Save, BookOpen, Trash2, List } from "lucide-react";
 import { EmptyState } from "@/components/States/EmptyState";
+import { ContentContainer } from "@/components/Layout/PageContainer";
+import { PageHeader, PageHeaderActions } from "@/components/Layout/PageHeader";
+import { LoadingState, SkeletonList } from "@/components/States/LoadingState";
+import { ErrorState } from "@/components/States/ErrorState";
 import { toast } from "sonner";
-import { supabaseBrowser } from "@/lib/supabase-browser";
-import { CollectedEvent } from "@/lib/types/database";
 
 function EventsBoardPageContent() {
   const router = useRouter();
@@ -40,6 +42,8 @@ function EventsBoardPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [insightsOpen, setInsightsOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<BoardItemWithEvent | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [saveViewDialogOpen, setSaveViewDialogOpen] = useState(false);
   const [viewName, setViewName] = useState("");
@@ -59,18 +63,30 @@ function EventsBoardPageContent() {
   useEffect(() => {
     loadBoardItems();
     loadSavedViews();
-  }, []);
+  }, [loadBoardItems]);
 
-  const loadBoardItems = async () => {
+  const loadBoardItems = useCallback(async (retryCount = 0) => {
     setLoading(true);
     setError(null);
 
     try {
       const response = await fetch("/api/events/board/list");
       if (!response.ok) {
-        throw new Error("Failed to load board items");
+        if (response.status === 401) {
+          throw new Error("Authentication required. Please log in again.");
+        } else if (response.status >= 500 && retryCount < 2) {
+          // Retry on server errors
+          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+          return loadBoardItems(retryCount + 1);
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to load board items (${response.status})`);
       }
       const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || "Failed to load board items");
+      }
       
       // Transform the data to include event data
       // The API now returns event field, but we ensure it's properly structured
@@ -112,37 +128,49 @@ function EventsBoardPageContent() {
 
       setItems(transformedItems);
     } catch (err: any) {
-      setError(err.message || "Failed to load board items");
+      const errorMessage = err.message || "Failed to load board items";
+      setError(errorMessage);
+      console.error("Error loading board items:", err);
+      
+      // Show user-friendly error toast
+      if (retryCount === 0) {
+        toast.error("Failed to load events", {
+          description: errorMessage,
+          action: {
+            label: "Retry",
+            onClick: () => loadBoardItems(0)
+          }
+        });
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleViewInsights = (eventId: string) => {
     setSelectedEventId(eventId);
     setInsightsOpen(true);
   };
 
-  const handleEdit = async (item: BoardItemWithEvent) => {
-    // TODO: Implement edit modal
-    const notes = prompt("Edit notes:", item.notes || "");
-    if (notes !== null) {
-      try {
-        const response = await fetch("/api/events/board/update", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: item.id, notes }),
-        });
-        if (!response.ok) throw new Error("Failed to update");
-        await loadBoardItems();
-        toast.success("Event updated", {
-          description: "Notes have been saved"
-        });
-      } catch (err: any) {
-        toast.error("Failed to update", {
-          description: err.message || "An error occurred. Please try again."
-        });
-      }
+  const handleEdit = (item: BoardItemWithEvent) => {
+    setEditingItem(item);
+    setEditorOpen(true);
+  };
+
+  const handleSaveEdit = async (
+    itemId: string,
+    updates: { notes?: string; tags?: string[]; columnStatus?: ColumnStatus }
+  ) => {
+    try {
+      const response = await fetch("/api/events/board/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: itemId, ...updates }),
+      });
+      if (!response.ok) throw new Error("Failed to update");
+      await loadBoardItems();
+    } catch (err: any) {
+      throw err; // Re-throw for EventBoardEditor to handle
     }
   };
 
@@ -306,155 +334,160 @@ function EventsBoardPageContent() {
   };
 
 
+  // Build header actions
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      {/* Saved Views Dropdown */}
+      {savedViews.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <BookOpen className="h-4 w-4 mr-2" />
+              Saved Views
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Saved Views</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {savedViews.map((view) => (
+              <DropdownMenuItem
+                key={view.id}
+                onClick={() => loadSavedView(view)}
+                className="flex items-center justify-between"
+              >
+                <span>{view.name}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteSavedView(view.id);
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {/* Save View Dialog */}
+      <Dialog open={saveViewDialogOpen} onOpenChange={setSaveViewDialogOpen}>
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm">
+            <Save className="h-4 w-4 mr-2" />
+            Save View
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Current View</DialogTitle>
+            <DialogDescription>
+              Save your current filters, sort, and column settings as a named view.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Input
+              placeholder="View name (e.g., 'Upcoming Events')"
+              value={viewName}
+              onChange={(e) => setViewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  saveCurrentView();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveViewDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={saveCurrentView}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div>
-          <Skeleton className="h-9 w-48 mb-2" />
-          <Skeleton className="h-5 w-64" />
+      <ContentContainer>
+        <PageHeader
+          title="Events Board"
+          subtitle="Manage and track events you're interested in"
+          actions={headerActions}
+        />
+        <div className="mt-6">
+          <SkeletonList count={5} />
         </div>
-        <div className="flex gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex-shrink-0 w-80">
-              <div className="border rounded-lg p-4 space-y-3">
-                <Skeleton className="h-6 w-32" />
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-24 w-full" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      </ContentContainer>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <p className="text-danger mb-4">{error}</p>
-        <Button onClick={loadBoardItems}>Try Again</Button>
-      </div>
+      <ContentContainer>
+        <PageHeader
+          title="Events Board"
+          subtitle="Manage and track events you're interested in"
+        />
+        <div className="mt-6">
+          <ErrorState
+            title="Failed to load events"
+            message={error}
+            action={{
+              label: "Try Again",
+              onClick: loadBoardItems
+            }}
+          />
+        </div>
+      </ContentContainer>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-text-primary">Events Board</h1>
-          <p className="text-text-secondary mt-1">
-            Manage and track events you're interested in
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Saved Views Dropdown */}
-          {savedViews.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <BookOpen className="h-4 w-4 mr-2" />
-                  Saved Views
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Saved Views</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {savedViews.map((view) => (
-                  <DropdownMenuItem
-                    key={view.id}
-                    onClick={() => loadSavedView(view)}
-                    className="flex items-center justify-between"
-                  >
-                    <span>{view.name}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteSavedView(view.id);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-
-          {/* Save View Dialog */}
-          <Dialog open={saveViewDialogOpen} onOpenChange={setSaveViewDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Save className="h-4 w-4 mr-2" />
-                Save View
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Save Current View</DialogTitle>
-                <DialogDescription>
-                  Save your current filters, sort, and column settings as a named view.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <Input
-                  placeholder="View name (e.g., 'Upcoming Events')"
-                  value={viewName}
-                  onChange={(e) => setViewName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      saveCurrentView();
-                    }
-                  }}
-                />
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setSaveViewDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={saveCurrentView}>Save</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-        </div>
-      </div>
+    <ContentContainer>
+      <PageHeader
+        title="Events Board"
+        subtitle="Find events with good contacts for outreach or that make business sense"
+        actions={headerActions}
+      />
 
       {/* Board Content */}
-      {items.length === 0 ? (
-        <div className="bg-surface-alt rounded-lg">
+      <div className="mt-6">
+        {items.length === 0 ? (
           <EmptyState
             icon={<List className="h-12 w-12" />}
             title="Your board is empty"
             description="Add events from search results to get started"
             action={{
               label: "Browse Events",
-              onClick: () => (window.location.href = "/events")
+              onClick: () => router.push("/events")
             }}
           />
-        </div>
-      ) : (
-        <EventBoardList
-          items={items}
-          onViewInsights={handleViewInsights}
-          onEdit={handleEdit}
-          onRemove={handleRemove}
-          onStatusChange={handleStatusChange}
-          initialFilters={{
-            search: searchParams.get('search') || undefined,
-            status: searchParams.get('status')?.split(',') as ColumnStatus[] || undefined,
-            topics: searchParams.get('topics')?.split(',') || undefined,
-            sort: searchParams.get('sort') ? {
-              field: searchParams.get('sort')?.split(':')[0] || 'added',
-              direction: (searchParams.get('sort')?.split(':')[1] || 'desc') as 'asc' | 'desc',
-            } : undefined,
-            density: (searchParams.get('density') as 'comfortable' | 'compact') || undefined,
-          }}
-        />
-      )}
+        ) : (
+          <EventBoardList
+            items={items}
+            onViewInsights={handleViewInsights}
+            onEdit={handleEdit}
+            onRemove={handleRemove}
+            onStatusChange={handleStatusChange}
+            onItemsChange={loadBoardItems}
+            initialFilters={{
+              search: searchParams.get('search') || undefined,
+              status: searchParams.get('status')?.split(',') as ColumnStatus[] || undefined,
+              topics: searchParams.get('topics')?.split(',') || undefined,
+              sort: searchParams.get('sort') ? {
+                field: searchParams.get('sort')?.split(':')[0] || 'added',
+                direction: (searchParams.get('sort')?.split(':')[1] || 'desc') as 'asc' | 'desc',
+              } : undefined,
+              density: (searchParams.get('density') as 'comfortable' | 'compact') || undefined,
+            }}
+          />
+        )}
+      </div>
 
       {/* Insights Panel */}
       <EventInsightsPanel
@@ -465,30 +498,33 @@ function EventsBoardPageContent() {
           setSelectedEventId(null);
         }}
       />
-    </div>
+
+      {/* Editor Panel */}
+      <EventBoardEditor
+        item={editingItem}
+        isOpen={editorOpen}
+        onClose={() => {
+          setEditorOpen(false);
+          setEditingItem(null);
+        }}
+        onSave={handleSaveEdit}
+      />
+    </ContentContainer>
   );
 }
 
 export default function EventsBoardPage() {
   return (
     <Suspense fallback={
-      <div className="space-y-6">
-        <div>
-          <Skeleton className="h-9 w-48 mb-2" />
-          <Skeleton className="h-5 w-64" />
+      <ContentContainer>
+        <PageHeader
+          title="Events Board"
+          subtitle="Manage and track events you're interested in"
+        />
+        <div className="mt-6">
+          <SkeletonList count={5} />
         </div>
-        <div className="flex gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex-shrink-0 w-80">
-              <div className="border rounded-lg p-4 space-y-3">
-                <Skeleton className="h-6 w-32" />
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-24 w-full" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      </ContentContainer>
     }>
       <EventsBoardPageContent />
     </Suspense>
