@@ -1,14 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import React, { useState, useEffect, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { AttendeeInsights } from "./AttendeeInsights";
 import { TrendInsights } from "./TrendInsights";
 import { PositioningInsights } from "./PositioningInsights";
@@ -16,7 +10,9 @@ import { RecommendationsInsights } from "./RecommendationsInsights";
 import { CompetitiveInsights } from "./CompetitiveInsights";
 import { CompetitorDiscovery } from "../competitive-intelligence/CompetitorDiscovery";
 import { EventInsightsResponse } from "@/lib/types/event-board";
-import { Loader2, BarChart3 } from "lucide-react";
+import { Loader2, BarChart3, X, RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface EventInsightsPanelProps {
   eventId: string | null;
@@ -31,21 +27,84 @@ export function EventInsightsPanel({
 }: EventInsightsPanelProps) {
   const [insights, setInsights] = useState<EventInsightsResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Load cached insights from localStorage
+  const loadCachedInsights = useCallback((eventId: string): EventInsightsResponse | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const cached = localStorage.getItem(`event-insights-${eventId}`);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        // Cache expires after 24 hours
+        const cacheAge = Date.now() - timestamp;
+        if (cacheAge < 24 * 60 * 60 * 1000) {
+          return data;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load cached insights:', e);
+    }
+    return null;
+  }, []);
+
+  // Save insights to cache
+  const saveCachedInsights = useCallback((eventId: string, data: EventInsightsResponse) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(`event-insights-${eventId}`, JSON.stringify({
+        data,
+        timestamp: Date.now(),
+      }));
+    } catch (e) {
+      console.warn('Failed to cache insights:', e);
+    }
+  }, []);
 
   useEffect(() => {
     if (isOpen && eventId) {
-      loadInsights();
+      // Load cached insights immediately (optimistic loading)
+      const cached = loadCachedInsights(eventId);
+      if (cached) {
+        setInsights(cached);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
+      
+      // Then load fresh insights in background
+      loadInsights(true);
     } else {
       setInsights(null);
       setError(null);
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, [isOpen, eventId]);
+  }, [isOpen, eventId, loadCachedInsights]);
 
-  const loadInsights = async () => {
+  // Handle escape key to close panel
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  const loadInsights = async (isBackgroundRefresh = false) => {
     if (!eventId) return;
 
-    setLoading(true);
+    if (isBackgroundRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -73,64 +132,117 @@ export function EventInsightsPanel({
       
       const data = await response.json();
       setInsights(data);
+      saveCachedInsights(eventId, data);
+      
+      if (isBackgroundRefresh) {
+        toast.success("Insights refreshed", { duration: 2000 });
+      }
     } catch (err: any) {
       setError(err.message || "Failed to load insights");
+      // Don't show error toast if we have cached data
+      if (!isBackgroundRefresh || !insights) {
+        toast.error("Failed to load insights", { description: err.message });
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
+  if (!eventId) return null;
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle>Event Insights</DialogTitle>
-              <DialogDescription>
+    <>
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 transition-opacity"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Side Panel */}
+      <div
+        className={cn(
+          "fixed right-0 top-0 h-full w-full max-w-2xl bg-white dark:bg-slate-900",
+          "border-l border-slate-200 dark:border-slate-700 shadow-xl z-50",
+          "transform transition-transform duration-300 ease-in-out",
+          isOpen ? "translate-x-0" : "translate-x-full"
+        )}
+      >
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                Event Insights
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                 Comprehensive analysis of attendees, trends, and positioning opportunities
-              </DialogDescription>
+              </p>
             </div>
-            {insights?.insightScore && (
-              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-                <BarChart3 className="h-4 w-4 text-blue-600" />
-                <div className="text-right">
-                  <div className="text-xs text-blue-600 font-medium">Insight Score</div>
-                  <div className={`text-lg font-bold ${
-                    insights.insightScore.overallScore >= 0.7
-                      ? 'text-green-600'
-                      : insights.insightScore.overallScore >= 0.4
-                      ? 'text-yellow-600'
-                      : 'text-gray-600'
-                  }`}>
-                    {Math.round(insights.insightScore.overallScore * 100)}%
+            <div className="flex items-center gap-2">
+              {insights?.insightScore && (
+                <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2">
+                  <BarChart3 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <div className="text-right">
+                    <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">Score</div>
+                    <div className={`text-lg font-bold ${
+                      insights.insightScore.overallScore >= 0.7
+                        ? 'text-green-600 dark:text-green-400'
+                        : insights.insightScore.overallScore >= 0.4
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}>
+                      {Math.round(insights.insightScore.overallScore * 100)}%
+                    </div>
                   </div>
                 </div>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => loadInsights(false)}
+                disabled={loading || refreshing}
+                className="h-8 w-8 p-0"
+                title="Refresh insights"
+              >
+                <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {loading && !insights && (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600 dark:text-blue-400 mb-2" />
+                <p className="text-sm text-slate-600 dark:text-slate-400">Generating insights...</p>
               </div>
             )}
-          </div>
-        </DialogHeader>
 
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
-            <p className="text-sm text-text-secondary">Generating insights...</p>
-          </div>
-        )}
+            {error && !insights && (
+              <div className="text-center py-8">
+                <p className="text-red-600 dark:text-red-400 mb-2">{error}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadInsights(false)}
+                >
+                  Try again
+                </Button>
+              </div>
+            )}
 
-        {error && (
-          <div className="text-center py-8">
-            <p className="text-danger mb-2">{error}</p>
-            <button
-              onClick={loadInsights}
-              className="text-sm text-primary hover:underline"
-            >
-              Try again
-            </button>
-          </div>
-        )}
-
-        {!loading && !error && insights && (
+            {insights && (
           <Tabs defaultValue="recommendations" className="w-full">
             <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
@@ -218,13 +330,22 @@ export function EventInsightsPanel({
               />
             </TabsContent>
             
-            <TabsContent value="discovery" className="mt-4">
-              <CompetitorDiscovery />
-            </TabsContent>
-          </Tabs>
-        )}
-      </DialogContent>
-    </Dialog>
+              <TabsContent value="discovery" className="mt-4">
+                <CompetitorDiscovery />
+              </TabsContent>
+            </Tabs>
+            )}
+            
+            {refreshing && insights && (
+              <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="text-sm">Refreshing insights...</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 

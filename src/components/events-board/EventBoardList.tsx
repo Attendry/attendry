@@ -5,6 +5,7 @@ import { useDebouncedCallback } from "use-debounce";
 import { EventBoardCard } from "./EventBoardCard";
 import { QuickActionsMenu } from "./QuickActionsMenu";
 import { BulkActionsBar } from "./BulkActionsBar";
+import { InsightScoreBadge } from "./InsightScoreBadge";
 import { BoardItemWithEvent, ColumnStatus } from "@/lib/types/event-board";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,14 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Popover,
   PopoverContent,
@@ -79,139 +72,10 @@ type Density = 'comfortable' | 'compact';
 interface ColumnDef {
   id: string;
   label: string;
-  accessor: (item: BoardItemWithEvent, onStatusChange?: (itemId: string, status: ColumnStatus) => void) => React.ReactNode;
   width: number;
   minWidth: number;
   sortable?: boolean;
 }
-
-const DEFAULT_COLUMNS: ColumnDef[] = [
-  {
-    id: 'title',
-    label: 'Title',
-    accessor: (item) => (
-      <div className="font-medium text-text-primary line-clamp-2">
-        {item.event?.title || item.event_url.split('/').pop() || "Untitled Event"}
-      </div>
-    ),
-    width: 300,
-    minWidth: 200,
-    sortable: true,
-  },
-  {
-    id: 'date',
-    label: 'Date',
-    accessor: (item) => {
-      if (!item.event?.starts_at) return <span className="text-text-muted">TBD</span>;
-      const date = new Date(item.event.starts_at);
-      return <span className="text-text-secondary">{date.toLocaleDateString()}</span>;
-    },
-    width: 120,
-    minWidth: 100,
-    sortable: true,
-  },
-  {
-    id: 'topics',
-    label: 'Topics',
-    accessor: (item) => {
-      const topics = item.event?.topics || [];
-      if (topics.length === 0) return <span className="text-text-muted">—</span>;
-      return (
-        <div className="flex flex-wrap gap-1">
-          {topics.slice(0, 2).map((topic: string, idx: number) => (
-            <Badge key={idx} variant="secondary" className="text-xs">
-              {topic}
-            </Badge>
-          ))}
-          {topics.length > 2 && (
-            <Badge variant="outline" className="text-xs">
-              +{topics.length - 2}
-            </Badge>
-          )}
-        </div>
-      );
-    },
-    width: 200,
-    minWidth: 150,
-    sortable: false,
-  },
-  {
-    id: 'status',
-    label: 'Status',
-    accessor: (item, onStatusChange) => {
-      const statusColors: Record<ColumnStatus, string> = {
-        'interested': 'bg-primary/10 text-primary',
-        'researching': 'bg-warn/10 text-warn',
-        'attending': 'bg-positive/10 text-positive',
-        'follow-up': 'bg-accent/10 text-accent',
-        'archived': 'bg-surface-alt text-text-secondary'
-      };
-      const statusOptions: ColumnStatus[] = ['interested', 'researching', 'attending', 'archived'];
-      
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="cursor-pointer hover:opacity-80 transition-opacity">
-              <Badge className={statusColors[item.column_status]}>
-                {item.column_status}
-              </Badge>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuLabel>Change Status</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {statusOptions.map((status) => (
-              <DropdownMenuItem
-                key={status}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onStatusChange && status !== item.column_status) {
-                    onStatusChange(item.id, status);
-                  }
-                }}
-                className={item.column_status === status ? "bg-surface-alt" : ""}
-              >
-                <Badge className={statusColors[status]}>{status}</Badge>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      );
-    },
-    width: 120,
-    minWidth: 100,
-    sortable: true,
-  },
-  {
-    id: 'actions',
-    label: '',
-    accessor: (item) => (
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onViewInsights) {
-              // Use board item ID (unique) or event source_url (unique) as identifier
-              // This ensures we get the correct event even if event.id is an optimized_ ID
-              const identifier = item.id || item.event?.source_url || item.event?.id;
-              if (identifier) {
-                onViewInsights(identifier);
-              }
-            }
-          }}
-          className="h-8 w-8 p-0"
-        >
-          <Eye className="h-4 w-4" />
-        </Button>
-      </div>
-    ),
-    width: 100,
-    minWidth: 80,
-    sortable: false,
-  },
-];
 
 export function EventBoardList({
   items,
@@ -235,13 +99,21 @@ export function EventBoardList({
   }, 300);
 
   useEffect(() => {
-    debouncedSearch(searchTerm);
+    if (searchTerm !== undefined) {
+      debouncedSearch(searchTerm);
+    }
   }, [searchTerm, debouncedSearch]);
   const [sortField, setSortField] = useState<SortField>((initialFilters?.sort?.field as SortField) || "added");
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialFilters?.sort?.direction || "desc");
   const [density, setDensity] = useState<Density>(initialFilters?.density || "comfortable");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [columns, setColumns] = useState<ColumnDef[]>(DEFAULT_COLUMNS);
+  const [columns] = useState<ColumnDef[]>([
+    { id: 'title', label: 'Title', width: 300, minWidth: 200, sortable: true },
+    { id: 'date', label: 'Date', width: 120, minWidth: 100, sortable: true },
+    { id: 'topics', label: 'Topics', width: 200, minWidth: 150, sortable: false },
+    { id: 'status', label: 'Status', width: 120, minWidth: 100, sortable: true },
+    { id: 'actions', label: '', width: 100, minWidth: 80, sortable: false },
+  ]);
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
     title: true,
     date: true,
@@ -842,8 +714,21 @@ export function EventBoardList({
                   {/* Title Column */}
                   {columnVisibility.title !== false && (
                     <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-slate-900 dark:text-white line-clamp-1 mb-1">
-                        {event?.title || item.event_url.split('/').pop() || "Untitled Event"}
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="font-semibold text-slate-900 dark:text-white line-clamp-1 flex-1">
+                          {event?.title || item.event_url.split('/').pop() || "Untitled Event"}
+                        </div>
+                        <InsightScoreBadge
+                          eventId={item.id || event?.source_url || event?.id || item.event_url}
+                          onClick={() => {
+                            if (onViewInsights) {
+                              const identifier = item.id || event?.source_url || event?.id;
+                              if (identifier) {
+                                onViewInsights(identifier);
+                              }
+                            }
+                          }}
+                        />
                       </div>
                       {event?.city || event?.country ? (
                         <div className="text-sm text-slate-500 dark:text-slate-400 line-clamp-1">
