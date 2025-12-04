@@ -358,14 +358,44 @@ export const OutreachManager = () => {
     setIsBriefingLoading(true);
     let updatesFound = 0;
     let movedToFocus = 0;
+    let contactsChecked = 0;
+    let contactsSkipped = 0;
+
+    // Filter contacts that should be checked
+    const contactsToCheck = contacts.filter(c => c.monitorUpdates && c.backgroundInfo);
+    const contactsWithoutMonitoring = contacts.filter(c => !c.monitorUpdates);
+    const contactsWithoutResearch = contacts.filter(c => c.monitorUpdates && !c.backgroundInfo);
+
+    console.log('[Daily Briefing] Starting briefing:', {
+      totalContacts: contacts.length,
+      contactsToCheck: contactsToCheck.length,
+      withoutMonitoring: contactsWithoutMonitoring.length,
+      withoutResearch: contactsWithoutResearch.length
+    });
+
+    if (contactsToCheck.length === 0) {
+      setIsBriefingLoading(false);
+      if (contactsWithoutMonitoring.length > 0) {
+        toast.warning(`Daily Briefing: No contacts have monitoring enabled. Enable "Monitor Updates" on contacts to check for new information.`);
+      } else if (contactsWithoutResearch.length > 0) {
+        toast.warning(`Daily Briefing: ${contactsWithoutResearch.length} contact(s) need research first. Generate background intel before monitoring updates.`);
+      } else {
+        toast.info("Daily Briefing: No contacts available to check. Add contacts and enable monitoring to use this feature.");
+      }
+      return;
+    }
 
     const updatedContacts = await Promise.all(contacts.map(async (contact) => {
       if (contact.monitorUpdates && contact.backgroundInfo) {
+        contactsChecked++;
         try {
+          console.log(`[Daily Briefing] Checking updates for ${contact.name} at ${contact.company}...`);
           const newIntel = await checkForUpdates(contact.name, contact.company, contact.backgroundInfo);
           if (newIntel) {
             updatesFound++;
             if (contact.archived) movedToFocus++;
+            
+            console.log(`[Daily Briefing] Found new intel for ${contact.name}:`, newIntel.substring(0, 100));
             
             const updates: Partial<Contact> = {
               hasNewIntel: true,
@@ -380,8 +410,11 @@ export const OutreachManager = () => {
             }
             
             return { ...contact, ...updates };
+          } else {
+            console.log(`[Daily Briefing] No new updates for ${contact.name}`);
           }
         } catch (e) {
+          contactsSkipped++;
           console.error(`Failed to check updates for ${contact.name}`, e);
         }
       }
@@ -391,9 +424,18 @@ export const OutreachManager = () => {
     setContacts(updatedContacts);
     setIsBriefingLoading(false);
     
+    console.log('[Daily Briefing] Completed:', {
+      contactsChecked,
+      updatesFound,
+      movedToFocus,
+      contactsSkipped
+    });
+    
     if (updatesFound > 0) {
       const moveMsg = movedToFocus > 0 ? ` and moved ${movedToFocus} back to Focus` : '';
       toast.success(`Daily Briefing: Found new updates for ${updatesFound} contact(s)${moveMsg}!`);
+    } else if (contactsChecked > 0) {
+      toast.info(`Daily Briefing: Checked ${contactsChecked} contact(s), no significant new updates found.`);
     } else {
       toast.info("Daily Briefing: No significant new updates found.");
     }
