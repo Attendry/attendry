@@ -152,13 +152,23 @@ export function SimplifiedDashboard() {
         loading={loading}
       />
 
-      <ActivityStream
-        activities={summary?.activities || []}
-        loading={loading}
-        maxItems={10}
-      />
+      {/* Main content area: Outreach Orbit center, Activity Stream right sidebar */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Outreach Orbit - Main content (3 columns on large screens) */}
+        <div className="lg:col-span-3">
+          <OutreachManager />
+        </div>
 
-      <OutreachManager />
+        {/* Activity Stream - Right sidebar (1 column on large screens) */}
+        <div className="lg:col-span-1">
+          <ActivityStream
+            activities={summary?.activities || []}
+            loading={loading}
+            maxItems={10}
+            compact={true}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -827,19 +827,27 @@ export const OutreachManager = () => {
                             </td>
                             <td className="px-6 py-4 text-center">
                               <div className="flex items-center justify-center gap-2">
-                               {contact.emailDraft && (
-                                  <button
-                                    onClick={(e) => handleCopyDraft(e, contact.emailDraft!, contact.id)}
-                                    className={`p-2 rounded-full border transition-all ${
-                                       copySuccessId === contact.id
-                                       ? 'border-green-500 text-green-600 bg-green-50'
-                                       : 'border-slate-200 text-slate-400 hover:border-indigo-500 hover:text-indigo-500 hover:bg-white'
-                                    }`}
-                                    title="Copy Draft"
-                                  >
-                                     {copySuccessId === contact.id ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
-                                  </button>
-                               )}
+                               <button
+                                 onClick={(e) => { 
+                                   e.stopPropagation(); 
+                                   if (contact.emailDraft) {
+                                     handleCopyDraft(e, contact.emailDraft, contact.id);
+                                   } else {
+                                     toast.info("No draft available to copy");
+                                   }
+                                 }}
+                                 className={`p-2 rounded-full border transition-all ${
+                                    copySuccessId === contact.id
+                                    ? 'border-green-500 text-green-600 bg-green-50'
+                                    : contact.emailDraft
+                                    ? 'border-slate-200 text-slate-400 hover:border-indigo-500 hover:text-indigo-500 hover:bg-white'
+                                    : 'border-slate-200 text-slate-300 opacity-50 cursor-not-allowed'
+                                 }`}
+                                 title={contact.emailDraft ? "Copy Draft" : "No draft available"}
+                                 disabled={!contact.emailDraft}
+                               >
+                                  {copySuccessId === contact.id ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                               </button>
                                <button
                                  onClick={(e) => { e.stopPropagation(); handleCompleteOutreach(contact); }}
                                  className={`p-2 rounded-full border transition-all ${
