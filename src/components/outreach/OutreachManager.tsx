@@ -183,10 +183,16 @@ export const OutreachManager = () => {
     let researchError: Error | null = null;
 
     if (hasProfileUpdates) {
-        const { error } = await supabase.from('saved_speaker_profiles').update(profileUpdates).eq('id', id);
+        const { error } = await supabase
+          .from('saved_speaker_profiles')
+          .update(profileUpdates)
+          .eq('id', id)
+          .eq('user_id', userId); // Ensure user can only update their own profiles
         if (error) {
           console.error('Error updating profile:', error);
           profileError = new Error(error.message);
+        } else {
+          console.log('[updateProfileInDb] Successfully updated profile:', Object.keys(profileUpdates));
         }
     }
 

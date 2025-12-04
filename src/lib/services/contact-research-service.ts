@@ -35,7 +35,10 @@ export interface ContactResearch {
 }
 
 /**
- * Research a contact using Gemini with Google Search grounding
+ * Research a contact using fact-grounded approach:
+ * 1. First, perform actual web search using Google CSE
+ * 2. Then, use Gemini to synthesize the search results into coherent research
+ * 3. Ensure all facts are traceable to source links
  * 
  * @param name - Contact's name
  * @param company - Contact's company
@@ -57,42 +60,118 @@ export async function researchContact(
   }
 
   try {
-    // Use GoogleGenerativeAI SDK (newer version)
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.0-flash-exp', // Use model that supports Google Search grounding
-    });
+    // STEP 1: Perform actual web search using Google CSE
+    const searchQueries = [
+      `${name} ${company}`,
+      `"${name}" "${company}"`,
+      `${name} ${company} recent news`,
+      `${name} ${company} LinkedIn`,
+    ];
 
-    const prompt = `Find recent professional news, key achievements, background information, and any recent public activity for ${name} who works at ${company}. 
-Focus on information relevant for professional outreach. 
-Limit the response to 3 concise paragraphs.`;
+    const searchResults: Array<{ title: string; snippet: string; link: string }> = [];
+    const sourceLinks: GroundingChunk[] = [];
 
-    // Note: Google Search grounding requires specific model and configuration
-    // For now, we'll use the standard generateContent and extract grounding if available
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      // Google Search grounding would be configured here if available
-      // tools: [{ googleSearch: {} }] - this may require different SDK version
-    });
+    // Use Google Custom Search Engine if available
+    const cseKey = process.env.GOOGLE_CSE_KEY;
+    const cseCx = process.env.GOOGLE_CSE_CX;
 
-    const response = await result.response;
-    const text = response.text() || 'No information found.';
-
-    // Extract grounding chunks if available in the response
-    const groundingMetadata = (response as any).groundingMetadata;
-    const rawChunks = groundingMetadata?.groundingChunks || [];
-    
-    const chunks: GroundingChunk[] = rawChunks
-      .map((c: any) => {
-        if (c.web) {
-          return {
-            title: c.web.title || 'Untitled',
-            url: c.web.uri || ''
-          };
+    if (cseKey && cseCx) {
+      for (const query of searchQueries.slice(0, 2)) { // Limit to 2 queries to avoid rate limits
+        try {
+          const params = new URLSearchParams({
+            q: query,
+            key: cseKey,
+            cx: cseCx,
+            num: '5', // Get top 5 results per query
+            safe: 'off',
+          });
+          
+          const searchResponse = await fetch(
+            `https://www.googleapis.com/customsearch/v1?${params}`,
+            { cache: 'no-store' }
+          );
+          
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json();
+            const items = searchData.items || [];
+            
+            for (const item of items) {
+              // Avoid duplicates
+              if (!sourceLinks.find(link => link.url === item.link)) {
+                searchResults.push({
+                  title: item.title || 'Untitled',
+                  snippet: item.snippet || '',
+                  link: item.link || item.displayLink || '',
+                });
+                
+                sourceLinks.push({
+                  title: item.title || 'Untitled',
+                  url: item.link || item.displayLink || '',
+                });
+              }
+            }
+          }
+        } catch (searchError) {
+          console.warn(`[contact-research] Search query failed: ${query}`, searchError);
+          // Continue with other queries
         }
-        return null;
-      })
-      .filter((c: any) => c !== null && c.url);
+      }
+    }
+
+    // STEP 2: If we have search results, use Gemini to synthesize them
+    // Otherwise, return a message indicating no search results found
+    let text = '';
+    let chunks: GroundingChunk[] = sourceLinks;
+
+    if (searchResults.length > 0) {
+      // Use stable model for better reliability
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-1.5-flash', // Use stable model instead of experimental
+      });
+
+      // Build context from search results
+      const searchContext = searchResults
+        .map((result, idx) => {
+          return `[Source ${idx + 1}]
+Title: ${result.title}
+URL: ${result.link}
+Content: ${result.snippet}`;
+        })
+        .join('\n\n');
+
+      const prompt = `You are a professional researcher. Based on the following web search results, provide a concise, factual summary about ${name} who works at ${company}.
+
+IMPORTANT RULES:
+1. ONLY use information that is explicitly stated in the search results below
+2. DO NOT make up, infer, or assume any information not present in the sources
+3. If information is not available, say "Information not found" rather than guessing
+4. Cite specific sources when mentioning facts (e.g., "According to [Source 1]...")
+5. Focus on: recent professional news, key achievements, background, and public activity
+6. Keep it to 3-4 concise paragraphs
+7. End with a list of source URLs used
+
+Search Results:
+${searchContext}
+
+Now provide the research summary:`;
+
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      });
+
+      const response = await result.response;
+      text = response.text() || 'No information found in search results.';
+    } else {
+      // No search results available
+      text = `No recent public information found for ${name} at ${company} through web search. This may indicate:
+- Limited online presence
+- Private professional profile
+- Recent role change
+
+Consider reaching out directly or checking LinkedIn for more information.`;
+      chunks = [];
+    }
 
     const researchResult = { text, chunks };
 
@@ -134,7 +213,7 @@ export async function checkForUpdates(
 
     // Use Gemini to compare and find significant new information
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const comparePrompt = `
 I have this existing information about a contact:
@@ -300,7 +379,7 @@ export async function generateLinkedInBio(
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const prompt = `
     Role: Expert Professional Biographer and Profiler.
@@ -356,7 +435,7 @@ export async function generateEmailDraft(
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     let typeInstruction = "";
     let structureInstruction = "";
@@ -435,7 +514,7 @@ export async function optimizeDraft(
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const prompt = `
     Role: World-class Copywriter and Sales Expert.
