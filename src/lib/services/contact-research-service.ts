@@ -60,15 +60,14 @@ export async function researchContact(
   }
 
   try {
-    // STEP 1: Perform actual web search using Google CSE
+    // STEP 1: Perform web search using Google CSE to get URLs
     const searchQueries = [
       `${name} ${company}`,
       `"${name}" "${company}"`,
       `${name} ${company} recent news`,
-      `${name} ${company} LinkedIn`,
     ];
 
-    const searchResults: Array<{ title: string; snippet: string; link: string }> = [];
+    const sourceUrls: string[] = [];
     const sourceLinks: GroundingChunk[] = [];
 
     // Use Google Custom Search Engine if available
@@ -96,17 +95,13 @@ export async function researchContact(
             const items = searchData.items || [];
             
             for (const item of items) {
-              // Avoid duplicates
-              if (!sourceLinks.find(link => link.url === item.link)) {
-                searchResults.push({
-                  title: item.title || 'Untitled',
-                  snippet: item.snippet || '',
-                  link: item.link || item.displayLink || '',
-                });
-                
+              const url = item.link || item.displayLink || '';
+              // Avoid duplicates and ensure valid URLs
+              if (url && url.startsWith('http') && !sourceUrls.includes(url)) {
+                sourceUrls.push(url);
                 sourceLinks.push({
                   title: item.title || 'Untitled',
-                  url: item.link || item.displayLink || '',
+                  url: url,
                 });
               }
             }
@@ -118,50 +113,94 @@ export async function researchContact(
       }
     }
 
-    // STEP 2: If we have search results, use Gemini to synthesize them
-    // Otherwise, return a message indicating no search results found
+    // STEP 2: Extract full content from URLs using Firecrawl
+    let extractedContent: Array<{ url: string; title: string; content: string }> = [];
+    const firecrawlKey = process.env.FIRECRAWL_KEY;
+
+    if (sourceUrls.length > 0 && firecrawlKey) {
+      // Extract content from top URLs (limit to 5 for performance)
+      const urlsToExtract = sourceUrls.slice(0, 5);
+      
+      for (const url of urlsToExtract) {
+        try {
+          const scrapeResponse = await fetch('https://api.firecrawl.dev/v2/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url,
+              formats: ['markdown'],
+              onlyMainContent: true,
+              timeout: 15000,
+            }),
+          });
+
+          if (scrapeResponse.ok) {
+            const scrapeData = await scrapeResponse.json();
+            if (scrapeData.data?.markdown) {
+              const sourceLink = sourceLinks.find(link => link.url === url);
+              extractedContent.push({
+                url,
+                title: sourceLink?.title || scrapeData.data.metadata?.title || 'Untitled',
+                content: scrapeData.data.markdown,
+              });
+            }
+          }
+        } catch (extractError) {
+          console.warn(`[contact-research] Failed to extract content from ${url}:`, extractError);
+          // Continue with other URLs
+        }
+      }
+    }
+
+    // STEP 3: Use Gemini 2.5 to synthesize rich research from full content
     let text = '';
     let chunks: GroundingChunk[] = sourceLinks;
 
-    if (searchResults.length > 0) {
-      // Use stable model for better reliability
+    if (extractedContent.length > 0) {
+      // Use Gemini 2.5 for rich, contextual synthesis
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ 
-        model: 'gemini-1.5-flash', // Use stable model instead of experimental
+        model: 'gemini-2.0-flash-exp', // Try gemini-2.5-flash or gemini-2.5-pro if available
       });
 
-      // Build context from search results
-      const searchContext = searchResults
-        .map((result, idx) => {
-          return `[Source ${idx + 1}]
-Title: ${result.title}
-URL: ${result.link}
-Content: ${result.snippet}`;
+      // Build rich context from extracted content
+      const richContext = extractedContent
+        .map((source, idx) => {
+          return `[Source ${idx + 1}: ${source.title}]
+URL: ${source.url}
+Full Content:
+${source.content.substring(0, 3000)}${source.content.length > 3000 ? '...' : ''}`;
         })
-        .join('\n\n');
+        .join('\n\n---\n\n');
 
-      const prompt = `You are a professional researcher. Based on the following web search results, provide a concise, factual summary about ${name} who works at ${company}.
+      const prompt = `You are a professional researcher and outreach specialist. Based on the following full content extracted from web sources, provide a comprehensive, well-written research summary about ${name} who works at ${company}.
 
 IMPORTANT RULES:
-1. ONLY use information that is explicitly stated in the search results below
-2. DO NOT make up, infer, or assume any information not present in the sources
-3. If information is not available, say "Information not found" rather than guessing
-4. Cite specific sources when mentioning facts (e.g., "According to [Source 1]...")
-5. Focus on: recent professional news, key achievements, background, and public activity
-6. Keep it to 3-4 concise paragraphs
-7. End with a list of source URLs used
+1. Synthesize information from the full content provided - you have access to complete articles/pages, not just snippets
+2. Provide rich context and insights that would be valuable for professional outreach
+3. Focus on: recent professional news, key achievements, background, expertise areas, public speaking, publications, and any notable activities
+4. Write in a natural, engaging style (3-4 paragraphs) that flows well
+5. Only use information explicitly found in the sources - do not make up facts
+6. If information is not available, acknowledge gaps rather than guessing
+7. The URLs below are references - cite them naturally in your summary where relevant
 
-Search Results:
-${searchContext}
+Extracted Content from Sources:
+${richContext}
 
-Now provide the research summary:`;
+Now provide a comprehensive research summary:`;
 
       const result = await model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
       });
 
       const response = await result.response;
-      text = response.text() || 'No information found in search results.';
+      text = response.text() || 'No information found in extracted content.';
+    } else if (sourceUrls.length > 0) {
+      // We have URLs but couldn't extract content (Firecrawl unavailable or failed)
+      text = `Found ${sourceUrls.length} relevant sources for ${name} at ${company}, but content extraction is currently unavailable. Please check the source URLs directly for detailed information.`;
     } else {
       // No search results available
       text = `No recent public information found for ${name} at ${company} through web search. This may indicate:
