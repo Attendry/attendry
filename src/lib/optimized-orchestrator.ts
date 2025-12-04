@@ -986,6 +986,8 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     
     // Step 5.5: Auto-expand date range if insufficient solid hits
     // Enhanced: Now passes solidCount to enable aggressive expansion when 0 results
+    console.log(`[auto-expand] Check: solidHits=${extracted.length}, minRequired=${SearchCfg.minSolidHits}, allowAutoExpand=${SearchCfg.allowAutoExpand}, hasDates=${!!(params.dateFrom && params.dateTo)}`);
+    
     if (shouldAutoExpand(extracted.length) && params.dateFrom && params.dateTo) {
       const prevSolidCount = extracted.length;
       const origWindow: Window = { from: params.dateFrom, to: params.dateTo };
@@ -1007,10 +1009,17 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
         });
         
         // Re-run pipeline with expanded window
-        const expandedParams = { ...params, dateTo: expandedWindow.to };
+        // IMPORTANT: Force cache bypass to get fresh results for expanded date range
+        const expandedParams = { 
+          ...params, 
+          dateTo: expandedWindow.to,
+          useCache: false  // Force fresh search for expanded window
+        };
         const expandedQueryResult = await buildOptimizedQuery(expandedParams, userProfile);
         const expandedQuery = typeof expandedQueryResult === 'string' ? expandedQueryResult : expandedQueryResult.query;
         const expandedNarrativeQuery = typeof expandedQueryResult === 'object' ? expandedQueryResult.narrativeQuery : undefined;
+        
+        console.log(`[auto-expand] Running expanded discovery with cache bypass, window: ${expandedParams.dateFrom} to ${expandedParams.dateTo}`);
         
         // Discovery → Voyage gate → Prioritization → Extraction → Quality
         const expandedRawCandidates = await discoverEventCandidates(expandedQuery, expandedParams, userProfile, expandedNarrativeQuery);
@@ -2629,14 +2638,33 @@ async function enhanceEventSpeakers(events: EventCandidate[]): Promise<EventCand
 
 /**
  * Filter and rank final events
+ * 
+ * RELAXED: Allow events with 0 speakers if they have strong other signals
+ * (title, date, location). Speaker extraction often fails on valid event pages.
  */
 function filterAndRankEvents(events: EventCandidate[]): EventCandidate[] {
-  return events
+  const filtered = events
     .filter(event => event.confidence >= ORCHESTRATOR_CONFIG.thresholds.confidence)
-    .filter(event => Array.isArray(event.speakers) && event.speakers.length > 0)
+    .filter(event => {
+      const hasSpeakers = Array.isArray(event.speakers) && event.speakers.length > 0;
+      const hasStrongSignals = event.title && event.title.length > 10 && 
+                               (event.date || event.city || event.venue);
+      
+      if (!hasSpeakers && !hasStrongSignals) {
+        console.log(`[final-filter] Filtered "${event.title?.substring(0, 40) || 'Untitled'}" - no speakers and weak signals`);
+        return false;
+      }
+      if (!hasSpeakers && hasStrongSignals) {
+        console.log(`[final-filter] Allowing "${event.title?.substring(0, 40)}" with 0 speakers (has strong signals)`);
+      }
+      return true;
+    })
     .filter(event => !checkAndLogAggregator(event.url))
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, ORCHESTRATOR_CONFIG.limits.maxExtractions);
+  
+  console.log(`[final-filter] Filtered ${events.length} → ${filtered.length} events`);
+  return filtered;
 }
 
 /**
