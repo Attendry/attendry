@@ -688,6 +688,20 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
     }, 'cse');
 
     console.log('[unified-cse] Response data keys:', Object.keys(data));
+    
+    // Log search information to understand why we might get 0 results
+    if (data?.searchInformation) {
+      console.log('[unified-cse] Search info:', {
+        totalResults: data.searchInformation.totalResults,
+        searchTime: data.searchInformation.searchTime,
+        formattedTotalResults: data.searchInformation.formattedTotalResults
+      });
+    }
+    
+    // Log if no items but search completed - indicates query too restrictive
+    if (!data?.items && data?.searchInformation?.totalResults === '0') {
+      console.warn('[unified-cse] CSE returned 0 results - query may be too restrictive');
+    }
 
     // Extract full CSE items with title, link, and snippet (not just URLs)
     const rawItems = (data?.items ?? []).filter((x: any) => 

@@ -238,6 +238,17 @@ function buildNarrativeQuery(
   // Prioritize user search term if provided
   if (userText && userText.trim() && userText.length < 100) {
     const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
+    const userTextLower = userText.trim().toLowerCase();
+    
+    // FIX: Check if event type is already in the search term to avoid "conference conference"
+    const eventTypeAlreadyInTerm = template.eventTypes?.some(et => 
+      userTextLower.includes(et.toLowerCase())
+    );
+    
+    if (eventTypeAlreadyInTerm) {
+      // Event type already in user term - don't duplicate it
+      return addYear(addSpeakerTerm(userText.trim()));
+    }
     return addYear(addSpeakerTerm(`${userText.trim()} ${primaryEventType}`));
   }
   

@@ -396,9 +396,9 @@ async function getSearchConfig(): Promise<any> {
 // Configuration - Using optimized settings
 const ORCHESTRATOR_CONFIG = {
   thresholds: {
-    prioritization: 0.4,    // Minimum score to proceed from prioritization
-    confidence: 0.6,        // Minimum confidence to publish
-    parseQuality: 0.5,      // Minimum parse quality
+    prioritization: 0.3,    // Minimum score to proceed from prioritization (lowered from 0.4)
+    confidence: 0.4,        // Minimum confidence to publish (lowered from 0.6 to allow more results)
+    parseQuality: 0.4,      // Minimum parse quality (lowered from 0.5)
   },
   limits: {
     maxCandidates: 40,      // Increased from 30 for better coverage
@@ -985,14 +985,16 @@ export async function executeOptimizedSearch(params: OptimizedSearchParams): Pro
     extracted = solidEvents;
     
     // Step 5.5: Auto-expand date range if insufficient solid hits
+    // Enhanced: Now passes solidCount to enable aggressive expansion when 0 results
     if (shouldAutoExpand(extracted.length) && params.dateFrom && params.dateTo) {
       const prevSolidCount = extracted.length;
       const origWindow: Window = { from: params.dateFrom, to: params.dateTo };
-      const expandedWindow = computeExpandedWindow(origWindow);
+      // Pass solidCount to enable tiered expansion (0 results = max expansion)
+      const expandedWindow = computeExpandedWindow(origWindow, prevSolidCount);
       
       // Only expand if window actually changed
       if (expandedWindow.to !== origWindow.to) {
-        console.log(`[auto-expand] Expanding window from ${origWindow.to} to ${expandedWindow.to}`);
+        console.log(`[auto-expand] Expanding window from ${origWindow.to} to ${expandedWindow.to} (had ${prevSolidCount} results)`);
         logs.push({
           stage: 'auto_expand',
           message: `Auto-expanding: ${prevSolidCount} solid hits < ${SearchCfg.minSolidHits} minimum`,
