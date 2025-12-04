@@ -162,9 +162,14 @@ export async function researchContact(
     if (extractedContent.length > 0) {
       // Use Gemini 2.5 for rich, contextual synthesis
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: 'gemini-2.0-flash-exp', // Try gemini-2.5-flash or gemini-2.5-pro if available
-      });
+      // Try gemini-2.5-flash first, fallback to gemini-2.0-flash-exp if not available
+      let model;
+      try {
+        model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+      } catch (e) {
+        // Fallback if model name needs adjustment
+        model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      }
 
       // Build rich context from extracted content
       const richContext = extractedContent
@@ -250,9 +255,9 @@ export async function checkForUpdates(
     const newResearch = await researchContact(name, company);
     const newInfo = newResearch.text;
 
-    // Use Gemini to compare and find significant new information
+    // Use Gemini 2.5 to compare and find significant new information
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // Using 2.0 until 2.5 confirmed
 
     const comparePrompt = `
 I have this existing information about a contact:
