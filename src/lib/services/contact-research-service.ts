@@ -5,6 +5,8 @@
  * and manages persistent research data with update monitoring.
  */
 
+'use server';
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { supabaseServer } from '@/lib/supabase-server';
 
