@@ -209,6 +209,12 @@ export interface SavedSpeakerProfile {
   monitor_updates?: boolean | null;
   archived?: boolean | null;
   last_contacted_date?: string | null;
+  // Outreach Orbit fields (added in migration 20251204000002)
+  outreach_step?: number | null;
+  last_completed_date?: string | null;
+  email_draft?: string | null;
+  linkedin_bio?: string | null;
+  specific_goal?: string | null;
 }
 
 /**
