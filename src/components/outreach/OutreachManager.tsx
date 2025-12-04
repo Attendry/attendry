@@ -381,13 +381,34 @@ export const OutreachManager = () => {
         const data = await response.json();
     
         if (!response.ok || !data.success) {
-            throw new Error(data.error || "Failed to add contact");
+            // If it's a 409 but we got a profile back, continue
+            if (response.status === 409 && data.profile) {
+              // Profile already exists, use it
+            } else {
+              throw new Error(data.error || "Failed to add contact");
+            }
         }
 
-        // The API creates the profile. Now we update it with outreach specific fields.
+        // The API creates or returns existing profile. Now we update it with outreach specific fields.
         const newId = data.data?.id || data.profile?.id;
         if (!newId) {
           throw new Error("Failed to get new contact ID");
+        }
+        
+        // If profile already existed, check if we need to update it
+        if (data.alreadyExists) {
+          // Check if outreach fields are already set
+          const existingContact = savedProfileToContact(data.profile);
+          if (existingContact.status !== OutreachStatus.NOT_STARTED || 
+              existingContact.outreachStep !== 0) {
+            // Profile already has outreach data, just reload
+            await loadContacts(userId);
+            toast.success("Contact already exists");
+            setNewContactName("");
+            setNewContactCompany("");
+            setNewContactRole("");
+            return;
+          }
         }
         
         // Update with outreach-specific fields in one call

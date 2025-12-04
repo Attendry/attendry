@@ -103,6 +103,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // Check if profile already exists before inserting
+    const speakerName = speaker_data?.name || speaker_data?.speaker_name;
+    const speakerOrg = speaker_data?.org || speaker_data?.organization || speaker_data?.company;
+    
+    if (speakerName && speakerOrg) {
+      const { data: existingProfile } = await supabase
+        .from('saved_speaker_profiles')
+        .select('*')
+        .eq('user_id', userRes.user.id)
+        .eq('speaker_data->>name', speakerName)
+        .eq('speaker_data->>org', speakerOrg)
+        .single();
+      
+      if (existingProfile) {
+        // Profile already exists, return it instead of failing
+        return NextResponse.json({ 
+          success: true, 
+          profile: existingProfile,
+          alreadyExists: true
+        });
+      }
+    }
+
     const { data, error } = await supabase
       .from('saved_speaker_profiles')
       .insert({
@@ -120,8 +143,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       .single();
 
     if (error) {
-      // Handle unique constraint violation (profile already saved)
+      // Handle unique constraint violation (profile already saved) - double check
       if (error.code === '23505') {
+        // Try to fetch the existing profile
+        const { data: existingProfile } = await supabase
+          .from('saved_speaker_profiles')
+          .select('*')
+          .eq('user_id', userRes.user.id)
+          .eq('speaker_data->>name', speakerName || '')
+          .eq('speaker_data->>org', speakerOrg || '')
+          .single();
+        
+        if (existingProfile) {
+          return NextResponse.json({ 
+            success: true, 
+            profile: existingProfile,
+            alreadyExists: true
+          });
+        }
+        
         return NextResponse.json({ 
           success: false,
           error: "Profile already saved" 
