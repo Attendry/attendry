@@ -209,15 +209,28 @@ export const OutreachManager = () => {
             .eq('user_id', userId); // Ensure user can only update their own profiles
           if (error) {
             console.error('Error updating profile:', error);
-            // Check if it's a column doesn't exist error
+            console.error('Attempted to update fields:', Object.keys(filteredUpdates));
+            console.error('Error details:', JSON.stringify(error, null, 2));
+            
+            // Check for specific error types
             if (error.message?.includes('column') && error.message?.includes('does not exist')) {
-              profileError = new Error(`Database column missing. Please run migrations: ${error.message}`);
+              const missingColumn = error.message.match(/column "([^"]+)"/)?.[1];
+              profileError = new Error(`Database column "${missingColumn}" does not exist. Please run migrations: 20251204000002_add_outreach_orbit_fields.sql and 20250226000001_add_contact_research_and_preferences.sql`);
+            } else if (error.code === '23514') {
+              // Check constraint violation
+              profileError = new Error(`Invalid value for field. Check constraints: ${error.message}`);
+            } else if (error.code === '42703') {
+              // Undefined column
+              profileError = new Error(`Column does not exist: ${error.message}`);
             } else {
-              profileError = new Error(error.message);
+              profileError = new Error(error.message || 'Unknown database error');
             }
           } else {
             console.log('[updateProfileInDb] Successfully updated profile:', Object.keys(filteredUpdates));
           }
+        } else if (hasProfileUpdates) {
+          // All fields were filtered out - this shouldn't happen but log it
+          console.warn('[updateProfileInDb] All profile updates were filtered out. Original fields:', Object.keys(profileUpdates));
         }
     }
 
