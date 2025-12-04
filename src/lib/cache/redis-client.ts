@@ -473,6 +473,102 @@ export class RedisClient {
   }
 
   /**
+   * Get length of a list
+   */
+  async llen(key: string): Promise<number> {
+    await this.ensureConnected();
+    
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      if (this.connectionType === 'upstash-rest' && this.upstashClient) {
+        const result = await this.upstashClient.llen(key);
+        return result || 0;
+      } else if (this.client) {
+        return await this.client.lLen(key);
+      }
+      return 0;
+    } catch (error) {
+      console.error('[Redis] LLEN error:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Push element to left of list
+   */
+  async lpush(key: string, ...values: string[]): Promise<number> {
+    await this.ensureConnected();
+    
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      if (this.connectionType === 'upstash-rest' && this.upstashClient) {
+        const result = await this.upstashClient.lpush(key, ...values);
+        return result || 0;
+      } else if (this.client) {
+        return await this.client.lPush(key, values);
+      }
+      return 0;
+    } catch (error) {
+      console.error('[Redis] LPUSH error:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Push element to right of list
+   */
+  async rpush(key: string, ...values: string[]): Promise<number> {
+    await this.ensureConnected();
+    
+    if (!this.isAvailable()) {
+      return 0;
+    }
+
+    try {
+      if (this.connectionType === 'upstash-rest' && this.upstashClient) {
+        const result = await this.upstashClient.rpush(key, ...values);
+        return result || 0;
+      } else if (this.client) {
+        return await this.client.rPush(key, values);
+      }
+      return 0;
+    } catch (error) {
+      console.error('[Redis] RPUSH error:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Get range of elements from list
+   */
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    await this.ensureConnected();
+    
+    if (!this.isAvailable()) {
+      return [];
+    }
+
+    try {
+      if (this.connectionType === 'upstash-rest' && this.upstashClient) {
+        const result = await this.upstashClient.lrange(key, start, stop);
+        return (result || []).map((r: any) => String(r));
+      } else if (this.client) {
+        return await this.client.lRange(key, start, stop);
+      }
+      return [];
+    } catch (error) {
+      console.error('[Redis] LRANGE error:', error);
+      return [];
+    }
+  }
+
+  /**
    * Close Redis connection
    */
   async disconnect(): Promise<void> {

@@ -255,6 +255,7 @@ export class AutoSaveRateLimiter {
       return 0;
     } catch (error) {
       console.error('[auto-save-rate-limiter] Error getting queue size:', error);
+      // Return 0 on error to prevent blocking contact creation
       return 0;
     }
   }
