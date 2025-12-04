@@ -163,7 +163,7 @@ export async function researchContact(
       // Use Gemini 2.5 for rich, contextual synthesis
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ 
-        model: 'gemini-2.0-flash-exp', // Update to 'gemini-2.5-flash' when available in API
+        model: 'gemini-2.0-flash-exp', // TODO: Update to 'gemini-2.5-flash' when model name is confirmed
       });
 
       // Build rich context from extracted content
