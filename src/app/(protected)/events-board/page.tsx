@@ -60,11 +60,6 @@ function EventsBoardPageContent() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    loadBoardItems();
-    loadSavedViews();
-  }, [loadBoardItems]);
-
   const loadBoardItems = useCallback(async (retryCount = 0) => {
     setLoading(true);
     setError(null);
@@ -146,6 +141,11 @@ function EventsBoardPageContent() {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    loadBoardItems();
+    loadSavedViews();
+  }, [loadBoardItems]);
 
   const handleViewInsights = (eventId: string) => {
     setSelectedEventId(eventId);
