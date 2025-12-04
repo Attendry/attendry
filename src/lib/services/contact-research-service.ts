@@ -162,9 +162,14 @@ export async function researchContact(
     if (extractedContent.length > 0) {
       // Use Gemini 2.5 for rich, contextual synthesis
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ 
-        model: 'gemini-2.0-flash-exp', // TODO: Update to 'gemini-2.5-flash' when model name is confirmed
-      });
+      // Try gemini-2.5-flash first (now stable), fallback to 2.0 if needed
+      let model;
+      try {
+        model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' }); // Update to 'gemini-2.5-flash' when confirmed
+      } catch (e) {
+        // Fallback
+        model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      }
 
       // Build rich context from extracted content
       const richContext = extractedContent
