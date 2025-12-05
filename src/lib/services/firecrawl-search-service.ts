@@ -502,25 +502,27 @@ export class FirecrawlSearchService {
             const withinRange = this.isWithinRange(parsedDate.startISO, from, to);
             const timeframeHint = this.matchesTimeframeHint(content, timeframeTokens);
 
-            // PRIMARY DATE FILTERING: When dates are provided, filter strictly by date range
-            // This is the primary filtering mechanism and must be preserved
-            if (from || to) {
-              // Date range specified - PRIMARY FILTERING: Filter by date if available
-              if (parsedDate.startISO) {
-                // If we have a parsed date, it MUST be within range
-                if (!withinRange) {
-                  continue; // Filter out - date is outside specified range
-                }
-              } else {
-                // If no date found but range specified, allow through
-                // (date might be in future, not yet published, or not extracted)
-                // This is a lenient approach to avoid filtering out valid events
-              }
-            } else {
-              // No date range specified - don't require dates
-              // This allows results without explicit dates to pass through
-              // This is the relaxed filtering for general searches
+            // Log date extraction for debugging
+            if (parsedDate.startISO) {
+              console.log(`[firecrawl-search-service] Date extracted: ${parsedDate.startISO} from ${result.url}, withinRange: ${withinRange}, window: ${from || 'none'} to ${to || 'none'}`);
             }
+
+            // PRIMARY DATE FILTERING: When dates are provided, filter by date range with tolerance
+            // The isWithinRange function now has 60-90 day tolerance to avoid filtering out
+            // events just outside the window - the quality gate will do final filtering
+            if (from || to) {
+              // Date range specified - filter by date if available
+              if (parsedDate.startISO) {
+                // If we have a parsed date, check if within range (with tolerance)
+                if (!withinRange) {
+                  console.log(`[firecrawl-search-service] Filtering out: ${result.url} - date ${parsedDate.startISO} outside window ${from}-${to} (even with tolerance)`);
+                  continue;
+                }
+              }
+              // If no date found but range specified, allow through
+              // (date might be in future, not yet published, or not extracted)
+            }
+            // No date range specified - don't require dates
 
             const extractedLocation = this.extractLocationFromContent(result.markdown);
             const extractedOrganizer = this.extractOrganizerFromContent(result.markdown);
@@ -864,16 +866,33 @@ export class FirecrawlSearchService {
     if (!startISO) return true;
     const eventDate = new Date(startISO);
     if (Number.isNaN(eventDate.getTime())) return true;
+    
+    // Calculate adaptive tolerance: at least 60 days, up to 90 days for wider searches
+    // This allows events slightly outside the search window to pass through
+    // The quality gate will do final date filtering with stricter rules
+    const fromDate = from ? new Date(from) : null;
+    const toDate = to ? new Date(to) : null;
+    const windowDays = (fromDate && toDate) 
+      ? Math.abs((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24))
+      : 90;
+    const toleranceDays = Math.min(90, Math.max(60, windowDays));
+    
     if (from) {
-      const fromDate = new Date(from);
-      if (!Number.isNaN(fromDate.getTime()) && eventDate < fromDate) {
-        return false;
+      if (fromDate && !Number.isNaN(fromDate.getTime())) {
+        const toleranceMs = toleranceDays * 24 * 60 * 60 * 1000;
+        const minDate = new Date(fromDate.getTime() - toleranceMs);
+        if (eventDate < minDate) {
+          return false;
+        }
       }
     }
     if (to) {
-      const toDate = new Date(to);
-      if (!Number.isNaN(toDate.getTime()) && eventDate > toDate) {
-        return false;
+      if (toDate && !Number.isNaN(toDate.getTime())) {
+        const toleranceMs = toleranceDays * 24 * 60 * 60 * 1000;
+        const maxDate = new Date(toDate.getTime() + toleranceMs);
+        if (eventDate > maxDate) {
+          return false;
+        }
       }
     }
     return true;
