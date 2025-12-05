@@ -500,3 +500,4 @@ The current query construction system is well-optimized for general event discov
 4. **Test and measure** impact on speaker discovery rate
 5. **Iterate** based on results
 
+

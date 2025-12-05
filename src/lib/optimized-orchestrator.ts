@@ -89,6 +89,157 @@ import {
   getPerformanceAlerts
 } from './performance-monitor';
 
+// Helper function to get country name from code (RECOMMENDATION 3)
+function getCountryNameFromCode(countryCode: string): string {
+  const countryNames: Record<string, string> = {
+    'DE': 'Germany',
+    'FR': 'France',
+    'GB': 'United Kingdom',
+    'UK': 'United Kingdom',
+    'US': 'United States',
+    'IT': 'Italy',
+    'ES': 'Spain',
+    'NL': 'Netherlands',
+    'BE': 'Belgium',
+    'AT': 'Austria',
+    'CH': 'Switzerland',
+    'PL': 'Poland',
+    'SE': 'Sweden',
+    'NO': 'Norway',
+    'DK': 'Denmark'
+  };
+  return countryNames[countryCode.toUpperCase()] || countryCode;
+}
+
+/**
+ * RECOMMENDATION 4: Pre-filter URLs by geography before expensive crawling
+ * This prevents crawling events from wrong countries (e.g., London events for DE searches)
+ */
+function preFilterUrlsByGeography(urls: string[], targetCountry: string): string[] {
+  if (!targetCountry) return urls;
+  
+  const countryUpper = targetCountry.toUpperCase();
+  
+  // Normalize UK/GB
+  const normalizedTarget = countryUpper === 'UK' ? 'GB' : countryUpper;
+  
+  // Country-specific URL indicators (expanded with common variations)
+  const countryIndicators: Record<string, string[]> = {
+    'DE': ['.de', '/de/', '/de-', 'germany', 'deutschland', 'berlin', 'munich', 'muenchen', 'münchen', 'frankfurt', 'hamburg', 'cologne', 'koeln', 'köln', 'stuttgart', 'dusseldorf', 'düsseldorf'],
+    'GB': ['.uk', '.co.uk', '/uk/', '/gb/', 'london', 'manchester', 'birmingham', 'united-kingdom', 'england', 'edinburgh', 'glasgow', 'bristol', 'leeds'],
+    'FR': ['.fr', '/fr/', 'france', 'paris', 'lyon', 'marseille', 'toulouse', 'bordeaux', 'nice'],
+    'US': ['.us', '/us/', 'usa', 'united-states', 'new-york', 'california', 'boston', 'chicago', 'san-francisco', 'los-angeles', 'seattle', 'washington-dc'],
+    'NL': ['.nl', '/nl/', 'netherlands', 'amsterdam', 'rotterdam', 'utrecht', 'the-hague', 'den-haag'],
+    'AT': ['.at', '/at/', 'austria', 'vienna', 'wien', 'salzburg', 'graz'],
+    'CH': ['.ch', '/ch/', 'switzerland', 'zurich', 'zürich', 'geneva', 'geneve', 'genf', 'basel', 'bern'],
+    'IT': ['.it', '/it/', 'italy', 'italia', 'rome', 'roma', 'milan', 'milano', 'florence', 'firenze', 'venice', 'venezia'],
+    'ES': ['.es', '/es/', 'spain', 'espana', 'españa', 'madrid', 'barcelona', 'valencia', 'seville', 'sevilla'],
+    'BE': ['.be', '/be/', 'belgium', 'brussels', 'bruxelles', 'antwerp', 'antwerpen'],
+    'PL': ['.pl', '/pl/', 'poland', 'warsaw', 'warszawa', 'krakow', 'kraków'],
+    'SE': ['.se', '/se/', 'sweden', 'stockholm', 'gothenburg', 'malmö'],
+    'NO': ['.no', '/no/', 'norway', 'oslo', 'bergen'],
+    'DK': ['.dk', '/dk/', 'denmark', 'copenhagen', 'københavn'],
+  };
+  
+  const targetIndicators = countryIndicators[normalizedTarget] || [];
+  
+  // Build list of OTHER country indicators to detect wrong-country URLs
+  const otherCountryIndicators: string[] = [];
+  for (const [country, indicators] of Object.entries(countryIndicators)) {
+    // Skip target country (and UK/GB equivalence)
+    if (country === normalizedTarget) continue;
+    if ((country === 'GB' || country === 'UK') && (normalizedTarget === 'GB' || normalizedTarget === 'UK')) continue;
+    
+    // Add location-specific indicators from other countries (not TLDs - those might be international)
+    const locationIndicators = indicators.filter(i => 
+      !i.startsWith('.') && // Not a TLD
+      !i.startsWith('/') && // Not a path prefix
+      i.length > 3 // Not too short (avoid false positives)
+    );
+    otherCountryIndicators.push(...locationIndicators);
+  }
+  
+  let filtered = 0;
+  const result = urls.filter(url => {
+    const urlLower = url.toLowerCase();
+    
+    // Check if URL has target country indicators
+    const hasTargetIndicator = targetIndicators.some(ind => urlLower.includes(ind.toLowerCase()));
+    
+    // Check if URL has other country indicators (city names, country names in URL)
+    const hasOtherCountryIndicator = otherCountryIndicators.some(ind => urlLower.includes(ind.toLowerCase()));
+    
+    // STRICT FILTER: If URL clearly belongs to another country AND doesn't have target country indicators, filter it
+    if (hasOtherCountryIndicator && !hasTargetIndicator) {
+      filtered++;
+      console.log(`[geo-prefilter] Filtered out ${url.substring(0, 80)}... (wrong country)`);
+      return false;
+    }
+    
+    return true;
+  });
+  
+  if (filtered > 0) {
+    console.log(`[geo-prefilter] Pre-filtered ${filtered} URLs from other countries (target: ${normalizedTarget})`);
+  }
+  
+  return result;
+}
+
+/**
+ * RECOMMENDATION 5: Early detection of past dates in URLs
+ * Avoids expensive crawling of events that have already passed
+ */
+function detectPastDateInUrl(url: string, searchDateFrom: string): boolean {
+  if (!searchDateFrom) return false;
+  
+  const urlLower = url.toLowerCase();
+  const searchStart = new Date(searchDateFrom);
+  const currentYear = new Date().getFullYear();
+  
+  // Pattern 1: YYYY-MM-DD format (most reliable)
+  const isoDatePattern = /\/(\d{4})-(\d{2})-(\d{2})/;
+  const isoMatch = urlLower.match(isoDatePattern);
+  if (isoMatch) {
+    const year = parseInt(isoMatch[1]);
+    const month = parseInt(isoMatch[2]) - 1;
+    const day = parseInt(isoMatch[3]);
+    
+    // Validate reasonable date ranges
+    if (year >= 2020 && year <= 2030 && month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+      const urlDate = new Date(year, month, day);
+      if (!isNaN(urlDate.getTime()) && urlDate < searchStart) {
+        console.log(`[date-prefilter] URL contains past date ${isoMatch[0]}: ${url.substring(0, 60)}...`);
+        return true;
+      }
+    }
+  }
+  
+  // Pattern 2: Year in URL path like /2024/ or /2023/ (past years only)
+  const yearPathPattern = /\/20(2[0-4])\/|\/20(2[0-4])-/; // Match 2020-2024 only (past years)
+  const yearMatch = urlLower.match(yearPathPattern);
+  if (yearMatch) {
+    const matchedYear = parseInt('20' + (yearMatch[1] || yearMatch[2]));
+    if (matchedYear < currentYear) {
+      console.log(`[date-prefilter] URL contains past year ${matchedYear}: ${url.substring(0, 60)}...`);
+      return true;
+    }
+  }
+  
+  // Pattern 3: Event URLs with date slugs like /event-december-2024/ or /conference-2024-03/
+  const slugDatePattern = /-(20[2][0-4])[-\/]|[-\/](20[2][0-4])-/;
+  const slugMatch = urlLower.match(slugDatePattern);
+  if (slugMatch) {
+    const matchedYear = parseInt(slugMatch[1] || slugMatch[2]);
+    if (matchedYear < currentYear) {
+      console.log(`[date-prefilter] URL slug contains past year ${matchedYear}: ${url.substring(0, 60)}...`);
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 // Environment variables
 const geminiKey = process.env.GEMINI_API_KEY;
 const firecrawlKey = process.env.FIRECRAWL_KEY;
@@ -1426,28 +1577,97 @@ async function discoverEventCandidates(
   });
   
   // Create multiple query variations for parallel discovery
-  // PHASE 1 OPTIMIZATION: Expanded from 3 to 15+ event type variations for +40% recall
+  // RECOMMENDATION 3: Diversify query variations with city/country terms for better geographic coverage
+  
+  // Get country name for more natural queries
+  const countryName = params.country ? getCountryNameFromCode(params.country) : '';
+  
+  // Use user's search term for variations (much shorter than full weighted query)
+  // This creates more diverse results and better cache utilization
+  const searchTerm = params.userText?.trim() || narrativeQuery || 'conference';
+  
+  // Base variations: use full query once, then use simpler search term for diversity
   const baseVariations = [
-    query, // Original query
-    `${query} conference`,
-    `${query} summit`,
-    `${query} event`,
-    `${query} workshop`,
-    `${query} seminar`,
-    `${query} symposium`,
-    `${query} forum`,
-    `${query} Konferenz`,
-    `${query} Arbeitskreis`,
-    `${query} trade show`,
-    `${query} expo`,
+    query, // Original full query (for comprehensive results)
+    `${searchTerm} conference ${countryName}`.trim(),
+    `${searchTerm} summit ${countryName}`.trim(),
+    `${searchTerm} event ${countryName}`.trim(),
   ];
   
-  // Add country-specific variations if country is provided
-  const countryVariations = params.country 
-    ? [`${query} ${params.country}`]
-    : [];
+  // Country-specific variations (RECOMMENDATION 3)
+  const countryVariations: string[] = [];
+  if (params.country) {
+    // Add German-language variations for DE
+    if (params.country === 'DE') {
+      countryVariations.push(
+        `${searchTerm} Deutschland Konferenz`,
+        `${searchTerm} Konferenz Deutschland`,
+        `${searchTerm} Veranstaltung Germany`
+      );
+      // Add major German city variations for better diversity
+      const germanCities = ['Berlin', 'Frankfurt', 'München', 'Hamburg'];
+      germanCities.forEach(city => {
+        countryVariations.push(`${searchTerm} ${city} conference`);
+      });
+    }
+    
+    // Add UK-specific variations
+    else if (params.country === 'GB' || params.country === 'UK') {
+      countryVariations.push(
+        `${searchTerm} UK conference`,
+        `${searchTerm} London conference`,
+        `${searchTerm} United Kingdom summit`
+      );
+    }
+    
+    // Add France-specific variations
+    else if (params.country === 'FR') {
+      countryVariations.push(
+        `${searchTerm} France conférence`,
+        `${searchTerm} Paris conference`,
+        `${searchTerm} France summit`
+      );
+    }
+    
+    // Add Netherlands-specific variations
+    else if (params.country === 'NL') {
+      countryVariations.push(
+        `${searchTerm} Netherlands conference`,
+        `${searchTerm} Amsterdam conference`
+      );
+    }
+    
+    // Add Austria-specific variations
+    else if (params.country === 'AT') {
+      countryVariations.push(
+        `${searchTerm} Austria conference`,
+        `${searchTerm} Vienna conference`,
+        `${searchTerm} Wien Konferenz`
+      );
+    }
+    
+    // Add Switzerland-specific variations
+    else if (params.country === 'CH') {
+      countryVariations.push(
+        `${searchTerm} Switzerland conference`,
+        `${searchTerm} Zurich conference`,
+        `${searchTerm} Schweiz Konferenz`
+      );
+    }
+    
+    // Generic country variation for other countries
+    else {
+      countryVariations.push(
+        `${searchTerm} ${countryName} conference`,
+        `${searchTerm} ${countryName} summit`
+      );
+    }
+  }
   
   const queryVariations = [...baseVariations, ...countryVariations];
+  
+  console.log(`[optimized-orchestrator] Created ${queryVariations.length} query variations (searchTerm: "${searchTerm.substring(0, 30)}...")`);
+  
   
   // Use parallel processing for multiple query variations
   const parallelProcessor = getParallelProcessor();
@@ -1627,6 +1847,24 @@ async function discoverEventCandidates(
     } catch (error) {
       console.error('[optimized-orchestrator] Direct search fallback failed:', error);
       // Return empty array - better than crashing
+    }
+  }
+  
+  // RECOMMENDATION 4: Pre-filter URLs by geography before expensive crawling
+  if (params.country) {
+    const beforeGeoFilter = urls.length;
+    urls = preFilterUrlsByGeography(urls, params.country);
+    if (beforeGeoFilter !== urls.length) {
+      console.log(`[optimized-orchestrator] Geographic pre-filter: ${beforeGeoFilter} → ${urls.length} URLs`);
+    }
+  }
+  
+  // RECOMMENDATION 5: Filter out URLs with past dates in the URL
+  if (params.dateFrom) {
+    const beforeDateFilter = urls.length;
+    urls = urls.filter(url => !detectPastDateInUrl(url, params.dateFrom!));
+    if (beforeDateFilter !== urls.length) {
+      console.log(`[optimized-orchestrator] Past date URL filter: ${beforeDateFilter} → ${urls.length} URLs`);
     }
   }
   

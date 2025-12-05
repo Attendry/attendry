@@ -16,6 +16,7 @@ import {
   ArrowUpRight,
   ChevronDown,
   ChevronUp,
+  Plus,
 } from 'lucide-react';
 
 import { SavedSpeakerProfile } from '@/lib/types/database';
@@ -32,6 +33,7 @@ import { deriveLocale, toISO2Country } from '@/lib/utils/country';
 import { WelcomeModal } from '@/components/onboarding/WelcomeModal';
 import { OnboardingTour, TourStep } from '@/components/onboarding/OnboardingTour';
 import { QuickEventSearchPanel } from '@/components/search/QuickEventSearchPanel';
+import { toast } from 'sonner';
 
 const STATUS_LABELS: Record<SavedSpeakerProfile['outreach_status'], string> = {
   not_started: 'Not Started',

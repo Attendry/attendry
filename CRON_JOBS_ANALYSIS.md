@@ -233,3 +233,4 @@ console.log('[discover-opportunities] Headers received:', JSON.stringify({
 **Status:** Existing cron infrastructure is working. New discovery jobs need manual testing before scheduled runs.
 
 
+

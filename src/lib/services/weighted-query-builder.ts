@@ -180,12 +180,53 @@ export function buildWeightedQuery(
 }
 
 /**
+ * Build a simplified query optimized for Google CSE
+ * CSE performs poorly with complex boolean queries - keep it simple (<200 chars)
+ * 
+ * RECOMMENDATION 1: Separate CSE-optimized query
+ * 
+ * Use this function when:
+ * - You have direct access to the WeightedTemplate
+ * - You want a CSE-optimized query without going through unified search
+ * - Building queries for direct CSE API calls
+ * 
+ * Note: The unified search core has its own simplifyQueryForCSE() function
+ * that processes the full weighted query. Use this function for fresh CSE queries.
+ */
+export function buildSimplifiedCSEQuery(
+  template: WeightedTemplate,
+  userText?: string,
+  country?: string
+): string {
+  const countryName = country ? getCountryName(country) : '';
+  const primaryEventType = 'conference OR summit OR event';
+  
+  // If user provided specific search term, use it directly
+  if (userText && userText.trim()) {
+    const userTerm = userText.trim();
+    // Keep query simple: user term + event type + country
+    if (countryName) {
+      return `${userTerm} ${countryName} (${primaryEventType})`;
+    }
+    return `${userTerm} (${primaryEventType})`;
+  }
+  
+  // No user text - use top 3 industry terms
+  const industryTerms = (template.industryTerms && template.industryTerms.length > 0) 
+    ? template.industryTerms.slice(0, 3).join(' OR ') 
+    : template.name;
+  
+  if (countryName) {
+    return `(${industryTerms}) ${countryName} (${primaryEventType})`;
+  }
+  return `(${industryTerms}) (${primaryEventType})`;
+}
+
+/**
  * Build narrative query for Firecrawl with template context
  * 
- * PHASE 1 OPTIMIZATION: Simplified to 80-120 characters
- * - Removed location details (use API location parameter instead)
- * - Removed temporal details (use API date parameters instead)
- * - Focus on core search terms only
+ * RECOMMENDATION 2: Include country in narrative query for better geographic filtering
+ * Firecrawl's location/country API params don't filter results strongly enough
  */
 function buildNarrativeQuery(
   template: WeightedTemplate,
@@ -196,8 +237,8 @@ function buildNarrativeQuery(
   dateTo?: string,
   salesOutreach: boolean = true // PHASE 2: Default to true for sales outreach use case
 ): string {
-  // PHASE 1: Simplified query building - focus on core terms only
-  // Location and dates are handled by API parameters, not query text
+  // Get country name for inclusion in query (RECOMMENDATION 2)
+  const countryName = getCountryName(country);
   
   // Extract year from date range for future dates (helps Firecrawl find events)
   let yearToInclude: string | null = null;
@@ -216,23 +257,19 @@ function buildNarrativeQuery(
     }
   }
   
-  // Helper function to add year if needed
-  const addYear = (query: string): string => {
-    if (yearToInclude && !query.includes(yearToInclude)) {
-      return `${query} ${yearToInclude}`;
+  // Helper function to add year and country context
+  const addContext = (query: string): string => {
+    let result = query;
+    // Add country if not already present (RECOMMENDATION 2)
+    // Only add if it's a proper country name (not just a 2-letter code) and not already in query
+    if (countryName && countryName.length > 2 && !query.toLowerCase().includes(countryName.toLowerCase())) {
+      result = `${result} ${countryName}`;
     }
-    return query;
-  };
-  
-  // PHASE 3 FIX: Don't add speaker terms to primary narrative query - it makes queries too specific
-  // Instead, use speaker terms only in query variations (which are already prioritized)
-  // This ensures Firecrawl gets a broader query first, while variations can be more specific
-  
-  // Helper function - NO speaker terms in primary narrative query
-  const addSpeakerTerm = (query: string): string => {
-    // Don't add speaker terms to primary narrative query - too restrictive
-    // Speaker terms are used in query variations instead
-    return query;
+    // Add year if needed
+    if (yearToInclude && !result.includes(yearToInclude)) {
+      result = `${result} ${yearToInclude}`;
+    }
+    return result;
   };
   
   // Prioritize user search term if provided
@@ -247,9 +284,9 @@ function buildNarrativeQuery(
     
     if (eventTypeAlreadyInTerm) {
       // Event type already in user term - don't duplicate it
-      return addYear(addSpeakerTerm(userText.trim()));
+      return addContext(userText.trim());
     }
-    return addYear(addSpeakerTerm(`${userText.trim()} ${primaryEventType}`));
+    return addContext(`${userText.trim()} ${primaryEventType}`);
   }
   
   // Use industry terms if available
@@ -257,11 +294,11 @@ function buildNarrativeQuery(
   const primaryEventType = (template.eventTypes && template.eventTypes.length > 0) ? template.eventTypes[0] : 'conference';
   
   if (industryTerms) {
-    return addYear(addSpeakerTerm(`${industryTerms} ${primaryEventType}`));
+    return addContext(`${industryTerms} ${primaryEventType}`);
   }
   
   // Fallback
-  return addYear(addSpeakerTerm(`business ${primaryEventType}`));
+  return addContext(`business ${primaryEventType}`);
 }
 
 /**
@@ -322,23 +359,33 @@ function getIndustrySpecificEventTypes(industry: string): string[] {
 }
 
 /**
- * Get country name from country code
+ * Get country name from country code (comprehensive mapping)
  */
 function getCountryName(countryCode: string): string {
   const countryNames: Record<string, string> = {
     'DE': 'Germany',
     'FR': 'France',
     'GB': 'United Kingdom',
+    'UK': 'United Kingdom',
     'US': 'United States',
     'IT': 'Italy',
     'ES': 'Spain',
     'NL': 'Netherlands',
     'BE': 'Belgium',
     'AT': 'Austria',
-    'CH': 'Switzerland'
+    'CH': 'Switzerland',
+    'PL': 'Poland',
+    'SE': 'Sweden',
+    'NO': 'Norway',
+    'DK': 'Denmark',
+    'IE': 'Ireland',
+    'PT': 'Portugal',
+    'CZ': 'Czech Republic',
+    'HU': 'Hungary',
+    'FI': 'Finland'
   };
   
-  return countryNames[countryCode] || countryCode;
+  return countryNames[countryCode?.toUpperCase()] || countryCode;
 }
 
 /**

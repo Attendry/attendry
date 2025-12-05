@@ -65,3 +65,4 @@ COMMENT ON COLUMN speaker_event_history.confidence IS 'Confidence score of speak
 
 
 
+

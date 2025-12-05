@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   Home, 
@@ -44,6 +44,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(isCollapsed);
   const pathname = usePathname();
+  const router = useRouter();
   const sidebarRef = useRef<HTMLElement>(null);
 
   // Clean, non-duplicative navigation organized by priority
@@ -78,6 +79,15 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
   const allNavigationItems = navigationSections.flatMap(section => section.items);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Only handle keyboard navigation if sidebar or a link within sidebar is focused
+    const activeElement = document.activeElement;
+    const isSidebarFocused = sidebarRef.current?.contains(activeElement) || 
+                              activeElement?.closest('aside[role="navigation"]') !== null;
+    
+    if (!isSidebarFocused) {
+      return; // Don't interfere with other components
+    }
+
     if (e.key === 'Escape' && onToggle) {
       onToggle();
     }
@@ -114,7 +124,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
       ref={sidebarRef}
       className={`
         fixed left-0 top-0 h-screen bg-white dark:bg-slate-900 
-        border-r border-slate-200 dark:border-slate-700 z-50
+        border-r border-slate-200 dark:border-slate-700 z-[100]
         transition-all duration-300 ease-in-out
         ${shouldShowExpanded ? 'w-64' : 'w-16'}
         lg:static lg:z-auto
@@ -184,6 +194,17 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
                     <li key={item.href}>
                       <Link
                         href={item.href}
+                        onClick={(e) => {
+                          // Ensure navigation works even if Link is blocked
+                          // This is a fallback to ensure clicks always work
+                          const target = e.currentTarget;
+                          if (target.getAttribute('aria-disabled') === 'true') {
+                            e.preventDefault();
+                            return;
+                          }
+                          // Let Link handle navigation normally, but ensure it works
+                          router.prefetch(item.href);
+                        }}
                         className={`
                           relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
                           transition-all duration-200 group
@@ -195,6 +216,7 @@ export function Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {
                           ${isFocused ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
                         `}
                         title={!shouldShowExpanded ? item.label : undefined}
+                        style={{ pointerEvents: 'auto' }}
                       >
                         <item.icon 
                           size={20} 

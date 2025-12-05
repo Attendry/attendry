@@ -43,3 +43,4 @@ CREATE TRIGGER task_status_change_trigger
 COMMENT ON FUNCTION notify_task_status_change() IS 
   'Sends PostgreSQL notification when task status changes to completed or failed';
 
+

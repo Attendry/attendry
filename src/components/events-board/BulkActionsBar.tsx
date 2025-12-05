@@ -22,7 +22,6 @@ import {
   Trash2, 
   Download, 
   Users, 
-  Tag,
   ArrowUpDown,
   Loader2
 } from "lucide-react";

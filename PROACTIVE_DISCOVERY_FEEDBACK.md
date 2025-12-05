@@ -123,3 +123,4 @@ I propose inserting a "Phase 0" and splitting "Phase 1" to de-risk the migration
 This refined plan moves from just "showing events" to **building a reliable, learning sales assistant.**
 
 
+

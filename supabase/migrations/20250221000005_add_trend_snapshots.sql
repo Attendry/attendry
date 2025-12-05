@@ -79,3 +79,4 @@ COMMENT ON COLUMN trend_snapshots.sponsor_tiers IS 'JSONB object: {tier: count} 
 
 
 
+

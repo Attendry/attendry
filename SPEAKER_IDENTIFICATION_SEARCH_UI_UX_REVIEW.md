@@ -786,3 +786,4 @@ The technical audit is comprehensive but **misses the user experience entirely**
 - `/speakers` - Speaker search page
 - `/speakers/[speakerKey]` - Speaker profile page
 
+

@@ -124,11 +124,13 @@ export function isSolidHit(m: CandidateMeta, window: QualityWindow): {
   const meetsQuality = q >= 0.25;
   
   // PRAGMATIC RULE: If we have 5+ speakers and industry match, trust Firecrawl's search
+  // RECOMMENDATION 6: But still require country check to prevent non-DE events from bypassing filters
   const trustSearchQuery = (m.speakersCount ?? 0) >= 5 && enoughSpeakers;
   
   // Allow events with 1 speaker if quality is high enough (quality ≥ 0.5)
   // This prevents filtering out valid events where speaker extraction only found 1 speaker
-  const ok = (meetsQuality && hasWhen && inDE && (enoughSpeakers || hasOneSpeakerWithHighQuality)) || trustSearchQuery;
+  // RECOMMENDATION 6: trustSearchQuery bypass now also requires inDE check
+  const ok = (meetsQuality && hasWhen && inDE && (enoughSpeakers || hasOneSpeakerWithHighQuality)) || (trustSearchQuery && inDE);
   
   return {
     quality: q,

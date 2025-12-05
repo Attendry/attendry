@@ -482,36 +482,83 @@ export function getFirecrawlMetrics() {
 /**
  * Simplify query for CSE - extract core terms to improve geographic filtering
  * Complex queries with many OR/AND clauses can confuse CSE's geographic filters
+ * 
+ * RECOMMENDATION 1: More aggressive simplification for CSE
+ * CSE performs poorly with complex boolean queries - keep it simple (<200 chars)
  */
-function simplifyQueryForCSE(query: string): string {
-  // If query is already short (< 200 chars), use as-is
-  if (query.length < 200) {
-    return query;
+function simplifyQueryForCSE(query: string, country?: string): string {
+  // Get country name for inclusion in query (comprehensive mapping)
+  const countryNames: Record<string, string> = {
+    'DE': 'Germany',
+    'FR': 'France',
+    'GB': 'United Kingdom',
+    'UK': 'United Kingdom',
+    'US': 'United States',
+    'IT': 'Italy',
+    'ES': 'Spain',
+    'NL': 'Netherlands',
+    'AT': 'Austria',
+    'CH': 'Switzerland',
+    'BE': 'Belgium',
+    'PL': 'Poland',
+    'SE': 'Sweden',
+    'NO': 'Norway',
+    'DK': 'Denmark',
+    'IE': 'Ireland',
+    'PT': 'Portugal',
+    'CZ': 'Czech Republic',
+    'HU': 'Hungary',
+    'FI': 'Finland'
+  };
+  const countryName = country ? countryNames[country.toUpperCase()] || '' : '';
+  
+  // If query is already short (< 150 chars), just add country and use as-is
+  if (query.length < 150) {
+    const withCountry = countryName && !query.toLowerCase().includes(countryName.toLowerCase())
+      ? `${query} ${countryName}`
+      : query;
+    return withCountry.slice(0, 200);
   }
   
-  // Extract key terms: remove complex boolean logic, keep main keywords
-  // Remove excessive parentheses and boolean operators
+  // AGGRESSIVE SIMPLIFICATION for complex queries
+  // Remove all boolean logic and parentheses
   let simplified = query
     .replace(/\s*\(+\s*/g, ' ')  // Remove opening parentheses
     .replace(/\s*\)+\s*/g, ' ')  // Remove closing parentheses
     .replace(/\s+OR\s+/gi, ' ')   // Replace OR with space
     .replace(/\s+AND\s+/gi, ' ')  // Replace AND with space
+    .replace(/-\([^)]+\)/g, '')   // Remove negative filter groups like -(term1 OR term2)
+    .replace(/-\S+/g, '')         // Remove negative terms like -reddit
     .replace(/\s+/g, ' ')         // Normalize whitespace
     .trim();
   
-  // Extract quoted phrases and key terms
+  // Extract quoted phrases (most important - these are specific terms)
   const quotedPhrases = simplified.match(/"([^"]+)"/g) || [];
+  
+  // Extract key words, prioritizing event-related terms
+  const eventTerms = ['conference', 'summit', 'event', 'workshop', 'seminar', 'forum', 'symposium'];
   const words = simplified
     .replace(/"([^"]+)"/g, '')  // Remove quoted phrases temporarily
     .split(/\s+/)
-    .filter(w => w.length > 3)  // Keep words longer than 3 chars
-    .slice(0, 10);  // Limit to 10 key words
+    .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'have', 'been'].includes(w.toLowerCase()))
+    .slice(0, 8);  // Limit to 8 key words (more aggressive)
   
-  // Reconstruct: quoted phrases first, then key words
-  const result = [...quotedPhrases, ...words].join(' ').trim();
+  // Ensure we have at least one event type term
+  const hasEventTerm = words.some(w => eventTerms.includes(w.toLowerCase()));
+  const eventTermToAdd = hasEventTerm ? '' : 'conference';
   
-  // Limit to 256 characters (CSE max)
-  return result.slice(0, 256);
+  // Reconstruct: quoted phrases + key words + event term + country
+  const parts = [
+    ...quotedPhrases.slice(0, 3), // Max 3 quoted phrases
+    ...words,
+    eventTermToAdd,
+    countryName
+  ].filter(Boolean);
+  
+  const result = parts.join(' ').trim();
+  
+  // Limit to 200 characters for CSE (lower than max 256 to be safe)
+  return result.slice(0, 200);
 }
 
 /**
@@ -624,9 +671,10 @@ async function unifiedCseSearch(params: UnifiedSearchParams): Promise<UnifiedSea
   try {
     const url = new URL('https://www.googleapis.com/customsearch/v1');
     
-    // Simplify query for CSE - extract core terms to avoid confusion
+    // RECOMMENDATION 1: Simplify query for CSE with country context
     // CSE works better with simpler queries, complex queries can confuse geographic filters
-    const simplifiedQuery = simplifyQueryForCSE(params.q);
+    const simplifiedQuery = simplifyQueryForCSE(params.q, params.country);
+    console.log('[unified-cse] Simplified query:', { original: params.q.substring(0, 100), simplified: simplifiedQuery });
     url.searchParams.set('q', simplifiedQuery);
     url.searchParams.set('key', googleCseKey);
     url.searchParams.set('cx', googleCseCx);
