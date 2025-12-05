@@ -1138,7 +1138,7 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
   };
 
   // Step 3: Cache the result for future requests (provider-agnostic cache)
-  if (params.useCache !== false && selectedResult.items.length > 0) {
+  if (params.useCache !== false && mergedItems.length > 0) {
     const unifiedCacheKey = generateUnifiedCacheKey(params);
     await searchCache.set(unifiedCacheKey, result, CACHE_DURATION, []).catch(err => {
       console.warn('[unified-search] Failed to cache result:', err);
