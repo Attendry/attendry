@@ -210,16 +210,29 @@ function selectBetterValue(existing: string, candidate?: string | null): string 
 
 function extractDateFromContent(content: string): string | undefined {
   if (!content) return undefined;
+  
+  // All German and English month names
+  const monthNames = 'January|February|March|April|May|June|July|August|September|October|November|December|Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember';
+  
   const patterns = [
-    /(\d{1,2}\s?[–-]\s?\d{1,2}\s(?:January|February|March|April|May|June|July|August|September|October|November|December|Januar|Februar|März|Mai|Juni|Juli|Oktober|Dezember)\s20\d{2})/i,
-    /((?:January|February|March|April|May|June|July|August|September|October|November|December|Januar|Februar|März|Mai|Juni|Juli|Oktober|Dezember)\s\d{1,2},?\s20\d{2})/i,
+    // German format: "10. Juni 2026" or "10.-11. Juni 2026" (DAY. MONTH YEAR)
+    new RegExp(`(\\d{1,2})\\.?\\s*(?:[–-]\\s*\\d{1,2}\\.?\\s*)?(${monthNames})\\s+(20\\d{2})`, 'i'),
+    // Date range: "10-11 June 2026" or "10 - 11 June 2026"
+    new RegExp(`(\\d{1,2}\\s?[–-]\\s?\\d{1,2}\\s(?:${monthNames})\\s20\\d{2})`, 'i'),
+    // English format: "November 12, 2025" (MONTH DAY, YEAR)
+    new RegExp(`((?:${monthNames})\\s\\d{1,2},?\\s20\\d{2})`, 'i'),
+    // German numeric: "12.11.2025" (DD.MM.YYYY)
     /(\d{1,2}\.\d{1,2}\.20\d{2})/,
+    // ISO format: "2025-11-12" (YYYY-MM-DD)
+    /(20\d{2}-\d{2}-\d{2})/,
+    // Year only (last resort)
     /(20\d{2})/
   ];
+  
   for (const pattern of patterns) {
     const match = content.match(pattern);
-    if (match && match[1]) {
-      return match[1].trim();
+    if (match && match[0]) {
+      return match[0].trim();
     }
   }
   return undefined;

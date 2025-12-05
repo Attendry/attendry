@@ -194,25 +194,55 @@ function extractDatesFromContent(content: string): { start: string | null; end: 
   
   // Try common date patterns if not found
   if (!result.start) {
-    // German format: 12.11.2025
-    const germanMatch = content.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
-    if (germanMatch) {
-      result.start = `${germanMatch[3]}-${germanMatch[2].padStart(2, '0')}-${germanMatch[1].padStart(2, '0')}`;
-    }
-    
-    // ISO format: 2025-11-12
-    const isoMatch = content.match(/(\d{4})-(\d{2})-(\d{2})/);
-    if (isoMatch && !result.start) {
-      result.start = isoMatch[0];
-    }
-    
-    // Month name: November 12, 2025
+    // German month names for pattern matching
     const monthNames = '(january|february|march|april|may|june|july|august|september|october|november|december|januar|februar|märz|april|mai|juni|juli|august|september|oktober|november|dezember)';
-    const monthMatch = content.match(new RegExp(`${monthNames}\\s+(\\d{1,2}),?\\s+(\\d{4})`, 'i'));
-    if (monthMatch && !result.start) {
-      const month = parseMonth(monthMatch[1]);
+    
+    // GERMAN DATE FORMAT: "10. Juni 2026" or "10.-11. Juni 2026" (DAY. MONTH YEAR)
+    // This is the most common format on German conference websites
+    const germanMonthMatch = content.match(new RegExp(`(\\d{1,2})\\.?\\s*(?:[–-]\\s*\\d{1,2}\\.?\\s*)?${monthNames}\\s+(\\d{4})`, 'i'));
+    if (germanMonthMatch) {
+      const month = parseMonth(germanMonthMatch[2]);
       if (month !== null) {
-        result.start = `${monthMatch[3]}-${month.toString().padStart(2, '0')}-${monthMatch[2].padStart(2, '0')}`;
+        result.start = `${germanMonthMatch[3]}-${month.toString().padStart(2, '0')}-${germanMonthMatch[1].padStart(2, '0')}`;
+      }
+    }
+    
+    // German numeric format: 12.11.2025 (DD.MM.YYYY)
+    if (!result.start) {
+      const germanNumericMatch = content.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      if (germanNumericMatch) {
+        result.start = `${germanNumericMatch[3]}-${germanNumericMatch[2].padStart(2, '0')}-${germanNumericMatch[1].padStart(2, '0')}`;
+      }
+    }
+    
+    // ISO format: 2025-11-12 (YYYY-MM-DD)
+    if (!result.start) {
+      const isoMatch = content.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) {
+        result.start = isoMatch[0];
+      }
+    }
+    
+    // English month name: November 12, 2025 or November 12 2025 (MONTH DAY, YEAR)
+    if (!result.start) {
+      const monthMatch = content.match(new RegExp(`${monthNames}\\s+(\\d{1,2}),?\\s+(\\d{4})`, 'i'));
+      if (monthMatch) {
+        const month = parseMonth(monthMatch[1]);
+        if (month !== null) {
+          result.start = `${monthMatch[3]}-${month.toString().padStart(2, '0')}-${monthMatch[2].padStart(2, '0')}`;
+        }
+      }
+    }
+    
+    // Date range format: "10 - 11 June 2026" or "10-11 June 2026"
+    if (!result.start) {
+      const rangeMatch = content.match(new RegExp(`(\\d{1,2})\\s*[–-]\\s*(\\d{1,2})\\s+${monthNames}\\s+(\\d{4})`, 'i'));
+      if (rangeMatch) {
+        const month = parseMonth(rangeMatch[3]);
+        if (month !== null) {
+          result.start = `${rangeMatch[4]}-${month.toString().padStart(2, '0')}-${rangeMatch[1].padStart(2, '0')}`;
+          result.end = `${rangeMatch[4]}-${month.toString().padStart(2, '0')}-${rangeMatch[2].padStart(2, '0')}`;
+        }
       }
     }
   }

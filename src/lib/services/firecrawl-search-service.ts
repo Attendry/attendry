@@ -829,18 +829,32 @@ export class FirecrawlSearchService {
    */
   private static extractDateFromContent(markdown?: string | null): string | null {
     if (!markdown) return null;
+    
+    // All German and English month names
+    const monthNames = 'January|February|March|April|May|June|July|August|September|October|November|December|Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember';
+    
     const datePatterns = [
+      // Labeled dates
       /(?:Date|Datum|When|Wann):\s*([^\n]+)/i,
       /(?:Event Date|Veranstaltungsdatum):\s*([^\n]+)/i,
-      /(\d{4}-\d{2}-\d{2})/g,
-      /(\d{1,2}\/\d{1,2}\/\d{4})/g,
-      /(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}/gi,
-      /(Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember)\s+\d{1,2},?\s+\d{4}/gi
+      // German format: "10. Juni 2026" or "10.-11. Juni 2026" (DAY. MONTH YEAR) - MOST COMMON
+      new RegExp(`\\d{1,2}\\.?\\s*(?:[–-]\\s*\\d{1,2}\\.?\\s*)?(${monthNames})\\s+20\\d{2}`, 'i'),
+      // Date range: "10-11 June 2026"
+      new RegExp(`\\d{1,2}\\s?[–-]\\s?\\d{1,2}\\s+(?:${monthNames})\\s+20\\d{2}`, 'i'),
+      // ISO format: 2025-11-12
+      /\d{4}-\d{2}-\d{2}/,
+      // German numeric: 12.11.2025
+      /\d{1,2}\.\d{1,2}\.20\d{2}/,
+      // US format: 11/12/2025
+      /\d{1,2}\/\d{1,2}\/\d{4}/,
+      // English: "November 12, 2025" (MONTH DAY, YEAR)
+      new RegExp(`(?:${monthNames})\\s+\\d{1,2},?\\s+\\d{4}`, 'i'),
     ];
+    
     for (const pattern of datePatterns) {
       const match = markdown.match(pattern);
       if (match) {
-        return Array.isArray(match) ? match[0].trim() : null;
+        return Array.isArray(match) ? match[0].trim() : match.toString().trim();
       }
     }
     return null;
