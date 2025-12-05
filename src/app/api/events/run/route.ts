@@ -53,11 +53,17 @@ export async function processOptimizedResults(
       : createHash('sha256').update(`${timestamp}_${index}`).digest('hex').slice(0, 12);
     const uniqueId = `optimized_${timestamp}_${index}_${urlHash}`;
     
+    // FIX: Don't default to today's date - this was causing events to show incorrect dates
+    // If date extraction failed, leave it null so UI can show "Date TBD"
+    const eventDate = event.date && event.date.trim() && event.date !== 'Unknown Date' 
+      ? event.date 
+      : null;
+    
     return {
       id: uniqueId,
       title: eventTitle,
       source_url: event.url,
-      starts_at: event.date || new Date().toISOString().split('T')[0],
+      starts_at: eventDate,
       country: country || 'EU',
       city: extractCityFromLocation(event.location),
       location: event.location || 'Location TBD',
@@ -75,7 +81,8 @@ export async function processOptimizedResults(
       metadata: {
         ...event.metadata,
         source: 'optimized_orchestrator',
-        processingTime: event.metadata?.processingTime || 0
+        processingTime: event.metadata?.processingTime || 0,
+        dateStatus: eventDate ? 'extracted' : 'unknown' // Track if date was extracted or not
       }
     };
   });
