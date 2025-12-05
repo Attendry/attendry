@@ -1051,9 +1051,6 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
     if (database.metrics.rateLimitHit) rateLimitHits++;
   }
 
-  // Use first successful result (prefer Firecrawl > CSE > Database)
-  let selectedResult: UnifiedSearchResult | null = null;
-  
   // Log provider results for debugging
   console.log('[unified-search] Provider results summary:', {
     firecrawl: firecrawl ? { items: firecrawl.items.length, provider: firecrawl.provider } : null,
@@ -1061,19 +1058,56 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
     database: database ? { items: database.items.length, provider: database.provider } : null
   });
   
+  // MERGE results from ALL providers instead of picking just one
+  // This ensures we get CSE's actual event URLs even when Firecrawl returns generic pages
+  // Deduplicate by URL to avoid processing the same page twice
+  const seenUrls = new Set<string>();
+  const mergedItems: typeof firecrawl.items = [];
+  
+  // Add Firecrawl results first (often have richer metadata)
   if (firecrawl && firecrawl.items.length > 0) {
-    selectedResult = firecrawl;
-    console.log('[unified-search] Using Firecrawl result:', firecrawl.items.length, 'items');
-  } else if (cse && cse.items.length > 0) {
-    selectedResult = cse;
-    console.log('[unified-search] Using CSE result (Firecrawl had', firecrawl?.items.length || 0, 'items):', cse.items.length, 'items');
-  } else if (database && database.items.length > 0) {
-    selectedResult = database;
-    console.log('[unified-search] Using Database result (Firecrawl had', firecrawl?.items.length || 0, 'items, CSE had', cse?.items.length || 0, 'items):', database.items.length, 'items');
+    for (const item of firecrawl.items) {
+      const url = item.url || item.link;
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url);
+        mergedItems.push(item);
+      }
+    }
+    console.log('[unified-search] Added', firecrawl.items.length, 'items from Firecrawl');
+  }
+  
+  // Add CSE results (often finds actual event pages that Firecrawl misses)
+  if (cse && cse.items.length > 0) {
+    let cseAdded = 0;
+    for (const item of cse.items) {
+      const url = item.url || item.link;
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url);
+        mergedItems.push(item);
+        cseAdded++;
+      }
+    }
+    console.log('[unified-search] Added', cseAdded, 'unique items from CSE (', cse.items.length, 'total,', cse.items.length - cseAdded, 'duplicates)');
+  }
+  
+  // Add Database results last (fallback)
+  if (database && database.items.length > 0) {
+    let dbAdded = 0;
+    for (const item of database.items) {
+      const url = item.url || item.link;
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url);
+        mergedItems.push(item);
+        dbAdded++;
+      }
+    }
+    if (dbAdded > 0) {
+      console.log('[unified-search] Added', dbAdded, 'unique items from Database');
+    }
   }
 
   // If no results, return empty with all attempted providers
-  if (!selectedResult) {
+  if (mergedItems.length === 0) {
     console.log('[unified-search] No results from any provider');
     return {
       items: [],
@@ -1088,11 +1122,11 @@ export async function unifiedSearch(params: UnifiedSearchParams): Promise<Unifie
     };
   }
 
-  totalItems = selectedResult.items.length;
-  console.log('[unified-search] Selected provider:', selectedResult.provider, 'with', totalItems, 'items');
+  totalItems = mergedItems.length;
+  console.log('[unified-search] Merged results:', totalItems, 'unique items from', providers.length, 'providers');
 
   const result: UnifiedSearchResponse = {
-    items: selectedResult.items,
+    items: mergedItems,
     providers,
     totalItems,
     debug,
