@@ -1,23 +1,83 @@
 // app/api/events/run/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { executeOptimizedSearch } from '@/lib/optimized-orchestrator';
+import { executeOptimizedSearch, type OptimizedSearchResult, type EventCandidate } from '@/lib/optimized-orchestrator';
 import { deriveLocale, getCountryContext, isValidISO2Country, toISO2Country } from '@/lib/utils/country';
 import { supabaseServer } from '@/lib/supabase-server';
 import { createHash } from 'crypto';
 import { RelevanceService, type UserProfile, type RelevanceScore } from '@/lib/services/relevance-service';
 
+// Legacy event format for API compatibility
+interface LegacyEvent {
+  id: string;
+  title: string;
+  source_url: string;
+  starts_at: string | null;
+  ends_at?: string | null;
+  country: string;
+  city: string;
+  location: string;
+  venue: string;
+  organizer: string;
+  description: string;
+  confidence: number;
+  topics: string[];
+  sessions: unknown[];
+  speakers: unknown[];
+  sponsors: unknown[];
+  participating_organizations: string[];
+  partners: string[];
+  competitors: string[];
+  metadata: {
+    source: string;
+    processingTime: number;
+    dateStatus: 'extracted' | 'unknown';
+    [key: string]: unknown;
+  };
+  // Relevance scoring fields (added after processing)
+  relevance_score?: number | null;
+  relevance_reasons?: string[];
+  relevance_matched_terms?: {
+    industry: string[];
+    icp: string[];
+    competitors: string[];
+  };
+}
+
+interface ProcessedResults {
+  events: LegacyEvent[];
+  provider: string;
+  count: number;
+  pipeline_metrics: {
+    totalCandidates: number;
+    prioritizedCandidates: number;
+    parsedCandidates: number;
+    extractedCandidates: number;
+    publishedCandidates: number;
+    rejectedCandidates: number;
+    failedCandidates: number;
+    totalDuration: number;
+    averageConfidence: number;
+    sourceBreakdown: Record<string, number>;
+  };
+  logs: Array<{ stage: string; message: string; timestamp: string; data?: unknown }>;
+  debug?: {
+    optimizedResult: OptimizedSearchResult;
+    processingTime: number;
+  };
+}
+
 // Helper function to process Optimized Orchestrator results
 export async function processOptimizedResults(
-  optimizedResult: any,
+  optimizedResult: OptimizedSearchResult,
   country: string | null,
   dateFrom: string | null,
   dateTo: string | null,
   includeDebug: boolean
-): Promise<any> {
+): Promise<ProcessedResults> {
   const events = optimizedResult.events || [];
   
   // Convert Optimized Orchestrator events to legacy format
-  const legacyEvents = events.map((event: any, index: number) => {
+  const legacyEvents: LegacyEvent[] = events.map((event: EventCandidate, index: number) => {
     // Extract proper title from URL if title is missing or is a URL
     let eventTitle = event.title;
     if (!eventTitle || eventTitle.startsWith('http') || eventTitle === event.url) {
@@ -53,31 +113,40 @@ export async function processOptimizedResults(
       : createHash('sha256').update(`${timestamp}_${index}`).digest('hex').slice(0, 12);
     const uniqueId = `optimized_${timestamp}_${index}_${urlHash}`;
     
-    // FIX: Don't default to today's date - this was causing events to show incorrect dates
+    // CRITICAL FIX: Don't default to today's date - this was causing events to show incorrect dates
     // If date extraction failed, leave it null so UI can show "Date TBD"
-    const eventDate = event.date && event.date.trim() && event.date !== 'Unknown Date' 
-      ? event.date 
-      : null;
+    // Validate that event.date is a valid date string before using it
+    let eventDate: string | null = null;
+    if (event.date && typeof event.date === 'string') {
+      const trimmedDate = event.date.trim();
+      if (trimmedDate && trimmedDate !== 'Unknown Date' && trimmedDate !== 'TBD') {
+        // Basic validation: check if it's a valid date format
+        const dateRegex = /^\d{4}-\d{2}-\d{2}/; // ISO date format
+        if (dateRegex.test(trimmedDate)) {
+          eventDate = trimmedDate;
+        }
+      }
+    }
     
     return {
       id: uniqueId,
       title: eventTitle,
       source_url: event.url,
       starts_at: eventDate,
-      country: country || 'EU',
-      city: extractCityFromLocation(event.location),
+      country: country || event.country || 'EU',
+      city: event.city || extractCityFromLocation(event.location),
       location: event.location || 'Location TBD',
       venue: event.venue || 'Venue TBD',
-      organizer: event.organizer || 'Event Organizer',
+      organizer: event.metadata?.analysis?.organizer || 'Event Organizer',
       description: event.description || 'Event description not available',
       confidence: event.confidence || 0.5,
       topics: extractTopicsFromDescription(event.description),
       sessions: [],
       speakers: event.speakers || [],
       sponsors: event.sponsors || [],
-      participating_organizations: [],
-      partners: [],
-      competitors: [],
+      participating_organizations: [] as string[],
+      partners: [] as string[],
+      competitors: [] as string[],
       metadata: {
         ...event.metadata,
         source: 'optimized_orchestrator',
@@ -135,16 +204,17 @@ function extractTopicsFromDescription(description?: string): string[] {
 }
 
 // Helper function to save search results asynchronously
+// Note: This runs in background and errors are logged but don't affect the main response
 async function saveSearchResultsAsync(params: {
   userText: string;
   country: string | null;
   dateFrom: string | null;
   dateTo: string | null;
   locale: string;
-  results: any[];
+  results: LegacyEvent[];
   searchDuration: number;
   apiEndpoint: string;
-}) {
+}): Promise<void> {
   try {
     // Validate inputs
     if (!params.results || !Array.isArray(params.results) || params.results.length === 0) {
@@ -153,7 +223,7 @@ async function saveSearchResultsAsync(params: {
 
     const supabase = await supabaseServer();
     if (!supabase) {
-      console.warn('Supabase client not available for search history saving');
+      // Non-critical: Supabase unavailable, skip saving
       return;
     }
 
@@ -161,6 +231,7 @@ async function saveSearchResultsAsync(params: {
     
     // Only save if user is authenticated
     if (userErr || !userRes?.user) {
+      // Non-critical: User not authenticated, skip saving
       return;
     }
 
@@ -202,18 +273,51 @@ async function saveSearchResultsAsync(params: {
       });
 
     if (error) {
-      console.warn('Failed to save search history:', error);
-    } else {
-      console.log('Search history saved successfully');
+      // Log error with context for monitoring, but don't throw (background operation)
+      console.error('[api/events/run] Failed to save search history:', {
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        resultCount: serializableResults.length
+      });
     }
+    // Success case: no logging needed for background operations to reduce noise
   } catch (error) {
-    console.warn('Error saving search history:', error);
+    // Log unexpected errors with full context
+    console.error('[api/events/run] Unexpected error saving search history:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      resultCount: params.results?.length || 0
+    });
   }
+}
+
+interface TelemetryData {
+  ctx: {
+    country?: string;
+    locale?: string;
+    tld?: string;
+  };
+  query: {
+    base?: string;
+    final?: string;
+  };
+  adapters: {
+    firecrawl?: number;
+    cse?: number;
+    database?: number;
+  };
+  results: {
+    count?: number;
+    provider?: string;
+  };
+  timeouts: Record<string, unknown>;
+  fallbackUsed: boolean;
 }
 
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
-  let telemetry: any = {
+  const telemetry: TelemetryData = {
     ctx: {},
     query: {},
     adapters: {},
@@ -357,7 +461,7 @@ export async function POST(req: NextRequest) {
           const userProfile = await RelevanceService.getUserProfile(user.id);
           if (userProfile) {
             // Convert events to EventData format for RelevanceService
-            const eventDataForScoring = result.events.map((event: any) => ({
+            const eventDataForScoring = result.events.map((event: LegacyEvent) => ({
               id: event.id || event.source_url,
               title: event.title || 'Event',
               starts_at: event.starts_at || undefined,
@@ -375,7 +479,7 @@ export async function POST(req: NextRequest) {
               competitors: event.competitors || undefined,
               confidence: event.confidence || undefined,
               data_completeness: undefined,
-            }));
+            } as const));
 
             // Calculate relevance scores
             const relevanceScores = await RelevanceService.calculateRelevanceScores(
@@ -391,7 +495,7 @@ export async function POST(req: NextRequest) {
 
             // Attach relevance scores to events and sort by relevance
             result.events = result.events
-              .map((event: any) => {
+              .map((event: LegacyEvent): LegacyEvent => {
                 const eventId = event.id || event.source_url;
                 const relevanceScore = scoreMap.get(eventId);
                 
@@ -406,7 +510,7 @@ export async function POST(req: NextRequest) {
                   },
                 };
               })
-              .sort((a: any, b: any) => {
+              .sort((a: LegacyEvent, b: LegacyEvent) => {
                 // Sort by relevance score (highest first), then by confidence, then by date
                 const scoreA = a.relevance_score ?? 0;
                 const scoreB = b.relevance_score ?? 0;
@@ -444,7 +548,8 @@ export async function POST(req: NextRequest) {
         searchDuration: Date.now() - startTime,
         apiEndpoint: '/api/events/run'
       }).catch(error => {
-        console.warn('Failed to save search results asynchronously:', error);
+        // Error already logged in saveSearchResultsAsync, no need to log again
+        // This catch prevents unhandled promise rejection
       });
     }
 

@@ -435,36 +435,9 @@ export default function EventsPageNew({ initialSavedSet }: EventsPageNewProps) {
     }
   }, [state.searchParams]);
 
-  // Check watchlist matches when events change
-  // Temporarily disabled until database migration is applied
-  /*
-  useEffect(() => {
-    if (state.events.length > 0) {
-      checkWatchlistMatches(state.events);
-    }
-  }, [state.events]);
-
-  const checkWatchlistMatches = async (events: any[]) => {
-    try {
-      const response = await fetch('/api/watchlist/check-events', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ events }),
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        const matchesMap = new Map();
-        data.matches.forEach((match: any) => {
-          matchesMap.set(match.eventId, match);
-        });
-        setWatchlistMatches(matchesMap);
-      }
-    } catch (error) {
-      console.warn('Failed to check watchlist matches:', error);
-    }
-  };
-  */
+  // Watchlist matches feature
+  // TODO: Re-enable when database migration is applied and API endpoint is available
+  // For now, watchlistMatches state is kept for future use but not populated
 
   const q = useMemo(() => keywords.trim(), [keywords]);
 
